@@ -1,0 +1,20 @@
+{
+    "name": "sds-system/sds-system",
+    "description": "Safety Data Sheet Authoring & Generation System for Ink/Coatings Manufacturers",
+    "type": "project",
+    "require": {
+        "php": ">=8.1",
+        "tecnickcom/tcpdf": "^6.6"
+    },
+    "autoload": {
+        "psr-4": {
+            "SDS\\": "src/"
+        },
+        "files": [
+            "src/Helpers/functions.php"
+        ]
+    },
+    "config": {
+        "optimize-autoloader": true
+    }
+}

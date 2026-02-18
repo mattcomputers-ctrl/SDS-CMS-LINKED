@@ -1,0 +1,12 @@
+RewriteEngine On
+RewriteBase /
+
+# Protect hidden files
+RewriteRule (^\.|/\.) - [F]
+
+# Allow direct access to existing files and directories
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Route everything else through front controller
+RewriteRule ^(.*)$ index.php [QSA,L]

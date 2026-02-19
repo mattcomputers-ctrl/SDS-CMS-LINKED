@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Red diamond border -->
+  <polygon points="100,5 195,100 100,195 5,100" fill="white" stroke="#FF1100" stroke-width="7"/>
+  <!-- Health Hazard: Person silhouette with star on chest -->
+  <g fill="#000000">
+    <!-- Head -->
+    <circle cx="100" cy="48" r="14"/>
+    <!-- Body / Torso -->
+    <path d="
+      M 82,62
+      L 118,62
+      L 122,110
+      L 112,110
+      L 108,80
+      L 92,80
+      L 88,110
+      L 78,110
+      Z
+    "/>
+    <!-- Left arm -->
+    <path d="M 82,65 L 58,90 L 50,85 L 55,78 L 72,62 Z"/>
+    <!-- Right arm -->
+    <path d="M 118,65 L 142,90 L 150,85 L 145,78 L 128,62 Z"/>
+    <!-- Left leg -->
+    <path d="M 78,110 L 70,160 L 62,160 L 58,162 L 60,166 L 78,166 L 82,160 L 88,110 Z"/>
+    <!-- Right leg -->
+    <path d="M 122,110 L 130,160 L 138,160 L 142,162 L 140,166 L 122,166 L 118,160 L 112,110 Z"/>
+    <!-- 6-pointed star on chest (white cutout) -->
+    <!-- Triangle pointing up -->
+    <polygon points="100,68 93,80 107,80" fill="white"/>
+    <!-- Triangle pointing down -->
+    <polygon points="100,84 93,72 107,72" fill="white"/>
+  </g>
+</svg>

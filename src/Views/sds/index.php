@@ -7,6 +7,11 @@
         <a href="/sds/<?= (int) $finishedGood['id'] ?>/preview" class="btn btn-outline">Preview (EN)</a>
         <a href="/sds/<?= (int) $finishedGood['id'] ?>/preview?lang=es" class="btn btn-outline">Preview (ES)</a>
         <a href="/sds/<?= (int) $finishedGood['id'] ?>/preview?lang=fr" class="btn btn-outline">Preview (FR)</a>
+        <?php if (is_editor()): ?>
+            | <a href="/sds/<?= (int) $finishedGood['id'] ?>/edit" class="btn btn-outline">Edit (EN)</a>
+            <a href="/sds/<?= (int) $finishedGood['id'] ?>/edit?lang=es" class="btn btn-outline">Edit (ES)</a>
+            <a href="/sds/<?= (int) $finishedGood['id'] ?>/edit?lang=fr" class="btn btn-outline">Edit (FR)</a>
+        <?php endif; ?>
     </div>
     <?php if (is_editor()): ?>
     <form method="POST" action="/sds/<?= (int) $finishedGood['id'] ?>/publish" class="inline-form">
@@ -41,9 +46,9 @@
                 <td><?= format_date($v['published_at'] ?? $v['created_at'], 'm/d/Y H:i') ?></td>
                 <td>
                     <?php if ($v['pdf_path']): ?>
-                        <a href="/sds/download/<?= (int) $v['id'] ?>" class="btn btn-sm">Download PDF</a>
+                        <a href="/sds/version/<?= (int) $v['id'] ?>/download" class="btn btn-sm">Download PDF</a>
                     <?php endif; ?>
-                    <a href="/sds/trace/<?= (int) $v['id'] ?>" class="btn btn-sm btn-outline">Trace</a>
+                    <a href="/sds/version/<?= (int) $v['id'] ?>/trace" class="btn btn-sm btn-outline">Trace</a>
                 </td>
             </tr>
         <?php endforeach; ?>

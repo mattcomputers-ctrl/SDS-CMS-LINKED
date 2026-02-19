@@ -65,6 +65,126 @@ class SDSController
         }
     }
 
+    public function edit(string $finished_good_id): void
+    {
+        if (!is_editor()) {
+            $_SESSION['_flash']['error'] = 'Permission denied.';
+            redirect('/sds/' . $finished_good_id);
+        }
+
+        $fg = FinishedGood::findById((int) $finished_good_id);
+        if ($fg === null) {
+            $_SESSION['_flash']['error'] = 'Finished good not found.';
+            redirect('/finished-goods');
+        }
+
+        $language = $_GET['lang'] ?? 'en';
+
+        try {
+            $generator = new SDSGenerator();
+            $sdsData   = $generator->generate((int) $finished_good_id, $language);
+
+            // Load existing overrides for the form
+            $db = Database::getInstance();
+            $overrideRows = $db->fetchAll(
+                "SELECT section_number, field_key, override_text
+                 FROM text_overrides
+                 WHERE finished_good_id = ? AND language = ? AND sds_version_id IS NULL
+                 ORDER BY section_number, field_key",
+                [(int) $finished_good_id, $language]
+            );
+            $overrides = [];
+            foreach ($overrideRows as $row) {
+                $overrides[(int) $row['section_number']][$row['field_key']] = $row['override_text'];
+            }
+
+            view('sds/edit', [
+                'pageTitle'    => 'Edit SDS: ' . $fg['product_code'],
+                'finishedGood' => $fg,
+                'sds'          => $sdsData,
+                'overrides'    => $overrides,
+                'language'     => $language,
+            ]);
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error'] = 'SDS generation failed: ' . $e->getMessage();
+            redirect('/sds/' . $finished_good_id);
+        }
+    }
+
+    public function saveEdits(string $finished_good_id): void
+    {
+        if (!is_editor()) {
+            $_SESSION['_flash']['error'] = 'Permission denied.';
+            redirect('/sds/' . $finished_good_id);
+        }
+
+        CSRF::validateRequest();
+
+        $fg = FinishedGood::findById((int) $finished_good_id);
+        if ($fg === null) {
+            $_SESSION['_flash']['error'] = 'Finished good not found.';
+            redirect('/finished-goods');
+        }
+
+        $language  = $_POST['language'] ?? 'en';
+        $overrides = $_POST['override'] ?? [];
+        $db = Database::getInstance();
+        $savedCount = 0;
+
+        foreach ($overrides as $sectionNum => $fields) {
+            $sectionNum = (int) $sectionNum;
+            if ($sectionNum < 1 || $sectionNum > 16 || !is_array($fields)) {
+                continue;
+            }
+
+            foreach ($fields as $fieldKey => $value) {
+                $fieldKey = preg_replace('/[^a-zA-Z0-9_]/', '', $fieldKey);
+                $value    = trim((string) $value);
+
+                // Check for existing override
+                $existing = $db->fetch(
+                    "SELECT id FROM text_overrides
+                     WHERE finished_good_id = ? AND section_number = ? AND field_key = ? AND language = ? AND sds_version_id IS NULL",
+                    [(int) $finished_good_id, $sectionNum, $fieldKey, $language]
+                );
+
+                if ($value === '') {
+                    // If empty and override exists, remove it to fall back to defaults
+                    if ($existing) {
+                        $db->query(
+                            "DELETE FROM text_overrides WHERE id = ?",
+                            [$existing['id']]
+                        );
+                    }
+                    continue;
+                }
+
+                if ($existing) {
+                    $db->update('text_overrides', [
+                        'override_text' => $value,
+                    ], 'id = ?', [$existing['id']]);
+                } else {
+                    $db->insert('text_overrides', [
+                        'finished_good_id' => (int) $finished_good_id,
+                        'section_number'   => $sectionNum,
+                        'field_key'        => $fieldKey,
+                        'language'         => $language,
+                        'override_text'    => $value,
+                    ]);
+                }
+                $savedCount++;
+            }
+        }
+
+        AuditService::log('text_overrides', (string) $finished_good_id, 'bulk_edit', [
+            'language'    => $language,
+            'fields_saved' => $savedCount,
+        ]);
+
+        $_SESSION['_flash']['success'] = "SDS edits saved ({$savedCount} fields). Preview your changes or publish when ready.";
+        redirect('/sds/' . $finished_good_id);
+    }
+
     public function publish(string $finished_good_id): void
     {
         if (!is_editor()) {

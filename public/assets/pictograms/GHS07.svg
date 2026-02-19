@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Red diamond border -->
+  <polygon points="100,5 195,100 100,195 5,100" fill="white" stroke="#FF1100" stroke-width="7"/>
+  <!-- Exclamation Mark -->
+  <g fill="#000000">
+    <!-- Exclamation mark stem (tapers from top to bottom) -->
+    <path d="M 88,45 L 112,45 L 108,125 L 92,125 Z"/>
+    <!-- Exclamation mark dot -->
+    <circle cx="100" cy="148" r="13"/>
+  </g>
+</svg>

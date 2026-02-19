@@ -71,6 +71,12 @@ class SDSGenerator
         // Run SARA 313 analysis
         $saraResult = SARA313Service::analyse($calcResult['composition']);
 
+        // Run Prop 65 analysis
+        $prop65Result = Prop65Service::analyse($calcResult['composition']);
+
+        // Run carcinogen analysis (IARC/NTP/OSHA)
+        $carcinogenResult = CarcinogenService::analyse($calcResult['composition']);
+
         // Load DOT transport info
         $dotInfo = $this->getDOTInfo($calcResult['composition']);
 
@@ -114,16 +120,18 @@ class SDSGenerator
                 8  => $this->section8($hazardResult, $overrides),
                 9  => $this->section9($calcResult, $overrides),
                 10 => $this->section10($overrides),
-                11 => $this->section11($hazardResult, $overrides),
+                11 => $this->section11($hazardResult, $calcResult['composition'], $carcinogenResult, $overrides),
                 12 => $this->section12($overrides),
                 13 => $this->section13($overrides),
                 14 => $this->section14($dotInfo, $overrides),
-                15 => $this->section15($saraResult, $overrides),
+                15 => $this->section15($saraResult, $prop65Result, $overrides),
                 16 => $this->section16($calcResult, $overrides),
             ],
             'hazard_result'       => $hazardResult,
             'voc_result'          => $calcResult['voc'],
             'sara_result'         => $saraResult,
+            'prop65_result'       => $prop65Result,
+            'carcinogen_result'   => $carcinogenResult,
             'warnings'            => array_merge($calcResult['warnings'], $uvWarnings),
             'legal_disclaimer'    => $company['legal_disclaimer'] ?? '',
         ];
@@ -292,14 +300,61 @@ class SDSGenerator
         ];
     }
 
-    private function section11(array $hazard, array $overrides): array
+    private function section11(array $hazard, array $composition, array $carcinogenResult, array $overrides): array
     {
+        // Build component-level toxicological detail
+        $componentTox = [];
+        foreach ($composition as $c) {
+            $cas  = $c['cas_number'] ?? '';
+            $name = $c['chemical_name'] ?? '';
+            $conc = (float) ($c['concentration_pct'] ?? 0);
+            if ($cas === '' || $conc < 0.1) {
+                continue;
+            }
+
+            $entry = [
+                'cas_number'    => $cas,
+                'chemical_name' => $name,
+                'concentration_pct' => $conc,
+                'exposure_limits' => [],
+                'carcinogen_listings' => [],
+            ];
+
+            // Attach relevant exposure limits
+            foreach ($hazard['exposure_limits'] as $el) {
+                if ($el['cas_number'] === $cas) {
+                    $entry['exposure_limits'][] = $el;
+                }
+            }
+
+            // Attach carcinogen findings
+            foreach ($carcinogenResult['findings'] as $f) {
+                if ($f['cas_number'] === $cas) {
+                    $entry['carcinogen_listings'] = $f['agencies'];
+                }
+            }
+
+            if (!empty($entry['exposure_limits']) || !empty($entry['carcinogen_listings'])) {
+                $componentTox[] = $entry;
+            }
+        }
+
+        // Override carcinogenicity text if we have actual data
+        $carcinogenText = $overrides[11]['carcinogenicity'] ?? null;
+        if ($carcinogenText === null) {
+            $carcinogenText = $carcinogenResult['has_carcinogens']
+                ? $carcinogenResult['summary_text']
+                : $this->t->get('section11.carcinogenicity');
+        }
+
         return [
-            'title'           => $this->t->get('section11.title'),
-            'acute_toxicity'  => $overrides[11]['acute_toxicity'] ?? $this->t->get('section11.acute_toxicity'),
-            'chronic_effects' => $overrides[11]['chronic_effects'] ?? $this->t->get('section11.chronic_effects'),
-            'carcinogenicity' => $overrides[11]['carcinogenicity'] ?? $this->t->get('section11.carcinogenicity'),
-            'hazard_classes'  => $hazard['hazard_classes'],
+            'title'              => $this->t->get('section11.title'),
+            'acute_toxicity'     => $overrides[11]['acute_toxicity'] ?? $this->t->get('section11.acute_toxicity'),
+            'chronic_effects'    => $overrides[11]['chronic_effects'] ?? $this->t->get('section11.chronic_effects'),
+            'carcinogenicity'    => $carcinogenText,
+            'hazard_classes'     => $hazard['hazard_classes'],
+            'component_toxicology' => $componentTox,
+            'carcinogen_result'  => $carcinogenResult,
         ];
     }
 
@@ -335,14 +390,21 @@ class SDSGenerator
         ];
     }
 
-    private function section15(array $saraResult, array $overrides): array
+    private function section15(array $saraResult, array $prop65Result, array $overrides): array
     {
+        // Build state regulations text with Prop 65 data
+        $stateRegs = $overrides[15]['state_regs'] ?? '';
+        if ($stateRegs === '' && $prop65Result['requires_warning']) {
+            $stateRegs = $prop65Result['warning_text'];
+        }
+
         return [
             'title'          => $this->t->get('section15.title'),
             'osha_status'    => $overrides[15]['osha_status'] ?? $this->t->get('section15.osha_status'),
             'tsca_status'    => $overrides[15]['tsca_status'] ?? $this->t->get('section15.tsca_status'),
             'sara_313'       => $saraResult,
-            'state_regs'     => $overrides[15]['state_regs'] ?? '',
+            'prop65'         => $prop65Result,
+            'state_regs'     => $stateRegs,
             'note'           => $this->t->get('section15.note'),
         ];
     }

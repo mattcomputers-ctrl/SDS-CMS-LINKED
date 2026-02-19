@@ -215,6 +215,10 @@ class HazardEngine
         usort($hStatements, fn($a, $b) => strcmp($a['code'], $b['code']));
         usort($pStatements, fn($a, $b) => strcmp($a['code'], $b['code']));
 
+        // Resolve missing statement text from the GHS standard reference
+        $hStatements = GHSStatements::resolveHStatements($hStatements);
+        $pStatements = GHSStatements::resolvePStatements($pStatements);
+
         $this->traceStep('complete', 'Hazard classification complete', [
             'hazard_class_count' => count($allHClasses),
             'h_statement_count'  => count($hStatements),

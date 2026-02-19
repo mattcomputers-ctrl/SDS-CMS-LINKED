@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Red diamond border -->
+  <polygon points="100,5 195,100 100,195 5,100" fill="white" stroke="#FF1100" stroke-width="7"/>
+  <!-- Environment: Dead tree and fish -->
+  <g fill="#000000">
+    <!-- Dead tree -->
+    <!-- Trunk -->
+    <rect x="68" y="55" width="10" height="70" rx="2"/>
+    <!-- Branch right upper -->
+    <line x1="73" y1="65" x2="95" y2="50" stroke="#000000" stroke-width="5" stroke-linecap="round"/>
+    <line x1="90" y1="53" x2="95" y2="42" stroke="#000000" stroke-width="3" stroke-linecap="round"/>
+    <!-- Branch left upper -->
+    <line x1="73" y1="72" x2="52" y2="55" stroke="#000000" stroke-width="5" stroke-linecap="round"/>
+    <line x1="55" y1="58" x2="48" y2="48" stroke="#000000" stroke-width="3" stroke-linecap="round"/>
+    <!-- Branch right middle -->
+    <line x1="73" y1="85" x2="90" y2="75" stroke="#000000" stroke-width="4" stroke-linecap="round"/>
+    <!-- Branch left lower -->
+    <line x1="73" y1="95" x2="55" y2="85" stroke="#000000" stroke-width="4" stroke-linecap="round"/>
+    <!-- Ground/water line -->
+    <path d="M 40,130 Q 55,125 70,130 Q 85,135 100,130 Q 115,125 130,130 Q 145,135 160,130"
+          stroke="#000000" stroke-width="3" fill="none"/>
+    <!-- Dead fish (belly up) -->
+    <g transform="translate(115,145)">
+      <!-- Fish body -->
+      <ellipse cx="0" cy="0" rx="25" ry="10"/>
+      <!-- Fish tail -->
+      <path d="M 22,0 L 35,-10 L 35,10 Z"/>
+      <!-- Fish eye -->
+      <circle cx="-12" cy="-2" r="4" fill="white"/>
+      <circle cx="-12" cy="-2" r="2" fill="#000000"/>
+      <!-- X eye (dead) -->
+      <line x1="-15" y1="-5" x2="-9" y2="1" stroke="white" stroke-width="1.5"/>
+      <line x1="-9" y1="-5" x2="-15" y2="1" stroke="white" stroke-width="1.5"/>
+      <!-- Fish gill -->
+      <path d="M -5,-6 Q -3,0 -5,6" stroke="white" stroke-width="1.5" fill="none"/>
+    </g>
+  </g>
+</svg>

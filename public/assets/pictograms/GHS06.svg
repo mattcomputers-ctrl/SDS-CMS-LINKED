@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Red diamond border -->
+  <polygon points="100,5 195,100 100,195 5,100" fill="white" stroke="#FF1100" stroke-width="7"/>
+  <!-- Skull and Crossbones -->
+  <g fill="#000000">
+    <!-- Skull -->
+    <!-- Cranium -->
+    <ellipse cx="100" cy="72" rx="30" ry="28"/>
+    <!-- Jaw -->
+    <path d="M 78,85 L 78,100 C 78,108 88,112 100,112 C 112,112 122,108 122,100 L 122,85 Z"/>
+    <!-- Left eye socket -->
+    <ellipse cx="88" cy="72" rx="10" ry="9" fill="white"/>
+    <!-- Right eye socket -->
+    <ellipse cx="112" cy="72" rx="10" ry="9" fill="white"/>
+    <!-- Nose -->
+    <path d="M 96,85 L 100,92 L 104,85 Z" fill="white"/>
+    <!-- Teeth -->
+    <rect x="85" y="99" width="6" height="8" rx="1" fill="white"/>
+    <rect x="93" y="99" width="6" height="8" rx="1" fill="white"/>
+    <rect x="101" y="99" width="6" height="8" rx="1" fill="white"/>
+    <rect x="109" y="99" width="6" height="8" rx="1" fill="white"/>
+    <!-- Crossbones -->
+    <!-- Bone 1 (top-left to bottom-right) -->
+    <line x1="55" y1="125" x2="145" y2="160" stroke="#000000" stroke-width="10" stroke-linecap="round"/>
+    <!-- Bone 2 (top-right to bottom-left) -->
+    <line x1="145" y1="125" x2="55" y2="160" stroke="#000000" stroke-width="10" stroke-linecap="round"/>
+    <!-- Bone knobs -->
+    <circle cx="53" cy="123" r="7"/>
+    <circle cx="57" cy="127" r="6"/>
+    <circle cx="147" cy="123" r="7"/>
+    <circle cx="143" cy="127" r="6"/>
+    <circle cx="53" cy="162" r="7"/>
+    <circle cx="57" cy="158" r="6"/>
+    <circle cx="147" cy="162" r="7"/>
+    <circle cx="143" cy="158" r="6"/>
+  </g>
+</svg>

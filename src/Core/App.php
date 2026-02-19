@@ -162,11 +162,13 @@ class App
         $router->get('/formulas/{finished_good_id}/calculate', 'FormulaController@calculate');
 
         // ── SDS Generation / Versions ────────────────────────────────
-        $router->get('/sds/{finished_good_id}',            'SDSController@index');
-        $router->get('/sds/{finished_good_id}/preview',    'SDSController@preview');
-        $router->post('/sds/{finished_good_id}/publish',   'SDSController@publish');
-        $router->get('/sds/version/{id}/download',         'SDSController@download');
-        $router->get('/sds/version/{id}/trace',            'SDSController@trace');
+        $router->get('/sds/{finished_good_id}',             'SDSController@index');
+        $router->get('/sds/{finished_good_id}/preview',     'SDSController@preview');
+        $router->get('/sds/{finished_good_id}/edit',        'SDSController@edit');
+        $router->post('/sds/{finished_good_id}/save-edits', 'SDSController@saveEdits');
+        $router->post('/sds/{finished_good_id}/publish',    'SDSController@publish');
+        $router->get('/sds/version/{id}/download',          'SDSController@download');
+        $router->get('/sds/version/{id}/trace',             'SDSController@trace');
 
         // ── Admin routes (grouped under /admin) ──────────────────────
         $router->group('/admin', function (Router $r) {

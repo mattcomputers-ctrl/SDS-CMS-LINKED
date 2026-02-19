@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Red diamond border -->
+  <polygon points="100,5 195,100 100,195 5,100" fill="white" stroke="#FF1100" stroke-width="7"/>
+  <!-- Corrosion: two test tubes dripping onto a surface/hand -->
+  <g fill="#000000" stroke="#000000">
+    <!-- Left test tube (tilted) -->
+    <g transform="translate(72,45) rotate(-20, 10, 30)">
+      <rect x="4" y="0" width="12" height="42" rx="0" fill="#000000" stroke="none"/>
+      <ellipse cx="10" cy="42" rx="6" ry="3" fill="#000000" stroke="none"/>
+      <rect x="0" y="-2" width="20" height="5" rx="1" fill="#000000" stroke="none"/>
+    </g>
+    <!-- Right test tube (tilted other way) -->
+    <g transform="translate(108,45) rotate(20, 10, 30)">
+      <rect x="4" y="0" width="12" height="42" rx="0" fill="#000000" stroke="none"/>
+      <ellipse cx="10" cy="42" rx="6" ry="3" fill="#000000" stroke="none"/>
+      <rect x="0" y="-2" width="20" height="5" rx="1" fill="#000000" stroke="none"/>
+    </g>
+    <!-- Drops from left tube -->
+    <ellipse cx="78" cy="95" rx="3" ry="5" fill="#000000" stroke="none"/>
+    <ellipse cx="82" cy="105" rx="2.5" ry="4" fill="#000000" stroke="none"/>
+    <!-- Drops from right tube -->
+    <ellipse cx="122" cy="95" rx="3" ry="5" fill="#000000" stroke="none"/>
+    <ellipse cx="118" cy="105" rx="2.5" ry="4" fill="#000000" stroke="none"/>
+    <!-- Hand being corroded (left side) -->
+    <g transform="translate(55,115)" stroke="none">
+      <path d="M 5,25 C 5,15 10,5 20,2 C 22,1 25,0 27,2 L 28,8 C 26,6 23,6 22,8 C 20,12 22,18 22,22 L 5,25 Z" fill="#000000"/>
+      <path d="M 5,25 L 40,25 C 42,25 44,27 44,30 L 44,35 L 0,35 L 0,30 C 0,27 2,25 5,25 Z" fill="#000000"/>
+      <!-- Corrosion damage on hand -->
+      <rect x="12" y="10" width="8" height="3" rx="1" fill="white"/>
+      <rect x="15" y="15" width="5" height="2" rx="1" fill="white"/>
+    </g>
+    <!-- Surface/bar being corroded (right side) -->
+    <g transform="translate(100,118)" stroke="none">
+      <rect x="0" y="12" width="45" height="18" rx="2" fill="#000000"/>
+      <!-- Corrosion pits on surface -->
+      <rect x="8" y="14" width="10" height="4" rx="1" fill="white"/>
+      <rect x="22" y="16" width="8" height="3" rx="1" fill="white"/>
+      <rect x="12" y="22" width="12" height="3" rx="1" fill="white"/>
+    </g>
+  </g>
+</svg>

@@ -156,8 +156,14 @@ class PDFService
             case 9:
                 $this->renderSection9($pdf, $section);
                 break;
+            case 11:
+                $this->renderSection11($pdf, $section);
+                break;
             case 14:
                 $this->renderSection14($pdf, $section);
+                break;
+            case 15:
+                $this->renderSection15($pdf, $section);
                 break;
             default:
                 $this->renderGenericSection($pdf, $section);
@@ -185,37 +191,116 @@ class PDFService
 
     private function renderSection2(\TCPDF $pdf, array $s): void
     {
+        // Signal word
         if (!empty($s['signal_word'])) {
-            $pdf->SetFont('helvetica', 'B', 12);
+            $pdf->SetFont('helvetica', 'B', 14);
             $color = $s['signal_word'] === 'Danger' ? [220, 0, 0] : [255, 140, 0];
             $pdf->SetTextColor(...$color);
-            $pdf->Cell(0, 6, strtoupper($s['signal_word']), 0, 1);
+            $pdf->Cell(0, 7, strtoupper($s['signal_word']), 0, 1);
             $pdf->SetTextColor(0, 0, 0);
             $pdf->SetFont('helvetica', '', 9);
         }
 
+        // Pictograms — render as images if available, else text codes with names
         if (!empty($s['pictograms'])) {
-            $this->labelValue($pdf, 'Pictograms', implode(', ', $s['pictograms']));
+            $this->renderPictogramRow($pdf, $s['pictograms']);
+            $pdf->Ln(2);
         }
 
+        // Hazard classes summary
+        if (!empty($s['hazard_classes'])) {
+            $pdf->SetFont('helvetica', 'B', 9);
+            $pdf->Cell(0, 5, 'GHS Classification:', 0, 1);
+            $pdf->SetFont('helvetica', '', 8);
+            $seen = [];
+            foreach ($s['hazard_classes'] as $hc) {
+                $label = trim(($hc['class'] ?? '') . ' ' . ($hc['category'] ?? ''));
+                if ($label !== '' && !isset($seen[$label])) {
+                    $seen[$label] = true;
+                    $pdf->MultiCell(0, 4, chr(149) . ' ' . $label, 0, 'L');
+                }
+            }
+            $pdf->Ln(1);
+        }
+
+        // Hazard statements
         if (!empty($s['h_statements'])) {
             $pdf->SetFont('helvetica', 'B', 9);
             $pdf->Cell(0, 5, 'Hazard Statements:', 0, 1);
             $pdf->SetFont('helvetica', '', 9);
             foreach ($s['h_statements'] as $stmt) {
-                $text = ($stmt['code'] ?? '') . ': ' . ($stmt['text'] ?? '');
-                $pdf->MultiCell(0, 4, $text, 0, 'L');
+                $code = $stmt['code'] ?? '';
+                $text = $stmt['text'] ?? '';
+                $line = $code;
+                if ($text !== '') {
+                    $line .= ': ' . $text;
+                }
+                $pdf->MultiCell(0, 4, $line, 0, 'L');
             }
+            $pdf->Ln(1);
         }
 
+        // Precautionary statements
         if (!empty($s['p_statements'])) {
             $pdf->SetFont('helvetica', 'B', 9);
             $pdf->Cell(0, 5, 'Precautionary Statements:', 0, 1);
             $pdf->SetFont('helvetica', '', 9);
             foreach ($s['p_statements'] as $stmt) {
-                $text = ($stmt['code'] ?? '') . ': ' . ($stmt['text'] ?? '');
-                $pdf->MultiCell(0, 4, $text, 0, 'L');
+                $code = $stmt['code'] ?? '';
+                $text = $stmt['text'] ?? '';
+                $line = $code;
+                if ($text !== '') {
+                    $line .= ': ' . $text;
+                }
+                $pdf->MultiCell(0, 4, $line, 0, 'L');
             }
+        }
+
+        // Other hazards
+        if (!empty($s['other_hazards']) && $s['other_hazards'] !== 'None known.') {
+            $pdf->Ln(1);
+            $this->labelValue($pdf, 'Other Hazards', $s['other_hazards']);
+        }
+    }
+
+    /**
+     * Render a row of GHS pictogram images in the PDF.
+     */
+    private function renderPictogramRow(\TCPDF $pdf, array $pictogramCodes): void
+    {
+        $pdf->SetFont('helvetica', 'B', 9);
+        $pdf->Cell(50, 5, 'Pictograms:', 0, 0, 'L');
+        $pdf->SetFont('helvetica', '', 9);
+
+        $pictoSize = 14; // mm
+        $spacing   = 2;
+        $basePath  = App::basePath() . '/public/assets/pictograms/';
+        $x         = $pdf->GetX();
+        $y         = $pdf->GetY();
+        $rendered  = false;
+
+        foreach ($pictogramCodes as $code) {
+            $svgPath = $basePath . $code . '.svg';
+            if (file_exists($svgPath)) {
+                $pdf->ImageSVG($svgPath, $x, $y - 1, $pictoSize, $pictoSize);
+                $x += $pictoSize + $spacing;
+                $rendered = true;
+            }
+        }
+
+        if ($rendered) {
+            $pdf->Ln($pictoSize + 1);
+            $pdf->SetFont('helvetica', '', 7);
+            $names = array_map(fn($c) => GHSStatements::pictogramName($c), $pictogramCodes);
+            $pdf->Cell(0, 3, implode('  |  ', $names), 0, 1, 'L');
+            $pdf->SetFont('helvetica', '', 9);
+        } else {
+            // Fallback: text codes with names
+            $labels = [];
+            foreach ($pictogramCodes as $code) {
+                $labels[] = $code . ' (' . GHSStatements::pictogramName($code) . ')';
+            }
+            $pdf->MultiCell(0, 5, implode(', ', $labels), 0, 'L');
         }
     }
 
@@ -303,12 +388,134 @@ class PDFService
         }
     }
 
+    private function renderSection11(\TCPDF $pdf, array $s): void
+    {
+        $this->labelValue($pdf, 'Acute Toxicity', $s['acute_toxicity'] ?? '');
+        $this->labelValue($pdf, 'Chronic Effects', $s['chronic_effects'] ?? '');
+
+        // Carcinogenicity
+        $pdf->SetFont('helvetica', 'B', 9);
+        $pdf->Cell(0, 5, 'Carcinogenicity:', 0, 1);
+        $pdf->SetFont('helvetica', '', 9);
+        $carcinogenText = $s['carcinogenicity'] ?? '';
+        if ($carcinogenText !== '') {
+            $pdf->MultiCell(0, 4, $carcinogenText, 0, 'L');
+        }
+
+        // Component-level toxicology table
+        $componentTox = $s['component_toxicology'] ?? [];
+        if (!empty($componentTox)) {
+            $pdf->Ln(2);
+            $pdf->SetFont('helvetica', 'B', 9);
+            $pdf->Cell(0, 5, 'Component Toxicological Data:', 0, 1);
+
+            foreach ($componentTox as $comp) {
+                $pdf->SetFont('helvetica', 'B', 8);
+                $label = ($comp['chemical_name'] ?? '') . ' (CAS ' . ($comp['cas_number'] ?? '') . ') — '
+                       . round((float) ($comp['concentration_pct'] ?? 0), 2) . '%';
+                $pdf->Cell(0, 5, $label, 0, 1);
+                $pdf->SetFont('helvetica', '', 8);
+
+                // Carcinogen listings
+                if (!empty($comp['carcinogen_listings'])) {
+                    foreach ($comp['carcinogen_listings'] as $listing) {
+                        $pdf->Cell(5, 4, '', 0, 0);
+                        $pdf->MultiCell(0, 4, $listing['agency'] . ': ' . $listing['classification'], 0, 'L');
+                    }
+                }
+
+                // Exposure limits for this component
+                if (!empty($comp['exposure_limits'])) {
+                    foreach ($comp['exposure_limits'] as $el) {
+                        $pdf->Cell(5, 4, '', 0, 0);
+                        $limitText = ($el['limit_type'] ?? '') . ': ' . ($el['value'] ?? '') . ' ' . ($el['units'] ?? '');
+                        $pdf->MultiCell(0, 4, $limitText, 0, 'L');
+                    }
+                }
+            }
+        }
+
+        // GHS health hazard pictogram for carcinogen/mutagen/repro tox
+        $carcinogenResult = $s['carcinogen_result'] ?? [];
+        if (!empty($carcinogenResult['has_carcinogens'])) {
+            $pdf->Ln(2);
+            $svgPath = App::basePath() . '/public/assets/pictograms/GHS08.svg';
+            if (file_exists($svgPath)) {
+                $pdf->ImageSVG($svgPath, $pdf->GetX(), $pdf->GetY(), 12, 12);
+                $pdf->Ln(13);
+            }
+        }
+    }
+
     private function renderSection14(\TCPDF $pdf, array $s): void
     {
         $this->labelValue($pdf, 'UN Number', $s['un_number'] ?? '');
         $this->labelValue($pdf, 'Proper Shipping Name', $s['proper_shipping_name'] ?? '');
         $this->labelValue($pdf, 'Hazard Class', $s['hazard_class'] ?? '');
         $this->labelValue($pdf, 'Packing Group', $s['packing_group'] ?? '');
+    }
+
+    private function renderSection15(\TCPDF $pdf, array $s): void
+    {
+        $this->labelValue($pdf, 'OSHA Status', $s['osha_status'] ?? '');
+        $this->labelValue($pdf, 'TSCA Status', $s['tsca_status'] ?? '');
+
+        // SARA 313 data
+        $sara = $s['sara_313'] ?? [];
+        if (!empty($sara['listed_chemicals'] ?? [])) {
+            $pdf->SetFont('helvetica', 'B', 9);
+            $pdf->Cell(0, 5, 'SARA 313 / TRI Reporting:', 0, 1);
+            $pdf->SetFont('helvetica', '', 8);
+            foreach ($sara['listed_chemicals'] as $chem) {
+                $text = ($chem['chemical_name'] ?? '') . ' (CAS ' . ($chem['cas_number'] ?? '') . ') — '
+                      . round((float) ($chem['concentration_pct'] ?? 0), 2) . '% (de minimis: '
+                      . ($chem['deminimis_pct'] ?? '1.0') . '%)';
+                $pdf->MultiCell(0, 4, chr(149) . ' ' . $text, 0, 'L');
+            }
+            $pdf->Ln(2);
+        }
+
+        // California Prop 65
+        $prop65 = $s['prop65'] ?? [];
+        if (!empty($prop65['requires_warning'])) {
+            $pdf->SetFont('helvetica', 'B', 9);
+            $pdf->SetTextColor(180, 0, 0);
+            $pdf->Cell(0, 5, 'California Proposition 65:', 0, 1);
+            $pdf->SetTextColor(0, 0, 0);
+            $pdf->SetFont('helvetica', '', 8);
+
+            // Warning pictogram (GHS08 - health hazard)
+            $svgPath = App::basePath() . '/public/assets/pictograms/GHS08.svg';
+            if (file_exists($svgPath)) {
+                $pdf->ImageSVG($svgPath, $pdf->GetX(), $pdf->GetY(), 10, 10);
+                $pdf->SetX($pdf->GetX() + 12);
+            }
+
+            $pdf->MultiCell(0, 4, $prop65['warning_text'] ?? '', 0, 'L');
+            $pdf->Ln(1);
+
+            // List the specific chemicals
+            if (!empty($prop65['listed_chemicals'])) {
+                $pdf->SetFont('helvetica', '', 7);
+                foreach ($prop65['listed_chemicals'] as $chem) {
+                    $types = implode(', ', $chem['toxicity_type'] ?? []);
+                    $text = ($chem['chemical_name'] ?? '') . ' (CAS ' . ($chem['cas_number'] ?? '') . '): ' . $types;
+                    $pdf->MultiCell(0, 3, '  ' . chr(149) . ' ' . $text, 0, 'L');
+                }
+            }
+            $pdf->Ln(1);
+        }
+
+        // State regulations override text
+        if (!empty($s['state_regs']) && empty($prop65['requires_warning'])) {
+            $this->labelValue($pdf, 'State Regulations', $s['state_regs']);
+        }
+
+        // Note
+        if (!empty($s['note'])) {
+            $pdf->SetFont('helvetica', 'I', 7);
+            $pdf->MultiCell(0, 3, $s['note'], 0, 'L');
+        }
     }
 
     private function renderGenericSection(\TCPDF $pdf, array $section): void

@@ -57,8 +57,13 @@ class PDFService
         $pdf->setHeaderFont(['helvetica', '', 8]);
         $pdf->setFooterFont(['helvetica', '', 8]);
 
-        // Custom header/footer
-        $pdf->SetHeaderData('', 0, 'SAFETY DATA SHEET', $meta['product_code'] . ' — ' . ($meta['description'] ?? ''));
+        // Custom header — include logo if available
+        $logoFile = $this->resolveLogoPath($meta['company_logo_path'] ?? '');
+        if ($logoFile !== '') {
+            $pdf->SetHeaderData($logoFile, 18, 'SAFETY DATA SHEET', $meta['product_code'] . ' — ' . ($meta['description'] ?? ''));
+        } else {
+            $pdf->SetHeaderData('', 0, 'SAFETY DATA SHEET', $meta['product_code'] . ' — ' . ($meta['description'] ?? ''));
+        }
         $pdf->setFooterData([0, 0, 0], [0, 0, 0]);
 
         // Add first page
@@ -68,6 +73,9 @@ class PDFService
         foreach ($sections as $num => $section) {
             $this->renderSection($pdf, $num, $section);
         }
+
+        // Render legal disclaimer after all sections
+        $this->renderLegalDisclaimer($pdf, $sdsData['legal_disclaimer'] ?? '');
 
         // Save to file
         $filename = sanitize_filename($meta['product_code']) . '_SDS_' . $meta['language'] . '_' . date('Ymd_His') . '.pdf';
@@ -96,12 +104,21 @@ class PDFService
         $pdf->SetTitle('SDS - ' . $meta['product_code']);
         $pdf->SetMargins(self::MARGIN_LEFT, self::MARGIN_TOP, self::MARGIN_RIGHT);
         $pdf->SetAutoPageBreak(true, self::MARGIN_BOTTOM);
-        $pdf->SetHeaderData('', 0, 'SAFETY DATA SHEET', $meta['product_code']);
+
+        $logoFile = $this->resolveLogoPath($meta['company_logo_path'] ?? '');
+        if ($logoFile !== '') {
+            $pdf->SetHeaderData($logoFile, 18, 'SAFETY DATA SHEET', $meta['product_code']);
+        } else {
+            $pdf->SetHeaderData('', 0, 'SAFETY DATA SHEET', $meta['product_code']);
+        }
+
         $pdf->AddPage();
 
         foreach ($sections as $num => $section) {
             $this->renderSection($pdf, $num, $section);
         }
+
+        $this->renderLegalDisclaimer($pdf, $sdsData['legal_disclaimer'] ?? '');
 
         return $pdf->Output('', 'S');
     }
@@ -320,5 +337,42 @@ class PDFService
         $pdf->Cell($labelWidth, 5, $label . ':', 0, 0, 'L');
         $pdf->SetFont('helvetica', '', 9);
         $pdf->MultiCell(0, 5, $value, 0, 'L');
+    }
+
+    /**
+     * Resolve a web-relative logo path to an absolute filesystem path.
+     * Returns empty string if the file doesn't exist.
+     */
+    private function resolveLogoPath(string $webPath): string
+    {
+        if ($webPath === '') {
+            return '';
+        }
+        $absPath = App::basePath() . '/public' . $webPath;
+        return file_exists($absPath) ? $absPath : '';
+    }
+
+    /**
+     * Render the legal disclaimer block after the last section.
+     */
+    private function renderLegalDisclaimer(\TCPDF $pdf, string $disclaimer): void
+    {
+        if ($disclaimer === '') {
+            return;
+        }
+
+        $pdf->Ln(6);
+
+        // Header bar
+        $pdf->SetFont('helvetica', 'B', 10);
+        $pdf->SetFillColor(0, 51, 102);
+        $pdf->SetTextColor(255, 255, 255);
+        $pdf->Cell(0, 7, 'DISCLAIMER', 0, 1, 'L', true);
+        $pdf->SetTextColor(0, 0, 0);
+        $pdf->Ln(2);
+
+        // Body text
+        $pdf->SetFont('helvetica', '', 8);
+        $pdf->MultiCell(0, 4, $disclaimer, 0, 'L');
     }
 }

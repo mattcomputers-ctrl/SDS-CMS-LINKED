@@ -147,8 +147,31 @@ class AdminController
 
         $db = Database::getInstance();
 
+        // Handle logo removal
+        if (!empty($_POST['remove_logo'])) {
+            $currentLogo = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'company.logo_path'");
+            if ($currentLogo && $currentLogo['value']) {
+                $absPath = \SDS\Core\App::basePath() . '/public' . $currentLogo['value'];
+                if (file_exists($absPath)) {
+                    unlink($absPath);
+                }
+            }
+            $this->saveSetting($db, 'company.logo_path', '');
+        }
+
+        // Handle logo upload
+        if (!empty($_FILES['company_logo']['tmp_name']) && $_FILES['company_logo']['error'] === UPLOAD_ERR_OK) {
+            $logoError = $this->processLogoUpload($db);
+            if ($logoError !== null) {
+                $_SESSION['_flash']['error'] = $logoError;
+                redirect('/admin/settings');
+                return;
+            }
+        }
+
+        // Save all text settings
         foreach ($_POST as $key => $value) {
-            if ($key === '_csrf_token') {
+            if (in_array($key, ['_csrf_token', 'remove_logo'], true)) {
                 continue;
             }
             $key = preg_replace('/[^a-zA-Z0-9_.]/', '', $key);
@@ -156,17 +179,79 @@ class AdminController
                 continue;
             }
 
-            $existing = $db->fetch("SELECT `key` FROM settings WHERE `key` = ?", [$key]);
-            if ($existing) {
-                $db->update('settings', ['value' => $value], '`key` = ?', [$key]);
-            } else {
-                $db->insert('settings', ['key' => $key, 'value' => $value]);
-            }
+            $this->saveSetting($db, $key, $value);
         }
 
         AuditService::log('settings', 'global', 'update');
         $_SESSION['_flash']['success'] = 'Settings saved.';
         redirect('/admin/settings');
+    }
+
+    /**
+     * Upsert a single setting key/value.
+     */
+    private function saveSetting(Database $db, string $key, string $value): void
+    {
+        $existing = $db->fetch("SELECT `key` FROM settings WHERE `key` = ?", [$key]);
+        if ($existing) {
+            $db->update('settings', ['value' => $value], '`key` = ?', [$key]);
+        } else {
+            $db->insert('settings', ['key' => $key, 'value' => $value]);
+        }
+    }
+
+    /**
+     * Validate and save an uploaded company logo.
+     *
+     * @return string|null  Error message, or null on success.
+     */
+    private function processLogoUpload(Database $db): ?string
+    {
+        $file = $_FILES['company_logo'];
+
+        // Validate size (2 MB max)
+        if ($file['size'] > 2 * 1024 * 1024) {
+            return 'Logo file is too large. Maximum size is 2 MB.';
+        }
+
+        // Validate MIME type
+        $allowed = ['image/png', 'image/jpeg', 'image/gif'];
+        $finfo = new \finfo(FILEINFO_MIME_TYPE);
+        $mime = $finfo->file($file['tmp_name']);
+        if (!in_array($mime, $allowed, true)) {
+            return 'Invalid file type. Only PNG, JPG, and GIF are accepted.';
+        }
+
+        // Determine extension from MIME
+        $extMap = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/gif' => 'gif'];
+        $ext = $extMap[$mime];
+
+        // Delete previous logo if it exists
+        $currentLogo = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'company.logo_path'");
+        if ($currentLogo && $currentLogo['value']) {
+            $oldPath = \SDS\Core\App::basePath() . '/public' . $currentLogo['value'];
+            if (file_exists($oldPath)) {
+                unlink($oldPath);
+            }
+        }
+
+        // Save to public/uploads/
+        $uploadDir = \SDS\Core\App::basePath() . '/public/uploads';
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+
+        $filename = 'company-logo.' . $ext;
+        $destPath = $uploadDir . '/' . $filename;
+
+        if (!move_uploaded_file($file['tmp_name'], $destPath)) {
+            return 'Failed to save the uploaded file.';
+        }
+
+        // Store the web-accessible path
+        $this->saveSetting($db, 'company.logo_path', '/uploads/' . $filename);
+
+        return null;
     }
 
     /* ------------------------------------------------------------------

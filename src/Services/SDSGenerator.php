@@ -77,8 +77,8 @@ class SDSGenerator
         // Load text overrides
         $overrides = $this->getOverrides($finishedGoodId, $language);
 
-        // Company info from config
-        $company = App::config('company', []);
+        // Company info from admin settings (DB), with config fallback
+        $company = $this->getCompanySettings();
 
         // Assemble all 16 sections
         $sds = [
@@ -90,6 +90,7 @@ class SDSGenerator
                 'language'         => $language,
                 'generated_at'     => gmdate('Y-m-d\TH:i:s\Z'),
                 'formula_version'  => $calcResult['formula']['version'] ?? null,
+                'company_logo_path' => $company['logo_path'] ?? '',
             ],
             'sections' => [
                 1  => $this->section1($fg, $company, $overrides),
@@ -109,10 +110,11 @@ class SDSGenerator
                 15 => $this->section15($saraResult, $overrides),
                 16 => $this->section16($calcResult, $overrides),
             ],
-            'hazard_result'  => $hazardResult,
-            'voc_result'     => $calcResult['voc'],
-            'sara_result'    => $saraResult,
-            'warnings'       => $calcResult['warnings'],
+            'hazard_result'       => $hazardResult,
+            'voc_result'          => $calcResult['voc'],
+            'sara_result'         => $saraResult,
+            'warnings'            => $calcResult['warnings'],
+            'legal_disclaimer'    => $company['legal_disclaimer'] ?? '',
         ];
 
         return $sds;
@@ -342,6 +344,37 @@ class SDSGenerator
     /* ------------------------------------------------------------------
      *  Helpers
      * ----------------------------------------------------------------*/
+
+    /**
+     * Load manufacturer/company info from the settings table,
+     * falling back to static config values.
+     */
+    private function getCompanySettings(): array
+    {
+        $db = Database::getInstance();
+        $rows = $db->fetchAll(
+            "SELECT `key`, `value` FROM settings WHERE `key` LIKE 'company.%' OR `key` = 'sds.legal_disclaimer'"
+        );
+
+        $settings = [];
+        foreach ($rows as $row) {
+            // Strip the 'company.' prefix for company keys
+            $shortKey = str_starts_with($row['key'], 'company.')
+                ? substr($row['key'], 8)
+                : ($row['key'] === 'sds.legal_disclaimer' ? 'legal_disclaimer' : $row['key']);
+            $settings[$shortKey] = $row['value'];
+        }
+
+        // Fall back to static config for any missing values
+        $configCompany = App::config('company', []);
+        foreach ($configCompany as $k => $v) {
+            if (!isset($settings[$k]) || $settings[$k] === '') {
+                $settings[$k] = $v;
+            }
+        }
+
+        return $settings;
+    }
 
     private function getOverrides(int $fgId, string $language): array
     {

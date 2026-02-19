@@ -4,6 +4,9 @@
 
 <div class="sds-preview">
     <div class="sds-header">
+        <?php if (!empty($sds['meta']['company_logo_path'])): ?>
+            <img src="<?= e($sds['meta']['company_logo_path']) ?>" alt="Company Logo" style="max-height: 60px; max-width: 250px; margin-bottom: 0.5rem;">
+        <?php endif; ?>
         <h2>SAFETY DATA SHEET</h2>
         <p class="text-muted">Preview — <?= e(strtoupper($language)) ?> — Generated <?= date('m/d/Y H:i') ?></p>
     </div>
@@ -85,6 +88,13 @@
         <?php endif; ?>
     </div>
     <?php endforeach; ?>
+
+    <?php if (!empty($sds['legal_disclaimer'])): ?>
+    <div class="sds-section" id="section-disclaimer">
+        <h3 class="sds-section-title">DISCLAIMER</h3>
+        <p style="white-space: pre-wrap;"><?= e($sds['legal_disclaimer']) ?></p>
+    </div>
+    <?php endif; ?>
 
     <?php if (!empty($sds['warnings'])): ?>
     <div class="alert alert-warning">

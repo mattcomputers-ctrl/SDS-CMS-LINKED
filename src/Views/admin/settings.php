@@ -1,16 +1,42 @@
 <?php include dirname(__DIR__) . '/layouts/main.php'; ?>
 
 <div class="card">
-    <form method="POST" action="/admin/settings">
+    <form method="POST" action="/admin/settings" enctype="multipart/form-data">
         <?= csrf_field() ?>
 
-        <h2>Company Information</h2>
+        <h2>Manufacturer Information</h2>
+        <p class="text-muted mb-1">This information appears in Section 1 of every SDS and on the PDF header.</p>
+
         <div class="form-grid-2col">
-            <div class="form-group"><label>Company Name</label><input type="text" name="company.name" value="<?= e($settings['company.name'] ?? '') ?>"></div>
+            <div class="form-group full-width"><label>Company Name</label><input type="text" name="company.name" value="<?= e($settings['company.name'] ?? '') ?>"></div>
+            <div class="form-group full-width"><label>Street Address</label><input type="text" name="company.address" value="<?= e($settings['company.address'] ?? '') ?>"></div>
+            <div class="form-group"><label>City</label><input type="text" name="company.city" value="<?= e($settings['company.city'] ?? '') ?>"></div>
+            <div class="form-group"><label>State / Province</label><input type="text" name="company.state" value="<?= e($settings['company.state'] ?? '') ?>"></div>
+            <div class="form-group"><label>ZIP / Postal Code</label><input type="text" name="company.zip" value="<?= e($settings['company.zip'] ?? '') ?>"></div>
+            <div class="form-group"><label>Country</label><input type="text" name="company.country" value="<?= e($settings['company.country'] ?? '') ?>"></div>
             <div class="form-group"><label>Phone</label><input type="text" name="company.phone" value="<?= e($settings['company.phone'] ?? '') ?>"></div>
-            <div class="form-group full-width"><label>Address</label><input type="text" name="company.address" value="<?= e($settings['company.address'] ?? '') ?>"></div>
-            <div class="form-group"><label>Emergency Phone</label><input type="text" name="company.emergency_phone" value="<?= e($settings['company.emergency_phone'] ?? '') ?>"></div>
+            <div class="form-group"><label>Fax</label><input type="text" name="company.fax" value="<?= e($settings['company.fax'] ?? '') ?>"></div>
             <div class="form-group"><label>Email</label><input type="email" name="company.email" value="<?= e($settings['company.email'] ?? '') ?>"></div>
+            <div class="form-group"><label>Website</label><input type="url" name="company.website" value="<?= e($settings['company.website'] ?? '') ?>" placeholder="https://"></div>
+            <div class="form-group full-width"><label>Emergency Phone (e.g. CHEMTREC)</label><input type="text" name="company.emergency_phone" value="<?= e($settings['company.emergency_phone'] ?? '') ?>"></div>
+        </div>
+
+        <h2>Company Logo</h2>
+        <p class="text-muted mb-1">Upload your company logo to appear on SDS documents. Accepted formats: PNG, JPG, GIF. Max 2 MB.</p>
+
+        <?php if (!empty($settings['company.logo_path'])): ?>
+            <div class="logo-preview" style="margin-bottom: 1rem;">
+                <img src="<?= e($settings['company.logo_path']) ?>" alt="Company Logo" style="max-height: 80px; max-width: 300px; border: 1px solid #e0e0e0; padding: 4px; border-radius: 4px; background: #fff;">
+                <div style="margin-top: 0.25rem;">
+                    <label style="font-weight: normal; font-size: 0.85rem; color: #888;">
+                        <input type="checkbox" name="remove_logo" value="1"> Remove current logo
+                    </label>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <div class="form-group" style="max-width: 400px;">
+            <input type="file" name="company_logo" accept="image/png,image/jpeg,image/gif">
         </div>
 
         <h2>SDS Configuration</h2>
@@ -26,6 +52,13 @@
                 <label>Missing Data Threshold (%)</label>
                 <input type="number" name="sds.missing_threshold_pct" step="0.1" value="<?= e($settings['sds.missing_threshold_pct'] ?? '1.0') ?>">
             </div>
+        </div>
+
+        <h2>Legal / Disclaimer Statement</h2>
+        <p class="text-muted mb-1">This statement will appear at the end of every SDS (after Section 16). Use this for legal disclaimers, liability limitations, or any language required by your legal counsel.</p>
+
+        <div class="form-group">
+            <textarea name="sds.legal_disclaimer" rows="6" style="font-size: 0.9rem;"><?= e($settings['sds.legal_disclaimer'] ?? '') ?></textarea>
         </div>
 
         <h2>Data Refresh</h2>

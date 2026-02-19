@@ -1,0 +1,95 @@
+<?php
+/**
+ * Spanish (ES) translations for SDS sections.
+ */
+return [
+    'section1' => [
+        'title'           => 'Identificacion',
+        'recommended_use' => 'Tinta de impresion para aplicaciones comerciales e industriales.',
+        'restrictions'    => 'Solo para uso profesional/industrial. No para uso domestico.',
+    ],
+    'section2' => [
+        'title'         => 'Identificacion de Peligros',
+        'other_hazards' => 'Ninguno conocido.',
+    ],
+    'section3' => [
+        'title'            => 'Composicion / Informacion sobre los Ingredientes',
+        'trade_secret_note' => 'La identidad quimica especifica y/o el porcentaje exacto de composicion ha sido retenido como secreto comercial de acuerdo con 29 CFR 1910.1200(i).',
+    ],
+    'section4' => [
+        'title'      => 'Medidas de Primeros Auxilios',
+        'inhalation' => 'Trasladar a aire fresco. Si persiste la dificultad respiratoria, buscar atencion medica.',
+        'skin'       => 'Quitar la ropa contaminada. Lavar la piel con agua y jabon. Si la irritacion persiste, buscar atencion medica.',
+        'eyes'       => 'Enjuagar los ojos con abundante agua durante al menos 15 minutos. Buscar atencion medica si la irritacion persiste.',
+        'ingestion'  => 'No provocar el vomito. Enjuagar la boca con agua. Buscar atencion medica si se desarrollan sintomas.',
+        'notes'      => 'Tratar sintomaticamente. Mostrar esta HDS al personal medico.',
+    ],
+    'section5' => [
+        'title'            => 'Medidas de Lucha contra Incendios',
+        'suitable_media'   => 'Pulverizacion de agua, polvo quimico seco, dioxido de carbono (CO2), espuma.',
+        'unsuitable_media' => 'No usar chorro directo de agua ya que puede propagar el fuego.',
+        'specific_hazards' => 'La combustion puede producir monoxido de carbono, dioxido de carbono y otros gases toxicos.',
+        'firefighter_advice' => 'Usar equipo de respiracion autonomo (ERA) y equipo de proteccion completo.',
+    ],
+    'section6' => [
+        'title'                => 'Medidas en Caso de Derrame Accidental',
+        'personal_precautions' => 'Usar EPP apropiado (ver Seccion 8). Evitar el contacto con la piel y los ojos.',
+        'environmental'        => 'Evitar que entre en desagues, alcantarillas y vias fluviales.',
+        'containment'          => 'Contener el derrame con material absorbente inerte. Recoger en recipientes adecuados para su eliminacion.',
+    ],
+    'section7' => [
+        'title'    => 'Manipulacion y Almacenamiento',
+        'handling' => 'Usar en areas bien ventiladas. Evitar el contacto con la piel y los ojos. Usar EPP apropiado.',
+        'storage'  => 'Almacenar en un lugar fresco, seco y bien ventilado. Mantener los recipientes cerrados.',
+    ],
+    'section8' => [
+        'title'           => 'Controles de Exposicion / Proteccion Personal',
+        'engineering'     => 'Usar ventilacion local o controles de ingenieria para mantener las concentraciones por debajo de los limites.',
+        'respiratory'     => 'Usar respirador aprobado por NIOSH si se exceden los limites de exposicion.',
+        'hand_protection' => 'Guantes resistentes a productos quimicos (nitrilo o neopreno).',
+        'eye_protection'  => 'Gafas de seguridad con proteccion lateral.',
+        'skin_protection' => 'Usar ropa protectora para prevenir el contacto con la piel.',
+    ],
+    'section9'  => ['title' => 'Propiedades Fisicas y Quimicas'],
+    'section10' => [
+        'title'            => 'Estabilidad y Reactividad',
+        'reactivity'       => 'Sin reaccion peligrosa conocida bajo condiciones normales de uso.',
+        'stability'        => 'Estable bajo las condiciones de almacenamiento recomendadas.',
+        'conditions_avoid' => 'Calor excesivo, chispas, llamas abiertas, oxidantes fuertes.',
+        'incompatible'     => 'Agentes oxidantes fuertes, acidos fuertes, bases fuertes.',
+        'decomposition'    => 'Monoxido de carbono, dioxido de carbono y otros gases toxicos.',
+    ],
+    'section11' => [
+        'title'           => 'Informacion Toxicologica',
+        'acute_toxicity'  => 'Basado en los datos disponibles, no se cumplen los criterios de clasificacion.',
+        'chronic_effects' => 'La exposicion prolongada o repetida puede causar sequedad o agrietamiento de la piel.',
+        'carcinogenicity' => 'Ningun componente esta listado como cancerigeno por IARC, NTP u OSHA.',
+    ],
+    'section12' => [
+        'title'       => 'Informacion Ecologica',
+        'ecotoxicity' => 'No hay datos disponibles sobre la mezcla.',
+        'persistence' => 'No hay datos disponibles.',
+        'bioaccumulation' => 'No hay datos disponibles.',
+        'note' => 'Esta seccion no es requerida por OSHA HazCom pero se incluye segun las directrices del GHS.',
+    ],
+    'section13' => [
+        'title'   => 'Consideraciones de Eliminacion',
+        'methods' => 'Eliminar de acuerdo con todas las regulaciones aplicables.',
+        'note'    => 'Esta seccion no es requerida por OSHA HazCom pero se incluye segun las directrices del GHS.',
+    ],
+    'section14' => [
+        'title' => 'Informacion de Transporte',
+        'note'  => 'Verificar la clasificacion con el transportista antes del envio.',
+    ],
+    'section15' => [
+        'title'       => 'Informacion Reglamentaria',
+        'osha_status' => 'Este producto esta clasificado como peligroso bajo OSHA HazCom 2012.',
+        'tsca_status' => 'Todos los componentes estan listados o exentos del inventario TSCA.',
+        'note'        => 'Esta seccion se incluye segun las directrices del GHS.',
+    ],
+    'section16' => [
+        'title'         => 'Otra Informacion',
+        'disclaimer'    => 'La informacion proporcionada en esta Hoja de Datos de Seguridad es correcta segun nuestro mejor conocimiento. Debe considerarse como una guia para el manejo seguro.',
+        'abbreviations' => 'CAS = Chemical Abstracts Service; GHS = Sistema Globalmente Armonizado; OSHA = Administracion de Seguridad y Salud Ocupacional; VOC = Compuestos Organicos Volatiles.',
+    ],
+];

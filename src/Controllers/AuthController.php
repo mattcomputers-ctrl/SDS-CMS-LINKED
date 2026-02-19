@@ -6,7 +6,6 @@ namespace SDS\Controllers;
 
 use SDS\Core\CSRF;
 use SDS\Models\User;
-use SDS\Models\AuditLog;
 
 /**
  * AuthController -- Login / Logout flows.

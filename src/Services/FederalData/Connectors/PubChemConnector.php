@@ -670,36 +670,28 @@ class PubChemConnector implements FederalDataInterface
 
             foreach ($ghs['hazard_classes'] ?? [] as $hc) {
                 $this->db->insert('hazard_classifications', [
-                    'source_record_id' => $recordId,
-                    'cas_number'       => $cas,
-                    'source_name'      => self::SOURCE_NAME,
-                    'hazard_class'     => $hc['class'],
-                    'hazard_category'  => $hc['category'],
-                    'signal_word'      => $ghs['signal_word'],
-                    'h_codes'          => $this->joinCodes($ghs['hazard_statements'] ?? []),
-                    'h_statements'     => json_encode($ghs['hazard_statements'] ?? [], JSON_UNESCAPED_UNICODE),
-                    'p_codes'          => $this->joinCodes($ghs['precautionary_statements'] ?? []),
-                    'p_statements'     => json_encode($ghs['precautionary_statements'] ?? [], JSON_UNESCAPED_UNICODE),
-                    'pictogram_codes'  => implode(',', $ghs['pictogram_codes'] ?? []),
-                    'created_at'       => gmdate('Y-m-d H:i:s'),
+                    'hazard_source_record_id' => $recordId,
+                    'cas_number'              => $cas,
+                    'class_name'              => $hc['class'],
+                    'category'                => $hc['category'] ?? '',
+                    'signal_word'             => $ghs['signal_word'],
+                    'h_statements_json'       => json_encode($ghs['hazard_statements'] ?? [], JSON_UNESCAPED_UNICODE),
+                    'p_statements_json'       => json_encode($ghs['precautionary_statements'] ?? [], JSON_UNESCAPED_UNICODE),
+                    'pictograms_json'         => json_encode($ghs['pictogram_codes'] ?? [], JSON_UNESCAPED_UNICODE),
                 ]);
             }
 
             /* If no hazard classes were found but we have H-statements, store a generic row */
             if (empty($ghs['hazard_classes']) && !empty($ghs['hazard_statements'])) {
                 $this->db->insert('hazard_classifications', [
-                    'source_record_id' => $recordId,
-                    'cas_number'       => $cas,
-                    'source_name'      => self::SOURCE_NAME,
-                    'hazard_class'     => 'Unclassified',
-                    'hazard_category'  => null,
-                    'signal_word'      => $ghs['signal_word'],
-                    'h_codes'          => $this->joinCodes($ghs['hazard_statements']),
-                    'h_statements'     => json_encode($ghs['hazard_statements'], JSON_UNESCAPED_UNICODE),
-                    'p_codes'          => $this->joinCodes($ghs['precautionary_statements'] ?? []),
-                    'p_statements'     => json_encode($ghs['precautionary_statements'] ?? [], JSON_UNESCAPED_UNICODE),
-                    'pictogram_codes'  => implode(',', $ghs['pictogram_codes'] ?? []),
-                    'created_at'       => gmdate('Y-m-d H:i:s'),
+                    'hazard_source_record_id' => $recordId,
+                    'cas_number'              => $cas,
+                    'class_name'              => 'Unclassified',
+                    'category'                => '',
+                    'signal_word'             => $ghs['signal_word'],
+                    'h_statements_json'       => json_encode($ghs['hazard_statements'], JSON_UNESCAPED_UNICODE),
+                    'p_statements_json'       => json_encode($ghs['precautionary_statements'] ?? [], JSON_UNESCAPED_UNICODE),
+                    'pictograms_json'         => json_encode($ghs['pictogram_codes'] ?? [], JSON_UNESCAPED_UNICODE),
                 ]);
             }
 
@@ -709,14 +701,6 @@ class PubChemConnector implements FederalDataInterface
             $this->logError($cas, 'DB persist failed: ' . $e->getMessage());
             throw $e;
         }
-    }
-
-    /**
-     * Join statement codes into a comma-separated string.
-     */
-    private function joinCodes(array $statements): string
-    {
-        return implode(',', array_column($statements, 'code'));
     }
 
     /* ------------------------------------------------------------------ */

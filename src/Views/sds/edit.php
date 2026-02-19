@@ -50,6 +50,31 @@
                 </div>
             <?php endif; ?>
 
+            <?php
+                $ppe = $section['ppe_recommendations'] ?? [];
+                $hasPPE = !empty($ppe['respiratory']) || !empty($ppe['hand_protection']) || !empty($ppe['eye_protection']) || !empty($ppe['skin_protection']);
+            ?>
+            <?php if ($hasPPE): ?>
+                <div style="margin: 0.5rem 0; padding: 0.5rem; background: #f0f4f8; border-left: 3px solid #003366;">
+                    <strong>Recommended PPE (auto-derived from H/P codes):</strong>
+                    <ul style="margin: 0.3rem 0 0 0; font-size: 0.9rem;">
+                    <?php if (!empty($ppe['respiratory'])): ?>
+                        <li><strong>Respiratory:</strong> <?= e($ppe['respiratory']) ?></li>
+                    <?php endif; ?>
+                    <?php if (!empty($ppe['hand_protection'])): ?>
+                        <li><strong>Hand:</strong> <?= e($ppe['hand_protection']) ?></li>
+                    <?php endif; ?>
+                    <?php if (!empty($ppe['eye_protection'])): ?>
+                        <li><strong>Eye:</strong> <?= e($ppe['eye_protection']) ?></li>
+                    <?php endif; ?>
+                    <?php if (!empty($ppe['skin_protection'])): ?>
+                        <li><strong>Skin/Body:</strong> <?= e($ppe['skin_protection']) ?></li>
+                    <?php endif; ?>
+                    </ul>
+                    <small class="text-muted">These PPE recommendations are used as defaults in Section 8 unless overridden.</small>
+                </div>
+            <?php endif; ?>
+
             <div class="form-group">
                 <label>Other Hazards</label>
                 <textarea name="override[2][other_hazards]" class="form-control" rows="2"><?= e($section['other_hazards'] ?? '') ?></textarea>

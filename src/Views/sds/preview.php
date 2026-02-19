@@ -71,6 +71,28 @@
                 </ul>
             <?php endif; ?>
 
+            <?php
+                $ppe = $section['ppe_recommendations'] ?? [];
+                $hasPPE = !empty($ppe['respiratory']) || !empty($ppe['hand_protection']) || !empty($ppe['eye_protection']) || !empty($ppe['skin_protection']);
+            ?>
+            <?php if ($hasPPE): ?>
+                <p><strong>Recommended Personal Protective Equipment (PPE):</strong></p>
+                <ul>
+                <?php if (!empty($ppe['respiratory'])): ?>
+                    <li><strong>Respiratory:</strong> <?= e($ppe['respiratory']) ?></li>
+                <?php endif; ?>
+                <?php if (!empty($ppe['hand_protection'])): ?>
+                    <li><strong>Hand Protection:</strong> <?= e($ppe['hand_protection']) ?></li>
+                <?php endif; ?>
+                <?php if (!empty($ppe['eye_protection'])): ?>
+                    <li><strong>Eye Protection:</strong> <?= e($ppe['eye_protection']) ?></li>
+                <?php endif; ?>
+                <?php if (!empty($ppe['skin_protection'])): ?>
+                    <li><strong>Skin/Body Protection:</strong> <?= e($ppe['skin_protection']) ?></li>
+                <?php endif; ?>
+                </ul>
+            <?php endif; ?>
+
             <?php if (!empty($section['other_hazards']) && $section['other_hazards'] !== 'None known.'): ?>
                 <p><strong>Other Hazards:</strong> <?= e($section['other_hazards']) ?></p>
             <?php endif; ?>

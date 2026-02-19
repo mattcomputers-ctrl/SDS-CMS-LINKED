@@ -112,7 +112,7 @@ class SDSGenerator
             'sections' => [
                 1  => $this->section1($fg, $company, $overrides),
                 2  => $this->section2($hazardResult, $overrides),
-                3  => $this->section3($calcResult['composition'], $overrides),
+                3  => $this->section3($calcResult['composition'], $hazardResult, $overrides),
                 4  => $this->section4($hazardResult, $overrides),
                 5  => $this->section5($calcResult, $overrides),
                 6  => $this->section6($overrides),
@@ -170,36 +170,47 @@ class SDSGenerator
     private function section2(array $hazard, array $overrides): array
     {
         return [
-            'title'           => $this->t->get('section2.title'),
-            'signal_word'     => $hazard['signal_word'],
-            'pictograms'      => $hazard['pictograms'],
-            'hazard_classes'  => $hazard['hazard_classes'],
-            'h_statements'    => $hazard['h_statements'],
-            'p_statements'    => $hazard['p_statements'],
-            'other_hazards'   => $overrides[2]['other_hazards'] ?? $this->t->get('section2.other_hazards'),
+            'title'               => $this->t->get('section2.title'),
+            'signal_word'         => $hazard['signal_word'],
+            'pictograms'          => $hazard['pictograms'],
+            'hazard_classes'      => $hazard['hazard_classes'],
+            'h_statements'        => $hazard['h_statements'],
+            'p_statements'        => $hazard['p_statements'],
+            'ppe_recommendations' => $hazard['ppe_recommendations'],
+            'other_hazards'       => $overrides[2]['other_hazards'] ?? $this->t->get('section2.other_hazards'),
         ];
     }
 
-    private function section3(array $composition, array $overrides): array
+    private function section3(array $composition, array $hazardResult, array $overrides): array
     {
-        // Filter: show components >= 1% or hazardous components >= 0.1%
+        // Only disclose CAS numbers that are classified as hazardous
+        $hazardousCas = array_flip($hazardResult['hazardous_cas'] ?? []);
+
         $disclosed = [];
         foreach ($composition as $c) {
-            if ((float) $c['concentration_pct'] >= 0.1 && !($c['is_trade_secret'] ?? false)) {
+            $cas  = $c['cas_number'] ?? '';
+            $conc = (float) ($c['concentration_pct'] ?? 0);
+
+            // Must be hazardous, above disclosure threshold, and not trade secret
+            if ($cas !== ''
+                && isset($hazardousCas[$cas])
+                && $conc >= 0.1
+                && !($c['is_trade_secret'] ?? false)
+            ) {
                 $disclosed[] = [
-                    'cas_number'        => $c['cas_number'],
-                    'chemical_name'     => $c['chemical_name'],
-                    'concentration_pct' => $c['concentration_pct'],
-                    'concentration_range' => $this->concentrationRange($c['concentration_pct']),
+                    'cas_number'          => $cas,
+                    'chemical_name'       => $c['chemical_name'],
+                    'concentration_pct'   => $conc,
+                    'concentration_range' => $this->concentrationRange($conc),
                 ];
             }
         }
 
         return [
-            'title'       => $this->t->get('section3.title'),
+            'title'                => $this->t->get('section3.title'),
             'substance_or_mixture' => 'Mixture',
-            'components'  => $disclosed,
-            'trade_secret_note' => $this->hasTradeSecrets($composition)
+            'components'           => $disclosed,
+            'trade_secret_note'    => $this->hasTradeSecrets($composition)
                 ? $this->t->get('section3.trade_secret_note')
                 : null,
         ];
@@ -258,14 +269,17 @@ class SDSGenerator
 
     private function section8(array $hazard, array $overrides): array
     {
+        // PPE: use overrides first, then auto-derived from hazard codes, then translation defaults
+        $ppe = $hazard['ppe_recommendations'] ?? [];
+
         return [
             'title'            => $this->t->get('section8.title'),
             'exposure_limits'  => $hazard['exposure_limits'],
             'engineering'      => $overrides[8]['engineering'] ?? $this->t->get('section8.engineering'),
-            'respiratory'      => $overrides[8]['respiratory'] ?? $this->t->get('section8.respiratory'),
-            'hand_protection'  => $overrides[8]['hand_protection'] ?? $this->t->get('section8.hand_protection'),
-            'eye_protection'   => $overrides[8]['eye_protection'] ?? $this->t->get('section8.eye_protection'),
-            'skin_protection'  => $overrides[8]['skin_protection'] ?? $this->t->get('section8.skin_protection'),
+            'respiratory'      => $overrides[8]['respiratory'] ?? $ppe['respiratory'] ?? $this->t->get('section8.respiratory'),
+            'hand_protection'  => $overrides[8]['hand_protection'] ?? $ppe['hand_protection'] ?? $this->t->get('section8.hand_protection'),
+            'eye_protection'   => $overrides[8]['eye_protection'] ?? $ppe['eye_protection'] ?? $this->t->get('section8.eye_protection'),
+            'skin_protection'  => $overrides[8]['skin_protection'] ?? $ppe['skin_protection'] ?? $this->t->get('section8.skin_protection'),
         ];
     }
 

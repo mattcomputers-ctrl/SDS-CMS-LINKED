@@ -256,6 +256,29 @@ class PDFService
             }
         }
 
+        // PPE Recommendations derived from H/P codes
+        $ppe = $s['ppe_recommendations'] ?? [];
+        $hasPPE = !empty($ppe['respiratory']) || !empty($ppe['hand_protection'])
+               || !empty($ppe['eye_protection']) || !empty($ppe['skin_protection']);
+        if ($hasPPE) {
+            $pdf->Ln(1);
+            $pdf->SetFont('helvetica', 'B', 9);
+            $pdf->Cell(0, 5, 'Recommended Personal Protective Equipment (PPE):', 0, 1);
+            $pdf->SetFont('helvetica', '', 9);
+            if (!empty($ppe['respiratory'])) {
+                $pdf->MultiCell(0, 4, chr(149) . ' Respiratory: ' . $ppe['respiratory'], 0, 'L');
+            }
+            if (!empty($ppe['hand_protection'])) {
+                $pdf->MultiCell(0, 4, chr(149) . ' Hand Protection: ' . $ppe['hand_protection'], 0, 'L');
+            }
+            if (!empty($ppe['eye_protection'])) {
+                $pdf->MultiCell(0, 4, chr(149) . ' Eye Protection: ' . $ppe['eye_protection'], 0, 'L');
+            }
+            if (!empty($ppe['skin_protection'])) {
+                $pdf->MultiCell(0, 4, chr(149) . ' Skin/Body Protection: ' . $ppe['skin_protection'], 0, 'L');
+            }
+        }
+
         // Other hazards
         if (!empty($s['other_hazards']) && $s['other_hazards'] !== 'None known.') {
             $pdf->Ln(1);
@@ -310,22 +333,27 @@ class PDFService
 
         if (!empty($s['components'])) {
             $pdf->Ln(2);
+            $pdf->SetFont('helvetica', 'I', 8);
+            $pdf->MultiCell(0, 4, 'Only hazardous ingredients are listed. Non-hazardous components are omitted.', 0, 'L');
+            $pdf->Ln(1);
+
             // Table header
             $pdf->SetFont('helvetica', 'B', 8);
             $pdf->SetFillColor(230, 230, 230);
-            $w = [30, 80, 30, 30];
+            $w = [30, 95, 45];
             $pdf->Cell($w[0], 5, 'CAS Number', 1, 0, 'C', true);
             $pdf->Cell($w[1], 5, 'Chemical Name', 1, 0, 'C', true);
-            $pdf->Cell($w[2], 5, 'Concentration', 1, 0, 'C', true);
-            $pdf->Cell($w[3], 5, 'Range', 1, 1, 'C', true);
+            $pdf->Cell($w[2], 5, 'Concentration', 1, 1, 'C', true);
             $pdf->SetFont('helvetica', '', 8);
 
             foreach ($s['components'] as $comp) {
                 $pdf->Cell($w[0], 5, $comp['cas_number'] ?? '', 1, 0, 'C');
                 $pdf->Cell($w[1], 5, $comp['chemical_name'] ?? '', 1, 0, 'L');
-                $pdf->Cell($w[2], 5, round((float) ($comp['concentration_pct'] ?? 0), 2) . '%', 1, 0, 'C');
-                $pdf->Cell($w[3], 5, $comp['concentration_range'] ?? '', 1, 1, 'C');
+                $pdf->Cell($w[2], 5, $comp['concentration_range'] ?? '', 1, 1, 'C');
             }
+        } else {
+            $pdf->SetFont('helvetica', 'I', 8);
+            $pdf->MultiCell(0, 4, 'No hazardous ingredients above disclosure thresholds.', 0, 'L');
         }
 
         if (!empty($s['trade_secret_note'])) {

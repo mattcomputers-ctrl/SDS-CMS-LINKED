@@ -67,6 +67,8 @@ class HazardEngine
      *   pictograms: string[],
      *   signal_word: string|null,
      *   exposure_limits: array,
+     *   hazardous_cas: string[],
+     *   ppe_recommendations: array,
      *   trace: array,
      * }
      */
@@ -81,6 +83,7 @@ class HazardEngine
         $allPictograms = [];
         $signalWord    = null;
         $exposureLimits = [];
+        $hazardousCas   = [];
 
         $this->traceStep('start', 'Beginning hazard classification', [
             'component_count' => count($composition),
@@ -124,6 +127,11 @@ class HazardEngine
                     'value'         => $limit['value'],
                     'units'         => $limit['units'],
                 ];
+            }
+
+            // Track CAS numbers that have any hazard data or exposure limits
+            if (!empty($hazardData) || !empty($limits)) {
+                $hazardousCas[$cas] = true;
             }
 
             if (empty($hazardData)) {
@@ -219,21 +227,153 @@ class HazardEngine
         $hStatements = GHSStatements::resolveHStatements($hStatements);
         $pStatements = GHSStatements::resolvePStatements($pStatements);
 
+        // Derive PPE recommendations from the classified H/P codes
+        $ppeRecommendations = self::derivePPE($hStatements, $pStatements);
+
         $this->traceStep('complete', 'Hazard classification complete', [
             'hazard_class_count' => count($allHClasses),
             'h_statement_count'  => count($hStatements),
             'pictogram_count'    => count($finalPictograms),
             'signal_word'        => $signalWord,
+            'hazardous_cas_count' => count($hazardousCas),
         ]);
 
         return [
-            'hazard_classes'  => $allHClasses,
-            'h_statements'    => $hStatements,
-            'p_statements'    => $pStatements,
-            'pictograms'      => $finalPictograms,
-            'signal_word'     => $signalWord,
-            'exposure_limits' => $exposureLimits,
-            'trace'           => $this->trace,
+            'hazard_classes'      => $allHClasses,
+            'h_statements'        => $hStatements,
+            'p_statements'        => $pStatements,
+            'pictograms'          => $finalPictograms,
+            'signal_word'         => $signalWord,
+            'exposure_limits'     => $exposureLimits,
+            'hazardous_cas'       => array_keys($hazardousCas),
+            'ppe_recommendations' => $ppeRecommendations,
+            'trace'               => $this->trace,
+        ];
+    }
+
+    /**
+     * Derive PPE recommendations from classified H-statements and P-statements.
+     *
+     * Maps hazard codes to specific PPE requirements for respiratory,
+     * hand, eye, and skin/body protection.
+     *
+     * @param  array $hStatements  [['code' => 'H225', 'text' => '...'], ...]
+     * @param  array $pStatements  [['code' => 'P210', 'text' => '...'], ...]
+     * @return array  PPE recommendations keyed by protection type
+     */
+    public static function derivePPE(array $hStatements, array $pStatements): array
+    {
+        // Extract individual H-codes (split combined codes like H300+H310+H330)
+        $hCodes = [];
+        foreach ($hStatements as $s) {
+            $code = $s['code'] ?? '';
+            if ($code === '') {
+                continue;
+            }
+            // Add the full combined code
+            $hCodes[] = $code;
+            // Also split into individual codes
+            foreach (explode('+', $code) as $part) {
+                $part = trim($part);
+                if ($part !== '') {
+                    $hCodes[] = $part;
+                }
+            }
+        }
+        $hCodes = array_unique($hCodes);
+
+        // Extract individual P-codes
+        $pCodes = [];
+        foreach ($pStatements as $s) {
+            $code = $s['code'] ?? '';
+            if ($code === '') {
+                continue;
+            }
+            $pCodes[] = $code;
+            foreach (explode('+', $code) as $part) {
+                $part = trim($part);
+                if ($part !== '') {
+                    $pCodes[] = $part;
+                }
+            }
+        }
+        $pCodes = array_unique($pCodes);
+
+        $respiratory = null;
+        $hand = null;
+        $eye = null;
+        $skin = null;
+
+        // ── Respiratory Protection ──
+        $fatalInhalation = !empty(array_intersect($hCodes, ['H330']));
+        $toxicInhalation = !empty(array_intersect($hCodes, ['H331']));
+        $harmfulInhalation = !empty(array_intersect($hCodes, ['H332', 'H333']));
+        $respSensitizer = !empty(array_intersect($hCodes, ['H334']));
+        $respIrritant = !empty(array_intersect($hCodes, ['H335', 'H336']));
+        $respPCode = !empty(array_intersect($pCodes, ['P284', 'P285']));
+
+        if ($fatalInhalation || $toxicInhalation) {
+            $respiratory = 'NIOSH-approved supplied-air respirator or self-contained breathing apparatus (SCBA). Do not use chemical cartridge respirators.';
+        } elseif ($respSensitizer) {
+            $respiratory = 'NIOSH-approved respirator with organic vapor/particulate combination cartridge (P100/OV). Supplied-air respirator if concentrations are high.';
+        } elseif ($harmfulInhalation || $respIrritant || $respPCode) {
+            $respiratory = 'NIOSH-approved respirator with appropriate cartridge if exposure limits are exceeded or if irritation is experienced.';
+        }
+
+        // ── Hand Protection ──
+        $fatalDermal = !empty(array_intersect($hCodes, ['H310']));
+        $corrosive = !empty(array_intersect($hCodes, ['H314']));
+        $skinSensitizer = !empty(array_intersect($hCodes, ['H317']));
+        $dermalToxic = !empty(array_intersect($hCodes, ['H311', 'H312', 'H313']));
+        $skinIrritant = !empty(array_intersect($hCodes, ['H315', 'H316']));
+
+        if ($fatalDermal || $corrosive) {
+            $hand = 'Chemical-resistant gloves (butyl rubber or Viton recommended). Double gloving recommended for corrosive/highly toxic materials. Verify breakthrough time with glove manufacturer.';
+        } elseif ($skinSensitizer) {
+            $hand = 'Chemical-resistant gloves (nitrile recommended). Replace gloves frequently to prevent sensitization. Verify breakthrough time with glove manufacturer.';
+        } elseif ($dermalToxic || $skinIrritant) {
+            $hand = 'Chemical-resistant gloves (nitrile or neoprene recommended). Verify breakthrough time with glove manufacturer.';
+        }
+
+        // ── Eye Protection ──
+        $severeEyeDamage = !empty(array_intersect($hCodes, ['H318']));
+        $eyeCorrosive = !empty(array_intersect($hCodes, ['H314']));
+        $seriousEyeIrritation = !empty(array_intersect($hCodes, ['H319']));
+        $mildEyeIrritation = !empty(array_intersect($hCodes, ['H320']));
+
+        if ($severeEyeDamage || $eyeCorrosive) {
+            $eye = 'Chemical splash goggles and face shield required. Tightly fitting safety goggles per ANSI Z87.1.';
+        } elseif ($seriousEyeIrritation) {
+            $eye = 'Chemical splash goggles or safety glasses with side shields. Face shield if splash hazard exists.';
+        } elseif ($mildEyeIrritation) {
+            $eye = 'Safety glasses with side shields.';
+        }
+
+        // ── Skin / Body Protection ──
+        if ($fatalDermal || $corrosive) {
+            $skin = 'Full chemical-resistant suit. Impervious boots and chemical-resistant apron. Emergency shower and eyewash station should be accessible.';
+        } elseif ($dermalToxic || $skinIrritant || $skinSensitizer) {
+            $skin = 'Wear protective clothing to prevent skin contact. Impervious apron recommended. Launder contaminated clothing before reuse.';
+        }
+
+        // P280 fallback — if present but no specific PPE was derived from H-codes
+        if (in_array('P280', $pCodes, true)) {
+            if ($hand === null) {
+                $hand = 'Chemical-resistant gloves (nitrile or neoprene recommended).';
+            }
+            if ($eye === null) {
+                $eye = 'Safety glasses with side shields. Use chemical splash goggles if splash hazard exists.';
+            }
+            if ($skin === null) {
+                $skin = 'Wear protective clothing to prevent skin contact.';
+            }
+        }
+
+        return [
+            'respiratory'     => $respiratory,
+            'hand_protection' => $hand,
+            'eye_protection'  => $eye,
+            'skin_protection' => $skin,
         ];
     }
 

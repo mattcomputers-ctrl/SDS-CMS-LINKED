@@ -2,3 +2,11 @@
 /config/config.php
 *.log
 .env
+
+# Runtime / generated files
+/storage/cache/*
+/storage/logs/*
+/storage/temp/*
+/public/generated-pdfs/*
+/public/uploads/supplier-sds/*
+!.gitkeep

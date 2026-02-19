@@ -39,8 +39,11 @@ class FormulaCalcService
 
         $warnings = [];
 
+        // Load the admin-managed exempt VOC CAS list
+        $exemptVocCasList = $this->loadExemptVocList();
+
         // Build enriched formula lines for the VOC calculator
-        $enrichedLines = $this->enrichFormulaLines($formula['lines'], $warnings);
+        $enrichedLines = $this->enrichFormulaLines($formula['lines'], $warnings, $exemptVocCasList);
 
         // Run VOC calculation
         $vocCalc   = new VOCCalculator($enrichedLines, $vocMode);
@@ -68,7 +71,8 @@ class FormulaCalcService
         }
 
         $warnings      = [];
-        $enrichedLines = $this->enrichFormulaLines($formula['lines'], $warnings);
+        $exemptVocCasList = $this->loadExemptVocList();
+        $enrichedLines = $this->enrichFormulaLines($formula['lines'], $warnings, $exemptVocCasList);
         $vocCalc       = new VOCCalculator($enrichedLines, $vocMode);
         $vocResult     = $vocCalc->calculate();
         $composition   = Formula::getExpandedComposition($formulaId);
@@ -84,8 +88,12 @@ class FormulaCalcService
     /**
      * Enrich formula lines with full raw material data + constituents
      * for the VOC calculator.
+     *
+     * When a raw material's constituents contain CAS numbers on the
+     * admin-managed exempt VOC list, the exempt_voc_wt field is
+     * auto-adjusted upward to account for that exempt content.
      */
-    private function enrichFormulaLines(array $lines, array &$warnings): array
+    private function enrichFormulaLines(array $lines, array &$warnings, array $exemptVocCasList = []): array
     {
         $enriched = [];
 
@@ -98,13 +106,32 @@ class FormulaCalcService
                 continue;
             }
 
+            // Check constituents against the exempt VOC list and
+            // auto-calculate additional exempt VOC weight if applicable.
+            $exemptVocWt = (float) ($rm['exempt_voc_wt'] ?? 0);
+            $autoExempt  = 0.0;
+            foreach ($rm['constituents'] ?? [] as $constituent) {
+                $cas = $constituent['cas_number'] ?? '';
+                if ($cas !== '' && isset($exemptVocCasList[$cas])) {
+                    $pct = $constituent['pct_exact']
+                        ?? (($constituent['pct_min'] !== null && $constituent['pct_max'] !== null)
+                            ? (((float) $constituent['pct_min'] + (float) $constituent['pct_max']) / 2.0)
+                            : (float) ($constituent['pct_min'] ?? $constituent['pct_max'] ?? 0));
+                    $autoExempt += (float) $pct;
+                }
+            }
+            if ($autoExempt > 0 && $autoExempt > $exemptVocWt) {
+                $warnings[] = "{$rm['internal_code']}: exempt VOC auto-adjusted from {$exemptVocWt}% to {$autoExempt}% based on exempt VOC list.";
+                $exemptVocWt = $autoExempt;
+            }
+
             $enriched[] = [
                 'raw_material_id'       => $rmId,
                 'internal_code'         => $rm['internal_code'],
                 'supplier_product_name' => $rm['supplier_product_name'],
                 'pct'                   => (float) $line['pct'],
                 'voc_wt'                => $rm['voc_wt'],
-                'exempt_voc_wt'         => $rm['exempt_voc_wt'],
+                'exempt_voc_wt'         => $exemptVocWt,
                 'water_wt'              => $rm['water_wt'],
                 'specific_gravity'      => $rm['specific_gravity'],
                 'solids_wt'             => $rm['solids_wt'],
@@ -119,5 +146,22 @@ class FormulaCalcService
         }
 
         return $enriched;
+    }
+
+    /**
+     * Load the admin-managed exempt VOC list as a CAS-keyed lookup array.
+     *
+     * @return array<string, string>  CAS number => chemical name
+     */
+    private function loadExemptVocList(): array
+    {
+        $db   = Database::getInstance();
+        $rows = $db->fetchAll("SELECT cas_number, chemical_name FROM exempt_voc_list");
+
+        $map = [];
+        foreach ($rows as $row) {
+            $map[$row['cas_number']] = $row['chemical_name'];
+        }
+        return $map;
     }
 }

@@ -291,13 +291,31 @@ class FinishedGood
     }
 
     /**
-     * Update a finished good.
+     * Update a finished good with optimistic locking.
+     *
+     * If $data contains 'expected_updated_at', the update will only proceed
+     * if the record's updated_at matches, preventing silent overwrites.
      *
      * @return int  Affected rows.
+     * @throws \RuntimeException on concurrent modification.
      */
     public static function update(int $id, array $data): int
     {
         $db = Database::getInstance();
+
+        // Optimistic locking: check updated_at matches
+        $expectedUpdatedAt = $data['expected_updated_at'] ?? null;
+        if ($expectedUpdatedAt !== null) {
+            $current = $db->fetch("SELECT updated_at FROM finished_goods WHERE id = ?", [$id]);
+            if (!$current) {
+                throw new \RuntimeException("Finished good #{$id} not found.");
+            }
+            if ($current['updated_at'] !== $expectedUpdatedAt) {
+                throw new \RuntimeException(
+                    'This record has been modified by another user. Please reload and try again.'
+                );
+            }
+        }
 
         // If renaming code, check uniqueness
         if (isset($data['product_code']) && trim($data['product_code']) !== '') {

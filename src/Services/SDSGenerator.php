@@ -80,6 +80,17 @@ class SDSGenerator
         // Company info from admin settings (DB), with config fallback
         $company = $this->getCompanySettings();
 
+        // UV Acrylate Rule Pack — detect and append safe-handling language
+        $uvWarnings = [];
+        $uvSectionAppend = [];
+        if (UVAcrylateRulePack::isApplicable($fg['family'] ?? null)) {
+            $acrylates = UVAcrylateRulePack::detectAcrylates($calcResult['composition']);
+            if (!empty($acrylates)) {
+                $uvSectionAppend = UVAcrylateRulePack::getSafeHandlingLanguage($acrylates);
+                $uvWarnings      = UVAcrylateRulePack::getFormulatorWarnings($acrylates);
+            }
+        }
+
         // Assemble all 16 sections
         $sds = [
             'meta' => [
@@ -113,9 +124,16 @@ class SDSGenerator
             'hazard_result'       => $hazardResult,
             'voc_result'          => $calcResult['voc'],
             'sara_result'         => $saraResult,
-            'warnings'            => $calcResult['warnings'],
+            'warnings'            => array_merge($calcResult['warnings'], $uvWarnings),
             'legal_disclaimer'    => $company['legal_disclaimer'] ?? '',
         ];
+
+        // Append UV acrylate safe-handling language to relevant sections
+        foreach ($uvSectionAppend as $secNum => $appendText) {
+            if (isset($sds['sections'][$secNum])) {
+                $sds['sections'][$secNum]['uv_acrylate_note'] = $appendText;
+            }
+        }
 
         return $sds;
     }

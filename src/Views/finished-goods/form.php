@@ -8,6 +8,9 @@ $action = $isEdit ? '/finished-goods/' . (int) $item['id'] : '/finished-goods';
 <div class="card">
     <form method="POST" action="<?= $action ?>">
         <?= csrf_field() ?>
+        <?php if ($isEdit && !empty($item['updated_at'])): ?>
+            <input type="hidden" name="expected_updated_at" value="<?= e($item['updated_at']) ?>">
+        <?php endif; ?>
 
         <div class="form-grid-2col">
             <div class="form-group">

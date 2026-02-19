@@ -181,6 +181,21 @@ class App
             $r->get('/settings',  'AdminController@settings');
             $r->post('/settings', 'AdminController@saveSettings');
 
+            // Exempt VOC library
+            $r->get('/exempt-vocs',              'AdminController@exemptVocs');
+            $r->get('/exempt-vocs/create',       'AdminController@createExemptVoc');
+            $r->post('/exempt-vocs',             'AdminController@storeExemptVoc');
+            $r->get('/exempt-vocs/{id}/edit',    'AdminController@editExemptVoc');
+            $r->post('/exempt-vocs/{id}',        'AdminController@updateExemptVoc');
+            $r->post('/exempt-vocs/{id}/delete', 'AdminController@deleteExemptVoc');
+
+            // Competent person determinations
+            $r->get('/determinations',              'AdminController@determinations');
+            $r->get('/determinations/create',       'AdminController@createDetermination');
+            $r->post('/determinations',             'AdminController@storeDetermination');
+            $r->get('/determinations/{id}/edit',    'AdminController@editDetermination');
+            $r->post('/determinations/{id}',        'AdminController@updateDetermination');
+
             // Federal data
             $r->get('/federal-data',          'AdminController@federalData');
             $r->post('/federal-data/refresh', 'AdminController@refreshFederalData');

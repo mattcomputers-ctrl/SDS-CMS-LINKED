@@ -90,6 +90,14 @@ class SDSController
             $generator = new SDSGenerator();
             $sdsData   = $generator->generate((int) $finished_good_id, $language);
 
+            // Enforce missing-data threshold before publishing
+            $blockError = $this->checkMissingHazardData($sdsData, $db);
+            if ($blockError !== null) {
+                $_SESSION['_flash']['error'] = $blockError;
+                redirect('/sds/' . $finished_good_id);
+                return;
+            }
+
             // Generate PDF
             $pdfService = new PDFService();
             $pdfPath    = $pdfService->generate($sdsData);
@@ -197,5 +205,60 @@ class SDSController
             'version'   => $version,
             'trace'     => $traceData,
         ]);
+    }
+
+    /**
+     * Check if required hazard data is missing for CAS numbers above the
+     * configured threshold. If blocking is enabled and data is missing,
+     * returns an error message; otherwise returns null.
+     *
+     * A CAS number is "covered" if it has federal hazard source records OR
+     * an active competent person determination.
+     */
+    private function checkMissingHazardData(array $sdsData, Database $db): ?string
+    {
+        // Read threshold settings
+        $blockSetting = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'sds.block_publish_missing'");
+        $blockEnabled = $blockSetting ? ($blockSetting['value'] !== '0') : \SDS\Core\App::config('sds.block_publish_missing', true);
+
+        if (!$blockEnabled) {
+            return null;
+        }
+
+        $thresholdRow = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'sds.missing_threshold_pct'");
+        $threshold = $thresholdRow ? (float) $thresholdRow['value'] : \SDS\Core\App::config('sds.missing_threshold_pct', 1.0);
+
+        // Get composition from the section 3 data or hazard result
+        $composition = [];
+        foreach ($sdsData['sections'][3]['components'] ?? [] as $comp) {
+            $composition[$comp['cas_number']] = (float) ($comp['concentration_pct'] ?? 0);
+        }
+
+        // Also check hazard_result trace for CAS numbers with no data
+        $missingCas = [];
+        foreach ($sdsData['hazard_result']['trace'] ?? [] as $step) {
+            if (($step['step'] ?? '') === 'no_data') {
+                $cas = $step['data']['cas'] ?? null;
+                $conc = $step['data']['concentration_pct'] ?? 0;
+                if ($cas !== null && (float) $conc >= $threshold) {
+                    // Check if a competent person determination covers it
+                    $cpd = $db->fetch(
+                        "SELECT id FROM competent_person_determinations WHERE cas_number = ? AND is_active = 1 LIMIT 1",
+                        [$cas]
+                    );
+                    if (!$cpd) {
+                        $missingCas[] = $cas . ' (' . round((float) $conc, 2) . '%)';
+                    }
+                }
+            }
+        }
+
+        if (!empty($missingCas)) {
+            return 'Publishing blocked: missing federal hazard data for CAS numbers at or above '
+                . $threshold . '% threshold: ' . implode(', ', $missingCas)
+                . '. Create a Competent Person Determination for these CAS numbers or disable the threshold in Admin Settings.';
+        }
+
+        return null;
     }
 }

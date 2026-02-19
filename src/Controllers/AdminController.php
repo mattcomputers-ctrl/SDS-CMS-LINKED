@@ -255,6 +255,239 @@ class AdminController
     }
 
     /* ------------------------------------------------------------------
+     *  Exempt VOC Library
+     * ----------------------------------------------------------------*/
+
+    public function exemptVocs(): void
+    {
+        $this->requireAdmin();
+        $db = Database::getInstance();
+
+        $items = $db->fetchAll("SELECT * FROM exempt_voc_list ORDER BY cas_number");
+
+        view('admin/exempt-vocs', [
+            'pageTitle' => 'Exempt VOC Library',
+            'items'     => $items,
+        ]);
+    }
+
+    public function createExemptVoc(): void
+    {
+        $this->requireAdmin();
+        view('admin/exempt-voc-form', [
+            'pageTitle' => 'Add Exempt VOC',
+            'item'      => null,
+            'mode'      => 'create',
+        ]);
+    }
+
+    public function storeExemptVoc(): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+
+        $db = Database::getInstance();
+        $cas = trim($_POST['cas_number'] ?? '');
+
+        if ($cas === '' || !preg_match('/^\d{1,7}-\d{2}-\d$/', $cas)) {
+            $_SESSION['_flash']['error'] = 'A valid CAS number is required.';
+            $_SESSION['_flash']['_old_input'] = $_POST;
+            redirect('/admin/exempt-vocs/create');
+            return;
+        }
+
+        $existing = $db->fetch("SELECT id FROM exempt_voc_list WHERE cas_number = ?", [$cas]);
+        if ($existing) {
+            $_SESSION['_flash']['error'] = "CAS {$cas} is already in the exempt list.";
+            redirect('/admin/exempt-vocs');
+            return;
+        }
+
+        $db->insert('exempt_voc_list', [
+            'cas_number'     => $cas,
+            'chemical_name'  => trim($_POST['chemical_name'] ?? ''),
+            'regulation_ref' => trim($_POST['regulation_ref'] ?? ''),
+            'notes'          => trim($_POST['notes'] ?? '') ?: null,
+        ]);
+
+        AuditService::log('exempt_voc', $cas, 'create');
+        $_SESSION['_flash']['success'] = "Exempt VOC {$cas} added.";
+        redirect('/admin/exempt-vocs');
+    }
+
+    public function editExemptVoc(string $id): void
+    {
+        $this->requireAdmin();
+        $db = Database::getInstance();
+        $item = $db->fetch("SELECT * FROM exempt_voc_list WHERE id = ?", [(int) $id]);
+        if (!$item) {
+            $_SESSION['_flash']['error'] = 'Exempt VOC not found.';
+            redirect('/admin/exempt-vocs');
+            return;
+        }
+
+        view('admin/exempt-voc-form', [
+            'pageTitle' => 'Edit Exempt VOC: ' . $item['cas_number'],
+            'item'      => $item,
+            'mode'      => 'edit',
+        ]);
+    }
+
+    public function updateExemptVoc(string $id): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+        $db = Database::getInstance();
+
+        $db->update('exempt_voc_list', [
+            'chemical_name'  => trim($_POST['chemical_name'] ?? ''),
+            'regulation_ref' => trim($_POST['regulation_ref'] ?? ''),
+            'notes'          => trim($_POST['notes'] ?? '') ?: null,
+        ], 'id = ?', [(int) $id]);
+
+        AuditService::log('exempt_voc', $id, 'update');
+        $_SESSION['_flash']['success'] = 'Exempt VOC updated.';
+        redirect('/admin/exempt-vocs');
+    }
+
+    public function deleteExemptVoc(string $id): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+        $db = Database::getInstance();
+
+        $item = $db->fetch("SELECT cas_number FROM exempt_voc_list WHERE id = ?", [(int) $id]);
+        $db->query("DELETE FROM exempt_voc_list WHERE id = ?", [(int) $id]);
+
+        AuditService::log('exempt_voc', $item['cas_number'] ?? $id, 'delete');
+        $_SESSION['_flash']['success'] = 'Exempt VOC removed.';
+        redirect('/admin/exempt-vocs');
+    }
+
+    /* ------------------------------------------------------------------
+     *  Competent Person Determinations
+     * ----------------------------------------------------------------*/
+
+    public function determinations(): void
+    {
+        $this->requireAdmin();
+        $db = Database::getInstance();
+
+        $items = $db->fetchAll(
+            "SELECT cpd.*, u.display_name AS created_by_name, ua.display_name AS approved_by_name
+             FROM competent_person_determinations cpd
+             LEFT JOIN users u ON u.id = cpd.created_by
+             LEFT JOIN users ua ON ua.id = cpd.approved_by
+             ORDER BY cpd.created_at DESC"
+        );
+
+        view('admin/determinations', [
+            'pageTitle' => 'Competent Person Determinations',
+            'items'     => $items,
+        ]);
+    }
+
+    public function createDetermination(): void
+    {
+        $this->requireAdmin();
+        view('admin/determination-form', [
+            'pageTitle' => 'New Competent Person Determination',
+            'item'      => null,
+            'mode'      => 'create',
+        ]);
+    }
+
+    public function storeDetermination(): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+        $db = Database::getInstance();
+
+        $cas = trim($_POST['cas_number'] ?? '');
+        $rationale = trim($_POST['rationale_text'] ?? '');
+
+        if ($cas === '' || $rationale === '') {
+            $_SESSION['_flash']['error'] = 'CAS number and rationale are required.';
+            $_SESSION['_flash']['_old_input'] = $_POST;
+            redirect('/admin/determinations/create');
+            return;
+        }
+
+        $determination = [
+            'hazard_classes' => trim($_POST['hazard_classes'] ?? ''),
+            'signal_word'    => trim($_POST['signal_word'] ?? ''),
+            'h_statements'   => trim($_POST['h_statements'] ?? ''),
+            'p_statements'   => trim($_POST['p_statements'] ?? ''),
+            'basis'          => trim($_POST['basis'] ?? ''),
+        ];
+
+        $id = $db->insert('competent_person_determinations', [
+            'cas_number'         => $cas,
+            'jurisdiction'       => trim($_POST['jurisdiction'] ?? 'US'),
+            'determination_json' => json_encode($determination),
+            'rationale_text'     => $rationale,
+            'is_active'          => 1,
+            'created_by'         => current_user_id(),
+        ]);
+
+        AuditService::log('competent_determination', $id, 'create', ['cas' => $cas]);
+        $_SESSION['_flash']['success'] = "Determination created for CAS {$cas}.";
+        redirect('/admin/determinations');
+    }
+
+    public function editDetermination(string $id): void
+    {
+        $this->requireAdmin();
+        $db = Database::getInstance();
+
+        $item = $db->fetch(
+            "SELECT cpd.*, u.display_name AS created_by_name
+             FROM competent_person_determinations cpd
+             LEFT JOIN users u ON u.id = cpd.created_by
+             WHERE cpd.id = ?",
+            [(int) $id]
+        );
+        if (!$item) {
+            $_SESSION['_flash']['error'] = 'Determination not found.';
+            redirect('/admin/determinations');
+            return;
+        }
+        $item['determination'] = json_decode($item['determination_json'] ?? '{}', true);
+
+        view('admin/determination-form', [
+            'pageTitle' => 'Edit Determination: ' . $item['cas_number'],
+            'item'      => $item,
+            'mode'      => 'edit',
+        ]);
+    }
+
+    public function updateDetermination(string $id): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+        $db = Database::getInstance();
+
+        $determination = [
+            'hazard_classes' => trim($_POST['hazard_classes'] ?? ''),
+            'signal_word'    => trim($_POST['signal_word'] ?? ''),
+            'h_statements'   => trim($_POST['h_statements'] ?? ''),
+            'p_statements'   => trim($_POST['p_statements'] ?? ''),
+            'basis'          => trim($_POST['basis'] ?? ''),
+        ];
+
+        $db->update('competent_person_determinations', [
+            'rationale_text'     => trim($_POST['rationale_text'] ?? ''),
+            'determination_json' => json_encode($determination),
+            'is_active'          => isset($_POST['is_active']) ? 1 : 0,
+            'approved_by'        => !empty($_POST['mark_approved']) ? current_user_id() : null,
+        ], 'id = ?', [(int) $id]);
+
+        AuditService::log('competent_determination', $id, 'update');
+        $_SESSION['_flash']['success'] = 'Determination updated.';
+        redirect('/admin/determinations');
+    }
+
+    /* ------------------------------------------------------------------
      *  Federal Data
      * ----------------------------------------------------------------*/
 

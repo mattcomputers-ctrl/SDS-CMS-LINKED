@@ -203,6 +203,7 @@ mkdir -p public/generated-pdfs
 mkdir -p storage/logs
 mkdir -p storage/cache
 mkdir -p storage/temp
+mkdir -p storage/backups
 
 # Set permissions
 print_step "Setting file permissions..."

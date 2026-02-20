@@ -191,7 +191,7 @@ cas_number,chemical_name,toxicity_type,listing_mechanism,nsrl_ug,madl_ug,date_li
 ---,"p-Chloro-o-toluidine, strong acid salts of",cancer,AB,,,1998-05-15
 ---,5-Chloro-o-toluidine and its strong acid salts,cancer,SQE,,,1997-10-24
 569-57-3,Chlorotrianisene,cancer,FR,,,1996-09-01
-98-56-6,"p-chloro-à,à,à-trifluorotoluene (para-Chlorobenzotrifluoride, PCBTF)",cancer,AB,23,,2019-06-28
+98-56-6,"p-chloro-Î±,Î±,Î±-trifluorotoluene (para-Chlorobenzotrifluoride, PCBTF)",cancer,AB,23,,2019-06-28
 54749-90-5,Chlorozotocin,cancer,AB,0.003,,1992-01-01
 2921-88-2,Chlorpyrifos,developmental,SQE,,0.58,2017-12-15
 ---,Chromium (hexavalent compounds),cancer,LC,0.001,,1987-02-27
@@ -596,7 +596,7 @@ cas_number,chemical_name,toxicity_type,listing_mechanism,nsrl_ug,madl_ug,date_li
 70-25-7,N-Methyl-N'-nitro-N-nitrosoguanidine,cancer,SQE,0.08,,1988-04-01
 924-42-5,N-Methylolacrylamide,cancer,AB,,,1990-07-01
 872-50-4,N-Methylpyrrolidone,developmental,AB,,3200,2001-06-15
-98-83-9,à-Methyl styrene (alpha-Methylstyrene),cancer,LC,,,2012-11-02
+98-83-9,Î±-Methyl styrene (alpha-Methylstyrene),cancer,LC,,,2012-11-02
 58-18-4,Methyltestosterone,developmental,FR,,,1990-04-01
 56-04-2,Methylthiouracil,cancer,LC,2,,1989-10-01
 9006-42-2,Metiram,cancer,AB,,,1990-01-01
@@ -731,7 +731,7 @@ cas_number,chemical_name,toxicity_type,listing_mechanism,nsrl_ug,madl_ug,date_li
 2439-01-2,Oxythioquinox (Chinomethionat),cancer,AB,,,1999-08-20
 2439-01-2,Oxythioquinox (Chinomethionat),developmental,AB,,,1998-11-06
 33069-62-4,Paclitaxel,"developmental, female reproductive, male reproductive",FR,,,1997-08-26
-12174-11-7,Palygorskite fibers (> 5æm in length),cancer,AB,,,1999-12-28
+12174-11-7,Palygorskite fibers (> 5Î¼m in length),cancer,AB,,,1999-12-28
 794-93-4,Panfuran S,cancer,SQE,,,1988-01-01
 115-67-3,Paramethadione,developmental,FR,,,1990-07-01
 56-38-2,Parathion,cancer,LC,,,2016-05-20

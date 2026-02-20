@@ -216,6 +216,17 @@ class App
             $r->get('/sds-versions',              'AdminController@sdsVersions');
             $r->post('/sds-versions/{id}/delete',  'AdminController@deleteSdsVersion');
             $r->post('/sds-versions/{id}/restore', 'AdminController@restoreSdsVersion');
+
+            // Backup & Restore
+            $r->get('/backups',                  'AdminController@backups');
+            $r->post('/backups/create',          'AdminController@createBackup');
+            $r->post('/backups/{id}/restore',    'AdminController@restoreBackup');
+            $r->post('/backups/{id}/delete',     'AdminController@deleteBackup');
+            $r->get('/backups/{id}/download',    'AdminController@downloadBackup');
+
+            // Network Settings
+            $r->get('/network-settings',  'AdminController@networkSettings');
+            $r->post('/network-settings', 'AdminController@saveNetworkSettings');
         });
 
         // ── Dispatch ─────────────────────────────────────────────────

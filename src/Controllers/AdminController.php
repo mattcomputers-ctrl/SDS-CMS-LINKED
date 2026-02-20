@@ -8,6 +8,8 @@ use SDS\Core\CSRF;
 use SDS\Core\Database;
 use SDS\Models\User;
 use SDS\Services\AuditService;
+use SDS\Services\BackupService;
+use SDS\Services\NetworkService;
 use SDS\Services\FederalData\Connectors\PubChemConnector;
 use SDS\Services\FederalData\Connectors\NIOSHConnector;
 
@@ -739,5 +741,181 @@ class AdminController
         AuditService::log('sds_version', $id, 'restore');
         $_SESSION['_flash']['success'] = 'SDS version restored.';
         redirect('/admin/sds-versions');
+    }
+
+    /* ------------------------------------------------------------------
+     *  Backups
+     * ----------------------------------------------------------------*/
+
+    public function backups(): void
+    {
+        $this->requireAdmin();
+
+        $backups = BackupService::listAll();
+
+        view('admin/backups', [
+            'pageTitle' => 'Backup &amp; Restore',
+            'backups'   => $backups,
+        ]);
+    }
+
+    public function createBackup(): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+
+        $type  = in_array($_POST['backup_type'] ?? '', ['full', 'content'], true)
+               ? $_POST['backup_type']
+               : 'full';
+        $notes = trim($_POST['notes'] ?? '') ?: null;
+
+        try {
+            $result = BackupService::create($type, $notes);
+            AuditService::log('backup', (string) $result['id'], 'create', [
+                'type'     => $type,
+                'filename' => $result['filename'],
+            ]);
+
+            $sizeStr = self::formatBytes($result['file_size']);
+            $_SESSION['_flash']['success'] = "Backup created: {$result['filename']} ({$sizeStr})";
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error'] = 'Backup failed: ' . $e->getMessage();
+        }
+
+        redirect('/admin/backups');
+    }
+
+    public function restoreBackup(string $id): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+
+        if (empty($_POST['confirm_restore'])) {
+            $_SESSION['_flash']['error'] = 'You must check the confirmation box to restore a backup.';
+            redirect('/admin/backups');
+            return;
+        }
+
+        try {
+            $result = BackupService::restore((int) $id, true);
+            AuditService::log('backup', $id, 'restore');
+
+            $_SESSION['_flash']['success'] = 'Backup restored successfully.'
+                . ($result['files_restored'] ? ' Files were also restored.' : '');
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error'] = 'Restore failed: ' . $e->getMessage();
+        }
+
+        redirect('/admin/backups');
+    }
+
+    public function deleteBackup(string $id): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+
+        BackupService::delete((int) $id);
+        AuditService::log('backup', $id, 'delete');
+        $_SESSION['_flash']['success'] = 'Backup deleted.';
+        redirect('/admin/backups');
+    }
+
+    public function downloadBackup(string $id): void
+    {
+        $this->requireAdmin();
+
+        $path = BackupService::getFilePath((int) $id);
+        if ($path === null) {
+            $_SESSION['_flash']['error'] = 'Backup file not found.';
+            redirect('/admin/backups');
+            return;
+        }
+
+        $filename = basename($path);
+        header('Content-Type: application/gzip');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Content-Length: ' . filesize($path));
+        readfile($path);
+        exit;
+    }
+
+    private static function formatBytes(int $bytes): string
+    {
+        if ($bytes >= 1073741824) {
+            return number_format($bytes / 1073741824, 1) . ' GB';
+        }
+        if ($bytes >= 1048576) {
+            return number_format($bytes / 1048576, 1) . ' MB';
+        }
+        if ($bytes >= 1024) {
+            return number_format($bytes / 1024, 1) . ' KB';
+        }
+        return $bytes . ' B';
+    }
+
+    /* ------------------------------------------------------------------
+     *  Network Settings
+     * ----------------------------------------------------------------*/
+
+    public function networkSettings(): void
+    {
+        $this->requireAdmin();
+
+        $config = NetworkService::getCurrentConfig();
+
+        view('admin/network-settings', [
+            'pageTitle' => 'Network Settings',
+            'network'   => $config,
+        ]);
+    }
+
+    public function saveNetworkSettings(): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+
+        if (empty($_POST['confirm_network'])) {
+            $_SESSION['_flash']['error'] = 'You must confirm that you understand the risk of disconnection.';
+            redirect('/admin/network-settings');
+            return;
+        }
+
+        $config = [
+            'ip_address'  => $_POST['ip_address'] ?? '',
+            'subnet_mask' => $_POST['subnet_mask'] ?? '',
+            'cidr'        => $_POST['cidr'] ?? '',
+            'gateway'     => $_POST['gateway'] ?? '',
+            'dns_servers' => $_POST['dns_servers'] ?? '',
+        ];
+
+        $result = NetworkService::applyConfig($config);
+
+        AuditService::log('network_settings', 'system', 'update', [
+            'ip'      => $config['ip_address'],
+            'cidr'    => $config['cidr'],
+            'gateway' => $config['gateway'],
+            'success' => $result['success'],
+            'method'  => $result['method'],
+        ]);
+
+        // Also update the app server URL setting to match the new IP
+        if ($result['success'] && !empty($config['ip_address'])) {
+            $db = Database::getInstance();
+            $protocol = 'http';
+            $currentUrl = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'app.server_url'");
+            if ($currentUrl && str_starts_with($currentUrl['value'] ?? '', 'https')) {
+                $protocol = 'https';
+            }
+            $this->saveSetting($db, 'app.server_url', "{$protocol}://{$config['ip_address']}");
+        }
+
+        if ($result['success']) {
+            $_SESSION['_flash']['success'] = $result['message']
+                . ' The server URL has been updated. You may need to reconnect at the new address.';
+        } else {
+            $_SESSION['_flash']['error'] = $result['message'];
+        }
+
+        redirect('/admin/network-settings');
     }
 }

@@ -32,6 +32,8 @@
                         <li><a href="/admin/federal-data">Federal Data</a></li>
                         <li><a href="/admin/audit-log">Audit Log</a></li>
                         <li><a href="/admin/sds-versions">SDS Versions</a></li>
+                        <li><a href="/admin/backups">Backup &amp; Restore</a></li>
+                        <li><a href="/admin/network-settings">Network Settings</a></li>
                     </ul>
                 </li>
                 <?php endif; ?>

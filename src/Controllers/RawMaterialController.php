@@ -59,6 +59,12 @@ class RawMaterialController
         $data['created_by'] = current_user_id();
 
         try {
+            // Handle SDS file upload
+            $sdsPath = $this->handleSdsUpload();
+            if ($sdsPath !== null) {
+                $data['supplier_sds_path'] = $sdsPath;
+            }
+
             $id = RawMaterial::create($data);
             AuditService::log('raw_material', $id, 'create', $data);
             $_SESSION['_flash']['success'] = 'Raw material created successfully.';
@@ -103,6 +109,28 @@ class RawMaterialController
         $data['expected_updated_at'] = $data['updated_at'] ?? null;
 
         try {
+            // Handle SDS removal
+            if (!empty($data['remove_sds']) && !empty($item['supplier_sds_path'])) {
+                $fullPath = \SDS\Core\App::basePath() . '/public/uploads/' . $item['supplier_sds_path'];
+                if (file_exists($fullPath)) {
+                    unlink($fullPath);
+                }
+                $data['supplier_sds_path'] = null;
+            }
+
+            // Handle SDS file upload (replaces existing)
+            $sdsPath = $this->handleSdsUpload();
+            if ($sdsPath !== null) {
+                // Remove old file if it exists
+                if (!empty($item['supplier_sds_path'])) {
+                    $oldPath = \SDS\Core\App::basePath() . '/public/uploads/' . $item['supplier_sds_path'];
+                    if (file_exists($oldPath)) {
+                        unlink($oldPath);
+                    }
+                }
+                $data['supplier_sds_path'] = $sdsPath;
+            }
+
             $diff = AuditService::diff($item, $data);
             RawMaterial::update((int) $id, $data);
             AuditService::log('raw_material', $id, 'update', $diff);
@@ -147,6 +175,28 @@ class RawMaterialController
             'item'         => $item,
             'constituents' => $item['constituents'] ?? [],
         ]);
+    }
+
+    public function viewSds(string $id): void
+    {
+        $item = RawMaterial::findById((int) $id);
+        if ($item === null || empty($item['supplier_sds_path'])) {
+            $_SESSION['_flash']['error'] = 'SDS not found for this raw material.';
+            redirect('/raw-materials');
+        }
+
+        $pdfPath = \SDS\Core\App::basePath() . '/public/uploads/' . $item['supplier_sds_path'];
+
+        if (!file_exists($pdfPath)) {
+            $_SESSION['_flash']['error'] = 'SDS file not found on disk.';
+            redirect('/raw-materials/' . $id . '/edit');
+        }
+
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: inline; filename="SDS_' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $item['internal_code']) . '.pdf"');
+        header('Content-Length: ' . filesize($pdfPath));
+        readfile($pdfPath);
+        exit;
     }
 
     public function saveConstituents(string $id): void
@@ -199,5 +249,53 @@ class RawMaterialController
         }
 
         redirect('/raw-materials/' . $id . '/constituents');
+    }
+
+    /**
+     * Handle supplier SDS PDF upload.
+     *
+     * @return string|null  Relative path under public/uploads/ on success, null if no upload.
+     * @throws \RuntimeException on validation failure.
+     */
+    private function handleSdsUpload(): ?string
+    {
+        if (empty($_FILES['supplier_sds']) || $_FILES['supplier_sds']['error'] === UPLOAD_ERR_NO_FILE) {
+            return null;
+        }
+
+        $file = $_FILES['supplier_sds'];
+
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            throw new \RuntimeException('SDS file upload failed (error code: ' . $file['error'] . ').');
+        }
+
+        // Validate size (20 MB max)
+        $maxSize = 20 * 1024 * 1024;
+        if ($file['size'] > $maxSize) {
+            throw new \RuntimeException('SDS file exceeds the 20 MB limit.');
+        }
+
+        // Validate MIME type
+        $finfo = new \finfo(FILEINFO_MIME_TYPE);
+        $mime  = $finfo->file($file['tmp_name']);
+        if ($mime !== 'application/pdf') {
+            throw new \RuntimeException('SDS file must be a PDF (detected: ' . $mime . ').');
+        }
+
+        // Generate unique filename
+        $uploadDir = \SDS\Core\App::basePath() . '/public/uploads/supplier-sds';
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+
+        $safeName = preg_replace('/[^a-zA-Z0-9_.-]/', '_', pathinfo($file['name'], PATHINFO_FILENAME));
+        $filename = $safeName . '_' . bin2hex(random_bytes(8)) . '.pdf';
+        $destPath = $uploadDir . '/' . $filename;
+
+        if (!move_uploaded_file($file['tmp_name'], $destPath)) {
+            throw new \RuntimeException('Failed to save uploaded SDS file.');
+        }
+
+        return 'supplier-sds/' . $filename;
     }
 }

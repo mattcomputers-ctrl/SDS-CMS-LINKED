@@ -22,6 +22,7 @@
             <th>VOC wt%</th>
             <th>SG</th>
             <th>Flash Pt (C)</th>
+            <th>SDS</th>
             <th>Actions</th>
         </tr>
     </thead>
@@ -34,6 +35,13 @@
             <td><?= $item['voc_wt'] !== null ? number_format((float) $item['voc_wt'], 2) : '<span class="text-muted">—</span>' ?></td>
             <td><?= $item['specific_gravity'] !== null ? number_format((float) $item['specific_gravity'], 4) : '<span class="text-muted">—</span>' ?></td>
             <td><?= $item['flash_point_c'] !== null ? number_format((float) $item['flash_point_c'], 1) : '<span class="text-muted">—</span>' ?></td>
+            <td>
+                <?php if (!empty($item['supplier_sds_path'])): ?>
+                    <a href="/raw-materials/<?= (int) $item['id'] ?>/sds" target="_blank" title="View Supplier SDS" class="btn btn-sm btn-outline">PDF</a>
+                <?php else: ?>
+                    <span class="text-muted">—</span>
+                <?php endif; ?>
+            </td>
             <td>
                 <a href="/raw-materials/<?= (int) $item['id'] ?>/edit" class="btn btn-sm">Edit</a>
                 <a href="/raw-materials/<?= (int) $item['id'] ?>/constituents" class="btn btn-sm btn-outline">CAS</a>

@@ -20,6 +20,9 @@ class PDFService
     private const MARGIN_RIGHT  = 15;
     private const MARGIN_BOTTOM = 20;
 
+    /** @var array Translated labels for PDF field names */
+    private array $labels = [];
+
     /**
      * Generate a PDF from SDS data and return the file path.
      *
@@ -41,6 +44,7 @@ class PDFService
 
         $meta = $sdsData['meta'];
         $sections = $sdsData['sections'];
+        $this->labels = $meta['labels'] ?? [];
 
         // Create PDF
         $pdf = new \TCPDF('P', 'mm', 'LETTER', true, 'UTF-8');
@@ -97,6 +101,7 @@ class PDFService
 
         $meta = $sdsData['meta'];
         $sections = $sdsData['sections'];
+        $this->labels = $meta['labels'] ?? [];
 
         $pdf = new \TCPDF('P', 'mm', 'LETTER', true, 'UTF-8');
         $pdf->SetCreator('SDS System');
@@ -175,18 +180,18 @@ class PDFService
 
     private function renderSection1(\TCPDF $pdf, array $s): void
     {
-        $this->labelValue($pdf, 'Product Identifier', $s['product_identifier'] ?? '');
-        $this->labelValue($pdf, 'Product Family', $s['product_family'] ?? '');
-        $this->labelValue($pdf, 'Recommended Use', $s['recommended_use'] ?? '');
-        $this->labelValue($pdf, 'Restrictions on Use', $s['restrictions'] ?? '');
+        $this->labelValue($pdf, $this->label('product_identifier', 'Product Identifier'), $s['product_identifier'] ?? '');
+        $this->labelValue($pdf, $this->label('product_family', 'Product Family'), $s['product_family'] ?? '');
+        $this->labelValue($pdf, $this->label('recommended_use', 'Recommended Use'), $s['recommended_use'] ?? '');
+        $this->labelValue($pdf, $this->label('restrictions', 'Restrictions on Use'), $s['restrictions'] ?? '');
         $pdf->Ln(2);
         $pdf->SetFont('helvetica', 'B', 9);
-        $pdf->Cell(0, 5, 'Manufacturer / Supplier Information', 0, 1);
+        $pdf->Cell(0, 5, $this->label('manufacturer_info', 'Manufacturer / Supplier Information'), 0, 1);
         $pdf->SetFont('helvetica', '', 9);
-        $this->labelValue($pdf, 'Company', $s['manufacturer_name'] ?? '');
-        $this->labelValue($pdf, 'Address', $s['manufacturer_address'] ?? '');
-        $this->labelValue($pdf, 'Phone', $s['manufacturer_phone'] ?? '');
-        $this->labelValue($pdf, 'Emergency', $s['emergency_phone'] ?? '');
+        $this->labelValue($pdf, $this->label('company', 'Company'), $s['manufacturer_name'] ?? '');
+        $this->labelValue($pdf, $this->label('address', 'Address'), $s['manufacturer_address'] ?? '');
+        $this->labelValue($pdf, $this->label('phone', 'Phone'), $s['manufacturer_phone'] ?? '');
+        $this->labelValue($pdf, $this->label('emergency', 'Emergency'), $s['emergency_phone'] ?? '');
     }
 
     private function renderSection2(\TCPDF $pdf, array $s): void
@@ -210,7 +215,7 @@ class PDFService
         // Hazard classes summary
         if (!empty($s['hazard_classes'])) {
             $pdf->SetFont('helvetica', 'B', 9);
-            $pdf->Cell(0, 5, 'GHS Classification:', 0, 1);
+            $pdf->Cell(0, 5, $this->label('ghs_classification', 'GHS Classification') . ':', 0, 1);
             $pdf->SetFont('helvetica', '', 8);
             $seen = [];
             foreach ($s['hazard_classes'] as $hc) {
@@ -226,7 +231,7 @@ class PDFService
         // Hazard statements
         if (!empty($s['h_statements'])) {
             $pdf->SetFont('helvetica', 'B', 9);
-            $pdf->Cell(0, 5, 'Hazard Statements:', 0, 1);
+            $pdf->Cell(0, 5, $this->label('hazard_statements', 'Hazard Statements') . ':', 0, 1);
             $pdf->SetFont('helvetica', '', 9);
             foreach ($s['h_statements'] as $stmt) {
                 $code = $stmt['code'] ?? '';
@@ -243,7 +248,7 @@ class PDFService
         // Precautionary statements
         if (!empty($s['p_statements'])) {
             $pdf->SetFont('helvetica', 'B', 9);
-            $pdf->Cell(0, 5, 'Precautionary Statements:', 0, 1);
+            $pdf->Cell(0, 5, $this->label('precautionary_statements', 'Precautionary Statements') . ':', 0, 1);
             $pdf->SetFont('helvetica', '', 9);
             foreach ($s['p_statements'] as $stmt) {
                 $code = $stmt['code'] ?? '';
@@ -263,26 +268,26 @@ class PDFService
         if ($hasPPE) {
             $pdf->Ln(1);
             $pdf->SetFont('helvetica', 'B', 9);
-            $pdf->Cell(0, 5, 'Recommended Personal Protective Equipment (PPE):', 0, 1);
+            $pdf->Cell(0, 5, $this->label('ppe_recommendations', 'Recommended Personal Protective Equipment (PPE)') . ':', 0, 1);
             $pdf->SetFont('helvetica', '', 9);
             if (!empty($ppe['respiratory'])) {
-                $pdf->MultiCell(0, 4, chr(149) . ' Respiratory: ' . $ppe['respiratory'], 0, 'L');
+                $pdf->MultiCell(0, 4, chr(149) . ' ' . $this->label('respiratory', 'Respiratory') . ': ' . $ppe['respiratory'], 0, 'L');
             }
             if (!empty($ppe['hand_protection'])) {
-                $pdf->MultiCell(0, 4, chr(149) . ' Hand Protection: ' . $ppe['hand_protection'], 0, 'L');
+                $pdf->MultiCell(0, 4, chr(149) . ' ' . $this->label('hand_protection', 'Hand Protection') . ': ' . $ppe['hand_protection'], 0, 'L');
             }
             if (!empty($ppe['eye_protection'])) {
-                $pdf->MultiCell(0, 4, chr(149) . ' Eye Protection: ' . $ppe['eye_protection'], 0, 'L');
+                $pdf->MultiCell(0, 4, chr(149) . ' ' . $this->label('eye_protection', 'Eye Protection') . ': ' . $ppe['eye_protection'], 0, 'L');
             }
             if (!empty($ppe['skin_protection'])) {
-                $pdf->MultiCell(0, 4, chr(149) . ' Skin/Body Protection: ' . $ppe['skin_protection'], 0, 'L');
+                $pdf->MultiCell(0, 4, chr(149) . ' ' . $this->label('skin_body', 'Skin/Body Protection') . ': ' . $ppe['skin_protection'], 0, 'L');
             }
         }
 
         // Other hazards
         if (!empty($s['other_hazards']) && $s['other_hazards'] !== 'None known.') {
             $pdf->Ln(1);
-            $this->labelValue($pdf, 'Other Hazards', $s['other_hazards']);
+            $this->labelValue($pdf, $this->label('other_hazards', 'Other Hazards'), $s['other_hazards']);
         }
     }
 
@@ -292,7 +297,7 @@ class PDFService
     private function renderPictogramRow(\TCPDF $pdf, array $pictogramCodes): void
     {
         $pdf->SetFont('helvetica', 'B', 9);
-        $pdf->Cell(50, 5, 'Pictograms:', 0, 0, 'L');
+        $pdf->Cell(50, 5, $this->label('pictograms', 'Pictograms') . ':', 0, 0, 'L');
         $pdf->SetFont('helvetica', '', 9);
 
         $pictoSize = 14; // mm
@@ -329,21 +334,21 @@ class PDFService
 
     private function renderSection3(\TCPDF $pdf, array $s): void
     {
-        $this->labelValue($pdf, 'Type', $s['substance_or_mixture'] ?? 'Mixture');
+        $this->labelValue($pdf, $this->label('type', 'Type'), $s['substance_or_mixture'] ?? 'Mixture');
 
         if (!empty($s['components'])) {
             $pdf->Ln(2);
             $pdf->SetFont('helvetica', 'I', 8);
-            $pdf->MultiCell(0, 4, 'Only hazardous ingredients are listed. Non-hazardous components are omitted.', 0, 'L');
+            $pdf->MultiCell(0, 4, $this->label('hazardous_only_note', 'Only hazardous ingredients are listed. Non-hazardous components are omitted.'), 0, 'L');
             $pdf->Ln(1);
 
             // Table header
             $pdf->SetFont('helvetica', 'B', 8);
             $pdf->SetFillColor(230, 230, 230);
             $w = [30, 95, 45];
-            $pdf->Cell($w[0], 5, 'CAS Number', 1, 0, 'C', true);
-            $pdf->Cell($w[1], 5, 'Chemical Name', 1, 0, 'C', true);
-            $pdf->Cell($w[2], 5, 'Concentration', 1, 1, 'C', true);
+            $pdf->Cell($w[0], 5, $this->label('cas_number', 'CAS Number'), 1, 0, 'C', true);
+            $pdf->Cell($w[1], 5, $this->label('chemical_name', 'Chemical Name'), 1, 0, 'C', true);
+            $pdf->Cell($w[2], 5, $this->label('concentration', 'Concentration'), 1, 1, 'C', true);
             $pdf->SetFont('helvetica', '', 8);
 
             foreach ($s['components'] as $comp) {
@@ -353,7 +358,7 @@ class PDFService
             }
         } else {
             $pdf->SetFont('helvetica', 'I', 8);
-            $pdf->MultiCell(0, 4, 'No hazardous ingredients above disclosure thresholds.', 0, 'L');
+            $pdf->MultiCell(0, 4, $this->label('no_hazardous_note', 'No hazardous ingredients above disclosure thresholds.'), 0, 'L');
         }
 
         if (!empty($s['trade_secret_note'])) {
@@ -388,11 +393,11 @@ class PDFService
             $pdf->Ln(2);
         }
 
-        $this->labelValue($pdf, 'Engineering Controls', $s['engineering'] ?? '');
-        $this->labelValue($pdf, 'Respiratory Protection', $s['respiratory'] ?? '');
-        $this->labelValue($pdf, 'Hand Protection', $s['hand_protection'] ?? '');
-        $this->labelValue($pdf, 'Eye Protection', $s['eye_protection'] ?? '');
-        $this->labelValue($pdf, 'Skin Protection', $s['skin_protection'] ?? '');
+        $this->labelValue($pdf, $this->label('engineering_controls', 'Engineering Controls'), $s['engineering'] ?? '');
+        $this->labelValue($pdf, $this->label('respiratory_protection', 'Respiratory Protection'), $s['respiratory'] ?? '');
+        $this->labelValue($pdf, $this->label('hand_protection', 'Hand Protection'), $s['hand_protection'] ?? '');
+        $this->labelValue($pdf, $this->label('eye_protection', 'Eye Protection'), $s['eye_protection'] ?? '');
+        $this->labelValue($pdf, $this->label('skin_protection', 'Skin Protection'), $s['skin_protection'] ?? '');
     }
 
     private function renderSection9(\TCPDF $pdf, array $s): void
@@ -560,6 +565,14 @@ class PDFService
     }
 
     /**
+     * Get a translated label, falling back to the provided default.
+     */
+    private function label(string $key, string $default = ''): string
+    {
+        return $this->labels[$key] ?? ($default ?: $key);
+    }
+
+    /**
      * Render a bold label + normal value line.
      */
     private function labelValue(\TCPDF $pdf, string $label, string $value): void
@@ -602,7 +615,7 @@ class PDFService
         $pdf->SetFont('helvetica', 'B', 10);
         $pdf->SetFillColor(0, 51, 102);
         $pdf->SetTextColor(255, 255, 255);
-        $pdf->Cell(0, 7, 'DISCLAIMER', 0, 1, 'L', true);
+        $pdf->Cell(0, 7, $this->label('disclaimer', 'DISCLAIMER'), 0, 1, 'L', true);
         $pdf->SetTextColor(0, 0, 0);
         $pdf->Ln(2);
 

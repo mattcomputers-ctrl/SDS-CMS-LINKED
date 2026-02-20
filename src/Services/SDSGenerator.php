@@ -108,6 +108,7 @@ class SDSGenerator
                 'generated_at'     => gmdate('Y-m-d\TH:i:s\Z'),
                 'formula_version'  => $calcResult['formula']['version'] ?? null,
                 'company_logo_path' => $company['logo_path'] ?? '',
+                'labels'           => $this->getLabels(),
             ],
             'sections' => [
                 1  => $this->section1($fg, $company, $overrides),
@@ -519,6 +520,30 @@ class SDSGenerator
             return "{$low} - {$high}%";
         }
         return '< 1%';
+    }
+
+    /**
+     * Get translated labels for PDF and preview rendering.
+     */
+    private function getLabels(): array
+    {
+        $keys = [
+            'product_identifier', 'product_family', 'recommended_use', 'restrictions',
+            'manufacturer_info', 'company', 'address', 'phone', 'emergency',
+            'pictograms', 'ghs_classification', 'hazard_statements',
+            'precautionary_statements', 'ppe_recommendations', 'other_hazards',
+            'type', 'cas_number', 'chemical_name', 'concentration',
+            'hazardous_only_note', 'no_hazardous_note',
+            'engineering_controls', 'respiratory_protection', 'hand_protection',
+            'eye_protection', 'skin_protection', 'respiratory', 'skin_body',
+            'disclaimer',
+        ];
+
+        $labels = [];
+        foreach ($keys as $key) {
+            $labels[$key] = $this->t->get('labels.' . $key);
+        }
+        return $labels;
     }
 
     private function hasTradeSecrets(array $composition): bool

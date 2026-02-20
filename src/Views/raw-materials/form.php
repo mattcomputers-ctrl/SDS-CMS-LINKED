@@ -6,7 +6,7 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
 ?>
 
 <div class="card">
-    <form method="POST" action="<?= $action ?>">
+    <form method="POST" action="<?= $action ?>" enctype="multipart/form-data">
         <?= csrf_field() ?>
         <?php if ($isEdit): ?>
             <input type="hidden" name="updated_at" value="<?= e($item['updated_at'] ?? '') ?>">
@@ -27,6 +27,21 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                 <label for="supplier_product_name">Supplier Product Name</label>
                 <input type="text" id="supplier_product_name" name="supplier_product_name"
                        value="<?= e(old('supplier_product_name', $item['supplier_product_name'] ?? '')) ?>">
+            </div>
+
+            <div class="form-group full-width">
+                <label for="supplier_sds">Supplier SDS (PDF)</label>
+                <?php if ($isEdit && !empty($item['supplier_sds_path'])): ?>
+                    <div style="margin-bottom: 0.5rem; padding: 0.5rem; background: #f0f4f8; border-radius: 4px;">
+                        <a href="/raw-materials/<?= (int) $item['id'] ?>/sds" target="_blank" class="btn btn-sm">View Current SDS</a>
+                        <span class="text-muted" style="margin-left: 0.5rem;"><?= e(basename($item['supplier_sds_path'])) ?></span>
+                        <label style="margin-left: 1rem; font-weight: normal;">
+                            <input type="checkbox" name="remove_sds" value="1"> Remove SDS
+                        </label>
+                    </div>
+                <?php endif; ?>
+                <input type="file" id="supplier_sds" name="supplier_sds" accept=".pdf,application/pdf">
+                <small class="text-muted">Upload the supplier's Safety Data Sheet (PDF, max 20 MB). This replaces any existing SDS.</small>
             </div>
 
             <div class="form-group">

@@ -107,11 +107,27 @@ function old(string $key, string $default = ''): string
  */
 function url(string $path = ''): string
 {
-    $base = rtrim(\SDS\Core\App::config('app.url', ''), '/');
-    if ($path === '' || $path === '/') {
-        return $base . '/';
+    // Check for admin-configured server URL override, with one-time cache
+    static $cachedBase = null;
+    if ($cachedBase === null) {
+        try {
+            $db = \SDS\Core\Database::getInstance();
+            $row = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'app.server_url'");
+            if ($row && !empty(trim($row['value']))) {
+                $cachedBase = rtrim(trim($row['value']), '/');
+            }
+        } catch (\Throwable $e) {
+            // DB not available yet (e.g. during install), fall through
+        }
+        if ($cachedBase === null) {
+            $cachedBase = rtrim(\SDS\Core\App::config('app.url', ''), '/');
+        }
     }
-    return $base . '/' . ltrim($path, '/');
+
+    if ($path === '' || $path === '/') {
+        return $cachedBase . '/';
+    }
+    return $cachedBase . '/' . ltrim($path, '/');
 }
 
 /**

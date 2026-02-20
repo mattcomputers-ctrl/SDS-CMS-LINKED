@@ -1,0 +1,367 @@
+cas_number,un_number,proper_shipping_name,hazard_class,packing_group
+75-07-0,UN1089,Acetaldehyde,3,I
+64-19-7,UN2789,Acetic acid glacial,8(3),II
+108-24-7,UN1715,Acetic anhydride,8(3),II
+67-64-1,UN1090,Acetone,3,II
+75-05-8,UN1648,Acetonitrile,3,II
+79-06-1,UN2074,Acrylamide solution,6.1,III
+79-10-7,UN2218,Acrylic acid stabilized,8(3),II
+107-13-1,UN1093,Acrylonitrile stabilized,3(6.1),I
+107-02-8,UN1092,Acrolein stabilized,6.1(3),I
+107-18-6,UN1098,Allyl alcohol,6.1(3),I
+7664-41-7,UN2672,Ammonia solutions,8,III
+62-53-3,UN1547,Aniline,6.1,II
+7440-38-2,UN1558,Arsenic,6.1,II
+71-43-2,UN1114,Benzene,3,II
+100-44-7,UN1738,Benzyl chloride,6.1(8),II
+7726-95-6,UN1744,Bromine,8(6.1),I
+106-99-0,UN1010,Butadienes stabilized,2.1,
+71-36-3,UN1120,Butanols,3,II
+123-86-4,UN1123,Butyl acetates,3,II
+75-15-0,UN1131,Carbon disulfide,3(6.1),I
+56-23-5,UN1846,Carbon tetrachloride,6.1,II
+630-08-0,UN1016,Carbon monoxide compressed,2.3(2.1),
+7782-50-5,UN1017,Chlorine,2.3(8),
+67-66-3,UN1888,Chloroform,6.1,III
+74-87-3,UN1063,Methyl chloride,2.1,
+107-07-3,UN1135,Ethylene chlorohydrin,6.1(3),I
+74-97-5,UN1887,Bromochloromethane,6.1,III
+98-82-8,UN1918,Cumene,3,III
+110-82-7,UN1145,Cyclohexane,3,II
+108-93-0,UN1986,Flammable liquid n.o.s. (cyclohexanol),3,III
+108-94-1,UN1915,Cyclohexanone,3,III
+75-09-2,UN1593,Dichloromethane,6.1,III
+107-06-2,UN1184,Ethylene dichloride,3(6.1),II
+111-42-2,UN3259,Amines solid corrosive n.o.s.,8,III
+60-29-7,UN1155,Diethyl ether,3,I
+68-12-2,UN2265,N-N-Dimethylformamide,3,III
+123-91-1,UN1165,Dioxane,3,II
+106-89-8,UN2023,Epichlorohydrin,6.1(3),II
+64-17-5,UN1170,Ethanol,3,II
+141-78-6,UN1173,Ethyl acetate,3,II
+100-41-4,UN1175,Ethylbenzene,3,II
+75-04-7,UN1036,Ethylamine,2.1,
+107-21-1,UN3082,Environmentally hazardous substance liquid n.o.s.,9,III
+75-21-8,UN1040,Ethylene oxide,2.3(2.1),
+50-00-0,UN2209,Formaldehyde solutions,8,III
+98-01-1,UN1199,Furfural,6.1(3),II
+56-81-5,UN3082,Environmentally hazardous substance liquid n.o.s.,9,III
+111-30-8,UN2922,Corrosive liquid toxic n.o.s.,8(6.1),II
+110-54-3,UN1208,Hexanes,3,II
+302-01-2,UN2029,Hydrazine anhydrous,8(3/6.1),I
+7647-01-0,UN1789,Hydrochloric acid,8,II
+74-90-8,UN1051,Hydrogen cyanide stabilized,6.1(3),I
+7664-39-3,UN1790,Hydrofluoric acid,8(6.1),II
+7722-84-1,UN2015,Hydrogen peroxide stabilized,5.1(8),II
+7783-06-4,UN1053,Hydrogen sulfide,2.3(2.1),
+67-63-0,UN1219,Isopropanol,3,II
+78-59-1,UN1224,Ketones liquid n.o.s.,3,III
+7439-92-1,UN3077,Environmentally hazardous substance solid n.o.s.,9,III
+7439-96-5,UN3077,Environmentally hazardous substance solid n.o.s.,9,III
+7439-97-6,UN2809,Mercury,8,III
+67-56-1,UN1230,Methanol,3(6.1),II
+74-83-9,UN1062,Methyl bromide,2.3,
+74-88-4,UN2644,Methyl iodide,6.1,I
+78-93-3,UN1193,Methyl ethyl ketone,3,II
+108-10-1,UN1245,Methyl isobutyl ketone,3,II
+80-62-6,UN1247,Methyl methacrylate monomer stabilized,3,II
+91-20-3,UN1334,Naphthalene crude,4.1,III
+7697-37-2,UN2031,Nitric acid,8(5.1),II
+7440-02-0,UN3089,Metal powder flammable n.o.s.,4.1,II
+98-95-3,UN1662,Nitrobenzene,6.1,II
+55-63-0,UN0143,Nitroglycerin desensitized,1.1D,
+109-66-0,UN1265,Pentanes,3,I
+87-86-5,UN3155,Pentachlorophenol,6.1,II
+108-95-2,UN2312,Phenol molten,6.1,II
+7664-38-2,UN1805,Phosphoric acid solution,8,III
+7723-14-0,UN1381,Phosphorus yellow,4.2(6.1),I
+85-44-9,UN2214,Phthalic anhydride,8,III
+75-56-9,UN1280,Propylene oxide,3,I
+110-86-1,UN1282,Pyridine,3,II
+100-42-5,UN2055,Styrene monomer stabilized,3,III
+7664-93-9,UN1830,Sulfuric acid,8,II
+7446-09-5,UN1079,Sulfur dioxide,2.3(8),
+127-18-4,UN1897,Tetrachloroethylene,6.1,III
+7550-45-0,UN1838,Titanium tetrachloride,8,I
+584-84-9,UN2078,Toluene diisocyanate,6.1,II
+108-88-3,UN1294,Toluene,3,II
+79-01-6,UN1710,Trichloroethylene,6.1,III
+71-55-6,UN2831,1-1-1-Trichloroethane,6.1,III
+121-44-8,UN1296,Triethylamine,3(8),I
+108-05-4,UN1301,Vinyl acetate stabilized,3,II
+75-01-4,UN1086,Vinyl chloride stabilized,2.1,
+1330-20-7,UN1307,Xylenes,3,II
+7782-41-4,UN1045,Fluorine compressed,2.3(5.1/8),
+7553-56-2,UN3495,Iodine,8,III
+1310-73-2,UN1824,Sodium hydroxide solution,8,II
+7681-49-4,UN1690,Sodium fluoride,6.1,III
+75-44-5,UN1076,Phosgene,2.3(8),
+7803-51-2,UN2199,Phosphine,2.3(2.1),
+10102-44-0,UN1067,Dinitrogen tetroxide,2.3(5.1/8),
+7440-48-4,UN3077,Environmentally hazardous substance solid n.o.s.,9,III
+7440-43-9,UN2570,Cadmium compound,6.1,
+57-74-9,UN2762,Organochlorine pesticide liquid,6.1,II
+76-44-8,UN2761,Organochlorine pesticide solid toxic,6.1,III
+309-00-2,UN2762,Organochlorine pesticide liquid toxic,6.1,II
+56-38-2,UN3018,Organophosphorus pesticide liquid toxic,6.1,I
+121-75-5,UN3018,Organophosphorus pesticide liquid toxic,6.1,III
+107-49-3,UN3018,TEPP,6.1,I
+75-65-0,UN1120,Butanols,3,II
+78-92-2,UN1120,Butanols,3,II
+109-89-7,UN1154,Diethylamine,3(8),II
+75-45-6,UN1018,Chlorodifluoromethane,2.2,
+124-38-9,UN1013,Carbon dioxide,2.2,
+74-85-1,UN1038,Ethylene compressed,2.1,
+115-07-1,UN1077,Propylene,2.1,
+7440-23-5,UN1428,Sodium,4.3,I
+7440-09-7,UN2257,Potassium,4.3,I
+75-35-4,UN1303,Vinylidene chloride stabilized,3,I
+106-93-4,UN1605,Ethylene dibromide,6.1,I
+96-12-8,UN2872,Dibromochloropropane,6.1,II
+540-59-0,UN1150,1-2-Dichloroethylene,3,II
+78-87-5,UN1279,1-2-Dichloropropane,3,II
+95-50-1,UN1591,o-Dichlorobenzene,6.1,III
+106-46-7,UN1592,p-Dichlorobenzene,6.1,III
+120-82-1,UN2321,Trichlorobenzenes liquid,6.1,III
+542-88-1,UN2249,bis(Chloromethyl) ether,6.1(3),I
+151-56-4,UN1185,Ethyleneimine stabilized,6.1(3),I
+75-55-8,UN1921,Propyleneimine stabilized,3(6.1),I
+57-14-7,UN1163,Dimethylhydrazine unsymmetrical,6.1(3/8),I
+79-22-1,UN1238,Methyl chloroformate,6.1(3/8),I
+79-44-7,UN2927,Toxic liquid corrosive organic n.o.s.,6.1(8),II
+107-30-2,UN1239,Chloromethyl methyl ether,6.1(3),I
+109-86-4,UN1188,Methoxyethanol,3(6.1),III
+110-80-5,UN1171,Ethylene glycol monoethyl ether,3,III
+111-76-2,UN2369,Ethylene glycol monobutyl ether,6.1,III
+110-49-6,UN1189,Ethylene glycol monomethyl ether acetate,3,III
+84-74-2,UN3082,Environmentally hazardous substance liquid n.o.s.,9,III
+117-81-7,UN3082,Environmentally hazardous substance liquid n.o.s.,9,III
+79-34-5,UN1702,1-1-2-2-Tetrachloroethane,6.1,II
+79-00-5,UN2831,1-1-2-Trichloroethane,6.1,III
+75-69-4,UN1078,Refrigerant gas n.o.s.,2.2,
+67-68-5,UN1993,Flammable liquid n.o.s. (DMSO),3,III
+1305-78-8,UN1910,Calcium oxide,8,III
+10025-87-3,UN1810,Phosphorus oxychloride,8(6.1),I
+7719-12-2,UN1809,Phosphorus trichloride,6.1(8),I
+88-89-1,UN0154,Picric acid dry,1.1D,I
+7440-50-8,UN3077,Environmentally hazardous substance solid n.o.s.,9,III
+7440-66-6,UN3077,Environmentally hazardous substance solid n.o.s.,9,III
+132-64-9,UN3082,Environmentally hazardous substance liquid n.o.s.,9,III
+62-75-9,UN1955,Compressed gas toxic n.o.s.,2.3,
+1305-62-0,UN3262,Corrosive solid basic inorganic n.o.s.,8,III
+101-68-8,UN2489,Diphenylmethane diisocyanate,6.1,III
+10102-43-9,UN1660,Nitric oxide compressed,2.3(5.1/8),
+79-21-0,UN3107,Organic peroxide type E liquid,5.2,
+7440-36-0,UN2871,Antimony powder,6.1,III
+7440-41-7,UN1566,Beryllium compound n.o.s.,6.1,II
+540-73-8,UN2382,Dimethylhydrazine symmetrical,6.1(3/8),I
+74-98-6,UN1978,Propane,2.1,
+106-97-8,UN1011,Butane,2.1,
+75-28-5,UN1969,Isobutane,2.1,
+1333-74-0,UN1049,Hydrogen compressed,2.1,
+74-82-8,UN1971,Methane compressed,2.1,
+74-86-2,UN1001,Acetylene dissolved,2.1,
+68476-85-7,UN1075,Liquefied petroleum gas,2.1,
+75-37-6,UN1030,1-1-Difluoroethane,2.1,
+115-10-6,UN1033,Dimethyl ether,2.1,
+7727-37-9,UN1066,Nitrogen compressed,2.2,
+7440-37-1,UN1006,Argon compressed,2.2,
+7440-59-7,UN1046,Helium compressed,2.2,
+7439-90-9,UN1056,Krypton compressed,2.2,
+7440-01-9,UN1065,Neon compressed,2.2,
+2551-62-4,UN1080,Sulfur hexafluoride,2.2,
+7732-18-5,UN1073,Oxygen refrigerated liquid,2.2(5.1),
+10024-97-2,UN2201,Nitrous oxide refrigerated liquid,2.2(5.1),
+10028-15-6,UN1085,Vinyl bromide,2.1,
+74-84-0,UN1035,Ethane compressed,2.1,
+463-82-1,UN1265,Pentanes,3,I
+96-37-7,UN2298,Methylcyclopentane,3,II
+110-83-8,UN2256,Cyclohexene,3,II
+142-82-5,UN1206,Heptanes,3,II
+111-65-9,UN1262,Octanes,3,II
+540-84-1,UN1265,Pentanes,3,I
+1120-21-4,UN2286,Pentamethylheptane,3,III
+91-57-6,UN1993,Flammable liquid n.o.s. (2-methylnaphthalene),3,III
+71-23-8,UN1274,n-Propanol,3,II
+78-83-1,UN1212,Isobutanol,3,III
+71-41-0,UN1105,Pentanols,3,II
+111-27-3,UN2282,Hexanols,3,III
+123-51-3,UN1105,Pentanols,3,II
+97-64-3,UN1272,Ethyl lactate,3,III
+109-60-4,UN1276,n-Propyl acetate,3,II
+108-21-4,UN1220,Isopropyl acetate,3,II
+123-92-2,UN1104,Amyl acetates,3,III
+109-94-4,UN1190,Ethyl formate,3,II
+107-31-3,UN1243,Methyl formate,2.1,
+96-33-3,UN1919,Methyl acrylate stabilized,3,II
+97-63-2,UN2277,Ethyl methacrylate stabilized,3,II
+140-88-5,UN1917,Ethyl acrylate stabilized,3,II
+142-92-7,UN1233,Hexyl acetates,3,III
+78-84-2,UN2045,Isobutyraldehyde,3,II
+123-72-8,UN1129,Butyraldehyde,3,II
+110-62-3,UN2058,Valeraldehyde,3,II
+66-25-1,UN1993,Flammable liquid n.o.s. (hexanal),3,III
+115-11-7,UN1055,Isobutylene,2.1,
+96-09-3,UN2810,Toxic liquid organic n.o.s. (styrene oxide),6.1,III
+57-55-6,UN1993,Flammable liquid n.o.s. (propylene glycol),3,III
+111-46-6,UN3082,Environmentally hazardous substance liquid n.o.s. (diethylene glycol),9,III
+108-20-3,UN1159,Diisopropyl ether,3,II
+109-99-9,UN2056,Tetrahydrofuran,3,II
+110-00-9,UN2389,Furan,3,I
+96-47-9,UN2536,Methyltetrahydrofuran,3,II
+142-96-1,UN1149,Dibutyl ethers,3,III
+60-35-5,UN3082,Environmentally hazardous substance liquid n.o.s. (acetamide),9,III
+8052-41-3,UN1256,Stoddard solvent,3,III
+64742-89-8,UN1268,Petroleum distillates n.o.s.,3,II
+8030-30-6,UN1255,Petroleum naphtha,3,II
+8006-61-9,UN1203,Gasoline,3,II
+68476-34-6,UN1202,Diesel fuel,3,III
+68334-30-5,UN1202,Gas oil,3,III
+64742-95-6,UN1268,Petroleum distillates n.o.s. (heavy aromatic naphtha),3,III
+7664-41-7,UN1005,Anhydrous ammonia,2.3(8),
+1336-21-6,UN2672,Ammonia solutions,8,III
+7647-01-0,UN1050,Hydrogen chloride anhydrous,2.3(8),
+7681-52-9,UN1791,Hypochlorite solutions,8,III
+10043-01-3,UN1760,Corrosive liquid n.o.s. (aluminum sulfate solution),8,III
+7790-94-5,UN1754,Chlorosulfonic acid,8,I
+7719-09-7,UN1836,Thionyl chloride,8(6.1),I
+7783-60-0,UN2418,Sulfur tetrafluoride,2.3(8),
+7789-23-3,UN3082,Environmentally hazardous substance liquid n.o.s. (potassium fluoride solution),9,III
+76-06-2,UN1580,Chloropicrin,6.1,I
+151-50-8,UN1680,Potassium cyanide,6.1,I
+143-33-9,UN1689,Sodium cyanide,6.1,I
+460-19-5,UN1026,Cyanogen,2.3(2.1),
+506-77-4,UN1589,Cyanogen chloride stabilized,2.3(8),
+110-00-9,UN2389,Furan,3,I
+62-73-7,UN3018,Organophosphorus pesticide liquid toxic,6.1,III
+2921-88-2,UN3018,Organophosphorus pesticide liquid toxic (chlorpyrifos),6.1,III
+333-41-5,UN3018,Organophosphorus pesticide liquid toxic (diazinon),6.1,III
+298-00-0,UN3018,Organophosphorus pesticide liquid toxic (methyl parathion),6.1,I
+63-25-2,UN2757,Carbamate pesticide solid toxic,6.1,II
+1563-66-2,UN2757,Carbamate pesticide solid toxic (carbofuran),6.1,I
+116-06-3,UN2757,Carbamate pesticide solid toxic (aldicarb),6.1,I
+1912-24-9,UN2763,Triazine pesticide solid toxic,6.1,III
+51235-04-2,UN2588,Pesticide solid toxic n.o.s. (hexazinone),6.1,III
+1314-80-3,UN1340,Phosphorus pentasulfide,4.3(4.1),II
+7681-57-4,UN1486,Potassium nitrate,5.1,III
+7757-79-1,UN1486,Potassium nitrate,5.1,III
+7631-99-4,UN1500,Sodium nitrate,5.1,III
+10124-37-5,UN1454,Calcium nitrate,5.1,III
+6484-52-2,UN1942,Ammonium nitrate,5.1,III
+7722-64-7,UN1490,Potassium permanganate,5.1,II
+7778-50-9,UN3086,Toxic solid oxidizing n.o.s. (potassium dichromate),6.1(5.1),II
+7789-09-5,UN1463,Chromium trioxide anhydrous,5.1(6.1/8),II
+7778-54-3,UN2208,Calcium hypochlorite mixture dry,5.1,II
+7775-27-1,UN1505,Sodium persulfate,5.1,III
+7727-21-1,UN1492,Potassium persulfate,5.1,III
+7632-00-0,UN1500,Sodium nitrite,5.1,III
+7783-00-8,UN2630,Selenates,6.1,I
+7789-00-6,UN3087,Oxidizing solid toxic n.o.s. (potassium chromate),5.1(6.1),II
+7440-21-3,UN1346,Silicon powder amorphous,4.1,III
+7704-34-9,UN1350,Sulfur,4.1,III
+7439-93-2,UN1415,Lithium,4.3,I
+7440-70-2,UN1401,Calcium,4.3,II
+7429-90-5,UN1396,Aluminum powder uncoated,4.3,II
+7580-67-8,UN2805,Lithium hydride,4.3,I
+7646-69-7,UN1427,Sodium hydride,4.3,I
+7789-78-8,UN2463,Aluminum hydride,4.3,I
+12125-02-9,UN1444,Ammonium persulfate,5.1,III
+7784-42-1,UN2188,Arsine,2.3(2.1),
+94-36-0,UN3102,Organic peroxide type B solid,5.2,
+75-91-2,UN3103,Organic peroxide type C liquid,5.2,II
+80-15-9,UN3104,Organic peroxide type C liquid,5.2,
+105-74-8,UN3114,Organic peroxide type C solid,5.2,
+614-45-9,UN3103,Organic peroxide type C liquid,5.2,
+3006-86-8,UN3105,Organic peroxide type D liquid,5.2,
+1338-23-4,UN3101,Organic peroxide type B liquid,5.2,
+110-05-4,UN3107,Organic peroxide type E liquid,5.2,
+1310-58-3,UN1814,Potassium hydroxide solution,8,II
+7558-79-4,UN1760,Corrosive liquid n.o.s. (disodium phosphate solution),8,III
+64-18-6,UN1779,Formic acid,8(3),II
+79-09-4,UN3463,Propionic acid,8(3),II
+144-62-7,UN3261,Corrosive solid acidic organic n.o.s. (oxalic acid),8,III
+79-43-6,UN1764,Dichloroacetic acid,8(6.1),II
+76-03-9,UN2564,Trichloroacetic acid solution,8,III
+7646-85-7,UN2331,Zinc chloride anhydrous,8,III
+7783-20-2,UN3077,Environmentally hazardous substance solid n.o.s. (ammonium sulfate),9,III
+7601-54-9,UN3262,Corrosive solid basic inorganic n.o.s. (trisodium phosphate),8,III
+1333-82-0,UN1463,Chromium trioxide anhydrous,5.1(6.1/8),II
+7681-38-1,UN2509,Potassium hydrogen sulfate,8,II
+10043-52-4,UN1454,Calcium nitrate,5.1,III
+7758-19-2,UN1496,Sodium chlorite,5.1,II
+7681-11-0,UN1479,Oxidizing solid n.o.s. (potassium iodate),5.1,II
+7601-89-0,UN1502,Sodium perchlorate,5.1,II
+7791-03-9,UN1475,Lithium perchlorate,5.1,II
+10034-81-8,UN1475,Magnesium perchlorate,5.1,II
+7778-74-7,UN1489,Potassium perchlorate,5.1,II
+7790-98-9,UN1442,Ammonium perchlorate,5.1,II
+7440-44-0,UN1362,Carbon activated,4.2,III
+75-52-5,UN1261,Nitromethane,3,II
+79-24-3,UN2842,Nitroethane,3,III
+108-03-2,UN2608,Nitropropanes,3,III
+77-78-1,UN1595,Dimethyl sulfate,6.1(8),I
+126-73-8,UN3082,Environmentally hazardous substance liquid n.o.s. (tributyl phosphate),9,III
+7664-93-9,UN1831,Sulfuric acid fuming,8(6.1),I
+1344-28-1,UN1382,Potassium sulfide anhydrous,4.2,II
+7783-06-4,UN2600,Carbon monoxide and hydrogen mixture compressed,2.3(2.1),
+75-50-3,UN1083,Trimethylamine anhydrous,2.1,
+124-40-3,UN1032,Dimethylamine anhydrous,2.1,
+107-31-3,UN1243,Methyl formate,2.1,
+109-95-5,UN1194,Ethyl nitrite solutions,3(6.1),I
+110-71-4,UN2252,1-2-Dimethoxyethane,3,II
+96-18-4,UN2504,Tetrabromoethane,6.1,III
+118-96-7,UN0209,TNT dry,1.1D,II
+99-08-1,UN1664,Nitrotoluenes liquid,6.1,II
+88-72-2,UN1664,Nitrotoluenes liquid,6.1,II
+100-00-5,UN1578,Chloronitrobenzenes solid,6.1,II
+95-57-8,UN2020,Chlorophenols solid,6.1,III
+88-06-2,UN2020,Chlorophenols solid (2-4-6-trichlorophenol),6.1,III
+106-47-8,UN2018,Chloroanilines solid,6.1,II
+91-58-7,UN3082,Environmentally hazardous substance liquid n.o.s. (2-chloronaphthalene),9,III
+95-48-7,UN2076,Cresols liquid,6.1(8),II
+85-68-7,UN3082,Environmentally hazardous substance liquid n.o.s. (butyl benzyl phthalate),9,III
+120-12-7,UN3082,Environmentally hazardous substance liquid n.o.s. (anthracene),9,III
+122-39-4,UN3077,Environmentally hazardous substance solid n.o.s. (diphenylamine),9,III
+101-14-4,UN2651,4-4-Diaminodiphenylmethane,6.1,III
+91-94-1,UN3077,Environmentally hazardous substance solid n.o.s. (3-3-dichlorobenzidine),9,III
+7789-06-2,UN3288,Toxic solid inorganic n.o.s. (strontium chromate),6.1,III
+13463-67-7,UN3077,Environmentally hazardous substance solid n.o.s. (titanium dioxide),9,III
+1332-21-4,UN2212,Blue asbestos,9,II
+7782-49-2,UN2658,Selenium powder,6.1,II
+7440-22-4,UN3077,Environmentally hazardous substance solid n.o.s. (silver),9,III
+100-02-7,UN1663,Nitrophenols,6.1,III
+534-52-1,UN1598,Dinitro-o-cresol,6.1,II
+131-89-5,UN3077,Environmentally hazardous substance solid n.o.s. (2-cyclohexyl-4-6-dinitrophenol),9,III
+7440-28-0,UN1707,Thallium compounds n.o.s.,6.1,II
+1314-62-1,UN2862,Vanadium pentoxide,6.1,III
+7440-62-2,UN2862,Vanadium pentoxide,6.1,III
+7440-47-3,UN3077,Environmentally hazardous substance solid n.o.s. (chromium),9,III
+13530-65-9,UN3288,Toxic solid inorganic n.o.s. (zinc chromate),6.1,II
+100-37-8,UN2686,2-Diethylaminoethanol,8(3),II
+110-91-8,UN2054,Morpholine,8(3),I
+126-33-0,UN3082,Environmentally hazardous substance liquid n.o.s. (sulfolane),9,III
+98-00-0,UN2874,Furfuryl alcohol,6.1,III
+108-11-2,UN2053,Methyl isobutyl carbinol,3,III
+119-36-8,UN3082,Environmentally hazardous substance liquid n.o.s. (methyl salicylate),9,III
+7803-49-8,UN2818,Ammonium polysulfide solution,8(6.1),II
+1314-56-3,UN1807,Phosphorus pentoxide,8,II
+10026-13-8,UN1806,Phosphorus pentachloride,8,II
+7646-93-7,UN2509,Potassium hydrogen sulfate,8,II
+7784-18-1,UN1727,Ammonium hydrogen fluoride solid,8(6.1),II
+12125-01-8,UN2817,Ammonium hydrogen fluoride solution,8(6.1),II
+10294-34-5,UN1741,Boron trichloride,2.3(8),
+7637-07-2,UN1008,Boron trifluoride,2.3(8),
+7782-65-2,UN2192,Germane,2.3(2.1),
+10035-10-6,UN1048,Hydrogen bromide anhydrous,2.3(8),
+7783-07-5,UN2202,Hydrogen selenide anhydrous,2.3(2.1),
+76-13-1,UN1078,Refrigerant gas n.o.s. (CFC-113),2.2,
+811-97-2,UN3159,1-1-1-2-Tetrafluoroethane,2.2,
+75-10-5,UN3252,Difluoromethane,2.1,
+306-83-2,UN1078,Refrigerant gas n.o.s. (HCFC-123),2.2,
+7782-79-8,UN3164,Articles pressurized pneumatic,2.2,
+124-73-2,UN1009,Bromotrifluoromethane,2.2,
+75-63-8,UN1009,Bromotrifluoromethane,2.2,
+354-33-6,UN3220,Pentafluoroethane,2.2,
+420-46-2,UN2035,1-1-1-Trifluoroethane,2.1,
+7803-62-5,UN2203,Silane compressed,2.1(2.3),
+76-14-2,UN1958,1-2-Dichlorotetrafluoroethane,2.2,

@@ -128,18 +128,27 @@ class DOTConnector implements FederalDataInterface
             }
 
             try {
-                // Upsert: delete old, insert new
-                $this->db->delete('dot_transport_info', 'cas_number = ?', [$cas]);
-
-                $this->db->insert('dot_transport_info', [
-                    'cas_number'           => $cas,
+                $data = [
                     'un_number'            => trim($row[1] ?? '') ?: null,
                     'proper_shipping_name' => trim($row[2] ?? '') ?: null,
                     'hazard_class'         => trim($row[3] ?? '') ?: null,
                     'packing_group'        => trim($row[4] ?? '') ?: null,
                     'source_ref'           => '49 CFR 172.101',
                     'retrieved_at'         => gmdate('Y-m-d H:i:s'),
-                ]);
+                ];
+
+                // Non-destructive upsert: update if exists, insert if new
+                $existing = $this->db->fetch(
+                    "SELECT id FROM dot_transport_info WHERE cas_number = ?",
+                    [$cas]
+                );
+
+                if ($existing) {
+                    $this->db->update('dot_transport_info', $data, 'cas_number = ?', [$cas]);
+                } else {
+                    $data['cas_number'] = $cas;
+                    $this->db->insert('dot_transport_info', $data);
+                }
 
                 $imported++;
             } catch (\Throwable $e) {

@@ -548,9 +548,37 @@ URLEOF
 print_success "Server URL saved (changeable later in Admin > Settings)."
 
 # ============================================================
-# Step 7: Configure Apache
+# Step 7: Load Federal Regulatory Seed Data
 # ============================================================
-print_header "Step 7: Configuring Apache"
+print_header "Step 7: Loading Federal Regulatory Data"
+
+print_step "Loading pre-packaged seed data (Prop 65, IARC/NTP/OSHA, SARA 313, NIOSH, EPA, DOT)..."
+print_info "This provides a comprehensive regulatory baseline for all known chemicals."
+
+cd "$INSTALL_DIR"
+if [ -f "$INSTALL_DIR/scripts/load-seed-data.php" ]; then
+    COMPOSER_ALLOW_SUPERUSER=1 php "$INSTALL_DIR/scripts/load-seed-data.php" 2>&1 | while IFS= read -r line; do
+        echo "  $line"
+    done
+    print_success "Seed data loaded."
+else
+    print_warn "Seed data loader not found. Skipping."
+fi
+
+print_step "Attempting live data refresh from federal sources..."
+print_info "If any source is unreachable, the pre-loaded seed data will be preserved."
+
+if [ -f "$INSTALL_DIR/scripts/refresh-federal-data.php" ]; then
+    COMPOSER_ALLOW_SUPERUSER=1 php "$INSTALL_DIR/scripts/refresh-federal-data.php" --quiet 2>&1 || true
+    print_success "Live data refresh complete (check Admin > Data Sources for status)."
+else
+    print_warn "Refresh script not found. Skipping live update."
+fi
+
+# ============================================================
+# Step 8: Configure Apache
+# ============================================================
+print_header "Step 8: Configuring Apache"
 
 APACHE_CONF="/etc/apache2/sites-available/sds-system.conf"
 
@@ -607,9 +635,9 @@ systemctl restart apache2
 print_success "Apache configured and restarted."
 
 # ============================================================
-# Step 8: Firewall (UFW)
+# Step 9: Firewall (UFW)
 # ============================================================
-print_header "Step 8: Firewall Configuration"
+print_header "Step 9: Firewall Configuration"
 
 if command -v ufw &> /dev/null; then
     print_step "Configuring UFW firewall..."
@@ -628,9 +656,9 @@ else
 fi
 
 # ============================================================
-# Step 9: Final checks
+# Step 10: Final checks
 # ============================================================
-print_header "Step 9: Final Verification"
+print_header "Step 10: Final Verification"
 
 ERRORS=0
 

@@ -1,0 +1,558 @@
+cas_number,chemical_name,agency,classification,description
+71-43-2,Benzene,IARC,Group 1,Causes acute myeloid leukemia and other hematological malignancies
+71-43-2,Benzene,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+71-43-2,Benzene,OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1028
+50-00-0,Formaldehyde,IARC,Group 1,Causes nasopharyngeal cancer and leukemia
+50-00-0,Formaldehyde,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+50-00-0,Formaldehyde,OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1048
+75-01-4,Vinyl chloride,IARC,Group 1,Causes hepatic angiosarcoma and hepatocellular carcinoma
+75-01-4,Vinyl chloride,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+75-01-4,Vinyl chloride,OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1017
+1332-21-4,Asbestos (all forms),IARC,Group 1,Causes mesothelioma and cancers of the lung and larynx
+1332-21-4,Asbestos (all forms),NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+1332-21-4,Asbestos (all forms),OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1001
+7440-38-2,Arsenic and inorganic arsenic compounds,IARC,Group 1,Causes cancers of the lung skin and urinary bladder
+7440-38-2,Arsenic and inorganic arsenic compounds,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+7440-38-2,Arsenic and inorganic arsenic compounds,OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1018
+7440-43-9,Cadmium and cadmium compounds,IARC,Group 1,Causes lung cancer with sufficient evidence in humans
+7440-43-9,Cadmium and cadmium compounds,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+7440-43-9,Cadmium and cadmium compounds,OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1027
+18540-29-9,Chromium (VI) compounds,IARC,Group 1,Causes lung cancer with sufficient evidence in humans
+18540-29-9,Chromium (VI) compounds,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+18540-29-9,Chromium (VI) compounds,OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1026
+7440-02-0,Nickel compounds,IARC,Group 1,Causes cancers of the lung and nasal sinuses
+7440-02-0,Nickel compounds,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+14808-60-7,Crystalline silica (quartz),IARC,Group 1,Causes lung cancer in occupational exposure settings
+14808-60-7,Crystalline silica (quartz),NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Wood dust,IARC,Group 1,Causes cancers of the nasal cavity and paranasal sinuses
+7440-41-7,Beryllium and beryllium compounds,IARC,Group 1,Causes lung cancer with sufficient evidence in humans
+7440-41-7,Beryllium and beryllium compounds,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+106-99-0,"1,3-Butadiene",IARC,Group 1,Causes hematolymphatic cancers in humans
+106-99-0,"1,3-Butadiene",NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+75-21-8,Ethylene oxide,IARC,Group 1,Causes lymphatic and hematopoietic cancers and breast cancer
+75-21-8,Ethylene oxide,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+75-21-8,Ethylene oxide,OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1047
+79-01-6,Trichloroethylene,IARC,Group 1,Causes kidney cancer with sufficient evidence in humans
+79-01-6,Trichloroethylene,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+55-18-5,N-Nitrosodiethylamine,IARC,Group 2A,Probably carcinogenic to humans based on strong animal evidence
+62-75-9,N-Nitrosodimethylamine,IARC,Group 2A,Probably carcinogenic to humans based on strong animal evidence
+62-75-9,N-Nitrosodimethylamine,OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1016
+79-06-1,Acrylamide,IARC,Group 2A,Probably carcinogenic to humans based on limited human and sufficient animal evidence
+79-06-1,Acrylamide,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+100-42-5,Styrene,IARC,Group 2A,Probably carcinogenic to humans based on limited evidence in humans
+100-42-5,Styrene,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+7439-92-1,Lead and lead compounds,IARC,Group 2A,Probably carcinogenic to humans based on limited evidence in humans
+7439-92-1,Lead and lead compounds,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+127-18-4,Tetrachloroethylene (perchloroethylene),IARC,Group 2A,Probably carcinogenic to humans causing bladder cancer
+127-18-4,Tetrachloroethylene (perchloroethylene),NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+8001-58-9,Creosotes,IARC,Group 2A,Probably carcinogenic to humans based on limited human evidence
+50-29-3,"DDT (p,p'-DDT)",IARC,Group 2A,Probably carcinogenic to humans associated with non-Hodgkin lymphoma
+556-52-5,Glycidol,IARC,Group 2A,Probably carcinogenic to humans based on strong animal evidence
+556-52-5,Glycidol,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,Nitrate or nitrite (ingested),IARC,Group 2A,Probably carcinogenic to humans under conditions that result in endogenous nitrosation
+75-07-0,Acetaldehyde,IARC,Group 2B,Possibly carcinogenic to humans based on inadequate human evidence
+75-07-0,Acetaldehyde,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+56-23-5,Carbon tetrachloride,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+56-23-5,Carbon tetrachloride,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+67-66-3,Chloroform,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+67-66-3,Chloroform,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+7440-48-4,Cobalt and cobalt compounds,IARC,Group 2B,Possibly carcinogenic to humans based on limited human evidence
+7440-48-4,Cobalt and cobalt compounds,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+100-41-4,Ethylbenzene,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+80-62-6,Methyl methacrylate,IARC,Group 2B,Possibly carcinogenic to humans based on limited evidence
+91-20-3,Naphthalene,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+91-20-3,Naphthalene,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+13463-67-7,Titanium dioxide,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal inhalation evidence
+96-09-3,"Styrene-7,8-oxide",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+96-09-3,"Styrene-7,8-oxide",NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+53-96-3,2-Acetylaminofluorene,OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1014
+53-96-3,2-Acetylaminofluorene,IARC,Group 1,Sufficient evidence of carcinogenicity in experimental animals
+92-67-1,4-Aminodiphenyl,OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1011
+92-67-1,4-Aminodiphenyl,IARC,Group 1,Causes urinary bladder cancer in humans
+92-87-5,Benzidine,OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1010
+92-87-5,Benzidine,IARC,Group 1,Causes urinary bladder cancer in humans
+92-87-5,Benzidine,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+542-88-1,bis-Chloromethyl ether,OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1008
+542-88-1,bis-Chloromethyl ether,IARC,Group 1,Causes lung cancer (oat cell) in humans
+542-88-1,bis-Chloromethyl ether,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+91-94-1,"3,3'-Dichlorobenzidine",OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1007
+91-94-1,"3,3'-Dichlorobenzidine",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+60-11-7,4-Dimethylaminoazobenzene,OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1015
+60-11-7,4-Dimethylaminoazobenzene,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+151-56-4,Ethyleneimine (aziridine),OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1012
+151-56-4,Ethyleneimine (aziridine),IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+134-32-7,alpha-Naphthylamine,OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1004
+91-59-8,beta-Naphthylamine,OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1009
+91-59-8,beta-Naphthylamine,IARC,Group 1,Causes urinary bladder cancer in humans
+91-59-8,beta-Naphthylamine,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+92-93-3,4-Nitrobiphenyl,OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1003
+57-57-8,beta-Propiolactone,OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1013
+57-57-8,beta-Propiolactone,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+107-30-2,Methyl chloromethyl ether,OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1006
+107-30-2,Methyl chloromethyl ether,IARC,Group 1,Causes lung cancer in humans
+107-13-1,Acrylonitrile,OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1045
+107-13-1,Acrylonitrile,IARC,Group 2B,Possibly carcinogenic to humans based on limited human evidence
+107-13-1,Acrylonitrile,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+96-12-8,"1,2-Dibromo-3-chloropropane (DBCP)",OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1044
+96-12-8,"1,2-Dibromo-3-chloropropane (DBCP)",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+75-09-2,Methylene chloride (dichloromethane),OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1052
+75-09-2,Methylene chloride (dichloromethane),IARC,Group 2A,Probably carcinogenic to humans based on sufficient animal evidence
+75-09-2,Methylene chloride (dichloromethane),NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,Coal tar pitches,IARC,Group 1,Causes skin and lung cancer in exposed workers
+65996-93-2,Coal tar pitches,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Coal tars,IARC,Group 1,Causes skin cancer in humans
+8007-45-2,Coal tars,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Coke oven emissions,IARC,Group 1,Causes lung cancer in coke oven workers
+,Coke oven emissions,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Coke oven emissions,OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1029
+,Mineral oils (untreated or mildly treated),IARC,Group 1,Causes skin cancer in exposed workers
+,Mineral oils (untreated or mildly treated),NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Soot,IARC,Group 1,Causes skin and lung cancer in exposed workers
+,Soot,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Tobacco smoke (secondhand),IARC,Group 1,Causes lung cancer in nonsmokers exposed to secondhand smoke
+,Tobacco smoking,IARC,Group 1,Causes cancers of the lung mouth throat esophagus and many other sites
+117-81-7,Di(2-ethylhexyl) phthalate (DEHP),IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+117-81-7,Di(2-ethylhexyl) phthalate (DEHP),NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,Strong inorganic acid mists containing sulfuric acid,IARC,Group 1,Causes laryngeal and lung cancer in exposed workers
+,Strong inorganic acid mists containing sulfuric acid,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Erionite,IARC,Group 1,Causes mesothelioma in humans
+,Erionite,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+50-18-0,Cyclophosphamide,IARC,Group 1,Causes urinary bladder cancer and leukemia in humans
+50-18-0,Cyclophosphamide,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+305-03-3,Chlorambucil,IARC,Group 1,Causes leukemia in humans
+305-03-3,Chlorambucil,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+148-82-3,Melphalan,IARC,Group 1,Causes leukemia in humans
+148-82-3,Melphalan,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,MOPP chemotherapy regimen,IARC,Group 1,Causes leukemia and other secondary cancers
+,Thiotepa,IARC,Group 1,Causes leukemia in treated patients
+52-24-4,Thiotepa,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+446-86-6,Azathioprine,IARC,Group 1,Causes non-Hodgkin lymphoma and skin cancer in transplant patients
+446-86-6,Azathioprine,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+66-75-1,Uracil mustard,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+154-93-8,Carmustine (BCNU),IARC,Group 2A,Probably carcinogenic to humans associated with secondary leukemia
+13010-47-4,Lomustine (CCNU),IARC,Group 2A,Probably carcinogenic to humans associated with secondary leukemia
+,Tamoxifen,IARC,Group 1,Causes endometrial cancer in treated women
+10540-29-1,Tamoxifen,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Treosulfan,IARC,Group 1,Causes leukemia in treated patients
+,Etoposide with cisplatin and bleomycin,IARC,Group 1,Causes leukemia in treated patients
+,Semustine (methyl-CCNU),IARC,Group 1,Causes leukemia in treated patients
+,Busulfan,IARC,Group 1,Causes leukemia in treated patients
+55-98-1,Busulfan,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Diethylstilbestrol (DES),IARC,Group 1,Causes clear cell adenocarcinoma of the vagina and cervix in daughters exposed in utero
+56-53-1,Diethylstilbestrol (DES),NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Estrogen-progestogen menopausal therapy,IARC,Group 1,Causes breast and endometrial cancer in postmenopausal women
+,Estrogen-progestogen oral contraceptives,IARC,Group 1,Causes breast cervical and liver cancer
+,Estrogen menopausal therapy,IARC,Group 1,Causes endometrial cancer in postmenopausal women
+,Thorium-232 and its decay products,IARC,Group 1,Causes liver cancer and leukemia from internal radiation exposure
+,Thorium dioxide,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Radon-222 and its decay products,IARC,Group 1,Causes lung cancer from indoor and underground mine exposure
+,Radium-224 and its decay products,IARC,Group 1,Causes bone cancer from internal radiation exposure
+,Radium-226 and its decay products,IARC,Group 1,Causes bone cancer from internal radiation exposure
+,Radium-228 and its decay products,IARC,Group 1,Causes bone cancer from internal radiation exposure
+,Plutonium,IARC,Group 1,Causes lung liver and bone cancer from internal radiation exposure
+,Phosphorus-32,IARC,Group 1,Causes leukemia in treated patients
+,Iodine-131,IARC,Group 1,Causes thyroid cancer from internal radiation exposure
+,X-radiation and gamma radiation,IARC,Group 1,Causes leukemia and multiple solid tumor types
+,Neutron radiation,IARC,Group 1,Causes multiple cancer types from radiation exposure
+,Solar radiation,IARC,Group 1,Causes melanoma and non-melanoma skin cancers
+,Ultraviolet radiation (UVA UVB UVC),IARC,Group 1,Causes melanoma and non-melanoma skin cancers
+,Ionizing radiation (all types),NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Ultraviolet radiation (broad spectrum),NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Solar radiation,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Leather dust,IARC,Group 1,Causes nasal cancer in leather workers
+,Rubber manufacturing industry,IARC,Group 1,Causes bladder and lung cancer in rubber workers
+,Painting occupation,IARC,Group 1,Causes bladder cancer and mesothelioma in painters
+,Diesel engine exhaust,IARC,Group 1,Causes lung cancer in occupationally exposed workers
+,Welding fumes,IARC,Group 1,Causes lung cancer in welders
+,Outdoor air pollution,IARC,Group 1,Causes lung cancer from exposure to polluted ambient air
+,Particulate matter in outdoor air pollution,IARC,Group 1,Causes lung cancer from fine particulate exposure
+,Processed meat,IARC,Group 1,Causes colorectal cancer from consumption
+,Alcoholic beverages,IARC,Group 1,Causes cancers of the mouth pharynx larynx esophagus liver colon and breast
+,Areca nut,IARC,Group 1,Causes oral and esophageal cancer from chewing
+,Betel quid with tobacco,IARC,Group 1,Causes oral pharyngeal and esophageal cancer
+,Betel quid without tobacco,IARC,Group 1,Causes oral cancer from chewing
+,Salted fish (Chinese-style),IARC,Group 1,Causes nasopharyngeal cancer from regular consumption
+,Aflatoxins (naturally occurring mixtures),IARC,Group 1,Causes hepatocellular carcinoma from contaminated food
+1402-68-2,Aflatoxins,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+1162-65-8,Aflatoxin B1,IARC,Group 1,Most potent naturally occurring liver carcinogen
+,Aflatoxin M1,IARC,Group 2B,Possibly carcinogenic to humans found in milk and dairy products
+,Aristolochic acids,IARC,Group 1,Causes urothelial carcinomas of the renal pelvis and ureter
+,Aristolochic acids,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+71-43-2,Benzene,IARC,Group 1,Causes acute myeloid leukemia and other hematological malignancies
+,Red meat,IARC,Group 2A,Probably carcinogenic to humans associated with colorectal cancer
+,Glyphosate,IARC,Group 2A,Probably carcinogenic to humans based on limited human and sufficient animal evidence
+1071-83-6,Glyphosate,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on mechanistic evidence
+,Hot beverages above 65 degrees C,IARC,Group 2A,Probably carcinogenic to humans causing esophageal cancer
+,Night shift work,IARC,Group 2A,Probably carcinogenic to humans associated with breast cancer
+,Bitumens (occupational exposure during roofing),IARC,Group 2A,Probably carcinogenic to humans based on limited human evidence
+,Hairdresser or barber occupation,IARC,Group 2A,Probably carcinogenic based on limited evidence of bladder cancer
+,Petroleum refining occupational exposure,IARC,Group 2A,Probably carcinogenic to humans based on limited human evidence
+,Non-arsenical insecticides occupational exposure,IARC,Group 2A,Probably carcinogenic to humans based on limited human evidence
+106-89-8,Epichlorohydrin,IARC,Group 2A,Probably carcinogenic to humans based on limited human evidence
+106-89-8,Epichlorohydrin,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+75-56-9,Propylene oxide,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+75-56-9,Propylene oxide,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,"Tris(2,3-dibromopropyl) phosphate",IARC,Group 2A,Probably carcinogenic to humans based on sufficient animal evidence
+126-72-7,"Tris(2,3-dibromopropyl) phosphate",NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+87-86-5,Pentachlorophenol,IARC,Group 1,Causes non-Hodgkin lymphoma in humans
+87-86-5,Pentachlorophenol,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+118-74-1,Hexachlorobenzene,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+118-74-1,Hexachlorobenzene,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+58-89-9,Lindane (gamma-hexachlorocyclohexane),IARC,Group 1,Causes non-Hodgkin lymphoma in humans
+319-84-6,alpha-Hexachlorocyclohexane,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+319-85-7,beta-Hexachlorocyclohexane,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+,Polychlorinated biphenyls (PCBs),IARC,Group 1,Causes malignant melanoma in humans
+1336-36-3,Polychlorinated biphenyls (PCBs),NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,2378-TCDD (dioxin),IARC,Group 1,Causes all cancers combined with sufficient human evidence
+1746-01-6,"2,3,7,8-Tetrachlorodibenzo-para-dioxin (TCDD)",NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Polybrominated biphenyls (PBBs),IARC,Group 2A,Probably carcinogenic to humans based on strong animal evidence
+,Polybrominated biphenyls (PBBs),NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,Perfluorooctanoic acid (PFOA),IARC,Group 1,Causes kidney and testicular cancer in humans
+335-67-1,Perfluorooctanoic acid (PFOA),NTP,RAHC,Reasonably anticipated to be a human carcinogen based on mechanistic evidence
+,Perfluorooctanesulfonic acid (PFOS),IARC,Group 2B,Possibly carcinogenic to humans based on limited evidence
+532-27-4,2-Chloroacetophenone,IARC,Group 2B,Possibly carcinogenic to humans based on limited evidence
+,Kaposi sarcoma herpesvirus (HHV-8),IARC,Group 1,Causes Kaposi sarcoma and primary effusion lymphoma
+,Hepatitis B virus,IARC,Group 1,Causes hepatocellular carcinoma
+,Hepatitis B virus (chronic infection),NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Hepatitis C virus,IARC,Group 1,Causes hepatocellular carcinoma and non-Hodgkin lymphoma
+,Hepatitis C virus (chronic infection),NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Human papillomavirus types 16 18 31 33 35 39 45 51 52 56 58 59,IARC,Group 1,Causes cervical and other anogenital and oropharyngeal cancers
+,Human papillomavirus (HPV types 16 and 18),NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Epstein-Barr virus,IARC,Group 1,Causes nasopharyngeal carcinoma Burkitt and Hodgkin lymphoma
+,Epstein-Barr virus,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Human immunodeficiency virus type 1 (HIV-1),IARC,Group 1,Causes Kaposi sarcoma non-Hodgkin lymphoma and Hodgkin lymphoma
+,Human immunodeficiency virus type 1 (HIV-1),NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Human T-cell lymphotropic virus type 1,IARC,Group 1,Causes adult T-cell leukemia/lymphoma
+,Human T-cell lymphotropic virus type I,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Helicobacter pylori,IARC,Group 1,Causes gastric cancer and gastric MALT lymphoma
+,Opisthorchis viverrini,IARC,Group 1,Causes cholangiocarcinoma (bile duct cancer) from liver fluke infection
+,Clonorchis sinensis,IARC,Group 1,Causes cholangiocarcinoma (bile duct cancer) from liver fluke infection
+,Schistosoma haematobium,IARC,Group 1,Causes urinary bladder cancer from parasite infection
+,Merkel cell polyomavirus,IARC,Group 2A,Probably carcinogenic to humans causes Merkel cell carcinoma
+,Malaria (caused by Plasmodium falciparum),IARC,Group 2A,Probably carcinogenic causes endemic Burkitt lymphoma in holoendemic malaria
+123-91-1,"1,4-Dioxane",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+123-91-1,"1,4-Dioxane",NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+79-46-9,2-Nitropropane,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+79-46-9,2-Nitropropane,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+95-53-4,ortho-Toluidine,IARC,Group 1,Causes urinary bladder cancer in humans
+95-53-4,ortho-Toluidine,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on limited human evidence
+119-93-7,"3,3'-Dimethylbenzidine (ortho-Tolidine)",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+119-93-7,"3,3'-Dimethylbenzidine (ortho-Tolidine)",NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+97-56-3,ortho-Aminoazotoluene,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+97-56-3,ortho-Aminoazotoluene,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+60-09-3,4-Aminoazobenzene,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+92-67-1,4-Aminodiphenyl,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,4-Chloro-ortho-toluidine,IARC,Group 2A,Probably carcinogenic to humans associated with urinary bladder cancer
+3165-93-3,4-Chloro-ortho-toluidine hydrochloride,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+101-14-4,"4,4'-Methylenebis(2-chloroaniline) (MOCA)",IARC,Group 1,Causes urinary bladder cancer in humans
+101-14-4,"4,4'-Methylenebis(2-chloroaniline) (MOCA)",NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+101-77-9,"4,4'-Methylenedianiline",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+101-77-9,"4,4'-Methylenedianiline",NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+101-77-9,"4,4'-Methylenedianiline",OSHA,Listed,Regulated carcinogen under 29 CFR 1910.1050
+90-04-0,ortho-Anisidine,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+90-04-0,ortho-Anisidine,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+62-53-3,Aniline,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+,para-Chloroaniline,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+106-47-8,para-Chloroaniline,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+139-65-1,"4,4'-Thiodianiline",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+139-65-1,"4,4'-Thiodianiline",NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+55-86-7,Mechlorethamine (nitrogen mustard),IARC,Group 1,Causes secondary cancers in treated patients
+55-86-7,Mechlorethamine,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+684-93-5,N-Methyl-N-nitrosourea,IARC,Group 2A,Probably carcinogenic to humans based on sufficient animal evidence
+684-93-5,N-Methyl-N-nitrosourea,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+924-16-3,N-Nitrosodi-n-butylamine,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+924-16-3,N-Nitrosodi-n-butylamine,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+55-18-5,N-Nitrosodiethylamine,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+62-75-9,N-Nitrosodimethylamine,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+4549-40-0,N-Nitrosomethylvinylamine,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+59-89-2,N-Nitrosomorpholine,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+59-89-2,N-Nitrosomorpholine,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+16543-55-8,N-Nitrosonornicotine (NNN),IARC,Group 1,Causes esophageal and oral cancers from tobacco use
+64091-91-4,"4-(Methylnitrosamino)-1-(3-pyridyl)-1-butanone (NNK)",IARC,Group 1,Causes lung cancer from tobacco use
+100-75-4,N-Nitrosopiperidine,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+100-75-4,N-Nitrosopiperidine,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+930-55-2,N-Nitrosopyrrolidine,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+930-55-2,N-Nitrosopyrrolidine,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+13256-22-9,N-Nitrososarcosine,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+13256-22-9,N-Nitrososarcosine,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+615-53-2,N-Nitroso-N-methylurethane,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+4549-44-4,N-Nitrosomethylethylamine,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+10595-95-6,N-Nitrosomethylethylamine,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,Benzo[a]pyrene,IARC,Group 1,Causes lung and skin cancer as a polycyclic aromatic hydrocarbon
+50-32-8,Benzo[a]pyrene,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+56-55-3,Benz[a]anthracene,IARC,Group 2B,Possibly carcinogenic to humans as a polycyclic aromatic hydrocarbon
+205-99-2,Benzo[b]fluoranthene,IARC,Group 2B,Possibly carcinogenic to humans as a polycyclic aromatic hydrocarbon
+205-82-3,Benzo[j]fluoranthene,IARC,Group 2B,Possibly carcinogenic to humans as a polycyclic aromatic hydrocarbon
+207-08-9,Benzo[k]fluoranthene,IARC,Group 2B,Possibly carcinogenic to humans as a polycyclic aromatic hydrocarbon
+218-01-9,Chrysene,IARC,Group 2B,Possibly carcinogenic to humans as a polycyclic aromatic hydrocarbon
+53-70-3,Dibenz[ah]anthracene,IARC,Group 2A,Probably carcinogenic to humans as a polycyclic aromatic hydrocarbon
+193-39-5,Indeno[123-cd]pyrene,IARC,Group 2B,Possibly carcinogenic to humans as a polycyclic aromatic hydrocarbon
+192-97-2,Benzo[e]pyrene,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+206-44-0,Fluoranthene,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+129-00-0,Pyrene,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+86-73-7,Fluorene,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+120-12-7,Anthracene,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+85-01-8,Phenanthrene,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+,1-Methylpyrene,IARC,Group 2B,Possibly carcinogenic to humans as a polycyclic aromatic hydrocarbon
+7440-47-3,Chromium (metallic),IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+7440-47-3,Chromium (III) compounds,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+7440-02-0,Nickel (metallic),IARC,Group 2B,Possibly carcinogenic to humans based on limited human evidence
+12035-72-2,Nickel subsulfide,IARC,Group 1,Causes lung and nasal cancer in nickel refinery workers
+12035-72-2,Nickel subsulfide,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+1313-99-1,Nickel oxide,IARC,Group 1,Causes lung and nasal cancer in nickel refinery workers
+,Nickel compounds (soluble),NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+7784-42-1,Arsine,IARC,Group 2A,Probably carcinogenic to humans related to arsenic compounds
+,Gallium arsenide,IARC,Group 1,Causes lung cancer associated with semiconductor manufacturing
+,Dimethylarsinic acid (cacodylic acid),IARC,Group 2B,Possibly carcinogenic to humans as an arsenic metabolite
+,Trimethylarsine oxide,IARC,Group 2B,Possibly carcinogenic to humans as an arsenic metabolite
+,Monomethylarsonic acid,IARC,Group 2A,Probably carcinogenic to humans as an arsenic metabolite
+,Indium phosphide,IARC,Group 2A,Probably carcinogenic to humans based on sufficient animal evidence
+,Cobalt metal with tungsten carbide,IARC,Group 2A,Probably carcinogenic to humans causing lung cancer in hard metal workers
+75-35-4,"1,1-Dichloroethene (vinylidene chloride)",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+106-93-4,"1,2-Dibromoethane (ethylene dibromide)",IARC,Group 2A,Probably carcinogenic to humans based on sufficient animal evidence
+106-93-4,"1,2-Dibromoethane (ethylene dibromide)",NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+107-06-2,"1,2-Dichloroethane (ethylene dichloride)",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+107-06-2,"1,2-Dichloroethane (ethylene dichloride)",NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+78-87-5,"1,2-Dichloropropane",IARC,Group 1,Causes cholangiocarcinoma (bile duct cancer) in printing workers
+78-88-6,"2,3-Dichloropropene",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+542-75-6,"1,3-Dichloropropene",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+542-75-6,"1,3-Dichloropropene",NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+106-46-7,"1,4-Dichlorobenzene (para-dichlorobenzene)",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+106-46-7,"1,4-Dichlorobenzene (para-dichlorobenzene)",NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+87-68-3,Hexachlorobutadiene,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+67-72-1,Hexachloroethane,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+67-72-1,Hexachloroethane,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+79-34-5,"1,1,2,2-Tetrachloroethane",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+79-34-5,"1,1,2,2-Tetrachloroethane",NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+71-55-6,"1,1,1-Trichloroethane (methyl chloroform)",IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+79-00-5,"1,1,2-Trichloroethane",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+79-00-5,"1,1,2-Trichloroethane",NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+76-01-7,Pentachloroethane,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+156-60-5,trans-1-2-Dichloroethylene,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+540-59-0,"1,2-Dichloroethylene (mixed isomers)",IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+,Polychlorophenols and their sodium salts,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+76-44-8,Heptachlor,IARC,Group 2B,Possibly carcinogenic to humans as an organochlorine insecticide
+57-74-9,Chlordane,IARC,Group 2B,Possibly carcinogenic to humans as an organochlorine insecticide
+309-00-2,Aldrin,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+60-57-1,Dieldrin,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+,DDT (technical grade),NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+72-43-5,Methoxychlor,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+2385-85-5,Mirex,IARC,Group 2B,Possibly carcinogenic to humans as an organochlorine insecticide
+2385-85-5,Mirex,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+143-50-0,Chlordecone (Kepone),IARC,Group 2B,Possibly carcinogenic to humans as an organochlorine insecticide
+143-50-0,Chlordecone (Kepone),NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+8001-35-2,Toxaphene,IARC,Group 2B,Possibly carcinogenic to humans as an organochlorine insecticide
+8001-35-2,Toxaphene,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,Diazinon,IARC,Group 2A,Probably carcinogenic to humans associated with non-Hodgkin lymphoma
+,Malathion,IARC,Group 2A,Probably carcinogenic to humans associated with non-Hodgkin lymphoma
+,Parathion,IARC,Group 2B,Possibly carcinogenic to humans based on limited evidence
+,Tetrachlorvinphos,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+732-11-6,Phosmet,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+,Dichlorvos,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+62-73-7,Dichlorvos,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,Hydrazine,IARC,Group 2A,Probably carcinogenic to humans based on sufficient animal evidence
+302-01-2,Hydrazine,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+999-61-1,2-Hydroxyethyl acrylate,IARC,Group 2B,Possibly carcinogenic to humans based on limited evidence
+140-88-5,Ethyl acrylate,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+140-88-5,Ethyl acrylate,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,Isoprene,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+78-79-5,Isoprene,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+75-52-5,Nitromethane,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+75-52-5,Nitromethane,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+98-95-3,Nitrobenzene,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+98-95-3,Nitrobenzene,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+1464-53-5,"Diepoxybutane (1,2:3,4-diepoxybutane)",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+1464-53-5,Diepoxybutane,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+106-87-6,"4-Vinyl-1-cyclohexene diepoxide (vinyl cyclohexene dioxide)",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+106-87-6,Vinyl cyclohexene dioxide,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+2426-08-6,n-Butyl glycidyl ether,IARC,Group 2B,Possibly carcinogenic to humans based on limited evidence
+122-66-7,"1,2-Diphenylhydrazine (hydrazobenzene)",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+122-66-7,"1,2-Diphenylhydrazine",NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+302-70-5,Nitrogen mustard N-oxide,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+,Sulfur mustard (mustard gas),IARC,Group 1,Causes lung and laryngeal cancer from chemical warfare exposure
+505-60-2,Sulfur mustard (mustard gas),NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+126-85-2,Nitrogen mustard hydrochloride,IARC,Group 2A,Probably carcinogenic to humans based on sufficient animal evidence
+51-75-2,Nitrogen mustard (mechlorethamine),NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+366-70-1,Procarbazine hydrochloride,IARC,Group 2A,Probably carcinogenic to humans associated with secondary leukemia
+366-70-1,Procarbazine,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+443-48-1,Metronidazole,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+443-48-1,Metronidazole,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+50-07-7,Mitomycin C,IARC,Group 2B,Possibly carcinogenic to humans based on limited evidence
+50-07-7,Mitomycin C,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+15663-27-1,Cisplatin,IARC,Group 2A,Probably carcinogenic to humans associated with secondary leukemia
+15663-27-1,Cisplatin,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+66-27-3,Methyl methanesulfonate,IARC,Group 2A,Probably carcinogenic to humans based on sufficient animal evidence
+66-27-3,Methyl methanesulfonate,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,Phenacetin,IARC,Group 1,Causes renal pelvis and ureter cancer from analgesic use
+62-44-2,Phenacetin,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+57-97-6,"7,12-Dimethylbenz[a]anthracene (DMBA)",IARC,Group 2A,Probably carcinogenic to humans as a potent polycyclic aromatic hydrocarbon
+129-15-7,2-Methyl-1-nitroanthraquinone,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+,3-Methylcholanthrene,IARC,Group 2A,Probably carcinogenic to humans as a polycyclic aromatic hydrocarbon
+56-49-5,3-Methylcholanthrene,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,5-Methylchrysene,IARC,Group 2B,Possibly carcinogenic to humans as a polycyclic aromatic hydrocarbon
+3697-24-3,5-Methylchrysene,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+226-36-8,Dibenz[ah]acridine,IARC,Group 2B,Possibly carcinogenic to humans as a polycyclic aromatic hydrocarbon
+224-42-0,Dibenz[aj]acridine,IARC,Group 2B,Possibly carcinogenic to humans as a polycyclic aromatic hydrocarbon
+194-59-2,"7H-Dibenzo[c,g]carbazole",IARC,Group 2B,Possibly carcinogenic to humans as a polycyclic aromatic hydrocarbon
+191-30-0,"Dibenzo[a,l]pyrene",IARC,Group 2A,Probably carcinogenic to humans as a potent polycyclic aromatic hydrocarbon
+189-55-9,"Dibenzo[a,i]pyrene",IARC,Group 2B,Possibly carcinogenic to humans as a polycyclic aromatic hydrocarbon
+192-65-4,"Dibenzo[a,e]pyrene",IARC,Group 2B,Possibly carcinogenic to humans as a polycyclic aromatic hydrocarbon
+191-24-2,"Dibenzo[a,h]pyrene",IARC,Group 2B,Possibly carcinogenic to humans as a polycyclic aromatic hydrocarbon
+,Cyclopenta[cd]pyrene,IARC,Group 2A,Probably carcinogenic to humans as a polycyclic aromatic hydrocarbon
+5522-43-0,1-Nitropyrene,IARC,Group 2A,Probably carcinogenic to humans found in diesel exhaust
+607-57-8,2-Nitrofluorene,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+602-87-9,5-Nitroacenaphthene,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+99-59-2,5-Nitro-ortho-anisidine,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+100-02-7,4-Nitrophenol,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+51-79-6,Urethane (ethyl carbamate),IARC,Group 2A,Probably carcinogenic to humans found in fermented foods and alcoholic beverages
+51-79-6,Urethane (ethyl carbamate),NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+64-67-5,Diethyl sulfate,IARC,Group 2A,Probably carcinogenic to humans based on sufficient animal evidence
+64-67-5,Diethyl sulfate,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+77-78-1,Dimethyl sulfate,IARC,Group 2A,Probably carcinogenic to humans based on sufficient animal evidence
+77-78-1,Dimethyl sulfate,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,Dimethylcarbamoyl chloride,IARC,Group 2A,Probably carcinogenic to humans based on sufficient animal evidence
+79-44-7,Dimethylcarbamoyl chloride,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+764-41-0,"1,4-Butanediol dimethanesulfonate (busulfan)",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+680-31-9,Hexamethylphosphoramide (HMPA),IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+680-31-9,Hexamethylphosphoramide (HMPA),NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+2602-46-2,Direct Blue 6 (C.I.),IARC,Group 2B,Possibly carcinogenic to humans based on benzidine metabolite release
+1937-37-7,Direct Black 38 (C.I.),IARC,Group 1,Carcinogenic to humans based on benzidine metabolite release
+,Direct Brown 95 (C.I.),IARC,Group 1,Carcinogenic to humans based on benzidine metabolite release
+3761-53-3,Ponceau MX (C.I. 16150),IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+569-61-9,C.I. Basic Red 9 (pararosaniline),IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+2475-45-8,"Disperse Blue 1 (1,4,5,8-tetraaminoanthraquinone)",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+2475-45-8,Disperse Blue 1,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+3564-09-8,Ponceau 3R (C.I. 16155),IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+842-07-9,C.I. Solvent Yellow 14 (Sudan I),IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+615-05-4,"2,4-Diaminoanisole",IARC,Group 2B,Possibly carcinogenic to humans used in hair dyes
+615-05-4,"2,4-Diaminoanisole",NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+95-80-7,"2,4-Diaminotoluene",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+95-80-7,"2,4-Diaminotoluene",NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+492-80-8,Auramine (technical grade),IARC,Group 2B,Possibly carcinogenic to humans associated with bladder cancer
+,Auramine production,IARC,Group 1,Causes urinary bladder cancer in production workers
+,Magenta production,IARC,Group 1,Causes urinary bladder cancer in production workers
+632-99-5,Magenta (C.I. Basic Violet 14),IARC,Group 2B,Possibly carcinogenic to humans based on limited evidence
+108-31-6,Maleic anhydride,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+110-86-1,Pyridine,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+108-95-2,Phenol,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+108-88-3,Toluene,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+1330-20-7,Xylenes (mixed isomers),IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+67-63-0,Isopropanol,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+,Isopropanol manufacture (strong-acid process),IARC,Group 1,Causes sinonasal cancer in strong-acid process workers
+64-17-5,Ethanol in alcoholic beverages,IARC,Group 1,Causes cancers of oral cavity pharynx larynx esophagus liver colorectum and breast
+67-56-1,Methanol,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+75-05-8,Acetonitrile,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+127-19-5,"N,N-Dimethylacetamide",IARC,Group 2B,Possibly carcinogenic to humans based on limited evidence
+68-12-2,"N,N-Dimethylformamide",IARC,Group 2A,Probably carcinogenic to humans based on limited human evidence
+68-12-2,"N,N-Dimethylformamide",NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,Welding fumes,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on limited human evidence
+,Diesel exhaust particulates,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on limited human evidence
+,Glass wool fibers (certain),NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,Ceramic fibers (certain refractory),NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,"1-Amino-2,4-dibromoanthraquinone",NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+81-07-2,Saccharin,IARC,Group 3,Not classifiable as to its carcinogenicity to humans (delisted)
+,Aspartame,IARC,Group 2B,Possibly carcinogenic to humans based on limited evidence
+,Coffee,IARC,Group 3,Not classifiable as to its carcinogenicity to humans (unrelated to temperature)
+50-55-5,Reserpine,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+,Talc containing asbestiform fibres,IARC,Group 1,Carcinogenic to humans due to asbestiform fibre content
+14807-96-6,Talc (not containing asbestiform fibres),IARC,Group 2B,Possibly carcinogenic to humans based on limited perineal use evidence
+10026-24-1,Cobalt sulfate,IARC,Group 2B,Possibly carcinogenic to humans as a soluble cobalt compound
+10026-24-1,Cobalt sulfate,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+7646-79-9,Cobalt chloride,IARC,Group 2B,Possibly carcinogenic to humans as a soluble cobalt compound
+,Antimony trioxide,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal inhalation evidence
+1309-64-4,Antimony trioxide,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,Vanadium pentoxide,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal inhalation evidence
+1314-62-1,Vanadium pentoxide,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,Potassium bromate,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+7758-01-2,Potassium bromate,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,Merkel cell polyomavirus,IARC,Group 2A,Probably carcinogenic to humans causes Merkel cell carcinoma
+10043-35-3,Boric acid,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+,Occupational exposure as a firefighter,IARC,Group 1,Causes mesothelioma and bladder cancer from occupational exposure
+,Opium consumption,IARC,Group 1,Causes cancers of the larynx and lung from opium use
+,Shale oils,IARC,Group 1,Causes skin cancer in shale oil workers
+,Shale oils,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Iron and steel founding occupation,IARC,Group 1,Causes lung cancer in foundry workers
+,Boot and shoe manufacture and repair,IARC,Group 1,Causes nasal cancer in shoe manufacturing workers
+,Aluminium production,IARC,Group 1,Causes lung and bladder cancer in aluminium production workers
+,Magenta dyes manufacturing,IARC,Group 1,Causes bladder cancer in dye manufacturing workers
+,Painter occupation,IARC,Group 1,Causes lung and bladder cancer in painters
+,Printing processes occupational exposure,IARC,Group 2B,Possibly carcinogenic to humans based on limited human evidence
+1303-28-2,Arsenic pentoxide,IARC,Group 1,Causes lung skin and bladder cancer as an inorganic arsenic compound
+1327-53-3,Arsenic trioxide,IARC,Group 1,Causes lung skin and bladder cancer as an inorganic arsenic compound and causes leukemia
+10588-01-9,Sodium dichromate,IARC,Group 1,Causes lung cancer as a chromium (VI) compound
+7789-00-6,Potassium chromate,IARC,Group 1,Causes lung cancer as a chromium (VI) compound
+7775-11-3,Sodium chromate,IARC,Group 1,Causes lung cancer as a chromium (VI) compound
+13765-19-0,Calcium chromate,IARC,Group 1,Causes lung cancer as a chromium (VI) compound
+7778-50-9,Potassium dichromate,IARC,Group 1,Causes lung cancer as a chromium (VI) compound
+1333-82-0,Chromium trioxide (chromic acid),IARC,Group 1,Causes lung cancer as a chromium (VI) compound
+7789-06-2,Strontium chromate,IARC,Group 1,Causes lung cancer as a chromium (VI) compound
+13530-65-9,Zinc chromate,IARC,Group 1,Causes lung cancer as a chromium (VI) compound
+11103-86-9,Zinc chromate hydroxide,IARC,Group 1,Causes lung cancer as a chromium (VI) compound
+7738-94-5,Chromic acid,IARC,Group 1,Causes lung cancer as a chromium (VI) compound
+10294-40-3,Barium chromate,IARC,Group 1,Causes lung cancer as a chromium (VI) compound
+,Lead chromate,IARC,Group 1,Causes lung cancer as both a chromium (VI) and lead compound
+7758-97-6,Lead chromate,NTP,RAHC,Reasonably anticipated to be a human carcinogen as a lead compound
+,Tris(1-aziridinyl)phosphine sulfide (thiotepa),NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+298-46-4,Carbamazepine,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+57-41-0,Phenytoin,IARC,Group 2B,Possibly carcinogenic to humans based on limited evidence
+50-06-6,Phenobarbital,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+50-06-6,Phenobarbital,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+132-32-1,3-Amino-9-ethylcarbazole,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+,p-Cresidine,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+120-71-8,p-Cresidine,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+99-55-8,5-Nitro-ortho-toluidine,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+99-55-8,5-Nitro-ortho-toluidine,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+531-82-8,"N-[4-(5-Nitro-2-furyl)-2-thiazolyl]acetamide",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+555-84-0,"1-[(5-Nitrofurfurylidene)amino]-2-imidazolidinone",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+67-45-8,Furazolidone,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+59-87-0,Nitrofurazone,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+59-87-0,Nitrofurazone,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+67-20-9,Nitrofurantoin,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+,Griseofulvin,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+126-07-8,Griseofulvin,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,Oxazepam,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+604-75-1,Oxazepam,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,Chloramphenicol,IARC,Group 2A,Probably carcinogenic to humans associated with leukemia
+56-75-7,Chloramphenicol,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on limited human evidence
+,Dantron (chrysazin),IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+117-10-2,Dantron (chrysazin),NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+13552-44-8,"4,4'-Methylenebis(2-methylaniline)",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+,Coconut oil diethanolamine condensate,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+111-42-2,Diethanolamine,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+111-42-2,Diethanolamine,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+110-00-9,Furan,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+110-00-9,Furan,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+98-07-7,Benzotrichloride,IARC,Group 2A,Probably carcinogenic to humans based on sufficient animal evidence
+98-07-7,Benzotrichloride,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+98-88-4,Benzoyl chloride,IARC,Group 2A,Probably carcinogenic to humans based on sufficient animal evidence
+100-44-7,Benzyl chloride,IARC,Group 2A,Probably carcinogenic to humans based on sufficient animal evidence
+,Bitumens extracts steam-refined and air-refined,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+,Carbon black,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal inhalation evidence
+1333-86-4,Carbon black,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,Gasoline engine exhaust,IARC,Group 2B,Possibly carcinogenic to humans based on limited human evidence
+,Tetrabromobisphenol A,IARC,Group 2A,Probably carcinogenic to humans based on sufficient animal evidence
+79-94-7,Tetrabromobisphenol A,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,Trichlorophenoxy herbicides,IARC,Group 2B,Possibly carcinogenic to humans associated with non-Hodgkin lymphoma
+94-75-7,"2,4-Dichlorophenoxyacetic acid (2,4-D)",IARC,Group 2B,Possibly carcinogenic to humans based on limited human evidence
+93-76-5,"2,4,5-Trichlorophenoxyacetic acid (2,4,5-T)",IARC,Group 2B,Possibly carcinogenic to humans based on limited evidence
+,Agent Orange (herbicide mixture),IARC,Group 2B,"Possibly carcinogenic to humans containing 2,4-D and 2,4,5-T"
+,Catechol,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+120-80-9,Catechol,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,Hydroquinone,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+123-31-9,Hydroquinone,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+,para-Quinone,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+,Propylene glycol,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+,Cumene,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+98-82-8,Cumene,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+110-82-7,Cyclohexane,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
+,Trichlormethine (trimustine),IARC,Group 2A,Probably carcinogenic as an alkylating antineoplastic agent
+,Etoposide,IARC,Group 1,Causes leukemia in treated patients
+33419-42-0,Etoposide,NTP,Known,Known to be a human carcinogen based on sufficient evidence from human studies
+,Doxorubicin (adriamycin),IARC,Group 2A,Probably carcinogenic to humans based on limited human evidence
+23214-92-8,Doxorubicin,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on limited human evidence
+,Dacarbazine,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+4342-03-4,Dacarbazine,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+,Daunomycin (daunorubicin),IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+,Bleomycins,IARC,Group 2B,Possibly carcinogenic to humans based on limited evidence
+,Streptozotocin,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+18883-66-4,Streptozotocin,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence

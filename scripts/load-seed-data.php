@@ -10,10 +10,11 @@
  * Datasets loaded:
  *   1. Prop 65 chemical list          (storage/data/seed/prop65.csv)
  *   2. Carcinogen registry (IARC/NTP/OSHA) (storage/data/seed/carcinogens.csv)
- *   3. SARA 313 / TRI chemical list   (storage/data/seed/sara313.csv)
- *   4. NIOSH exposure limits          (storage/data/seed/niosh.json)
- *   5. EPA regulatory data            (storage/data/seed/epa.csv)
- *   6. DOT transport classifications  (storage/data/seed/dot.csv)
+ *   3. HAP list (CAA Section 112(b))  (storage/data/seed/hap.csv)
+ *   4. SARA 313 / TRI chemical list   (storage/data/seed/sara313.csv)
+ *   5. NIOSH exposure limits          (storage/data/seed/niosh.json)
+ *   6. EPA regulatory data            (storage/data/seed/epa.csv)
+ *   7. DOT transport classifications  (storage/data/seed/dot.csv)
  *
  * Usage:
  *   php scripts/load-seed-data.php [--quiet]
@@ -55,7 +56,7 @@ out("", $quiet);
 // =====================================================================
 $prop65File = $seedDir . '/prop65.csv';
 if (file_exists($prop65File)) {
-    out("[1/6] Loading Prop 65 data...", $quiet);
+    out("[1/7] Loading Prop 65 data...", $quiet);
     $handle = fopen($prop65File, 'r');
     fgetcsv($handle); // skip header
     $inserted = 0;
@@ -104,7 +105,7 @@ if (file_exists($prop65File)) {
     $totalUpdated  += $updated;
     $totalErrors   += $errors;
 } else {
-    out("[1/6] Prop 65 seed file not found — skipping.", $quiet);
+    out("[1/7] Prop 65 seed file not found — skipping.", $quiet);
 }
 
 // =====================================================================
@@ -112,7 +113,7 @@ if (file_exists($prop65File)) {
 // =====================================================================
 $carcFile = $seedDir . '/carcinogens.csv';
 if (file_exists($carcFile)) {
-    out("[2/6] Loading carcinogen registry data...", $quiet);
+    out("[2/7] Loading carcinogen registry data...", $quiet);
     $handle = fopen($carcFile, 'r');
     fgetcsv($handle); // skip header
     $inserted = 0;
@@ -163,15 +164,69 @@ if (file_exists($carcFile)) {
     $totalUpdated  += $updated;
     $totalErrors   += $errors;
 } else {
-    out("[2/6] Carcinogen seed file not found — skipping.", $quiet);
+    out("[2/7] Carcinogen seed file not found — skipping.", $quiet);
 }
 
 // =====================================================================
-// 3. SARA 313
+// 3. Hazardous Air Pollutants (CAA Section 112(b))
+// =====================================================================
+$hapFile = $seedDir . '/hap.csv';
+if (file_exists($hapFile)) {
+    out("[3/7] Loading Hazardous Air Pollutant (HAP) data...", $quiet);
+    $handle = fopen($hapFile, 'r');
+    fgetcsv($handle); // skip header
+    $inserted = 0;
+    $updated  = 0;
+    $errors   = 0;
+
+    while (($row = fgetcsv($handle)) !== false) {
+        $cas = trim($row[0] ?? '');
+        if ($cas === '' || !preg_match('/^\d+-\d+-\d+$/', $cas)) {
+            continue;
+        }
+
+        $data = [
+            'cas_number'      => $cas,
+            'chemical_name'   => trim($row[1] ?? ''),
+            'category'        => trim($row[2] ?? '') ?: null,
+            'source_ref'      => 'EPA Clean Air Act Section 112(b) (seed data)',
+            'last_updated_at' => date('Y-m-d H:i:s'),
+        ];
+
+        try {
+            $existing = $db->fetch("SELECT id FROM hap_list WHERE cas_number = ?", [$cas]);
+            if ($existing) {
+                $updateData = $data;
+                unset($updateData['cas_number']);
+                $db->update('hap_list', $updateData, 'cas_number = ?', [$cas]);
+                $updated++;
+            } else {
+                $db->insert('hap_list', $data);
+                $inserted++;
+            }
+        } catch (\Throwable $e) {
+            $errors++;
+            if (!$quiet) {
+                error_log("HAP {$cas}: " . $e->getMessage());
+            }
+        }
+    }
+    fclose($handle);
+
+    out("  HAPs: {$inserted} inserted, {$updated} updated, {$errors} errors", $quiet);
+    $totalInserted += $inserted;
+    $totalUpdated  += $updated;
+    $totalErrors   += $errors;
+} else {
+    out("[3/7] HAP seed file not found — skipping.", $quiet);
+}
+
+// =====================================================================
+// 4. SARA 313
 // =====================================================================
 $saraFile = $seedDir . '/sara313.csv';
 if (file_exists($saraFile)) {
-    out("[3/6] Loading SARA 313 / TRI data...", $quiet);
+    out("[4/7] Loading SARA 313 / TRI data...", $quiet);
     $handle = fopen($saraFile, 'r');
     fgetcsv($handle); // skip header
     $inserted = 0;
@@ -220,15 +275,15 @@ if (file_exists($saraFile)) {
     $totalUpdated  += $updated;
     $totalErrors   += $errors;
 } else {
-    out("[3/6] SARA 313 seed file not found — skipping.", $quiet);
+    out("[4/7] SARA 313 seed file not found — skipping.", $quiet);
 }
 
 // =====================================================================
-// 4. NIOSH Exposure Limits
+// 5. NIOSH Exposure Limits
 // =====================================================================
 $nioshFile = $seedDir . '/niosh.json';
 if (file_exists($nioshFile)) {
-    out("[4/6] Loading NIOSH exposure limit data...", $quiet);
+    out("[5/7] Loading NIOSH exposure limit data...", $quiet);
 
     $niosh = new \SDS\Services\FederalData\Connectors\NIOSHConnector($db);
     $result = $niosh->importFromJson($nioshFile);
@@ -240,15 +295,15 @@ if (file_exists($nioshFile)) {
     $totalInserted += $inserted;
     $totalErrors   += $errors;
 } else {
-    out("[4/6] NIOSH seed file not found — skipping.", $quiet);
+    out("[5/7] NIOSH seed file not found — skipping.", $quiet);
 }
 
 // =====================================================================
-// 5. EPA Regulatory Data
+// 6. EPA Regulatory Data
 // =====================================================================
 $epaFile = $seedDir . '/epa.csv';
 if (file_exists($epaFile)) {
-    out("[5/6] Loading EPA regulatory data...", $quiet);
+    out("[6/7] Loading EPA regulatory data...", $quiet);
 
     $epa = new \SDS\Services\FederalData\Connectors\EPAConnector($db);
     $result = $epa->importFromCsv($epaFile);
@@ -260,15 +315,15 @@ if (file_exists($epaFile)) {
     $totalInserted += $inserted;
     $totalErrors   += $errors;
 } else {
-    out("[5/6] EPA seed file not found — skipping.", $quiet);
+    out("[6/7] EPA seed file not found — skipping.", $quiet);
 }
 
 // =====================================================================
-// 6. DOT Transport Data
+// 7. DOT Transport Data
 // =====================================================================
 $dotFile = $seedDir . '/dot.csv';
 if (file_exists($dotFile)) {
-    out("[6/6] Loading DOT transport classification data...", $quiet);
+    out("[7/7] Loading DOT transport classification data...", $quiet);
 
     $dot = new \SDS\Services\FederalData\Connectors\DOTConnector($db);
     $result = $dot->importFromCsv($dotFile);
@@ -280,7 +335,7 @@ if (file_exists($dotFile)) {
     $totalInserted += $inserted;
     $totalErrors   += $errors;
 } else {
-    out("[6/6] DOT seed file not found — skipping.", $quiet);
+    out("[7/7] DOT seed file not found — skipping.", $quiet);
 }
 
 // =====================================================================

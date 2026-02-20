@@ -378,7 +378,7 @@ print_success "Server URL saved (changeable later in Admin > Settings)."
 # ============================================================
 print_header "Step 7: Loading Federal Regulatory Data"
 
-print_step "Loading pre-packaged seed data (Prop 65, IARC/NTP/OSHA, SARA 313, NIOSH, EPA, DOT)..."
+print_step "Loading pre-packaged seed data (Prop 65, IARC/NTP/OSHA, HAPs, SARA 313, NIOSH, EPA, DOT)..."
 print_info "This provides a comprehensive regulatory baseline for all known chemicals."
 
 cd "$INSTALL_DIR"

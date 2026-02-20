@@ -30,6 +30,7 @@ class BackupService
         'prop65_list',
         'carcinogen_list',
         'sara313_list',
+        'hap_list',
         'exempt_voc_list',
         'hazard_source_records',
         'hazard_classifications',

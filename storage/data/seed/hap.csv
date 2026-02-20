@@ -1,0 +1,188 @@
+cas_number,chemical_name,category
+75-07-0,Acetaldehyde,VOC
+60-35-5,Acetamide,VOC
+75-05-8,Acetonitrile,VOC
+98-86-2,Acetophenone,VOC
+53-96-3,2-Acetylaminofluorene,VOC
+107-02-8,Acrolein,VOC
+79-06-1,Acrylamide,VOC
+79-10-7,Acrylic acid,VOC
+107-13-1,Acrylonitrile,VOC
+107-05-1,Allyl chloride,Halogenated
+92-67-1,4-Aminobiphenyl,VOC
+62-53-3,Aniline,VOC
+90-04-0,o-Anisidine,VOC
+1332-21-4,Asbestos,Particulate
+71-43-2,Benzene,VOC
+92-87-5,Benzidine,VOC
+98-07-7,Benzotrichloride,Halogenated
+100-44-7,Benzyl chloride,Halogenated
+92-52-4,Biphenyl,VOC
+117-81-7,"Bis(2-ethylhexyl)phthalate (DEHP)",VOC
+542-88-1,"Bis(chloromethyl)ether",Halogenated
+75-25-2,Bromoform,Halogenated
+106-99-0,"1,3-Butadiene",VOC
+156-62-7,Calcium cyanamide,Other
+133-06-2,Captan,Pesticide
+63-25-2,Carbaryl,Pesticide
+75-15-0,Carbon disulfide,VOC
+56-23-5,Carbon tetrachloride,Halogenated
+463-58-1,Carbonyl sulfide,VOC
+120-80-9,Catechol,VOC
+133-90-4,Chloramben,Pesticide
+57-74-9,Chlordane,Pesticide
+7782-50-5,Chlorine,Acid
+79-11-8,Chloroacetic acid,Acid
+532-27-4,2-Chloroacetophenone,Halogenated
+108-90-7,Chlorobenzene,Halogenated
+510-15-6,Chlorobenzilate,Pesticide
+67-66-3,Chloroform,Halogenated
+107-30-2,Chloromethyl methyl ether,Halogenated
+126-99-8,Chloroprene,Halogenated
+1319-77-3,"Cresols/Cresylic acid (isomers and mixture)",VOC
+95-48-7,o-Cresol,VOC
+108-39-4,m-Cresol,VOC
+106-44-5,p-Cresol,VOC
+98-82-8,Cumene,VOC
+94-75-7,"2,4-D, salts and esters",Pesticide
+3547-04-4,DDE,Pesticide
+334-88-3,Diazomethane,VOC
+132-64-9,Dibenzofurans,Organic
+96-12-8,"1,2-Dibromo-3-chloropropane",Halogenated
+84-74-2,Dibutylphthalate,VOC
+106-46-7,"1,4-Dichlorobenzene(p)",Halogenated
+91-94-1,"3,3-Dichlorobenzidine",Halogenated
+111-44-4,"Dichloroethyl ether (Bis(2-chloroethyl)ether)",Halogenated
+542-75-6,"1,3-Dichloropropene",Halogenated
+62-73-7,Dichlorvos,Pesticide
+111-42-2,Diethanolamine,VOC
+121-69-7,"N,N-Dimethylaniline",VOC
+64-67-5,Diethyl sulfate,VOC
+119-90-4,"3,3-Dimethoxybenzidine",VOC
+60-11-7,Dimethyl aminoazobenzene,VOC
+119-93-7,"3,3'-Dimethyl benzidine",VOC
+79-44-7,Dimethyl carbamoyl chloride,Halogenated
+68-12-2,Dimethyl formamide,VOC
+57-14-7,"1,1-Dimethyl hydrazine",VOC
+131-11-3,Dimethyl phthalate,VOC
+77-78-1,Dimethyl sulfate,VOC
+534-52-1,"4,6-Dinitro-o-cresol, and salts",Organic
+51-28-5,"2,4-Dinitrophenol",Organic
+121-14-2,"2,4-Dinitrotoluene",Organic
+123-91-1,"1,4-Dioxane (1,4-Diethyleneoxide)",VOC
+122-66-7,"1,2-Diphenylhydrazine",VOC
+106-89-8,"Epichlorohydrin (1-Chloro-2,3-epoxypropane)",Halogenated
+106-88-7,"1,2-Epoxybutane",VOC
+140-88-5,Ethyl acrylate,VOC
+100-41-4,Ethylbenzene,VOC
+51-79-6,Ethyl carbamate (Urethane),VOC
+75-00-3,Ethyl chloride (Chloroethane),Halogenated
+106-93-4,Ethylene dibromide (Dibromoethane),Halogenated
+107-06-2,"Ethylene dichloride (1,2-Dichloroethane)",Halogenated
+107-21-1,Ethylene glycol,VOC
+151-56-4,Ethylene imine (Aziridine),VOC
+75-21-8,Ethylene oxide,VOC
+96-45-7,Ethylene thiourea,Other
+75-34-3,"Ethylidene dichloride (1,1-Dichloroethane)",Halogenated
+50-00-0,Formaldehyde,VOC
+76-44-8,Heptachlor,Pesticide
+118-74-1,Hexachlorobenzene,Halogenated
+87-68-3,Hexachlorobutadiene,Halogenated
+77-47-4,Hexachlorocyclopentadiene,Halogenated
+67-72-1,Hexachloroethane,Halogenated
+822-06-0,"Hexamethylene-1,6-diisocyanate",VOC
+680-31-9,Hexamethylphosphoramide,Other
+110-54-3,Hexane,VOC
+302-01-2,Hydrazine,VOC
+7647-01-0,Hydrochloric acid,Acid
+7664-39-3,Hydrogen fluoride (Hydrofluoric acid),Acid
+123-31-9,Hydroquinone,VOC
+78-59-1,Isophorone,VOC
+58-89-9,Lindane (all isomers),Pesticide
+108-31-6,Maleic anhydride,Organic
+67-56-1,Methanol,VOC
+72-43-5,Methoxychlor,Pesticide
+74-83-9,Methyl bromide (Bromomethane),Halogenated
+74-87-3,Methyl chloride (Chloromethane),Halogenated
+71-55-6,"Methyl chloroform (1,1,1-Trichloroethane)",Halogenated
+60-34-4,Methyl hydrazine,VOC
+74-88-4,Methyl iodide (Iodomethane),Halogenated
+108-10-1,Methyl isobutyl ketone (Hexone),VOC
+624-83-9,Methyl isocyanate,VOC
+80-62-6,Methyl methacrylate,VOC
+1634-04-4,Methyl tert-butyl ether,VOC
+101-14-4,"4,4-Methylene bis(2-chloroaniline)",Halogenated
+75-09-2,Methylene chloride (Dichloromethane),Halogenated
+101-68-8,Methylene diphenyl diisocyanate (MDI),VOC
+101-77-9,"4,4'-Methylenedianiline",VOC
+91-20-3,Naphthalene,VOC
+98-95-3,Nitrobenzene,Organic
+92-93-3,4-Nitrobiphenyl,Organic
+100-02-7,4-Nitrophenol,Organic
+79-46-9,2-Nitropropane,Organic
+684-93-5,N-Nitroso-N-methylurea,Organic
+62-75-9,N-Nitrosodimethylamine,Organic
+59-89-2,N-Nitrosomorpholine,Organic
+56-38-2,Parathion,Pesticide
+82-68-8,Pentachloronitrobenzene (Quintobenzene),Halogenated
+87-86-5,Pentachlorophenol,Halogenated
+108-95-2,Phenol,VOC
+106-50-3,p-Phenylenediamine,VOC
+75-44-5,Phosgene,Halogenated
+7803-51-2,Phosphine,Other
+7723-14-0,Phosphorus,Other
+85-44-9,Phthalic anhydride,Organic
+1336-36-3,Polychlorinated biphenyls (Aroclors),Halogenated
+1120-71-4,"1,3-Propane sultone",Other
+57-57-8,beta-Propiolactone,VOC
+123-38-6,Propionaldehyde,VOC
+114-26-1,Propoxur (Baygon),Pesticide
+78-87-5,"Propylene dichloride (1,2-Dichloropropane)",Halogenated
+75-56-9,Propylene oxide,VOC
+75-55-8,"1,2-Propylenimine (2-Methyl aziridine)",VOC
+91-22-5,Quinoline,VOC
+106-51-4,Quinone,Organic
+100-42-5,Styrene,VOC
+96-09-3,Styrene oxide,VOC
+1746-01-6,"2,3,7,8-Tetrachlorodibenzo-p-dioxin",Halogenated
+79-34-5,"1,1,2,2-Tetrachloroethane",Halogenated
+127-18-4,Tetrachloroethylene (Perchloroethylene),Halogenated
+7550-45-0,Titanium tetrachloride,Metal
+108-88-3,Toluene,VOC
+95-80-7,"2,4-Toluene diamine",VOC
+584-84-9,"2,4-Toluene diisocyanate",VOC
+95-53-4,o-Toluidine,VOC
+8001-35-2,Toxaphene (chlorinated camphene),Pesticide
+120-82-1,"1,2,4-Trichlorobenzene",Halogenated
+79-00-5,"1,1,2-Trichloroethane",Halogenated
+79-01-6,Trichloroethylene,Halogenated
+95-95-4,"2,4,5-Trichlorophenol",Halogenated
+88-06-2,"2,4,6-Trichlorophenol",Halogenated
+121-44-8,Triethylamine,VOC
+1582-09-8,Trifluralin,Pesticide
+540-84-1,"2,2,4-Trimethylpentane",VOC
+108-05-4,Vinyl acetate,VOC
+593-60-2,Vinyl bromide,Halogenated
+75-01-4,Vinyl chloride,Halogenated
+75-35-4,"Vinylidene chloride (1,1-Dichloroethylene)",Halogenated
+1330-20-7,"Xylenes (isomers and mixture)",VOC
+95-47-6,o-Xylene,VOC
+108-38-3,m-Xylene,VOC
+106-42-3,p-Xylene,VOC
+,Antimony Compounds,Metal
+,Arsenic Compounds (inorganic including arsine),Metal
+,Beryllium Compounds,Metal
+,Cadmium Compounds,Metal
+,Chromium Compounds,Metal
+,Cobalt Compounds,Metal
+,Coke Oven Emissions,Particulate
+,Cyanide Compounds,Other
+,Glycol ethers,VOC
+,Lead Compounds,Metal
+,Manganese Compounds,Metal
+,Mercury Compounds,Metal
+,Fine mineral fibers,Particulate
+,Nickel Compounds,Metal
+,Polycyclic Organic Matter,Organic
+,Radionuclides (including radon),Other
+,Selenium Compounds,Metal

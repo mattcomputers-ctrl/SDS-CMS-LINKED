@@ -77,6 +77,9 @@ class SDSGenerator
         // Run carcinogen analysis (IARC/NTP/OSHA)
         $carcinogenResult = CarcinogenService::analyse($calcResult['composition']);
 
+        // Run HAP analysis (Clean Air Act Section 112(b))
+        $hapResult = HAPService::analyse($calcResult['composition']);
+
         // Load DOT transport info
         $dotInfo = $this->getDOTInfo($calcResult['composition']);
 
@@ -125,7 +128,7 @@ class SDSGenerator
                 12 => $this->section12($overrides),
                 13 => $this->section13($overrides),
                 14 => $this->section14($dotInfo, $overrides),
-                15 => $this->section15($saraResult, $prop65Result, $overrides),
+                15 => $this->section15($saraResult, $prop65Result, $hapResult, $overrides),
                 16 => $this->section16($calcResult, $overrides),
             ],
             'hazard_result'       => $hazardResult,
@@ -133,6 +136,7 @@ class SDSGenerator
             'sara_result'         => $saraResult,
             'prop65_result'       => $prop65Result,
             'carcinogen_result'   => $carcinogenResult,
+            'hap_result'          => $hapResult,
             'warnings'            => array_merge($calcResult['warnings'], $uvWarnings),
             'legal_disclaimer'    => $company['legal_disclaimer'] ?? '',
         ];
@@ -405,7 +409,7 @@ class SDSGenerator
         ];
     }
 
-    private function section15(array $saraResult, array $prop65Result, array $overrides): array
+    private function section15(array $saraResult, array $prop65Result, array $hapResult, array $overrides): array
     {
         // Build state regulations text with Prop 65 data
         $stateRegs = $overrides[15]['state_regs'] ?? '';
@@ -419,6 +423,7 @@ class SDSGenerator
             'tsca_status'    => $overrides[15]['tsca_status'] ?? $this->t->get('section15.tsca_status'),
             'sara_313'       => $saraResult,
             'prop65'         => $prop65Result,
+            'hap'            => $hapResult,
             'state_regs'     => $stateRegs,
             'note'           => $this->t->get('section15.note'),
         ];

@@ -206,6 +206,34 @@
             <?php endif; ?>
 
             <?php
+                $hap = $section['hap'] ?? [];
+                if (!empty($hap['has_haps'])):
+            ?>
+                <h4 style="margin-top: 1rem;">Clean Air Act Section 112(b) — Hazardous Air Pollutants (HAPs)</h4>
+                <table class="table table-sm">
+                    <thead><tr><th>Chemical Name</th><th>CAS</th><th>Category</th><th style="text-align: right;">Weight %</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($hap['hap_chemicals'] as $chem): ?>
+                        <tr>
+                            <td><?= e($chem['chemical_name']) ?></td>
+                            <td><?= e($chem['cas_number']) ?></td>
+                            <td><?= e($chem['category']) ?></td>
+                            <td style="text-align: right;"><?= number_format((float) $chem['concentration_pct'], 2) ?>%</td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                    <tfoot>
+                        <tr style="font-weight: bold; border-top: 2px solid #333;">
+                            <td colspan="3">Total HAP Content</td>
+                            <td style="text-align: right;"><?= number_format((float) $hap['total_hap_pct'], 2) ?>%</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            <?php elseif (isset($hap['has_haps'])): ?>
+                <p><strong>Hazardous Air Pollutants (HAPs):</strong> This product does not contain any EPA HAPs listed under Clean Air Act Section 112(b).</p>
+            <?php endif; ?>
+
+            <?php
                 $prop65 = $section['prop65'] ?? [];
                 if (!empty($prop65['requires_warning'])):
             ?>
@@ -245,7 +273,7 @@
 
         <?php else: // ── Generic section ── ?>
             <?php foreach ($section as $key => $val): ?>
-                <?php if ($key === 'title' || $key === 'hazard_classes' || $key === 'component_toxicology' || $key === 'carcinogen_result' || $key === 'prop65' || $key === 'sara_313') continue; ?>
+                <?php if ($key === 'title' || $key === 'hazard_classes' || $key === 'component_toxicology' || $key === 'carcinogen_result' || $key === 'prop65' || $key === 'sara_313' || $key === 'hap') continue; ?>
                 <?php if (is_string($val) && $val !== ''): ?>
                     <p><strong><?= e(ucwords(str_replace('_', ' ', $key))) ?>:</strong> <?= e($val) ?></p>
                 <?php elseif (is_numeric($val)): ?>

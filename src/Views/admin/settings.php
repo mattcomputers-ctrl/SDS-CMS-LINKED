@@ -39,6 +39,24 @@
             <input type="file" name="company_logo" accept="image/png,image/jpeg,image/gif">
         </div>
 
+        <h2>Login Page Logo</h2>
+        <p class="text-muted mb-1">Upload a logo to display on the login page. Accepted formats: PNG, JPG, GIF. Max 2 MB.</p>
+
+        <?php if (!empty($settings['login.logo_path'])): ?>
+            <div class="logo-preview" style="margin-bottom: 1rem;">
+                <img src="<?= e($settings['login.logo_path']) ?>" alt="Login Logo" style="max-height: 100px; max-width: 300px; border: 1px solid #e0e0e0; padding: 4px; border-radius: 4px; background: #fff;">
+                <div style="margin-top: 0.25rem;">
+                    <label style="font-weight: normal; font-size: 0.85rem; color: #888;">
+                        <input type="checkbox" name="remove_login_logo" value="1"> Remove login logo
+                    </label>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <div class="form-group" style="max-width: 400px;">
+            <input type="file" name="login_logo" accept="image/png,image/jpeg,image/gif">
+        </div>
+
         <h2>SDS Configuration</h2>
         <div class="form-grid-2col">
             <div class="form-group">

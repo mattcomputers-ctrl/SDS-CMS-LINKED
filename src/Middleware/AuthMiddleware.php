@@ -7,6 +7,9 @@ namespace SDS\Middleware;
  *
  * Public paths (login page, logout, static assets) are excluded from
  * the check so they remain accessible without a session.
+ *
+ * Users with the 'sds_book_only' role are restricted to the SDS Book
+ * and their own logout route.
  */
 class AuthMiddleware
 {
@@ -24,6 +27,18 @@ class AuthMiddleware
         '/images',
         '/fonts',
         '/favicon.ico',
+    ];
+
+    /**
+     * URI prefixes accessible to sds_book_only users.
+     *
+     * @var list<string>
+     */
+    private const SDS_BOOK_PATHS = [
+        '/sds-book',
+        '/raw-materials', // needed for /raw-materials/{id}/sds (supplier SDS view)
+        '/sds/version',   // needed for finished good SDS download
+        '/logout',
     ];
 
     /**
@@ -49,19 +64,35 @@ class AuthMiddleware
             redirect('/login');
         }
 
+        // SDS Book Only restriction
+        if (is_sds_book_only() && !$this->isSdsBookPath($uri)) {
+            redirect('/sds-book');
+        }
+
         // User is authenticated — proceed
         $next();
     }
 
     /**
      * Determine whether the given URI is in the public (no-auth) list.
-     *
-     * @param string $uri
-     * @return bool
      */
     private function isPublicPath(string $uri): bool
     {
         foreach (self::PUBLIC_PATHS as $prefix) {
+            if ($uri === $prefix || str_starts_with($uri, $prefix . '/') || str_starts_with($uri, $prefix . '?')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Determine whether the given URI is accessible to sds_book_only users.
+     */
+    private function isSdsBookPath(string $uri): bool
+    {
+        foreach (self::SDS_BOOK_PATHS as $prefix) {
             if ($uri === $prefix || str_starts_with($uri, $prefix . '/') || str_starts_with($uri, $prefix . '?')) {
                 return true;
             }

@@ -25,22 +25,45 @@ h1, h2, h3 { font-weight: 600; margin-bottom: 0.5rem; }
 .navbar {
     display: flex; align-items: center; justify-content: space-between;
     background: #003366; color: #fff; padding: 0 1.5rem; height: 50px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.15);
 }
 .navbar-brand a { color: #fff; font-weight: 700; font-size: 1.1rem; text-decoration: none; }
+.navbar-brand a:hover { color: #ccd9e6; }
 .navbar-menu { display: flex; list-style: none; gap: 0; }
 .navbar-menu li { position: relative; }
-.navbar-menu a { color: rgba(255,255,255,0.85); padding: 0.8rem 0.75rem; display: block; font-size: 0.9rem; text-decoration: none; }
-.navbar-menu a:hover, .navbar-menu a.active { color: #fff; background: rgba(255,255,255,0.1); }
+.navbar-menu a {
+    color: #c0d0e0;
+    padding: 0.8rem 0.75rem; display: block; font-size: 0.9rem;
+    text-decoration: none; transition: background 0.15s, color 0.15s;
+}
+.navbar-menu a:hover { color: #fff; background: rgba(255,255,255,0.15); text-decoration: none; }
+.navbar-menu a.active { color: #fff; background: rgba(255,255,255,0.2); font-weight: 600; }
+
+/* Navbar user section */
 .navbar-user { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
+.navbar-user-name { color: #c0d0e0; }
+
+/* Logout button — high visibility */
+.btn-logout {
+    background: rgba(255,255,255,0.15); color: #fff;
+    border: 1px solid rgba(255,255,255,0.4);
+    font-weight: 600; padding: 0.2rem 0.75rem;
+    transition: background 0.15s, border-color 0.15s;
+}
+.btn-logout:hover {
+    background: rgba(255,255,255,0.3); color: #fff;
+    border-color: rgba(255,255,255,0.7); text-decoration: none;
+}
+
+/* Dropdown menu */
 .dropdown-menu {
     display: none; position: absolute; top: 100%; left: 0; background: #fff;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-radius: 4px; min-width: 160px; z-index: 100;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-radius: 4px; min-width: 180px; z-index: 100;
     list-style: none;
 }
 .dropdown:hover .dropdown-menu { display: block; }
-.dropdown-menu a { color: #1a1a2e; padding: 0.5rem 1rem; }
-.dropdown-menu a:hover { background: #f0f2f5; }
+.dropdown-menu a { color: #1a1a2e; padding: 0.5rem 1rem; font-size: 0.85rem; }
+.dropdown-menu a:hover { background: #f0f2f5; color: #003366; text-decoration: none; }
 
 /* ---- Page ---- */
 .page-title { margin: 1rem 0; font-size: 1.5rem; color: #003366; }
@@ -82,6 +105,7 @@ h1, h2, h3 { font-weight: 600; margin-bottom: 0.5rem; }
 .badge-admin { background: #dc3545; color: #fff; }
 .badge-editor { background: #0d6efd; color: #fff; }
 .badge-readonly { background: #6c757d; color: #fff; }
+.badge-sds_book_only { background: #6f42c1; color: #fff; }
 .badge-success, .badge-published { background: #198754; color: #fff; }
 .badge-draft { background: #ffc107; color: #333; }
 .badge-muted { background: #e0e0e0; color: #888; }
@@ -94,12 +118,13 @@ h1, h2, h3 { font-weight: 600; margin-bottom: 0.5rem; }
     display: inline-block; padding: 0.4rem 1rem; border: 1px solid transparent;
     border-radius: 4px; font-size: 0.85rem; font-weight: 500; cursor: pointer;
     text-decoration: none; background: #f0f2f5; color: #333; line-height: 1.5;
+    transition: background 0.15s, border-color 0.15s;
 }
 .btn:hover { background: #e0e2e5; text-decoration: none; }
 .btn-primary { background: #003366; color: #fff; }
 .btn-primary:hover { background: #004488; }
-.btn-outline { background: transparent; border-color: #ccc; }
-.btn-outline:hover { background: #f0f2f5; }
+.btn-outline { background: transparent; border-color: #aaa; color: #333; }
+.btn-outline:hover { background: #f0f2f5; border-color: #888; }
 .btn-danger { background: #dc3545; color: #fff; }
 .btn-danger:hover { background: #bb2d3b; }
 .btn-sm { padding: 0.2rem 0.6rem; font-size: 0.8rem; }
@@ -143,17 +168,31 @@ h1, h2, h3 { font-weight: 600; margin-bottom: 0.5rem; }
 
 /* ---- Pagination ---- */
 .pagination { display: flex; gap: 0.25rem; justify-content: center; margin: 1.5rem 0; }
+.pagination-current {
+    display: inline-block; padding: 0.2rem 0.6rem; background: #003366;
+    color: #fff; border-radius: 4px; font-size: 0.8rem; font-weight: 600;
+}
 .page-link { display: inline-block; padding: 0.3rem 0.7rem; border: 1px solid #ddd; border-radius: 3px; font-size: 0.85rem; }
 .page-link:hover { background: #f0f2f5; text-decoration: none; }
 .page-link.active { background: #003366; color: #fff; border-color: #003366; }
 .page-ellipsis { padding: 0.3rem 0.3rem; color: #888; }
 
 /* ---- Login Page ---- */
-.login-page { display: flex; justify-content: center; align-items: center; min-height: 100vh; background: linear-gradient(135deg, #003366 0%, #1a5276 100%); }
-.login-container { background: #fff; border-radius: 8px; padding: 2rem; width: 100%; max-width: 400px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+.login-page {
+    display: flex; justify-content: center; align-items: center;
+    min-height: 100vh; background: linear-gradient(135deg, #003366 0%, #1a5276 100%);
+}
+.login-container {
+    background: #fff; border-radius: 8px; padding: 2rem;
+    width: 100%; max-width: 400px; box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
 .login-header { text-align: center; margin-bottom: 1.5rem; }
 .login-header h1 { color: #003366; font-size: 1.5rem; }
 .login-header p { color: #888; font-size: 0.9rem; }
+.login-logo {
+    display: block; margin: 0 auto 1rem;
+    max-height: 80px; max-width: 280px;
+}
 
 /* ---- SDS Preview ---- */
 .sds-preview { max-width: 900px; margin: 0 auto; }

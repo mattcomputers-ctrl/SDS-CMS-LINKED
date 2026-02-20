@@ -150,7 +150,10 @@ class App
         $router->post('/raw-materials/{id}/constituents', 'RawMaterialController@saveConstituents');
 
         // ── SDS Book (plant lookup) ────────────────────────────────────
-        $router->get('/sds-book', 'SDSBookController@index');
+        $router->get('/sds-book',                         'SDSBookController@index');
+        $router->post('/sds-book/delete-supplier/{id}',   'SDSBookController@deleteSupplierSds');
+        $router->post('/sds-book/delete-fg/{id}',         'SDSBookController@deleteFgSds');
+        $router->get('/sds-book/export',                  'ExportController@exportAllFgSds');
 
         // ── Finished Goods ───────────────────────────────────────────
         $router->get('/finished-goods',            'FinishedGoodController@index');

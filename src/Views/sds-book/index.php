@@ -13,6 +13,9 @@
             <a href="/sds-book" class="btn btn-outline">Clear</a>
         <?php endif; ?>
     </form>
+    <?php if (is_admin()): ?>
+        <a href="/sds-book/export" class="btn btn-primary">Export All FG SDS</a>
+    <?php endif; ?>
 </div>
 
 <p class="text-muted"><?= $total ?> safety data sheet(s) found.</p>
@@ -29,9 +32,10 @@
                 <th>Product</th>
                 <th>Supplier</th>
                 <th>Type</th>
+                <th>Rev</th>
                 <th>Lang</th>
                 <th>Date</th>
-                <th>Action</th>
+                <th>Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -45,12 +49,27 @@
                     <?php else: ?>
                         <span class="badge" style="background: #28a745; color: #fff;">Finished Good</span>
                     <?php endif; ?>
-                    <small class="text-muted"><?= e($r['sds_type']) ?></small>
                 </td>
+                <td><?= $r['version'] !== null ? 'v' . $r['version'] : '—' ?></td>
                 <td><?= e($r['language']) ?: '—' ?></td>
                 <td><?= $r['date'] ? e($r['date']) : '<span class="text-muted">—</span>' ?></td>
-                <td>
+                <td style="white-space: nowrap;">
                     <a href="<?= e($r['view_url']) ?>" target="_blank" class="btn btn-sm btn-primary">View PDF</a>
+                    <?php if (is_admin()): ?>
+                        <?php if ($r['source'] === 'supplier'): ?>
+                            <form method="POST" action="/sds-book/delete-supplier/<?= (int) $r['id'] ?>" class="inline-form"
+                                  onsubmit="return confirm('Remove this supplier SDS from the book?')">
+                                <?= csrf_field() ?>
+                                <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                            </form>
+                        <?php else: ?>
+                            <form method="POST" action="/sds-book/delete-fg/<?= (int) $r['id'] ?>" class="inline-form"
+                                  onsubmit="return confirm('Remove this SDS version from the book?')">
+                                <?= csrf_field() ?>
+                                <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                            </form>
+                        <?php endif; ?>
+                    <?php endif; ?>
                 </td>
             </tr>
         <?php endforeach; ?>

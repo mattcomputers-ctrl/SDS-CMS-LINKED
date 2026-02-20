@@ -16,9 +16,10 @@ $action = $isEdit ? '/admin/users/' . (int) $item['id'] : '/admin/users';
                        value="<?= e(old('username', $item['username'] ?? '')) ?>" required>
             </div>
             <div class="form-group">
-                <label for="email">Email *</label>
+                <label for="email">Email</label>
                 <input type="email" id="email" name="email"
-                       value="<?= e(old('email', $item['email'] ?? '')) ?>" required>
+                       value="<?= e(old('email', $item['email'] ?? '')) ?>">
+                <small class="text-muted">Optional. Leave blank if not needed.</small>
             </div>
             <div class="form-group">
                 <label for="display_name">Display Name</label>
@@ -31,7 +32,9 @@ $action = $isEdit ? '/admin/users/' . (int) $item['id'] : '/admin/users';
                     <option value="readonly" <?= old('role', $item['role'] ?? '') === 'readonly' ? 'selected' : '' ?>>Read-Only</option>
                     <option value="editor" <?= old('role', $item['role'] ?? '') === 'editor' ? 'selected' : '' ?>>Editor</option>
                     <option value="admin" <?= old('role', $item['role'] ?? '') === 'admin' ? 'selected' : '' ?>>Admin</option>
+                    <option value="sds_book_only" <?= old('role', $item['role'] ?? '') === 'sds_book_only' ? 'selected' : '' ?>>SDS Book Only</option>
                 </select>
+                <small class="text-muted">SDS Book Only users can only view the SDS Book. No other pages are accessible.</small>
             </div>
             <div class="form-group">
                 <label for="password"><?= $isEdit ? 'New Password (leave blank to keep)' : 'Password *' ?></label>

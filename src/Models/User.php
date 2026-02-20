@@ -184,25 +184,29 @@ class User
         if ($username === '') {
             throw new \InvalidArgumentException('Username is required.');
         }
-        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            throw new \InvalidArgumentException('A valid email is required.');
+        if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            throw new \InvalidArgumentException('Email address is not valid.');
         }
         if (strlen($password) < 8) {
             throw new \InvalidArgumentException('Password must be at least 8 characters.');
         }
 
         // Check uniqueness
-        $existing = $db->fetch("SELECT id FROM users WHERE username = ? OR email = ?", [$username, $email]);
+        if ($email !== '') {
+            $existing = $db->fetch("SELECT id FROM users WHERE username = ? OR email = ?", [$username, $email]);
+        } else {
+            $existing = $db->fetch("SELECT id FROM users WHERE username = ?", [$username]);
+        }
         if ($existing) {
-            throw new \RuntimeException('A user with that username or email already exists.');
+            throw new \RuntimeException('A user with that username' . ($email ? ' or email' : '') . ' already exists.');
         }
 
-        $allowedRoles = ['admin', 'editor', 'readonly'];
+        $allowedRoles = ['admin', 'editor', 'readonly', 'sds_book_only'];
         $role = in_array($data['role'] ?? '', $allowedRoles, true) ? $data['role'] : 'readonly';
 
         $insertData = [
             'username'      => $username,
-            'email'         => $email,
+            'email'         => $email !== '' ? $email : null,
             'password_hash' => password_hash($password, PASSWORD_ARGON2ID),
             'display_name'  => trim($data['display_name'] ?? ''),
             'role'          => $role,
@@ -238,18 +242,21 @@ class User
             $updateData['username'] = trim($data['username']);
         }
 
-        if (isset($data['email']) && trim($data['email']) !== '') {
-            if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
-                throw new \InvalidArgumentException('A valid email is required.');
+        if (array_key_exists('email', $data)) {
+            $email = trim($data['email'] ?? '');
+            if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                throw new \InvalidArgumentException('Email address is not valid.');
             }
-            $dup = $db->fetch(
-                "SELECT id FROM users WHERE email = ? AND id != ?",
-                [trim($data['email']), $id]
-            );
-            if ($dup) {
-                throw new \RuntimeException('Email already taken.');
+            if ($email !== '') {
+                $dup = $db->fetch(
+                    "SELECT id FROM users WHERE email = ? AND id != ?",
+                    [$email, $id]
+                );
+                if ($dup) {
+                    throw new \RuntimeException('Email already taken.');
+                }
             }
-            $updateData['email'] = trim($data['email']);
+            $updateData['email'] = $email !== '' ? $email : null;
         }
 
         if (isset($data['display_name'])) {
@@ -257,7 +264,7 @@ class User
         }
 
         if (isset($data['role'])) {
-            $allowedRoles = ['admin', 'editor', 'readonly'];
+            $allowedRoles = ['admin', 'editor', 'readonly', 'sds_book_only'];
             if (in_array($data['role'], $allowedRoles, true)) {
                 $updateData['role'] = $data['role'];
             }

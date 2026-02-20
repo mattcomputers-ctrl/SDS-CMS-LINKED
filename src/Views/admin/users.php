@@ -8,6 +8,7 @@
             <option value="admin" <?= ($filters['role'] === 'admin') ? 'selected' : '' ?>>Admin</option>
             <option value="editor" <?= ($filters['role'] === 'editor') ? 'selected' : '' ?>>Editor</option>
             <option value="readonly" <?= ($filters['role'] === 'readonly') ? 'selected' : '' ?>>Read-Only</option>
+            <option value="sds_book_only" <?= ($filters['role'] === 'sds_book_only') ? 'selected' : '' ?>>SDS Book Only</option>
         </select>
         <button type="submit" class="btn btn-sm">Filter</button>
     </form>
@@ -23,7 +24,7 @@
         <tr>
             <td><strong><?= e($item['username']) ?></strong></td>
             <td><?= e($item['display_name']) ?></td>
-            <td><?= e($item['email']) ?></td>
+            <td><?= $item['email'] ? e($item['email']) : '<span class="text-muted">—</span>' ?></td>
             <td><span class="badge badge-<?= $item['role'] ?>"><?= e($item['role']) ?></span></td>
             <td><?= (int) $item['is_active'] ? 'Yes' : 'No' ?></td>
             <td><?= $item['last_login'] ? format_date($item['last_login'], 'm/d/Y H:i') : 'Never' ?></td>

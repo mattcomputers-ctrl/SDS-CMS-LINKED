@@ -17,14 +17,30 @@ class AuthController
      */
     public function loginForm(): void
     {
-        // Already logged in? Send to dashboard.
+        // Already logged in? Send to appropriate page.
         if (isset($_SESSION['_user'])) {
+            if (is_sds_book_only()) {
+                redirect('/sds-book');
+            }
             redirect('/');
             return; // unreachable, but explicit
         }
 
+        // Load login logo from settings
+        $loginLogo = null;
+        try {
+            $db = \SDS\Core\Database::getInstance();
+            $row = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'login.logo_path'");
+            if ($row && !empty($row['value'])) {
+                $loginLogo = $row['value'];
+            }
+        } catch (\Throwable $e) {
+            // Silently ignore — logo is optional
+        }
+
         view('auth/login', [
             'pageTitle' => 'Sign In',
+            'loginLogo' => $loginLogo,
         ]);
     }
 
@@ -93,6 +109,13 @@ class AuthController
             'action'      => 'login',
             'ip_address'  => $_SERVER['REMOTE_ADDR'] ?? null,
         ]);
+
+        // SDS Book Only users always go to /sds-book
+        if (($user['role'] ?? '') === 'sds_book_only') {
+            unset($_SESSION['_flash']['intended_url']);
+            $_SESSION['_flash']['success'] = 'Welcome back, ' . ($user['display_name'] ?: $user['username']) . '.';
+            redirect('/sds-book');
+        }
 
         // Redirect to intended URL or dashboard
         $intended = $_SESSION['_flash']['intended_url'] ?? '/';

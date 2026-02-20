@@ -4,14 +4,17 @@ declare(strict_types=1);
 
 namespace SDS\Controllers;
 
+use SDS\Core\CSRF;
 use SDS\Core\Database;
+use SDS\Services\AuditService;
 
 /**
  * SDSBookController — Plant SDS book replacement.
  *
  * Provides a searchable directory of all supplier SDS documents (uploaded
- * to raw materials) plus all published finished-good SDS versions, so
- * plant workers can quickly find any Safety Data Sheet in one place.
+ * to raw materials) plus ALL published finished-good SDS versions (every
+ * revision is retained), so plant workers can quickly find any Safety
+ * Data Sheet in one place.
  */
 class SDSBookController
 {
@@ -25,7 +28,6 @@ class SDSBookController
 
         $db = Database::getInstance();
         $results = [];
-        $total   = 0;
 
         if ($type === 'all' || $type === 'supplier') {
             $supplierResults = $this->searchSupplierSDS($db, $search);
@@ -64,6 +66,60 @@ class SDSBookController
     }
 
     /**
+     * Admin-only: soft-delete a supplier SDS entry (remove the file reference).
+     */
+    public function deleteSupplierSds(string $id): void
+    {
+        if (!is_admin()) {
+            $_SESSION['_flash']['error'] = 'Only administrators can remove SDS entries.';
+            redirect('/sds-book');
+        }
+
+        CSRF::validateRequest();
+
+        $db = Database::getInstance();
+        $rm = $db->fetch("SELECT id, internal_code, supplier_sds_path FROM raw_materials WHERE id = ?", [(int) $id]);
+
+        if ($rm && !empty($rm['supplier_sds_path'])) {
+            $fullPath = \SDS\Core\App::basePath() . '/public/uploads/' . $rm['supplier_sds_path'];
+            if (file_exists($fullPath)) {
+                unlink($fullPath);
+            }
+            $db->update('raw_materials', ['supplier_sds_path' => null], 'id = ?', [(int) $id]);
+            AuditService::log('sds_book', $id, 'delete_supplier_sds', ['code' => $rm['internal_code']]);
+            $_SESSION['_flash']['success'] = 'Supplier SDS removed for ' . $rm['internal_code'] . '.';
+        } else {
+            $_SESSION['_flash']['error'] = 'SDS entry not found.';
+        }
+
+        redirect('/sds-book');
+    }
+
+    /**
+     * Admin-only: soft-delete a finished good SDS version.
+     */
+    public function deleteFgSds(string $id): void
+    {
+        if (!is_admin()) {
+            $_SESSION['_flash']['error'] = 'Only administrators can remove SDS entries.';
+            redirect('/sds-book');
+        }
+
+        CSRF::validateRequest();
+
+        $db = Database::getInstance();
+        $db->update('sds_versions', [
+            'is_deleted' => 1,
+            'deleted_by' => current_user_id(),
+            'deleted_at' => date('Y-m-d H:i:s'),
+        ], 'id = ?', [(int) $id]);
+
+        AuditService::log('sds_book', $id, 'soft_delete_fg_sds');
+        $_SESSION['_flash']['success'] = 'SDS version removed from the book.';
+        redirect('/sds-book');
+    }
+
+    /**
      * Search raw materials that have a supplier SDS uploaded.
      */
     private function searchSupplierSDS(Database $db, string $search): array
@@ -99,6 +155,7 @@ class SDSBookController
                 'view_url'     => '/raw-materials/' . (int) $row['id'] . '/sds',
                 'date'         => null,
                 'language'     => '',
+                'version'      => null,
             ];
         }
 
@@ -106,7 +163,7 @@ class SDSBookController
     }
 
     /**
-     * Search published finished-good SDS versions.
+     * Search ALL published finished-good SDS versions (every revision is kept).
      */
     private function searchFinishedGoodSDS(Database $db, string $search): array
     {
@@ -114,7 +171,7 @@ class SDSBookController
         $params = [];
 
         if ($search !== '') {
-            $where[]  = '(fg.product_code LIKE ? OR fg.product_name LIKE ?)';
+            $where[]  = '(fg.product_code LIKE ? OR fg.description LIKE ?)';
             $term     = '%' . $search . '%';
             $params[] = $term;
             $params[] = $term;
@@ -122,21 +179,14 @@ class SDSBookController
 
         $whereSQL = 'WHERE ' . implode(' AND ', $where);
 
-        // Get only the latest version per finished good + language
+        // Return ALL published versions, not just the latest
         $rows = $db->fetchAll(
             "SELECT sv.id AS version_id, sv.version, sv.language, sv.effective_date, sv.published_at,
-                    fg.id AS fg_id, fg.product_code, fg.product_name
+                    fg.id AS fg_id, fg.product_code, fg.description
              FROM sds_versions sv
              JOIN finished_goods fg ON fg.id = sv.finished_good_id
              {$whereSQL}
-             AND sv.version = (
-                 SELECT MAX(sv2.version) FROM sds_versions sv2
-                 WHERE sv2.finished_good_id = sv.finished_good_id
-                   AND sv2.language = sv.language
-                   AND sv2.status = 'published'
-                   AND sv2.is_deleted = 0
-             )
-             ORDER BY fg.product_code ASC, sv.language ASC",
+             ORDER BY fg.product_code ASC, sv.version DESC, sv.language ASC",
             $params
         );
 
@@ -144,12 +194,13 @@ class SDSBookController
         foreach ($rows as $row) {
             $results[] = [
                 'id'           => $row['version_id'],
-                'product_name' => $row['product_code'] . ($row['product_name'] ? ' — ' . $row['product_name'] : ''),
+                'product_name' => $row['product_code'] . ($row['description'] ? ' — ' . $row['description'] : ''),
                 'supplier'     => '',
-                'sds_type'     => 'Finished Good SDS (v' . $row['version'] . ')',
+                'sds_type'     => 'Finished Good SDS',
                 'view_url'     => '/sds/version/' . (int) $row['version_id'] . '/download',
                 'date'         => $row['effective_date'] ?? $row['published_at'] ?? null,
                 'language'     => strtoupper($row['language']),
+                'version'      => (int) $row['version'],
             ];
         }
 

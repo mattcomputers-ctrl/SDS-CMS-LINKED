@@ -169,9 +169,31 @@ class AdminController
             }
         }
 
+        // Handle login logo removal
+        if (!empty($_POST['remove_login_logo'])) {
+            $currentLogin = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'login.logo_path'");
+            if ($currentLogin && $currentLogin['value']) {
+                $absPath = \SDS\Core\App::basePath() . '/public' . $currentLogin['value'];
+                if (file_exists($absPath)) {
+                    unlink($absPath);
+                }
+            }
+            $this->saveSetting($db, 'login.logo_path', '');
+        }
+
+        // Handle login logo upload
+        if (!empty($_FILES['login_logo']['tmp_name']) && $_FILES['login_logo']['error'] === UPLOAD_ERR_OK) {
+            $loginLogoError = $this->processImageUpload($db, 'login_logo', 'login-logo', 'login.logo_path');
+            if ($loginLogoError !== null) {
+                $_SESSION['_flash']['error'] = $loginLogoError;
+                redirect('/admin/settings');
+                return;
+            }
+        }
+
         // Save all text settings
         foreach ($_POST as $key => $value) {
-            if (in_array($key, ['_csrf_token', 'remove_logo'], true)) {
+            if (in_array($key, ['_csrf_token', 'remove_logo', 'remove_login_logo'], true)) {
                 continue;
             }
             $key = preg_replace('/[^a-zA-Z0-9_.]/', '', $key);
@@ -250,6 +272,59 @@ class AdminController
 
         // Store the web-accessible path
         $this->saveSetting($db, 'company.logo_path', '/uploads/' . $filename);
+
+        return null;
+    }
+
+    /**
+     * Generic image upload handler for settings.
+     *
+     * @param Database $db           Database instance
+     * @param string   $fileKey      $_FILES key (e.g. 'login_logo')
+     * @param string   $filenameBase Base filename without extension (e.g. 'login-logo')
+     * @param string   $settingKey   Settings key to store the path (e.g. 'login.logo_path')
+     * @return string|null  Error message, or null on success.
+     */
+    private function processImageUpload(Database $db, string $fileKey, string $filenameBase, string $settingKey): ?string
+    {
+        $file = $_FILES[$fileKey];
+
+        if ($file['size'] > 2 * 1024 * 1024) {
+            return 'Image file is too large. Maximum size is 2 MB.';
+        }
+
+        $allowed = ['image/png', 'image/jpeg', 'image/gif'];
+        $finfo = new \finfo(FILEINFO_MIME_TYPE);
+        $mime = $finfo->file($file['tmp_name']);
+        if (!in_array($mime, $allowed, true)) {
+            return 'Invalid file type. Only PNG, JPG, and GIF are accepted.';
+        }
+
+        $extMap = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/gif' => 'gif'];
+        $ext = $extMap[$mime];
+
+        // Delete previous file if it exists
+        $current = $db->fetch("SELECT `value` FROM settings WHERE `key` = ?", [$settingKey]);
+        if ($current && $current['value']) {
+            $oldPath = \SDS\Core\App::basePath() . '/public' . $current['value'];
+            if (file_exists($oldPath)) {
+                unlink($oldPath);
+            }
+        }
+
+        $uploadDir = \SDS\Core\App::basePath() . '/public/uploads';
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+
+        $filename = $filenameBase . '.' . $ext;
+        $destPath = $uploadDir . '/' . $filename;
+
+        if (!move_uploaded_file($file['tmp_name'], $destPath)) {
+            return 'Failed to save the uploaded file.';
+        }
+
+        $this->saveSetting($db, $settingKey, '/uploads/' . $filename);
 
         return null;
     }

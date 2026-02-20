@@ -271,6 +271,15 @@ function is_readonly(): bool
 }
 
 /**
+ * Is the current session user restricted to SDS Book only?
+ */
+function is_sds_book_only(): bool
+{
+    $user = $_SESSION['_user'] ?? null;
+    return $user !== null && ($user['role'] ?? '') === 'sds_book_only';
+}
+
+/**
  * Return the current user's ID, or null if not logged in.
  */
 function current_user_id(): ?int

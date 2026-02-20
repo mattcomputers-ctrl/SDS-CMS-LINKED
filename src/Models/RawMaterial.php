@@ -187,25 +187,29 @@ class RawMaterial
             throw new \RuntimeException("A raw material with code '{$code}' already exists.");
         }
 
+        // Helper: convert empty strings to null for numeric columns
+        $numOrNull = static fn($key) => isset($data[$key]) && $data[$key] !== '' ? $data[$key] : null;
+        $strOrNull = static fn($key) => isset($data[$key]) && trim((string) $data[$key]) !== '' ? trim((string) $data[$key]) : null;
+
         $insertData = [
             'internal_code'         => $code,
             'supplier'              => trim($data['supplier'] ?? ''),
             'supplier_product_name' => trim($data['supplier_product_name'] ?? ''),
             'supplier_sds_path'     => $data['supplier_sds_path'] ?? null,
-            'voc_wt'                => $data['voc_wt'] ?? null,
-            'exempt_voc_wt'         => $data['exempt_voc_wt'] ?? null,
-            'water_wt'              => $data['water_wt'] ?? null,
-            'specific_gravity'      => $data['specific_gravity'] ?? null,
-            'density'               => $data['density'] ?? null,
+            'voc_wt'                => $numOrNull('voc_wt'),
+            'exempt_voc_wt'         => $numOrNull('exempt_voc_wt'),
+            'water_wt'              => $numOrNull('water_wt'),
+            'specific_gravity'      => $numOrNull('specific_gravity'),
+            'density'               => $numOrNull('density'),
             'density_units'         => $data['density_units'] ?? 'g/mL',
-            'temp_ref_c'            => $data['temp_ref_c'] ?? null,
-            'solids_wt'             => $data['solids_wt'] ?? null,
-            'solids_vol'            => $data['solids_vol'] ?? null,
-            'flash_point_c'         => $data['flash_point_c'] ?? null,
-            'physical_state'        => $data['physical_state'] ?? null,
-            'appearance'            => $data['appearance'] ?? null,
-            'odor'                  => $data['odor'] ?? null,
-            'notes'                 => $data['notes'] ?? null,
+            'temp_ref_c'            => $numOrNull('temp_ref_c'),
+            'solids_wt'             => $numOrNull('solids_wt'),
+            'solids_vol'            => $numOrNull('solids_vol'),
+            'flash_point_c'         => $numOrNull('flash_point_c'),
+            'physical_state'        => $strOrNull('physical_state'),
+            'appearance'            => $strOrNull('appearance'),
+            'odor'                  => $strOrNull('odor'),
+            'notes'                 => $strOrNull('notes'),
             'created_by'            => $data['created_by'] ?? null,
         ];
 
@@ -257,10 +261,21 @@ class RawMaterial
             'physical_state', 'appearance', 'odor', 'notes',
         ];
 
+        // Numeric columns that must be null instead of empty string
+        $numericCols = [
+            'voc_wt', 'exempt_voc_wt', 'water_wt', 'specific_gravity', 'density',
+            'temp_ref_c', 'solids_wt', 'solids_vol', 'flash_point_c',
+        ];
+
         $updateData = [];
         foreach ($allowed as $col) {
             if (array_key_exists($col, $data)) {
-                $updateData[$col] = is_string($data[$col]) ? trim($data[$col]) : $data[$col];
+                $val = is_string($data[$col]) ? trim($data[$col]) : $data[$col];
+                // Convert empty strings to null for numeric columns
+                if (in_array($col, $numericCols, true) && $val === '') {
+                    $val = null;
+                }
+                $updateData[$col] = $val;
             }
         }
 

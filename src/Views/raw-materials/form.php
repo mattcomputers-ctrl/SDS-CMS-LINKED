@@ -278,16 +278,29 @@ function attachCasLookup(input) {
 
         // Only auto-populate if the chemical name is empty
         if (chemNameInput && chemNameInput.value.trim() === '') {
-            fetch('/raw-materials/cas-lookup?cas=' + encodeURIComponent(cas))
-                .then(function(resp) { return resp.json(); })
+            chemNameInput.placeholder = 'Looking up...';
+            fetch('/raw-materials/cas-lookup?cas=' + encodeURIComponent(cas), {
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/json' }
+            })
+                .then(function(resp) {
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    return resp.json();
+                })
                 .then(function(data) {
+                    chemNameInput.placeholder = '';
                     if (data.found && data.chemical_name) {
                         chemNameInput.value = data.chemical_name;
                         chemNameInput.style.borderColor = '#198754';
                         setTimeout(function() { chemNameInput.style.borderColor = ''; }, 2000);
+                    } else {
+                        chemNameInput.placeholder = 'Not found — enter manually';
                     }
                 })
-                .catch(function() { /* silent fail */ });
+                .catch(function(err) {
+                    chemNameInput.placeholder = 'Lookup failed — enter manually';
+                    console.error('CAS lookup error:', err);
+                });
         }
     });
 }

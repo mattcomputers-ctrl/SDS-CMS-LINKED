@@ -288,15 +288,19 @@ class RawMaterialController
             exit;
         }
 
-        $result = RawMaterial::lookupCas($cas);
-        if ($result !== null) {
-            echo json_encode([
-                'found'         => true,
-                'cas_number'    => $result['cas_number'],
-                'chemical_name' => $result['chemical_name'],
-            ]);
-        } else {
-            echo json_encode(['found' => false]);
+        try {
+            $result = RawMaterial::lookupCas($cas);
+            if ($result !== null) {
+                echo json_encode([
+                    'found'         => true,
+                    'cas_number'    => $result['cas_number'],
+                    'chemical_name' => $result['chemical_name'],
+                ]);
+            } else {
+                echo json_encode(['found' => false]);
+            }
+        } catch (\Throwable $e) {
+            echo json_encode(['found' => false, 'error' => 'Lookup failed']);
         }
         exit;
     }

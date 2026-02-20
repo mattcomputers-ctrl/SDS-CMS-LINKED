@@ -1,486 +1,1668 @@
 cas_number,chemical_name,tsca_listed,cercla_rq_lbs,rcra_waste_code,rcra_characteristic,epcra_tpq_lbs
-75-07-0,Acetaldehyde,yes,1000,U001,,
-67-64-1,Acetone,yes,5000,U002,,
-75-05-8,Acetonitrile,yes,5000,U003,,
-98-86-2,Acetophenone,yes,5000,U004,,
-79-06-1,Acrylamide,yes,5000,U007,,5000
-79-10-7,Acrylic acid,yes,5000,,,
-107-13-1,Acrylonitrile,yes,100,U009,,10000
-309-00-2,Aldrin,yes,1,P004,,500
-107-18-6,Allyl alcohol,yes,100,P005,,
-106-92-3,Allyl glycidyl ether,yes,,,,
-62-53-3,Aniline,yes,5000,U012,,
-7664-41-7,Ammonia,yes,100,,,500
-7440-36-0,Antimony,yes,5000,,,
-7440-38-2,Arsenic,yes,1,,,
-1332-21-4,Asbestos,yes,1,,,
-71-43-2,Benzene,yes,10,U019,,
-92-87-5,Benzidine,yes,1,U021,,
+50-00-0,Formaldehyde,yes,100,U122,,500
+50-07-7,Mitomycin C,yes,10,U010,,500
+50-14-6,Ergocalciferol,yes,,,,1000
+50-18-0,Cyclophosphamide,yes,10,U058,,
+50-29-3,DDT,yes,1,U061,,
 50-32-8,Benzo(a)pyrene,yes,1,U022,,
-7440-41-7,Beryllium,yes,10,P015,,
-111-44-4,bis(2-Chloroethyl) ether,yes,10,U025,,
-542-88-1,bis(Chloromethyl) ether,yes,10,P016,,100
-117-81-7,bis(2-Ethylhexyl) phthalate,yes,100,U028,,
-7726-95-6,Bromine,yes,,,,
-106-99-0,1-3-Butadiene,yes,,,,10000
-71-36-3,n-Butanol,yes,5000,U031,,
-85-68-7,Butyl benzyl phthalate,yes,100,,,
-141-32-2,n-Butyl acrylate,yes,,,,
-123-86-4,n-Butyl acetate,yes,5000,,,
-7440-43-9,Cadmium,yes,10,,,
-75-15-0,Carbon disulfide,yes,100,P022,,10000
+50-55-5,Reserpine,yes,5000,U200,,
+51-03-6,Piperonyl butoxide,yes,,,,
+51-21-8,Fluorouracil,yes,,,,500
+51-28-5,2-4-Dinitrophenol,yes,10,P048,,
+51-43-4,Epinephrine,yes,1000,P042,,
+51-75-2,2-Chloro-N-(2-chloroethyl)-N- methylethanamine,yes,,,,10
+51-79-6,"Carbamic acid, ethyl ester",yes,100,U238,,
+51-83-2,Carbachol chloride,yes,,,,500
+52-68-6,Trichlorfon,yes,100,,,
+52-85-7,Famphur,yes,1000,P097,,
+53-70-3,Dibenz(a-h)anthracene,yes,1,U063,,
+53-96-3,2-Acetylaminofluorene,yes,1,U005,,
+54-11-5,Nicotine,yes,100,P075,,100
+54-62-6,Aminopterin,yes,,,,500
+55-18-5,N-Nitrosodiethylamine,yes,1,U174,,
+55-21-0,Benzamide,yes,,,,
+55-38-9,Fenthion,yes,,,,
+55-63-0,Nitroglycerin,yes,10,P081,,
+55-91-4,Diisopropylfluorophosphate,yes,100,P043,,100
+56-04-2,Methylthiouracil,yes,10,U164,,
 56-23-5,Carbon tetrachloride,yes,10,U211,,
-630-08-0,Carbon monoxide,yes,,,,
-7782-50-5,Chlorine,yes,10,,,100
-67-66-3,Chloroform,yes,10,U044,,
-74-87-3,Chloromethane,yes,,U045,,
-95-57-8,2-Chlorophenol,yes,100,U048,,
-7440-47-3,Chromium,yes,5000,,,
-18540-29-9,Chromium(VI),yes,10,,,
-7440-48-4,Cobalt,yes,,,,
-7440-50-8,Copper,yes,5000,,,
-108-39-4,m-Cresol,yes,100,U052,,
-95-48-7,o-Cresol,yes,100,U052,,
-106-44-5,p-Cresol,yes,100,U052,,
-98-82-8,Cumene,yes,5000,,,
-110-82-7,Cyclohexane,yes,1000,U056,,
-108-94-1,Cyclohexanone,yes,5000,U057,,
+56-25-7,Cantharidin,yes,,,,100
+56-35-9,bis(Tributyltin) oxide,yes,,,,
+56-38-2,Parathion,yes,10,P089,,100
+56-49-5,3-Methylcholanthrene,yes,10,U157,,
+56-53-1,Diethylstilbestrol,yes,1,U089,,
+56-55-3,Benz(a)anthracene,yes,10,U018,,
+56-72-4,Coumaphos,yes,10,,,100
+57-12-5,Cyanide compounds,yes,10,,,
+57-14-7,1-1-Dimethylhydrazine,yes,10,U098,,1000
+57-24-9,Strychnine,yes,10,P108,,100
+57-33-0,Pentobarbital sodium,yes,,,,
+57-41-0,Phenytoin,yes,,,,
+57-47-6,Physostigmine,yes,100,P204,,100
+57-55-6,Propylene glycol,yes,,,,
+57-57-8,beta-Propiolactone,yes,10,U052,,500
+57-64-7,"Physostigmine, salicylate (1:1)",yes,100,P188,,100
+57-74-9,Chlordane,yes,1,U036,,1000
+57-97-6,"7,12-Dimethylbenz[a]anthracene",yes,1,U094,,
+58-36-6,"Phenoxarsine, 10,10'-oxydi-",yes,,,,500
+58-89-9,gamma-BHC (Lindane),yes,1,U129,,1000
+58-90-2,"2,3,4,6-Tetrachlorophenol",yes,10,,,
+59-50-7,4-Chloro-3-methylphenol,yes,5000,U039,,
+59-88-1,Phenylhydrazine hydrochloride,yes,,,,1000
+59-89-2,N-Nitrosomorpholine,yes,1,,,
+60-00-4,Ethylenediamine-tetraacetic acid (EDTA),yes,5000,,,
+60-09-3,4-Aminoazobenzene,yes,,,,
+60-11-7,4-Dimethylaminoazobenzene,yes,10,U093,,
+60-29-7,Diethyl ether,yes,100,U117,,
+60-34-4,"Hydrazine, methyl-",yes,10,P068,,500
+60-35-5,Acetamide,yes,100,,,
+60-41-3,"Strychnine, sulfate",yes,10,,,100
+60-51-5,Dimethoate,yes,10,P044,,500
+60-57-1,Dieldrin,yes,1,P037,,500
+61-82-5,Amitrole,yes,,U011,,
+62-38-4,Phenylmercuric acetate,yes,100,P092,,500
+62-44-2,Phenacetin,yes,100,U187,,
+62-50-0,Ethyl methanesulfonate,yes,1,U119,,
+62-53-3,Aniline,yes,5000,U012,,1000
+62-55-5,Thioacetamide,yes,10,U218,,
+62-56-6,Thiourea,yes,10,U219,,
+62-73-7,Dichlorvos,yes,10,,,1000
+62-74-8,Sodium fluoroacetate,yes,10,P058,,10
+62-75-9,N-Nitrosodimethylamine,yes,10,P082,,1000
+63-25-2,Carbaryl,yes,100,U279,,
+64-00-6,"Phenol, 3-(1-methylethyl)-, methylcarbamate",yes,10,P202,,500
+64-17-5,Ethanol,yes,,,,
+64-18-6,Formic acid,yes,5000,U123,,
+64-19-7,Acetic acid,yes,5000,,,
+64-67-5,Diethyl sulfate,yes,10,,,
+64-75-5,Tetracycline hydrochloride,yes,,,,
+64-86-8,Colchicine,yes,,,,10
+65-30-5,Nicotine sulfate,yes,100,,,100
+65-85-0,Benzoic acid,yes,5000,,,
+66-27-3,Methyl methanesulfonate,yes,,,,
+66-75-1,Uracil mustard,yes,10,U237,,
+66-81-9,Cycloheximide,yes,,,,100
+67-56-1,Methanol,yes,5000,U154,,
+67-63-0,Isopropanol,yes,,,,
+67-64-1,Acetone,yes,5000,U002,,
+67-66-3,Chloroform,yes,10,U044,,10000
+67-72-1,Hexachloroethane,yes,100,U131,,
+68-12-2,Dimethylformamide,yes,100,,,
+68-76-8,Triaziquone,yes,,,,
+70-25-7,"Guanidine, N-methyl-N'-nitro-N-nitroso-",yes,10,U163,,
+70-30-4,Hexachlorophene,yes,100,U132,,
+70-69-9,"Propiophenone, 4'-amino",yes,,,,100
+71-23-8,n-Propanol,yes,,,,
+71-36-3,n-Butanol,yes,5000,U031,,
+71-43-2,Benzene,yes,10,U019,,
+71-55-6,1-1-1-Trichloroethane,yes,1000,U226,,
+71-63-6,Digitoxin,yes,,,,100
+72-20-8,Endrin,yes,1,P051,,500
+72-43-5,"Benzene, 1,1'-(2,2,2- trichloroethylidene)bis [4-methoxy-",yes,1,U247,,
 72-54-8,DDD,yes,1,U060,,
 72-55-9,DDE,yes,1,U060,,
-50-29-3,DDT,yes,1,U061,,
-84-74-2,Dibutyl phthalate,yes,10,U069,,
-95-50-1,o-Dichlorobenzene,yes,100,U070,,
-106-46-7,p-Dichlorobenzene,yes,100,U072,,
-75-09-2,Dichloromethane,yes,1000,U080,,
-107-06-2,1-2-Dichloroethane,yes,100,U077,,
-75-35-4,1-1-Dichloroethylene,yes,100,U078,,
-111-42-2,Diethanolamine,yes,,,,
-84-66-2,Diethyl phthalate,yes,5000,U088,,
-68-12-2,Dimethylformamide,yes,,,,
-131-11-3,Dimethyl phthalate,yes,5000,U102,,
-123-91-1,1-4-Dioxane,yes,100,U108,,
-122-66-7,1-2-Diphenylhydrazine,yes,10,U109,,
-106-89-8,Epichlorohydrin,yes,100,U041,,1000
-64-17-5,Ethanol,yes,,,,
-100-41-4,Ethylbenzene,yes,1000,,,
-107-21-1,Ethylene glycol,yes,5000,,,
-75-21-8,Ethylene oxide,yes,10,U115,,1000
-50-00-0,Formaldehyde,yes,100,U122,,500
-110-54-3,n-Hexane,yes,5000,,,
-302-01-2,Hydrazine,yes,1,U133,,1000
-7647-01-0,Hydrochloric acid,yes,5000,,,500
-74-90-8,Hydrogen cyanide,yes,10,P063,,100
-7664-39-3,Hydrogen fluoride,yes,100,U134,,100
-7722-84-1,Hydrogen peroxide,yes,,,D001,1000
-7783-06-4,Hydrogen sulfide,yes,100,U135,,500
-123-31-9,Hydroquinone,yes,100,,,
-78-83-1,Isobutanol,yes,5000,U140,,
-67-63-0,Isopropanol,yes,,,,
-78-59-1,Isophorone,yes,5000,U141,,
-7439-92-1,Lead,yes,10,,,
-58-89-9,Lindane,yes,1,U129,,1000
-108-31-6,Maleic anhydride,yes,5000,,,
-7439-96-5,Manganese,yes,,,,
-7439-97-6,Mercury,yes,1,U151,,
-67-56-1,Methanol,yes,5000,U154,,
+72-57-1,Trypan blue,yes,10,U236,,
+74-82-8,Methane,yes,,,,
 74-83-9,Methyl bromide,yes,1000,U029,,1000
-74-87-3,Methyl chloride,yes,,U045,,
-78-93-3,Methyl ethyl ketone,yes,5000,U159,,
-108-10-1,Methyl isobutyl ketone,yes,5000,U161,,
-80-62-6,Methyl methacrylate,yes,1000,U162,,
-1634-04-4,Methyl tert-butyl ether,yes,,,,
-101-14-4,4-4-Methylenebis(2-chloroaniline),yes,10,U158,,
-101-68-8,Methylene bisphenyl isocyanate,yes,,,,
-91-20-3,Naphthalene,yes,100,U165,,
-7440-02-0,Nickel,yes,100,,,
-7697-37-2,Nitric acid,yes,1000,,,1000
-98-95-3,Nitrobenzene,yes,1000,U169,,10000
-55-63-0,Nitroglycerin,yes,10,P081,,
-62-75-9,N-Nitrosodimethylamine,yes,10,P082,,
-10028-15-6,Ozone,yes,,,,
-56-38-2,Parathion,yes,10,P089,,100
-87-86-5,Pentachlorophenol,yes,10,F027,,
-108-95-2,Phenol,yes,1000,U188,,500
-7664-38-2,Phosphoric acid,yes,5000,,,
-7723-14-0,Phosphorus (yellow),yes,1,P048,,100
-85-44-9,Phthalic anhydride,yes,5000,U190,,
-88-89-1,Picric acid,yes,,,,
-1336-36-3,PCBs,yes,1,,,
-115-07-1,Propylene,yes,,,,
-75-56-9,Propylene oxide,yes,100,,,10000
-110-86-1,Pyridine,yes,1000,U196,,1000
-14808-60-7,Silica (crystalline),yes,,,,
-7440-22-4,Silver,yes,1000,,,
-7631-86-9,Silica (amorphous),yes,,,,
-100-42-5,Styrene,yes,1000,,,
-7664-93-9,Sulfuric acid,yes,1000,,,1000
-7446-09-5,Sulfur dioxide,yes,,,,500
-127-18-4,Tetrachloroethylene,yes,100,U210,,
-7550-45-0,Titanium tetrachloride,yes,1000,,,100
-13463-67-7,Titanium dioxide,yes,,,,
-108-88-3,Toluene,yes,1000,U220,,
-584-84-9,Toluene-2-4-diisocyanate,yes,100,U223,,500
-26471-62-5,Toluene diisocyanate (mixed),yes,100,U223,,500
-120-82-1,1-2-4-Trichlorobenzene,yes,100,,,
-71-55-6,1-1-1-Trichloroethane,yes,1000,U226,,
-79-00-5,1-1-2-Trichloroethane,yes,100,U227,,
-79-01-6,Trichloroethylene,yes,100,U228,,
-121-44-8,Triethylamine,yes,5000,,,
-108-05-4,Vinyl acetate,yes,5000,,,1000
-75-01-4,Vinyl chloride,yes,1,U043,,
-75-35-4,Vinylidene chloride,yes,100,U078,,
-1330-20-7,Xylenes (mixed),yes,100,U239,,
-7440-66-6,Zinc,yes,1000,,,
-1344-28-1,Aluminum oxide,yes,,,,
-7429-90-5,Aluminum,yes,,,,
-7440-39-3,Barium,yes,,,,
-1333-86-4,Carbon black,yes,,,,
-7440-31-5,Tin,yes,,,,
-7440-28-0,Thallium,yes,1000,U204,,100
-7440-62-2,Vanadium pentoxide,yes,1000,P120,,500
-57-74-9,Chlordane,yes,1,U036,,1000
-60-57-1,Dieldrin,yes,1,P037,,500
-76-44-8,Heptachlor,yes,1,P059,,500
-118-74-1,Hexachlorobenzene,yes,10,U127,,10000
-87-68-3,Hexachlorobutadiene,yes,1,U128,,
-77-47-4,Hexachlorocyclopentadiene,yes,10,U130,,100
-67-72-1,Hexachloroethane,yes,100,U131,,
-58-89-9,gamma-BHC (Lindane),yes,1,U129,,1000
-8001-35-2,Toxaphene,yes,1,P123,,500
-7440-48-4,Cobalt compounds,yes,,,,
-151-56-4,Ethyleneimine,yes,1,P054,,500
-75-55-8,Propyleneimine,yes,1,P067,,10000
-57-14-7,1-1-Dimethylhydrazine,yes,10,U098,,1000
-540-73-8,1-2-Dimethylhydrazine,yes,1,,,
-91-94-1,3-3-Dichlorobenzidine,yes,1,U073,,
-119-93-7,3-3-Dimethylbenzidine,yes,10,U095,,
-101-77-9,4-4-Methylenedianiline,yes,10,,,
-95-53-4,o-Toluidine,yes,100,U328,,
-106-49-0,p-Toluidine,yes,100,U353,,
-90-04-0,o-Anisidine,yes,,,,
-104-94-9,p-Anisidine,yes,,,,
-92-67-1,4-Aminobiphenyl,yes,1,,,
-91-59-8,2-Naphthylamine,yes,10,U168,,
-134-32-7,1-Naphthylamine,yes,100,U167,,
-79-44-7,Dimethylcarbamoyl chloride,yes,1,U097,,
-764-41-0,1-4-Dichloro-2-butene,yes,1,U074,,
-542-75-6,1-3-Dichloropropylene,yes,100,U084,,
-78-87-5,1-2-Dichloropropane,yes,1000,U083,,
-96-12-8,1-2-Dibromo-3-chloropropane,yes,1,U066,,
-106-93-4,Ethylene dibromide,yes,1,U067,,
+74-84-0,Ethane,yes,,,,
 74-85-1,Ethylene,yes,,,,
-107-02-8,Acrolein,yes,1,P003,,500
-79-21-0,Peracetic acid,yes,500,,,
-10025-87-3,Phosphorus oxychloride,yes,5000,,,1000
-7719-12-2,Phosphorus trichloride,yes,1000,,,1000
-7803-51-2,Phosphine,yes,100,P096,,500
-10102-43-9,Nitric oxide,yes,10,,,100
-10102-44-0,Nitrogen dioxide,yes,10,P078,,100
-75-44-5,Phosgene,yes,10,P095,,10
-7681-49-4,Sodium fluoride,yes,1000,,,
-1310-73-2,Sodium hydroxide,yes,1000,,,
-124-38-9,Carbon dioxide,yes,,,,
-7782-41-4,Fluorine,yes,10,,,500
-7553-56-2,Iodine,yes,,,,
-7439-89-6,Iron,yes,,,,
-7738-94-5,Chromic acid,yes,10,,D007,
-7778-50-9,Potassium dichromate,yes,10,,D007,
-7789-00-6,Potassium chromate,yes,10,,D007,
-10588-01-9,Sodium dichromate,yes,10,,D007,1000
-7775-11-3,Sodium chromate,yes,10,,D007,
-1333-82-0,Chromium trioxide,yes,10,,D007,
-7758-97-6,Lead chromate,yes,,,,
-7758-95-4,Lead chloride,yes,,,,
-1309-60-0,Lead dioxide,yes,,,,
-7446-14-2,Lead sulfate,yes,,,,
-7446-27-7,Lead phosphate,yes,,,,
-301-04-2,Lead acetate,yes,,,,
-7783-46-2,Lead fluoride,yes,,,,
-10101-63-0,Lead iodide,yes,,,,
-7487-94-7,Mercuric chloride,yes,1,U151,,500
-7783-35-9,Mercuric sulfate,yes,,,,
-592-04-1,Mercuric cyanide,yes,,P065,,
-10045-94-0,Mercuric nitrate,yes,10,,,
-21908-53-2,Mercuric oxide,yes,,,,
-62-38-4,Phenylmercuric acetate,yes,100,P092,,500
-7440-66-6,Zinc compounds,yes,1000,,,
-7733-02-0,Zinc sulfate,yes,1000,,,
-1314-84-7,Zinc phosphide,yes,100,P122,,500
-557-21-1,Zinc cyanide,yes,10,P121,,
-7646-85-7,Zinc chloride,yes,1000,,,
-7440-50-8,Copper compounds,yes,5000,,,
-3251-23-8,Cupric nitrate,yes,100,,,
-7758-98-7,Cupric sulfate,yes,10,,,
-1317-39-1,Cuprous oxide,yes,,,,
-544-92-3,Copper cyanide,yes,10,P029,,
-7440-39-3,Barium compounds,yes,,,,
-10361-37-2,Barium chloride,yes,,,,
-7787-32-8,Barium fluoride,yes,,,,
-17194-00-2,Barium hydroxide,yes,,,,
-7727-43-7,Barium sulfate,yes,,,,
-7782-49-2,Selenium,yes,100,,,
-7488-56-4,Selenium sulfide,yes,,U205,,
-10102-18-8,Sodium selenite,yes,100,,,
-630-10-4,Selenourea,yes,1000,P103,,
-541-73-1,1-3-Dichlorobenzene,yes,100,U071,,
-108-90-7,Chlorobenzene,yes,100,U037,,
-634-66-2,1-2-3-4-Tetrachlorobenzene,yes,,,,
-634-90-2,1-2-3-5-Tetrachlorobenzene,yes,,,,
-95-94-3,1-2-4-5-Tetrachlorobenzene,yes,5000,U207,,
-608-93-5,Pentachlorobenzene,yes,,,,
-25167-83-3,Trichlorophenol,yes,,,,
-88-06-2,2-4-6-Trichlorophenol,yes,10,U230,,
-95-95-4,2-4-5-Trichlorophenol,yes,,,,
-120-83-2,2-4-Dichlorophenol,yes,100,U081,,
-576-24-9,2-3-Dichlorophenol,yes,,,,
-583-78-8,2-5-Dichlorophenol,yes,,,,
-87-65-0,2-6-Dichlorophenol,yes,,,,
-591-35-5,3-5-Dichlorophenol,yes,,,,
-59-50-7,4-Chloro-3-methylphenol,yes,5000,U039,,
-106-48-9,4-Chlorophenol,yes,,,,
-90-13-1,1-Chloronaphthalene,yes,5000,,,
-91-58-7,2-Chloronaphthalene,yes,5000,U047,,
-1321-64-8,Pentachloronaphthalene,yes,,,,
-1335-87-1,Hexachloronaphthalene,yes,,,,
-64-18-6,Formic acid,yes,5000,,,
-144-62-7,Oxalic acid,yes,,,,
-79-11-8,Chloroacetic acid,yes,,,,
-76-03-9,Trichloroacetic acid,yes,5000,,,
-7789-30-2,Bromine pentafluoride,yes,,,,500
-79-43-6,Dichloroacetic acid,yes,,,,
-93-72-1,Silvex (2-4-5-TP),yes,100,,,
-93-76-5,2-4-5-T,yes,1000,,,
-94-75-7,2-4-D,yes,100,U240,,
-1912-24-9,Atrazine,yes,,,,
-122-34-9,Simazine,yes,,,,
-2921-88-2,Chlorpyrifos,yes,,,,
-333-41-5,Diazinon,yes,1,,,
-62-73-7,Dichlorvos,yes,10,,,1000
-298-00-0,Methyl parathion,yes,100,P071,,100
-2385-85-5,Mirex,yes,1,U235,,
-143-33-9,Sodium cyanide,yes,10,P106,,100
-506-61-6,Potassium silver cyanide,yes,1,P099,,500
-57-12-5,Cyanide compounds,yes,10,,,
-460-19-5,Cyanogen,yes,100,,,
-506-77-4,Cyanogen chloride,yes,10,P033,,500
+74-86-2,Acetylene,yes,,,,
+74-87-3,Methyl chloride,yes,100,U045,,
+74-88-4,Methyl iodide,yes,100,U138,,
+74-89-5,Methanamine,yes,100,,,
 74-90-8,Hydrogen cyanide,yes,10,P063,,100
-506-68-3,Cyanogen bromide,yes,1000,U246,,500
-1563-66-2,Carbofuran,yes,10,P127,,10
-63-25-2,Carbaryl,yes,100,,,
-116-06-3,Aldicarb,yes,1,P070,,100
-1646-88-4,Aldicarb sulfone,yes,,,,
-107-49-3,TEPP,yes,10,P111,,100
-52-68-6,Trichlorfon,yes,,,,
-121-75-5,Malathion,yes,100,,,
-2921-88-2,Chlorpyrifos,yes,,,,
-115-29-7,Endosulfan,yes,1,P050,,10000
-72-20-8,Endrin,yes,1,P051,,500
-56-55-3,Benz(a)anthracene,yes,10,U018,,
-218-01-9,Chrysene,yes,100,U050,,
-53-70-3,Dibenz(a-h)anthracene,yes,1,U063,,
-205-99-2,Benzo(b)fluoranthene,yes,1,,,
-207-08-9,Benzo(k)fluoranthene,yes,5000,,,
-193-39-5,Indeno(1-2-3-cd)pyrene,yes,100,U137,,
-206-44-0,Fluoranthene,yes,5000,U120,,
-86-73-7,Fluorene,yes,5000,U120,,
-129-00-0,Pyrene,yes,5000,,,
-120-12-7,Anthracene,yes,5000,,,
-85-01-8,Phenanthrene,yes,5000,,,
-83-32-9,Acenaphthylene,yes,5000,,,
-208-96-8,Acenaphthylene,yes,5000,,,
-86-30-6,N-Nitrosodiphenylamine,yes,100,,,
-1319-77-3,Cresol (mixed isomers),yes,100,U052,D026,
-95-63-6,1-2-4-Trimethylbenzene,yes,,,,
-108-67-8,1-3-5-Trimethylbenzene,yes,,,,
-99-87-6,p-Cymene,yes,,,,
-98-51-1,p-tert-Butyltoluene,yes,,,,
-103-65-1,n-Propylbenzene,yes,,,,
-135-98-8,sec-Butylbenzene,yes,,,,
-98-06-6,tert-Butylbenzene,yes,,,,
-611-14-3,2-Ethyltoluene,yes,,,,
-526-73-8,1-2-3-Trimethylbenzene,yes,,,,
-91-57-6,2-Methylnaphthalene,yes,,,,
-90-12-0,1-Methylnaphthalene,yes,,,,
-1634-04-4,MTBE,yes,,,,
-637-92-3,Ethyl tert-butyl ether,yes,,,,
-994-05-8,tert-Amyl methyl ether,yes,,,,
-109-66-0,n-Pentane,yes,,,,
-142-82-5,n-Heptane,yes,,,,
-111-65-9,n-Octane,yes,,,,
-540-84-1,2-2-4-Trimethylpentane,yes,,,,
-110-54-3,Hexane isomers,yes,5000,,,
-96-33-3,Methyl acrylate,yes,,U162,,
-97-63-2,Ethyl methacrylate,yes,,,,
-141-78-6,Ethyl acetate,yes,5000,U112,,
-109-60-4,n-Propyl acetate,yes,,,,
-108-21-4,Isopropyl acetate,yes,5000,,,
-110-19-0,Isobutyl acetate,yes,,,,
-628-63-7,n-Amyl acetate,yes,,,,
-123-86-4,Butyl acetate,yes,5000,,,
-108-24-7,Acetic anhydride,yes,5000,,,
-111-76-2,2-Butoxyethanol,yes,,,,
-110-80-5,2-Ethoxyethanol,yes,,,,
-109-86-4,2-Methoxyethanol,yes,,,,
-112-34-5,Diethylene glycol monobutyl ether,yes,,,,
-111-77-3,Diethylene glycol monomethyl ether,yes,,,,
-57-55-6,Propylene glycol,yes,,,,
-109-87-5,Methylal (Dimethoxymethane),yes,1000,,,
-75-65-0,tert-Butanol,yes,,,,
-71-23-8,n-Propanol,yes,,,,
-78-92-2,sec-Butanol,yes,,,,
-108-93-0,Cyclohexanol,yes,,,,
-98-00-0,Furfuryl alcohol,yes,,,,
-108-11-2,Methyl isobutyl carbinol,yes,,,,
-107-87-9,2-Pentanone,yes,,,,
-591-78-6,2-Hexanone,yes,5000,U213,,
-96-22-0,3-Pentanone,yes,,,,
-75-97-8,Pinacolone,yes,,,,
-110-43-0,2-Heptanone,yes,5000,U239,,
-109-94-4,Ethyl formate,yes,,,,
-142-62-1,Hexanoic acid,yes,,,,
-60-29-7,Diethyl ether,yes,100,U117,,
-109-99-9,Tetrahydrofuran,yes,1000,U213,,
-96-47-9,2-Methyltetrahydrofuran,yes,,,,
-108-20-3,Diisopropyl ether,yes,,,,
-79-20-9,Methyl acetate,yes,,,,
-105-46-4,sec-Butyl acetate,yes,,,,
-540-88-5,tert-Butyl acetate,yes,,,,
-584-84-9,2-4-Toluene diisocyanate,yes,100,U223,,500
-91-08-7,2-6-Toluene diisocyanate,yes,100,,,500
-822-06-0,Hexamethylene diisocyanate,yes,,,,100
-101-68-8,Methylene diphenyl diisocyanate,yes,,,,
-5124-30-1,Methylene bis(4-cyclohexylisocyanate),yes,,,,
-3173-72-6,1-5-Naphthalene diisocyanate,yes,,,,100
-1897-45-6,Chlorothalonil,yes,,,,
-108-31-6,Maleic anhydride,yes,5000,,,
-85-44-9,Phthalic anhydride,yes,5000,U190,,
-108-24-7,Acetic anhydride,yes,5000,,,
-552-30-7,Trimellitic anhydride,yes,,,,
-75-56-9,Propylene oxide,yes,100,,,10000
-106-89-8,Epichlorohydrin,yes,100,U041,,1000
-96-09-3,Styrene oxide,yes,100,,,
-556-52-5,Glycidol,yes,,,,
-2426-08-6,n-Butyl glycidyl ether,yes,,,,
-765-34-4,Glycidaldehyde,yes,10,U126,,
-62-56-6,Thiourea,yes,10,U219,,
-75-25-2,Bromoform,yes,100,U225,,
-124-48-1,Dibromochloromethane,yes,,,,
-10049-04-4,Chlorine dioxide,yes,,,,
-7790-94-5,Chlorosulfonic acid,yes,1000,,,
-7647-18-9,Antimony pentachloride,yes,1000,,,
-10025-91-9,Antimony trichloride,yes,1000,,,
-7784-34-1,Arsenic trichloride,yes,1,,,500
-7778-39-4,Arsenic acid,yes,1,P010,,1000
-1327-53-3,Arsenic trioxide,yes,1,P012,,100
-7784-42-1,Arsine,yes,1,P042,,100
-7789-42-6,Cadmium bromide,yes,,,,
-10108-64-2,Cadmium chloride,yes,,,,
-543-90-8,Cadmium acetate,yes,10,,,
-2223-93-0,Cadmium stearate,yes,,,,
-1306-19-0,Cadmium oxide,yes,,,,
-10124-36-4,Cadmium sulfate,yes,10,,,
-13765-19-0,Calcium chromate,yes,10,,,
-10599-90-3,Chloramines,yes,,,,
-7790-91-2,Chlorine trifluoride,yes,,,,500
-107-30-2,Chloromethyl methyl ether,yes,10,U046,,
-126-99-8,Chloroprene,yes,,,,
+74-93-1,Methanethiol,yes,100,U153,,500
+74-95-3,Methylene bromide,yes,1000,U068,,
 74-97-5,Bromochloromethane,yes,,U029,,
-75-27-4,Bromodichloromethane,yes,,,,
-156-60-5,trans-1-2-Dichloroethylene,yes,1000,U079,,
-540-59-0,1-2-Dichloroethylene,yes,1000,,,
-79-34-5,1-1-2-2-Tetrachloroethane,yes,100,U209,,
-630-20-6,1-1-1-2-Tetrachloroethane,yes,100,,,
-87-61-6,1-2-3-Trichlorobenzene,yes,,,,
-76-01-7,Pentachloroethane,yes,10,U184,,
-110-57-6,trans-1-4-Dichloro-2-butene,yes,1,U074,,
-107-05-1,Allyl chloride,yes,1000,,,
-57-57-8,beta-Propiolactone,yes,10,U052,,500
-75-86-5,Acetone cyanohydrin,yes,10,P069,,1000
-98-07-7,Benzotrichloride,yes,10,U023,,
-100-44-7,Benzyl chloride,yes,100,P028,,500
-98-87-3,Benzal chloride,yes,5000,,,
-532-27-4,2-Chloroacetophenone,yes,,,,
-107-07-3,Ethylene chlorohydrin,yes,,P101,,500
-542-76-7,3-Chloropropionitrile,yes,1000,P027,,1000
-126-98-7,Methacrylonitrile,yes,1000,U152,,500
-109-77-3,Malononitrile,yes,,,,500
-110-00-9,Furan,yes,100,U124,,500
-98-01-1,Furfural,yes,5000,U125,,
-75-99-0,Dalapon,yes,,,,
-87-86-5,Pentachlorophenol,yes,10,F027,,
-95-80-7,2-4-Diaminotoluene,yes,10,,,
-584-02-1,3-Pentanol,yes,,,,
-123-42-2,Diacetone alcohol,yes,,,,
-75-36-5,Acetyl chloride,yes,5000,,,
-79-36-7,Dichloroacetyl chloride,yes,,,,
-78-97-7,Lactonitrile,yes,1000,P069,,1000
-106-51-4,p-Benzoquinone,yes,,U197,,
-100-01-6,4-Nitroaniline,yes,5000,P077,,
-88-75-5,2-Nitrophenol,yes,100,,,
-100-02-7,4-Nitrophenol,yes,100,U170,,
-51-28-5,2-4-Dinitrophenol,yes,10,P048,,
-121-14-2,2-4-Dinitrotoluene,yes,10,U105,,
-606-20-2,2-6-Dinitrotoluene,yes,100,,,
-99-65-0,1-3-Dinitrobenzene,yes,100,,,
-528-29-0,1-2-Dinitrobenzene,yes,100,,,
-100-25-4,1-4-Dinitrobenzene,yes,,,,
-118-96-7,2-4-6-Trinitrotoluene,yes,10,,,
-99-35-4,1-3-5-Trinitrobenzene,yes,,,,
-621-64-7,N-Nitrosodi-n-propylamine,yes,10,U111,,
-86-30-6,N-Nitrosodiphenylamine,yes,100,U111,,
-924-16-3,N-Nitrosodi-n-butylamine,yes,10,U172,,
-55-18-5,N-Nitrosodiethylamine,yes,1,U174,,
-59-89-2,N-Nitrosomorpholine,yes,,,,
-930-55-2,N-Nitrosopyrrolidine,yes,1,U180,,
-100-75-4,N-Nitrosopiperidine,yes,,,,
-62-50-0,Ethyl methanesulfonate,yes,1,U119,,
-66-27-3,Methyl methanesulfonate,yes,,,,
-56-53-1,Diethylstilbestrol,yes,1,U089,,
+74-98-6,Propane,yes,,,,
+74-99-7,Propyne,yes,,,,
+75-00-3,Chloroethane,yes,100,,,
+75-01-4,Vinyl chloride,yes,1,U043,,
+75-02-5,"Ethene, fluoro-",yes,,,,
+75-04-7,Ethanamine,yes,100,,,
+75-05-8,Acetonitrile,yes,5000,U003,,
+75-07-0,Acetaldehyde,yes,1000,U001,,
+75-08-1,Ethanethiol,yes,,,,
+75-09-2,Dichloromethane,yes,1000,U080,,
+75-12-7,Formamide,yes,,,,
+75-15-0,Carbon disulfide,yes,100,P022,,10000
+75-19-4,Cyclopropane,yes,,,,
+75-20-7,Calcium carbide,yes,10,,,
+75-21-8,Ethylene oxide,yes,10,U115,,1000
+75-25-2,Bromoform,yes,100,U225,,
+75-27-4,Bromodichloromethane,yes,5000,,,
+75-28-5,Isobutane,yes,,,,
+75-29-6,Isopropyl chloride,yes,,,,
+75-31-0,Isopropylamine,yes,,,,
+75-34-3,1-1-Dichloroethane,yes,1000,U076,,
+75-35-4,Vinylidene chloride,yes,100,U078,,
+75-36-5,Acetyl chloride,yes,5000,U006,,
+75-37-6,Difluoroethane,yes,,,,
+75-38-7,"Ethene, 1,1-difluoro-",yes,,,,
+75-43-4,Dichlorofluoromethane,yes,,,,
+75-44-5,Phosgene,yes,10,P095,,10
+75-45-6,Chlorodifluoromethane,yes,,,,
+75-50-3,"Methanamine, N,N-dimethyl-",yes,100,,,
+75-52-5,Nitromethane,yes,,,,
+75-55-8,Propyleneimine,yes,1,P067,,10000
+75-56-9,Propylene oxide,yes,100,,,10000
+75-60-5,Cacodylic acid,yes,1,U136,,
+75-63-8,Bromotrifluoromethane,yes,,,,
+75-64-9,tert-Butylamine,yes,1000,,,
+75-65-0,tert-Butanol,yes,,,,
+75-68-3,"1-Chloro-1,1-difluoroethane",yes,,,,
 75-69-4,Trichlorofluoromethane,yes,5000,U121,,
 75-71-8,Dichlorodifluoromethane,yes,5000,U075,,
+75-72-9,CFC-13,yes,,,,
+75-74-1,"Plumbane, tetramethyl-",yes,,,,100
+75-76-3,"Silane, tetramethyl-",yes,,,,
+75-77-4,"Silane, chlorotrimethyl-",yes,,,,1000
+75-78-5,Dimethyldichlorosilane,yes,,,,500
+75-79-6,Methyltrichlorosilane,yes,,,,500
+75-86-5,Acetone cyanohydrin,yes,10,P069,,1000
+75-87-6,"Acetaldehyde, trichloro-",yes,5000,U034,,
+75-88-7,"2-Chloro-1,1,1-trifluoroethane",yes,,,,
+75-97-8,Pinacolone,yes,,,,
+75-99-0,Dalapon,yes,5000,,,
+76-01-7,Pentachloroethane,yes,10,U184,,
+76-02-8,Trichloroacetyl chloride,yes,,,,500
+76-03-9,Trichloroacetic acid,yes,5000,,,
+76-06-2,Chloropicrin,yes,,,,
 76-13-1,1-1-2-Trichloro-1-2-2-trifluoroethane,yes,5000,,,
 76-14-2,Dichlorotetrafluoroethane,yes,5000,,,
-75-45-6,Chlorodifluoromethane,yes,,,,
-56-35-9,bis(Tributyltin) oxide,yes,,,,
-1314-62-1,Vanadium pentoxide,yes,1000,P120,,500
-7440-62-2,Vanadium,yes,,,,
-12039-52-0,Thallium selenite,yes,1000,,,
-10031-59-1,Thallium sulfate,yes,100,P115,,100
-7791-12-0,Thallous chloride,yes,100,U216,,100
-557-19-7,Nickel cyanide,yes,10,P074,,
-13463-39-3,Nickel carbonyl,yes,10,P073,,1
-12035-72-2,Nickel subsulfide,yes,,,,
-7440-02-0,Nickel compounds,yes,100,,,
-7789-06-2,Strontium chromate,yes,10,,,
-1314-32-5,Thallium oxide,yes,100,P113,,100
-100-47-0,Benzonitrile,yes,5000,U217,,
-108-98-5,Thiophenol,yes,100,P014,,500
-62-74-8,Sodium fluoroacetate,yes,10,P058,,10
-640-19-7,Fluoroacetamide,yes,100,P057,,100
-353-42-4,Boron trifluoride dimethyl etherate,yes,,,,1000
-7637-07-2,Boron trifluoride,yes,,,,500
-19287-45-7,Diborane,yes,,P041,,100
-7789-43-7,Cobalt bromide,yes,,,,
-10210-68-1,Cobalt carbonyl,yes,,,,
-75-34-3,1-1-Dichloroethane,yes,1000,,,
-594-42-3,Perchloromethyl mercaptan,yes,100,,,10000
-463-58-1,Carbonyl sulfide,yes,100,,,
-680-31-9,Hexamethylphosphoramide,yes,1,,,
-302-01-2,Hydrazine sulfate,yes,1,U133,,
-122-09-8,Phentermine,yes,5000,,,
-62-44-2,Phenacetin,yes,100,U187,,
-103-85-5,Phenylthiourea,yes,100,P093,,
-156-62-7,Calcium cyanamide,yes,1000,,,
-592-01-8,Calcium cyanide,yes,10,P021,,
-506-64-9,Silver cyanide,yes,1,P104,,500
-74-88-4,Methyl iodide,yes,100,U138,,
-75-52-5,Nitromethane,yes,,,,
+76-15-3,CFC-115,yes,,,,
+76-44-8,Heptachlor,yes,1,P059,,500
+76-87-9,Triphenyltin hydroxide,yes,,,,
+77-09-8,Phenolphthalein,yes,,,,
+77-47-4,Hexachlorocyclopentadiene,yes,10,U130,,100
+77-73-6,Dicyclopentadiene,yes,,,,
+77-78-1,Dimethyl sulfate,yes,100,U103,,500
+77-81-6,Tabun,yes,,,,10
+78-00-2,Tetraethyl lead,yes,10,P110,,100
+78-34-2,Dioxathion,yes,,,,500
+78-48-8,"S,S,S-Tributyltrithiophosphate",yes,,,,
+78-53-5,Amiton,yes,,,,500
+78-59-1,Isophorone,yes,5000,U141,,
+78-71-7,"Oxetane, 3,3-bis(chloromethyl)-",yes,,,,500
+78-78-4,"Butane, 2-methyl-",yes,,,,
+78-79-5,"1,3-Butadiene, 2-methyl-",yes,100,,,
+78-81-9,iso-Butylamine,yes,1000,,,
+78-82-0,Isobutyronitrile,yes,,,,1000
+78-83-1,Isobutanol,yes,5000,U140,,
+78-84-2,Isobutyraldehyde,yes,,,,
+78-87-5,1-2-Dichloropropane,yes,1000,U083,,
+78-88-6,"2,3-Dichloropropene",yes,100,,,
+78-92-2,sec-Butanol,yes,,,,
+78-93-3,Methyl ethyl ketone,yes,5000,U159,,
+78-94-4,Methyl vinyl ketone,yes,,,,10
+78-97-7,Lactonitrile,yes,1000,P069,,1000
+78-99-9,"1,1-Dichloropropane",yes,1000,,,
+79-00-5,1-1-2-Trichloroethane,yes,100,U227,,
+79-01-6,Trichloroethylene,yes,100,U228,,
+79-06-1,Acrylamide,yes,5000,U007,,5000
+79-09-4,Propionic acid,yes,5000,,,
+79-10-7,Acrylic acid,yes,5000,U008,,
+79-11-8,Chloroacetic acid,yes,100,,,100
+79-19-6,Thiosemicarbazide,yes,100,P116,,100
+79-20-9,Methyl acetate,yes,,,,
+79-21-0,Peracetic acid,yes,500,,,500
+79-22-1,"Carbonochloridic acid, methylester",yes,1000,U156,,500
+79-31-2,iso-Butyric acid,yes,5000,,,
+79-34-5,1-1-2-2-Tetrachloroethane,yes,100,U209,,
+79-36-7,Dichloroacetyl chloride,yes,,,,
+79-38-9,"Ethene, chlorotrifluoro-",yes,,,,
+79-43-6,Dichloroacetic acid,yes,,,,
+79-44-7,Dimethylcarbamoyl chloride,yes,1,U097,,
 79-46-9,2-Nitropropane,yes,10,U171,,
-684-93-5,N-Nitroso-N-methylurea,yes,,U177,,
-615-53-2,N-Nitroso-N-methylurethane,yes,,,,
+79-94-7,Tetrabromobisphenol A,yes,,,,
+80-05-7,"4,4'-Isopropylidenediphenol",yes,,,,
+80-15-9,Cumene hydroperoxide,yes,10,U096,,
+80-62-6,Methyl methacrylate,yes,1000,U162,,
+80-63-7,Methyl 2-chloroacrylate,yes,,,,500
+81-07-2,Saccharin (manufacturing),yes,100,U202,,
+81-49-2,"1-Amino-2,4-dibromoanthraquinone",yes,,,,
+81-81-2,Warfarin,yes,100,P001,,500
+81-88-9,C.I. Food Red 15,yes,,,,
+82-28-0,1-Amino-2-methylanthraquinone,yes,,,,
+82-66-6,Diphacinone,yes,,,,10
+82-68-8,PCNB,yes,100,U185,,
+83-32-9,Acenaphthylene,yes,5000,,,
+84-66-2,Diethyl phthalate,yes,5000,U088,,
+84-74-2,Dibutyl phthalate,yes,10,U069,,
+85-00-7,Diquat,yes,1000,,,
+85-01-8,Phenanthrene,yes,5000,,,
+85-44-9,Phthalic anhydride,yes,5000,U190,,
+85-68-7,Butyl benzyl phthalate,yes,100,,,
+86-30-6,N-Nitrosodiphenylamine,yes,100,U111,,
+86-50-0,Azinphos-methyl,yes,1,,,10
+86-73-7,Fluorene,yes,5000,U120,,
+86-88-4,ANTU,yes,100,P072,,500
+87-61-6,1-2-3-Trichlorobenzene,yes,,,,
+87-62-7,"2,6-Xylidine",yes,,,,
+87-65-0,2-6-Dichlorophenol,yes,100,U082,,
+87-68-3,Hexachlorobutadiene,yes,1,U128,,
+87-86-5,Pentachlorophenol,yes,10,F027,,
+88-05-1,"Aniline, 2,4,6-trimethyl-",yes,,,,500
+88-06-2,2-4-6-Trichlorophenol,yes,10,U230,,
+88-72-2,o-Nitrotoluene,yes,1000,,,
+88-75-5,2-Nitrophenol,yes,100,,,
+88-85-7,Dinitrobutyl phenol,yes,1000,P020,,100
+88-89-1,Picric acid,yes,,,,
+90-04-0,o-Anisidine,yes,100,,,
+90-12-0,1-Methylnaphthalene,yes,,,,
+90-13-1,1-Chloronaphthalene,yes,5000,,,
+90-43-7,2-Phenylphenol,yes,,,,
+90-94-8,Michler's ketone,yes,,,,
+91-08-7,2-6-Toluene diisocyanate,yes,100,,,500
+91-20-3,Naphthalene,yes,100,U165,,
 91-22-5,Quinoline,yes,5000,U236,,
+91-23-6,o-Nitroanisole,yes,,,,
+91-57-6,2-Methylnaphthalene,yes,,,,
+91-58-7,2-Chloronaphthalene,yes,5000,U047,,
+91-59-8,2-Naphthylamine,yes,10,U168,,
+91-66-7,"N,N-Diethylaniline",yes,1000,,,
+91-80-5,Methapyrilene,yes,5000,U155,,
+91-93-0,"3,3'-Dimethoxybenzidine-4,4'- diisocyanate",yes,,,,
+91-94-1,3-3-Dichlorobenzidine,yes,1,U073,,
+91-97-4,"3,3'-Dimethyl-4,4'-diphenylene diisocyanate",yes,,,,
+92-52-4,Biphenyl,yes,100,,,
+92-67-1,4-Aminobiphenyl,yes,1,,,
+92-87-5,Benzidine,yes,1,U021,,
+92-93-3,4-Nitrobiphenyl,yes,10,,,
+93-15-2,Methyleugenol,yes,,,,
+93-65-2,Mecoprop,yes,,,,
+93-72-1,Silvex (2-4-5-TP),yes,100,,,
+93-76-5,2-4-5-T,yes,1000,,,
+93-79-8,"2,4,5-T esters",yes,1000,,,
+94-11-1,"2,4-D Esters",yes,100,,,
 94-36-0,Benzoyl peroxide,yes,,,,
-80-15-9,Cumene hydroperoxide,yes,10,,,
-97-56-3,o-Aminoazotoluene,yes,,,,
+94-58-6,Dihydrosafrole,yes,10,U090,,
+94-59-7,Safrole,yes,100,U203,,
+94-74-6,MCPA,yes,,,,
+94-75-7,2-4-D,yes,100,U240,,
+94-79-1,"2,4-D Esters",yes,100,,,
+94-80-4,"2,4-D butyl ester",yes,100,,,
+94-82-6,"2,4-DB",yes,,,,
+95-47-6,"Benzene, o-dimethyl-",yes,1000,U239,,
+95-48-7,o-Cresol,yes,100,U052,,1000
+95-50-1,o-Dichlorobenzene,yes,100,U070,,
+95-53-4,o-Toluidine,yes,100,U328,,
+95-54-5,"1,2-Phenylenediamine",yes,,,,
+95-57-8,2-Chlorophenol,yes,100,U048,,
+95-63-6,1-2-4-Trimethylbenzene,yes,,,,
+95-69-2,p-Chloro-o-toluidine,yes,,,,
+95-80-7,2-4-Diaminotoluene,yes,10,,,
+95-94-3,1-2-4-5-Tetrachlorobenzene,yes,5000,U207,,
+95-95-4,2-4-5-Trichlorophenol,yes,10,,,
+96-09-3,Styrene oxide,yes,100,,,
+96-12-8,1-2-Dibromo-3-chloropropane,yes,1,U066,,
+96-18-4,"1,2,3-Trichloropropane",yes,,,,
+96-22-0,3-Pentanone,yes,,,,
+96-23-1,"1,3-Dichloro-2-propanol",yes,,,,
+96-33-3,Methyl acrylate,yes,,U162,,
+96-45-7,Ethylene thiourea,yes,10,U116,,
+96-47-9,2-Methyltetrahydrofuran,yes,,,,
 97-02-9,2-4-Dinitroaniline,yes,,,,
-534-52-1,4-6-Dinitro-o-cresol,yes,10,P047,,
+97-23-4,Dichlorophene,yes,,,,
+97-56-3,o-Aminoazotoluene,yes,,,,
+97-63-2,Ethyl methacrylate,yes,1000,U118,,
+98-00-0,Furfuryl alcohol,yes,,,,
+98-01-1,Furfural,yes,5000,U125,,
+98-05-5,Benzenearsonic acid,yes,,,,10
+98-06-6,tert-Butylbenzene,yes,,,,
+98-07-7,Benzotrichloride,yes,10,U023,,100
+98-09-9,Benzenesulfonyl chloride,yes,100,U020,,
+98-13-5,Trichlorophenylsilane,yes,,,,500
+98-16-8,"Benzenamine, 3-(trifluoromethyl)-",yes,,,,500
+98-51-1,p-tert-Butyltoluene,yes,,,,
+98-82-8,Cumene,yes,5000,U055,,
+98-86-2,Acetophenone,yes,5000,U004,,
+98-87-3,Benzal chloride,yes,5000,U017,,500
+98-88-4,Benzoyl chloride,yes,1000,,,
+98-95-3,Nitrobenzene,yes,1000,U169,,10000
+99-08-1,m-Nitrotoluene,yes,1000,,,
+99-30-9,Dichloran,yes,,,,
+99-35-4,1-3-5-Trinitrobenzene,yes,10,U234,,
+99-55-8,5-Nitro-o-toluidine,yes,100,U181,,
+99-59-2,5-Nitro-o-anisidine,yes,,,,
+99-65-0,1-3-Dinitrobenzene,yes,100,,,
+99-87-6,p-Cymene,yes,,,,
+99-98-9,Dimethyl-p-phenylenediamine,yes,,,,10
+99-99-0,p-Nitrotoluene,yes,1000,,,
+100-01-6,4-Nitroaniline,yes,5000,P077,,
+100-02-7,4-Nitrophenol,yes,100,U170,,
+100-14-1,"Benzene, 1-(chloromethyl)-4-nitro-",yes,,,,500
+100-25-4,1-4-Dinitrobenzene,yes,100,,,
+100-41-4,Ethylbenzene,yes,1000,,,
+100-42-5,Styrene,yes,1000,,,
+100-44-7,Benzyl chloride,yes,100,P028,,500
+100-47-0,Benzonitrile,yes,5000,U217,,
+100-75-4,N-Nitrosopiperidine,yes,10,U179,,
+101-05-3,Anilazine,yes,,,,
+101-14-4,4-4-Methylenebis(2-chloroaniline),yes,10,U158,,
+101-27-9,Barban,yes,10,U280,,
+101-55-3,4-Bromophenyl phenyl ether,yes,100,U030,,
+101-61-1,"4,4'-Methylenebis(N,N- dimethyl)benzenamine",yes,,,,
+101-68-8,Methylene diphenyl diisocyanate,yes,5000,,,
+101-77-9,4-4-Methylenedianiline,yes,10,,,
+101-80-4,"4,4'-Diaminodiphenyl ether",yes,,,,
+101-90-6,Diglycidyl resorcinol ether,yes,,,,
+102-36-3,"Isocyanic acid, 3,4-dichlorophenyl ester",yes,,,,500
+103-65-1,n-Propylbenzene,yes,,,,
+103-85-5,Phenylthiourea,yes,100,P093,,100
+104-12-1,p-Chlorophenyl isocyanate,yes,,,,
+104-40-5,4-Nonylphenol,yes,,,,
+104-49-4,"1,4-Phenylene diisocyanate",yes,,,,
+104-94-9,p-Anisidine,yes,,,,
+105-46-4,sec-Butyl acetate,yes,5000,,,
+105-67-9,"2,4-Dimethylphenol",yes,100,U101,,
+106-42-3,"Benzene, p-dimethyl-",yes,100,U239,,
+106-44-5,p-Cresol,yes,100,U052,,
+106-46-7,p-Dichlorobenzene,yes,100,U072,,
+106-47-8,p-Chloroaniline,yes,1000,P024,,
+106-48-9,4-Chlorophenol,yes,,,,
+106-49-0,p-Toluidine,yes,100,U353,,
+106-50-3,p-Phenylenediamine,yes,5000,,,
+106-51-4,p-Benzoquinone,yes,10,U197,,
+106-88-7,"1,2-Butylene oxide",yes,100,,,
+106-89-8,Epichlorohydrin,yes,100,U041,,1000
+106-92-3,Allyl glycidyl ether,yes,,,,
+106-93-4,Ethylene dibromide,yes,1,U067,,
+106-94-5,1-Bromopropane,yes,1,,,
+106-96-7,Propargyl bromide,yes,,,,10
+106-97-8,Butane,yes,,,,
+106-98-9,1-Butene,yes,,,,
+106-99-0,1-3-Butadiene,yes,10,,,10000
+107-00-6,1-Butyne,yes,,,,
+107-01-7,2-Butene,yes,,,,
+107-02-8,Acrolein,yes,1,P003,,500
+107-05-1,Allyl chloride,yes,1000,,,
+107-06-2,1-2-Dichloroethane,yes,100,U077,,
+107-07-3,Ethylene chlorohydrin,yes,,P101,,500
+107-10-8,n-Propylamine,yes,5000,U194,,
+107-11-9,Allylamine,yes,,,,500
+107-12-0,Ethyl cyanide,yes,10,P101,,500
+107-13-1,Acrylonitrile,yes,100,U009,,10000
+107-15-3,"1,2-Ethanediamine",yes,5000,,,10000
+107-16-4,Formaldehyde cyanohydrin,yes,,,,1000
+107-18-6,Allyl alcohol,yes,100,P005,,1000
+107-19-7,Propargyl alcohol,yes,1000,P102,,
+107-20-0,Chloroacetaldehyde,yes,1000,P023,,
+107-21-1,Ethylene glycol,yes,5000,,,
+107-25-5,"Ethene, methoxy-",yes,,,,
+107-30-2,Chloromethyl methyl ether,yes,10,U046,,100
+107-31-3,"Formic acid, methyl ester",yes,,,,
+107-44-8,Sarin,yes,,,,10
+107-49-3,TEPP,yes,10,P111,,100
+107-87-9,2-Pentanone,yes,,,,
+107-92-6,Butyric acid,yes,5000,,,
+108-05-4,Vinyl acetate,yes,5000,,,1000
+108-10-1,Methyl isobutyl ketone,yes,5000,U161,,
+108-11-2,Methyl isobutyl carbinol,yes,,,,
+108-20-3,Diisopropyl ether,yes,,,,
+108-21-4,Isopropyl acetate,yes,5000,,,
+108-23-6,"Carbonochloridic acid, 1-methylethyl ester",yes,,,,1000
+108-24-7,Acetic anhydride,yes,5000,,,
+108-31-6,Maleic anhydride,yes,5000,U147,,
+108-38-3,"Benzene, m-dimethyl-",yes,1000,U239,,
+108-39-4,m-Cresol,yes,100,U052,,
+108-45-2,"1,3-Phenylenediamine",yes,,,,
+108-46-3,Resorcinol,yes,5000,U201,,
+108-60-1,Bis(2-chloro-1-methylethyl)ether,yes,1000,U027,,
+108-67-8,1-3-5-Trimethylbenzene,yes,,,,
+108-88-3,Toluene,yes,1000,U220,,
+108-90-7,Chlorobenzene,yes,100,U037,,
+108-91-8,Cyclohexanamine,yes,,,,10000
+108-93-0,Cyclohexanol,yes,,,,
+108-94-1,Cyclohexanone,yes,5000,U057,,
+108-95-2,Phenol,yes,1000,U188,,500
+108-98-5,Thiophenol,yes,100,P014,,500
+109-06-8,2-Methylpyridine,yes,5000,U191,,
+109-60-4,n-Propyl acetate,yes,,,,
+109-61-5,"Carbonochloridic acid, propylester",yes,,,,500
+109-66-0,n-Pentane,yes,,,,
+109-67-1,1-Pentene,yes,,,,
+109-73-9,Butylamine,yes,1000,,,
+109-77-3,Malononitrile,yes,1000,U149,,500
+109-86-4,2-Methoxyethanol,yes,,,,
+109-87-5,Methylal (Dimethoxymethane),yes,1000,,,
+109-89-7,Diethylamine,yes,100,,,
+109-92-2,"Ethene, ethoxy-",yes,,,,
+109-94-4,Ethyl formate,yes,,,,
+109-95-5,Ethyl nitrite,yes,,,,
+109-99-9,Tetrahydrofuran,yes,1000,U213,,
+110-00-9,Furan,yes,100,U124,,500
+110-16-7,Maleic acid,yes,5000,,,
+110-17-8,Fumaric acid,yes,5000,,,
+110-19-0,Isobutyl acetate,yes,5000,,,
+110-43-0,2-Heptanone,yes,5000,U239,,
+110-54-3,Hexane isomers,yes,5000,,,
+110-57-6,trans-1-4-Dichloro-2-butene,yes,1,U074,,500
+110-75-8,2-Chloroethyl vinyl ether,yes,1000,U042,,
+110-80-5,2-Ethoxyethanol,yes,1000,U359,,
+110-82-7,Cyclohexane,yes,1000,U056,,
+110-86-1,Pyridine,yes,1000,U196,,1000
+110-89-4,Piperidine,yes,,,,1000
+111-41-1,N-Hydroxyethylethylenediamine,yes,,,,
+111-42-2,Diethanolamine,yes,100,,,
+111-44-4,bis(2-Chloroethyl) ether,yes,10,U025,,10000
+111-54-6,"Ethylenebisdithiocarbamic acid, salts & esters",yes,5000,U114,,
+111-65-9,n-Octane,yes,,,,
+111-69-3,Adiponitrile,yes,,,,1000
+111-76-2,2-Butoxyethanol,yes,,,,
+111-77-3,Diethylene glycol monomethyl ether,yes,,,,
+111-91-1,Bis(2-chloroethoxy) methane,yes,1000,U024,,
+112-34-5,Diethylene glycol monobutyl ether,yes,,,,
+114-26-1,"Phenol, 2-(1-methylethoxy)-, methylcarbamate",yes,100,U411,,
+115-02-6,Azaserine,yes,1,U015,,
+115-07-1,Propylene,yes,,,,
+115-10-6,"Methane, oxybis-",yes,,,,
+115-11-7,2-Methylpropene,yes,,,,
+115-21-9,Trichloroethylsilane,yes,,,,500
+115-26-4,Dimefox,yes,,,,500
+115-28-6,Chlorendic acid,yes,,,,
+115-29-7,Endosulfan,yes,1,P050,,10000
+115-32-2,"Benzenemethanol, 4-chloro-.alpha.-4- chlorophenyl)-.alpha.-(trichloromethyl)-",yes,10,,,
+115-90-2,Fensulfothion,yes,,,,500
+115-96-8,Tris(2-chloroethyl) phosphate,yes,,,,
+116-06-3,Aldicarb,yes,1,P070,,100
+116-14-3,"Ethene, tetrafluoro-",yes,,,,
+117-79-3,2-Aminoanthraquinone,yes,,,,
+117-80-6,Dichlone,yes,1,,,
+117-81-7,bis(2-Ethylhexyl) phthalate,yes,100,U028,,
+117-84-0,n-Dioctylphthalate,yes,5000,U107,,
+118-74-1,Hexachlorobenzene,yes,10,U127,,10000
+118-96-7,2-4-6-Trinitrotoluene,yes,10,,,
+119-38-0,Isopropylmethylpyrazolyl dimethylcarbamate,yes,100,P192,,500
+119-90-4,"3,3'-Dimethoxybenzidine",yes,100,U091,,
+119-93-7,3-3-Dimethylbenzidine,yes,10,U095,,
+120-12-7,Anthracene,yes,5000,,,
+120-36-5,"2,4-DP",yes,,,,
+120-58-1,Isosafrole,yes,100,U141,,
+120-71-8,p-Cresidine,yes,,,,
+120-80-9,Catechol,yes,100,,,
+120-82-1,1-2-4-Trichlorobenzene,yes,100,,,
+120-83-2,2-4-Dichlorophenol,yes,100,U081,,
+121-14-2,2-4-Dinitrotoluene,yes,10,U105,,
+121-21-1,Pyrethrins,yes,1,,,
+121-29-9,Pyrethrins,yes,1,,,
+121-44-8,Triethylamine,yes,5000,U404,,
+121-69-7,"N,N-Dimethylaniline",yes,100,,,
+121-75-5,Malathion,yes,100,,,
+122-09-8,Phentermine,yes,5000,P046,,
+122-34-9,Simazine,yes,,,,
+122-39-4,Diphenylamine,yes,,,,
+122-42-9,Propham,yes,1000,U373,,
+122-66-7,1-2-Diphenylhydrazine,yes,10,U109,,
+123-31-9,Hydroquinone,yes,100,,,500
+123-33-1,Maleic hydrazide,yes,5000,U148,,
+123-38-6,Propionaldehyde,yes,1000,,,
+123-42-2,Diacetone alcohol,yes,,,,
+123-61-5,"1,3-Phenylene diisocyanate",yes,,,,
+123-62-6,Propionic anhydride,yes,5000,,,
+123-63-7,Paraldehyde,yes,1000,U182,,
+123-72-8,Butyraldehyde,yes,,,,
+123-73-9,"2-Butenal, (e)-",yes,100,U053,,1000
+123-86-4,Butyl acetate,yes,5000,,,
+123-91-1,1-4-Dioxane,yes,100,U108,,
+123-92-2,iso-Amyl acetate,yes,5000,,,
+124-04-9,Adipic acid,yes,5000,,,
+124-38-9,Carbon dioxide,yes,,,,
+124-40-3,Dimethylamine,yes,1000,U092,,
+124-41-4,Sodium methylate,yes,1000,,,
+124-48-1,Dibromochloromethane,yes,100,,,
+124-65-2,Sodium cacodylate,yes,,,,100
+124-73-2,Dibromotetrafluoroethane,yes,,,,
+124-87-8,Picrotoxin,yes,,,,500
+126-72-7,"Tris(2,3-dibromopropyl) phosphate",yes,10,U235,,
+126-98-7,Methacrylonitrile,yes,1000,U152,,500
+126-99-8,Chloroprene,yes,100,,,
+127-18-4,Tetrachloroethylene,yes,100,U210,,
+127-82-2,Zinc phenolsulfonate,yes,5000,,,
+128-03-0,Potassium dimethyldithiocarbamate,yes,,,,
+128-04-1,Sodium dimethyldithiocarbamate,yes,,,,
+128-66-5,C.I. Vat Yellow 4,yes,,,,
+129-00-0,Pyrene,yes,5000,,,1000
+129-06-6,Warfarin sodium,yes,100,,,100
+130-15-4,"1,4-Naphthoquinone",yes,5000,U166,,
+131-11-3,Dimethyl phthalate,yes,5000,U102,,
+131-52-2,Sodium pentachlorophenate,yes,,,,
+131-74-8,Ammonium picrate,yes,10,P009,,
+131-89-5,"2-Cyclohexyl-4,6-dinitrophenol",yes,100,P034,,
+132-27-4,Sodium o-phenylphenoxide,yes,,,,
+132-64-9,Dibenzofuran,yes,100,,,
+133-06-2,Captan,yes,10,,,
+133-07-3,Folpet,yes,,,,
+133-90-4,"Benzoic acid, 3-amino-2,5-dichloro-",yes,100,,,
+134-29-2,o-Anisidine hydrochloride,yes,,,,
+134-32-7,1-Naphthylamine,yes,100,U167,,
+135-20-6,Cupferron,yes,,,,
+135-98-8,sec-Butylbenzene,yes,,,,
+136-45-8,Dipropyl isocinchomeronate,yes,,,,
+137-26-8,Thiram,yes,10,U244,,
+137-30-4,Ziram,yes,10,P205,,
+137-41-7,Potassium N-methyldithiocarbamate,yes,,,,
+137-42-8,Metham sodium,yes,,,,
+138-93-2,Disodium cyanodithioimidocarbonate,yes,,,,
+139-13-9,Nitrilotriacetic acid,yes,,,,
+139-25-3,"3,3'-Dimethyldiphenylmethane-4,4'- diisocyanate",yes,,,,
+139-65-1,"4,4'-Thiodianiline",yes,,,,
+140-29-4,Benzyl cyanide,yes,,,,500
+140-66-9,"p-(1,1,3,3-Tetramethylbutyl)phenol",yes,,,,
+140-76-1,"Pyridine, 2-methyl-5-vinyl-",yes,,,,500
+140-88-5,Ethyl acrylate,yes,1000,U113,,
+141-32-2,n-Butyl acrylate,yes,,,,
+141-66-2,Dicrotophos,yes,,,,100
+141-78-6,Ethyl acetate,yes,5000,U112,,
+142-28-9,"1,3-Dichloropropane",yes,1000,,,
+142-59-6,Nabam,yes,,,,
+142-62-1,Hexanoic acid,yes,,,,
+142-71-2,Cupric acetate,yes,100,,,
+142-82-5,n-Heptane,yes,,,,
+142-84-7,Dipropylamine,yes,5000,U110,,
+143-33-9,Sodium cyanide,yes,10,P106,,100
+143-50-0,Kepone,yes,1,U142,,
+144-49-0,Fluoroacetic acid,yes,,,,10
+144-62-7,Oxalic acid,yes,,,,
+145-73-3,Endothall,yes,1000,P088,,
+148-79-8,Thiabendazole,yes,,,,
+148-82-3,Melphalan,yes,1,U150,,
+149-30-4,2-Mercaptobenzothiazole,yes,,,,
+149-74-6,Dichloromethylphenylsilane,yes,,,,1000
+150-50-5,Merphos,yes,,,,
+150-68-5,Monuron,yes,,,,
+151-38-2,Methoxyethylmercuric acetate,yes,,,,500
+151-50-8,Potassium cyanide,yes,10,P098,,100
+151-56-4,Ethyleneimine,yes,1,P054,,500
+152-16-9,"Diphosphoramide, octamethyl-",yes,100,P085,,100
+156-10-5,p-Nitrosodiphenylamine,yes,,,,
+156-59-2,"cis- 1,2-Dichloroethylene",yes,,U079,,
+156-60-5,trans-1-2-Dichloroethylene,yes,1000,U079,,
+156-62-7,Calcium cyanamide,yes,1000,,,
+189-55-9,Benzo[rst]pentaphene,yes,10,U064,,
+189-64-0,"Dibenzo[a,h]pyrene",yes,,,,
+191-24-2,"Benzo[g,h,i]perylene",yes,5000,,,
+191-30-0,"Dibenzo[a,l]pyrene",yes,,,,
+192-65-4,"Dibenzo[a,e]pyrene",yes,,,,
+193-39-5,Indeno(1-2-3-cd)pyrene,yes,100,U137,,
+194-59-2,"7H-Dibenzo[c,g]carbazole",yes,,,,
+205-82-3,Benzo[j]fluoranthene,yes,,,,
+205-99-2,Benzo(b)fluoranthene,yes,1,,,
+206-44-0,Fluoranthene,yes,5000,U120,,
+207-08-9,Benzo(k)fluoranthene,yes,5000,,,
+208-96-8,Acenaphthylene,yes,5000,,,
+218-01-9,Chrysene,yes,100,U050,,
+224-42-0,"Dibenz[a,j]acridine",yes,,,,
+225-51-4,Benz[c]acridine,yes,100,U016,,
+226-36-8,"Dibenz[a,h]acridine",yes,,,,
+297-78-9,Isobenzan,yes,,,,100
+297-97-2,"O,O-Diethyl O-pyrazinyl phosphorothioate",yes,100,P040,,500
+298-00-0,Methyl parathion,yes,100,P071,,100
+298-02-2,Phorate,yes,10,P094,,10
+298-04-4,Disulfoton,yes,1,P039,,500
+300-62-9,Amphetamine,yes,,,,1000
+300-76-5,Naled,yes,10,,,
+301-04-2,Lead acetate,yes,10,U144,,
+301-12-2,Oxydemeton-methyl,yes,,,,
+302-01-2,Hydrazine sulfate,yes,1,U133,,1000
+303-34-4,Lasiocarpine,yes,10,U143,,
+305-03-3,Chlorambucil,yes,10,U035,,
+306-83-2,"2,2-Dichloro-1,1,1-trifluoroethane",yes,,,,
+307-24-4,Perfluorohexanoic acid,yes,,,,
+307-35-7,Perfluorooctylsulfonyl fluoride,yes,,,,
+307-55-1,Perfluorododecanoic acid,yes,,,,
+309-00-2,Aldrin,yes,1,P004,,500
+311-45-5,Diethyl-p-nitrophenyl phosphate,yes,100,P041,,
+314-40-9,Bromacil,yes,,,,
+315-18-4,Mexacarbate,yes,1000,P128,,500
+316-42-7,"Emetine, dihydrochloride",yes,,,,1
+319-84-6,alpha-BHC,yes,10,,,
+319-85-7,beta-BHC,yes,1,,,
+319-86-8,delta-BHC,yes,1,,,
+327-98-0,Trichloronate,yes,,,,500
+329-71-5,"2,5-Dinitrophenol",yes,10,,,
+330-54-1,Diuron,yes,100,,,
+330-55-2,Linuron,yes,,,,
+333-41-5,Diazinon,yes,1,,,
+334-88-3,Diazomethane,yes,100,,,
+335-66-0,"Octanoyl fluoride, pentadecafluoro-",yes,,,,
+335-67-1,Perfluorooctanoic acid,yes,1,,,
+335-71-7,"1-Heptanesulfonyl fluoride, 1,1,2,2,3,3,4,4,5,5,6,6,7,7,7- pentadecafluoro-",yes,,,,
+335-76-2,Perfluorodecanoic acid,yes,,,,
+335-93-3,Silver(I) perfluorooctanoate,yes,,,,
+335-95-5,Sodium perfluorooctanoate,yes,,,,
+353-42-4,Boron trifluoride dimethyl etherate,yes,,,,1000
+353-50-4,Carbonic difluoride,yes,1000,U033,,
+353-59-3,Bromochlorodifluoromethane,yes,,,,
+354-11-0,HCFC-121a,yes,,,,
+354-14-3,HCFC-121,yes,,,,
+354-23-4,"1,2-Dichloro-1,1,2-trifluoroethane",yes,,,,
+354-25-6,"1-Chloro-1,1,2,2-tetrafluoroethane",yes,,,,
+355-46-4,Perfluorohexanesulfonic acid,yes,,,,
+357-57-3,Brucine,yes,100,P018,,
+359-06-8,Fluoroacetyl chloride,yes,,,,10
+371-62-0,Ethylene fluorohydrin,yes,,,,10
+375-22-4,Perfluorobutanoic acid,yes,,,,
+375-73-5,Perfluorobutane sulfonic acid,yes,,,,
+375-95-1,Perfluorononanoic acid,yes,,,,
+376-06-7,Perfluorotetradecanoic acid,yes,,,,
+376-14-7,2- [Ethyl[(heptadecafluorooctyl)sulfonyl]am ino]ethyl methacrylate,yes,,,,
+376-27-2,Methyl perfluorooctanoate,yes,,,,
+377-73-1,Perfluoro-3-methoxypropanoic acid,yes,,,,
+379-79-3,Ergotamine tartrate,yes,,,,500
+383-07-3,2- [Butyl[(heptadecafluorooctyl)sulfonyl]am ino]ethyl acrylate,yes,,,,
+422-44-6,"1,2-Dichloro-1,1,2,3,3- pentafluoropropane",yes,,,,
+422-48-0,"2,3-Dichloro-1,1,1,2,3- pentafluoropropane",yes,,,,
+422-56-0,"3,3-Dichloro-1,1,1,2,2- pentafluoropropane",yes,,,,
+422-64-0,Perfluoropropanoic acid,yes,,,,
+423-82-5,2- [Ethyl[(heptadecafluorooctyl)sulfonyl]am ino]ethyl acrylate,yes,,,,
+431-86-7,"1,2-Dichloro-1,1,3,3,3- pentafluoropropane",yes,,,,
+460-19-5,Cyanogen,yes,100,P031,,
+460-35-5,"3-Chloro-1,1,1-trifluoropropane",yes,,,,
+463-49-0,Propadiene,yes,,,,
+463-58-1,Carbonyl sulfide,yes,100,,,
+463-82-1,"2,2-Dimethylpropane",yes,,,,
+465-73-6,Isodrin,yes,1,P060,,100
+470-90-6,Chlorfenvinfos,yes,,,,500
+492-80-8,Auramine,yes,100,U014,,
+494-03-1,Chlornaphazine,yes,100,U026,,
+496-72-0,Diaminotoluene,yes,10,U221,,
+502-39-6,Methylmercuric dicyanamide,yes,,,,500
+504-24-5,4-Aminopyridine,yes,1000,P008,,500
+504-60-9,"1,3-Pentadiene",yes,100,U186,,
+505-60-2,"Ethane, 1,1'-thiobis[2-chloro-",yes,,,,500
+506-61-6,Potassium silver cyanide,yes,1,P099,,500
+506-64-9,Silver cyanide,yes,1,P104,,500
+506-68-3,Cyanogen bromide,yes,1000,U246,,500
+506-77-4,Cyanogen chloride,yes,10,P033,,500
+506-78-5,Cyanogen iodide,yes,,,,1000
+506-87-6,Ammonium carbonate,yes,5000,,,
+506-96-7,Acetyl bromide,yes,5000,,,
+507-55-1,"1,3-Dichloro-1,1,2,2,3- pentafluoropropane",yes,,,,
+507-63-1,Perfluorooctyl iodide,yes,,,,
+509-14-8,"Methane, tetranitro-",yes,10,P112,,500
+510-15-6,"Benzeneacetic acid, 4-chloro-.alpha.-(4- chlorophenyl)-.alpha.-hydroxy-, ethyl ester",yes,10,U038,,
+513-49-5,sec-Butylamine,yes,1000,,,
+514-73-8,Dithiazanine iodide,yes,,,,500
+526-73-8,1-2-3-Trimethylbenzene,yes,,,,
+528-29-0,1-2-Dinitrobenzene,yes,100,,,
+532-27-4,2-Chloroacetophenone,yes,100,,,
+533-74-4,Dazomet,yes,,,,
+534-07-6,Bis(chloromethyl) ketone,yes,,,,10
+534-52-1,4-6-Dinitro-o-cresol,yes,10,P047,,10
+535-89-7,Crimidine,yes,,,,100
+538-07-8,Ethylbis(2-chloroethyl)amine,yes,,,,500
+540-59-0,1-2-Dichloroethylene,yes,1000,U079,,
+540-73-8,1-2-Dimethylhydrazine,yes,1,U099,,
+540-84-1,2-2-4-Trimethylpentane,yes,1000,,,
+540-88-5,tert-Butyl acetate,yes,5000,,,
+541-09-3,Uranyl acetate,yes,100,,,
+541-25-3,Lewisite,yes,,,,10
+541-41-3,Ethyl chloroformate,yes,,,,
+541-53-7,Dithiobiuret,yes,100,P049,,100
+541-73-1,1-3-Dichlorobenzene,yes,100,U071,,
+542-62-1,Barium cyanide,yes,10,P013,,
+542-75-6,1-3-Dichloropropylene,yes,100,U084,,
+542-76-7,3-Chloropropionitrile,yes,1000,P027,,1000
+542-88-1,bis(Chloromethyl) ether,yes,10,P016,,100
+542-90-5,Ethylthiocyanate,yes,,,,10000
+543-90-8,Cadmium acetate,yes,10,,,
+544-18-3,Cobaltous formate,yes,1000,,,
+544-92-3,Copper cyanide,yes,10,P029,,
+552-30-7,Trimellitic anhydride,yes,,,,
+554-13-2,Lithium carbonate,yes,,,,
+554-84-7,m-Nitrophenol,yes,100,,,
+555-77-1,Tris(2-chloroethyl)amine,yes,,,,100
+556-52-5,Glycidol,yes,,,,
+556-61-6,Isothiocyanatomethane,yes,,,,500
+556-64-9,Methyl thiocyanate,yes,,,,10000
+557-19-7,Nickel cyanide,yes,10,P074,,
+557-21-1,Zinc cyanide,yes,10,P121,,
+557-34-6,Zinc acetate,yes,1000,,,
+557-41-5,Zinc formate,yes,1000,,,
+557-98-2,2-Chloropropylene,yes,,,,
+558-25-8,Methanesulfonyl fluoride,yes,,,,1000
+563-12-2,Ethion,yes,10,,,1000
+563-41-7,Semicarbazide hydrochloride,yes,,,,1000
+563-45-1,3-Methyl-1-butene,yes,,,,
+563-46-2,2-Methyl-1-butene,yes,,,,
+563-47-3,3-Chloro-2-methyl-1-propene,yes,,,,
+563-68-8,Thallium(I) acetate,yes,100,U214,,
+569-64-2,C.I. Basic Green 4,yes,,,,
+573-56-8,"2,6-Dinitrophenol",yes,10,,,
+576-24-9,2-3-Dichlorophenol,yes,,,,
+583-78-8,2-5-Dichlorophenol,yes,,,,
+584-02-1,3-Pentanol,yes,,,,
+584-84-9,2-4-Toluene diisocyanate,yes,100,U223,,500
+590-18-1,2-Butene-cis,yes,,,,
+590-21-6,1-Chloropropylene,yes,,,,
+591-08-2,1-Acetyl-2-thiourea,yes,1000,P002,,
+591-35-5,3-5-Dichlorophenol,yes,,,,
+591-78-6,2-Hexanone,yes,5000,U213,,
+592-01-8,Calcium cyanide,yes,10,P021,,
+592-04-1,Mercuric cyanide,yes,1,P065,,
+592-85-8,Mercuric thiocyanate,yes,10,,,
+592-87-0,Lead thiocyanate,yes,10,,,
+593-60-2,Vinyl bromide,yes,100,,,
+594-42-3,Perchloromethyl mercaptan,yes,100,,,10000
+597-64-8,Tetraethyltin,yes,,,,100
+598-31-2,Bromoacetone,yes,1000,P017,,
+598-73-2,Bromotrifluoroethylene,yes,,,,
+606-20-2,2-6-Dinitrotoluene,yes,100,U106,,
+608-73-1,Hexachlorocyclohexane (all isomers),yes,,,,
+608-93-5,Pentachlorobenzene,yes,10,U183,,
+609-19-8,"3,4,5-Trichlorophenol",yes,10,,,
+610-39-9,"3,4-Dinitrotoluene",yes,10,,,
+611-14-3,2-Ethyltoluene,yes,,,,
+612-82-8,"3,3'-Dimethylbenzidine dihydrochloride",yes,,,,
+612-83-9,"3,3'-Dichlorobenzidine dihydrochloride",yes,,,,
+614-78-8,"Thiourea, (2-methylphenyl)-",yes,,,,500
+615-05-4,"2,4-Diaminoanisole",yes,,,,
+615-28-1,"1,2-Phenylenediamine dihydrochloride",yes,,,,
+615-53-2,N-Nitroso-N-methylurethane,yes,1,U178,,
+621-64-7,N-Nitrosodi-n-propylamine,yes,10,U111,,
+624-18-0,"1,4-Phenylenediamine dihydrochloride",yes,,,,
+624-64-6,"2-Butene, (E)",yes,,,,
+624-83-9,"Methane, isocyanato-",yes,10,P064,,500
+625-16-1,tert-Amyl acetate,yes,5000,,,
+626-38-0,sec-Amyl acetate,yes,5000,,,
+627-11-2,Chloroethyl chloroformate,yes,,,,1000
+627-20-3,"2-Pentene, (Z)-",yes,,,,
+628-63-7,n-Amyl acetate,yes,5000,,,
+628-86-4,Mercury fulminate,yes,10,P065,,
+630-08-0,Carbon monoxide,yes,,,,
+630-10-4,Selenourea,yes,1000,P103,,
+630-20-6,1-1-1-2-Tetrachloroethane,yes,100,U208,,
+630-60-4,Ouabain,yes,,,,100
+631-61-8,Ammonium acetate,yes,5000,,,
+634-66-2,1-2-3-4-Tetrachlorobenzene,yes,,,,
+634-90-2,1-2-3-5-Tetrachlorobenzene,yes,,,,
+636-21-5,o-Toluidine hydrochloride,yes,100,U222,,
+637-92-3,Ethyl tert-butyl ether,yes,,,,
+639-58-7,Triphenyltin chloride,yes,,,,500
+640-19-7,Fluoroacetamide,yes,100,P057,,100
+644-64-4,Dimetilan,yes,1,P191,,500
+646-04-8,"2-Pentene, (E)-",yes,,,,
+675-14-9,Cyanuric fluoride,yes,,,,100
+676-97-1,Methyl phosphonic dichloride,yes,,,,100
+678-39-7,"1-Decanol, 3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,10- heptadecafluoro-",yes,,,,
+680-31-9,Hexamethylphosphoramide,yes,1,,,
+683-18-1,Dibutyltin dichloride,yes,,,,
+684-93-5,N-Nitroso-N-methylurea,yes,1,U177,,
+689-97-4,1-Buten-3-yne,yes,,,,
+692-42-2,Diethylarsine,yes,1,P038,,
+696-28-6,Dichlorophenylarsine,yes,1,P036,,500
+709-98-8,Propanil,yes,,,,
+757-58-4,Hexaethyl tetraphosphate,yes,100,P062,,
+759-73-9,N-Nitroso-N-ethylurea,yes,1,U176,,
+759-94-4,S-Ethyl dipropylthiocarbamate,yes,,,,
+760-93-0,Methacrylic anhydride,yes,,,,500
+764-41-0,1-4-Dichloro-2-butene,yes,1,U074,,
+765-34-4,Glycidaldehyde,yes,10,U126,,
+786-19-6,Carbophenothion,yes,,,,500
+812-04-4,"1,1-Dichloro-1,2,2-trifluoroethane",yes,,,,
+814-49-3,Diethyl chlorophosphate,yes,,,,500
+814-68-6,Acrylyl chloride,yes,,,,100
+814-91-5,Cupric oxalate,yes,,,,
+815-82-7,Cupric tartrate,yes,100,,,
+822-06-0,Hexamethylene diisocyanate,yes,100,,,100
+823-40-5,Diaminotoluene,yes,10,U221,,
+824-11-3,Trimethylolpropane phosphite,yes,,,,100
+834-12-8,Ametryn,yes,,,,
+842-07-9,C.I. Solvent Yellow 14,yes,,,,
+865-86-1,"1-Dodecanol, 3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11, 12,12,12-heneicosafluoro-",yes,,,,
+872-50-4,N-Methyl-2-pyrrolidone,yes,,,,
+900-95-8,"Stannane, acetoxytriphenyl-",yes,,,,500
+919-86-8,Demeton-S-methyl,yes,,,,500
+920-46-7,Methacryloyl chloride,yes,,,,100
+924-16-3,N-Nitrosodi-n-butylamine,yes,10,U172,,
+924-42-5,N-Methylolacrylamide,yes,,,,
+930-55-2,N-Nitrosopyrrolidine,yes,1,U180,,
+933-75-5,"2,3,6-Trichlorophenol",yes,10,,,
+933-78-8,"2,3,5-Trichlorophenol",yes,10,,,
+944-22-9,Fonofos,yes,,,,500
+947-02-4,Phosfolan,yes,,,,100
+950-10-7,Mephosfolan,yes,,,,500
+950-37-8,Methidathion,yes,,,,500
+957-51-7,Diphenamid,yes,,,,
+959-98-8,alpha - Endosulfan,yes,1,,,
+961-11-5,Tetrachlorvinphos,yes,,,,
+989-38-8,C.I. Basic Red 1,yes,,,,
+991-42-4,Norbormide,yes,,,,100
+994-05-8,tert-Amyl methyl ether,yes,,,,
+998-30-1,Triethoxysilane,yes,,,,500
+999-81-5,Chlormequat chloride,yes,,,,100
+1024-57-3,Heptachlor epoxide,yes,1,,,
+1031-07-8,Endosulfan sulfate,yes,1,,,
+1031-47-6,Triamiphos,yes,,,,500
+1066-30-4,Chromic acetate,yes,1000,,,
+1066-33-7,Ammonium bicarbonate,yes,5000,,,
+1066-45-1,Trimethyltin chloride,yes,,,,500
+1072-35-1,Lead stearate,yes,10,,,
+1111-78-0,Ammonium carbamate,yes,5000,,,
+1114-71-2,Pebulate,yes,,,,
+1116-54-7,N-Nitrosodiethanolamine,yes,1,U173,,
+1120-71-4,"1,3-Propane sultone",yes,10,U193,,
+1122-60-7,Nitrocyclohexane,yes,,,,500
+1124-33-0,"Pyridine, 4-nitro-, 1-oxide",yes,,,,500
+1129-41-5,Metolcarb,yes,1000,P190,,100
+1134-23-2,Cycloate,yes,,,,
+1163-19-5,Decabromodiphenyl oxide,yes,,,,
+1185-57-5,Ferric ammonium citrate,yes,1000,,,
+1194-65-6,Dichlobenil,yes,100,,,
+1222-05-5,"1,3,4,6,7,8-Hexahydro-4,6,6,7,8,8- hexamethylcyclopenta[g]-2-benzopyran",yes,,,,
+1300-71-6,Xylenol,yes,1000,,,
+1303-28-2,Arsenic pentoxide,yes,1,P011,,100
+1303-33-9,Arsenic trisulfide,yes,1,,,
+1306-19-0,Cadmium oxide,yes,,,,100
+1309-60-0,Lead dioxide,yes,,,,
+1309-64-4,Antimony trioxide,yes,1000,,,
+1310-58-3,Potassium hydroxide,yes,1000,,,
+1310-73-2,Sodium hydroxide,yes,1000,,,
+1313-27-5,Molybdenum trioxide,yes,,,,
+1314-20-1,Thorium dioxide,yes,,,,
+1314-32-5,Thallium oxide,yes,100,P113,,100
+1314-62-1,Vanadium pentoxide,yes,1000,P120,,500
+1314-80-3,Sulfur phosphide,yes,100,U189,,
+1314-84-7,Zinc phosphide,yes,100,P122,,500
+1314-87-0,Lead sulfide,yes,10,,,
+1317-39-1,Cuprous oxide,yes,,,,
+1319-72-8,"2,4,5-T amines",yes,5000,,,
+1319-77-3,Cresol (mixed isomers),yes,100,U052,D026,
+1320-18-9,"2,4-D Esters",yes,100,,,
+1321-12-6,Nitrotoluene,yes,1000,,,
+1321-64-8,Pentachloronaphthalene,yes,,,,
+1327-53-3,Arsenic trioxide,yes,1,P012,,100
+1330-20-7,Xylenes (mixed),yes,100,U239,,
+1331-47-1,Dichlorobenzidine,yes,,,,
+1332-07-6,Zinc borate,yes,1000,,,
+1332-21-4,Asbestos,yes,1,,,
+1333-74-0,Hydrogen,yes,,,,
+1333-82-0,Chromium trioxide,yes,10,,D007,
+1333-83-1,Sodium bifluoride,yes,100,,,
+1333-86-4,Carbon black,yes,,,,
+1335-32-6,Lead subacetate,yes,10,U146,,
+1335-87-1,Hexachloronaphthalene,yes,,,,
+1336-21-6,Ammonium hydroxide,yes,1000,,,
+1336-36-3,PCBs,yes,1,,,
+1338-23-4,Methyl ethyl ketone peroxide,yes,10,U160,,
+1338-24-5,Naphthenic acid,yes,100,,,
+1341-49-7,Ammonium bifluoride,yes,100,,,
+1344-28-1,Aluminum oxide,yes,,,,
+1397-94-0,Antimycin A,yes,,,,1000
+1420-07-1,Dinoterb,yes,,,,500
+1464-53-5,"2,2'-Bioxirane",yes,10,U085,,500
+1476-11-5,"cis-1,4-dichloro-2-butene",yes,,U074,,
+1558-25-4,Trichloro(chloromethyl)silane,yes,,,,100
+1563-38-8,Carbofuran phenol,yes,10,U367,,
+1563-66-2,Carbofuran,yes,10,P127,,10
+1582-09-8,"Benezeneamine, 2,6-dinitro-N,N- dipropyl-4-(trifluoromethyl)-",yes,10,,,
+1600-27-7,Mercuric acetate,yes,,,,500
+1615-80-1,"Hydrazine, 1,2-diethyl-",yes,10,U086,,
+1622-32-8,"Ethanesulfonyl chloride, 2-chloro-",yes,,,,500
+1634-04-4,MTBE,yes,1000,,,
+1646-88-4,Aldicarb sulfone,yes,100,P203,,
+1649-08-7,"1,2-Dichloro-1,1-difluoroethane",yes,,,,
+1652-63-7,"3- [[(Heptadecafluorooctyl)sulfonyl]amino]- N,N,N-trimethyl-1-propanaminium iodide",yes,,,,
+1689-84-5,Bromoxynil,yes,,,,
+1689-99-2,Bromoxynil octanoate,yes,,,,
+1691-99-2,N-Ethyl-N-(2- hydroxyethyl)perfluorooctanesulfonamid e,yes,,,,
+1717-00-6,"1,1-Dichloro-1-fluoroethane",yes,,,,
+1746-01-6,"2,3,7,8-Tetrachlorodibenzo-p-dioxin (TCDD)",yes,1,,,
+1752-30-3,Acetone thiosemicarbazide,yes,,,,1000
+1762-95-4,Ammonium thiocyanate,yes,5000,,,
+1763-23-1,Perfluorooctanesulfonic acid,yes,1,,,
+1836-75-5,Nitrofen,yes,,,,
+1861-40-1,Benfluralin,yes,,,,
+1863-63-4,Ammonium benzoate,yes,5000,,,
+1888-71-7,Hexachloropropene,yes,1000,U243,,
+1897-45-6,Chlorothalonil,yes,,,,
+1910-42-5,Paraquat dichloride,yes,,,,10
+1912-24-9,Atrazine,yes,,,,
+1918-00-9,Dicamba,yes,1000,,,
+1918-02-1,Picloram,yes,,,,
+1918-16-7,Propachlor,yes,,,,
+1928-38-7,"2,4-D Esters",yes,100,,,
+1928-43-4,"2,4-D 2-ethylhexyl ester",yes,,,,
+1928-47-8,"2,4,5-T esters",yes,1000,,,
+1928-61-6,"2,4-D Esters",yes,100,,,
+1929-73-3,"2,4-D 2-butoxyethyl ester",yes,100,,,
+1929-82-4,Nitrapyrin,yes,,,,
+1937-37-7,C.I. Direct Black 38,yes,,,,
+1982-47-4,Chloroxuron,yes,,,,500
+1982-69-0,Sodium dicamba,yes,,,,
+1983-10-4,Tributyltin fluoride,yes,,,,
+1996-88-9,"2-Propenoic acid, 2-methyl-, 3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,10- heptadecafluorodecyl ester",yes,,,,
+2001-95-8,Valinomycin,yes,,,,1000
+2008-46-0,"2,4,5-T amines",yes,5000,,,
+2032-65-7,Mercaptodimethur,yes,10,P199,,500
+2043-53-0,"Decane, 1,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8- heptadecafluoro-10-iodo-",yes,,,,
+2043-54-1,"Dodecane, 1,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10, 10-heneicosafluoro-12-iodo-",yes,,,,
+2074-50-2,Paraquat methosulfate,yes,,,,10
+2097-19-0,Phenylsilatrane,yes,,,,100
+2104-64-5,EPN,yes,,,,100
+2144-54-9,"2-Propenoic acid, 2-methyl-, 3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11, 12,12,12-heneicosafluorododecyl ester",yes,,,,
+2155-70-6,Tributyltin methacrylate,yes,,,,
+2164-07-0,Dipotassium endothall,yes,,,,
+2164-17-2,Fluometuron,yes,,,,
+2212-67-1,Molinate,yes,,,,
+2218-54-4,Sodium perfluorobutanoate,yes,,,,
+2223-93-0,Cadmium stearate,yes,,,,1000
+2231-57-4,Thiocarbazide,yes,,,,1000
+2234-13-1,Octachloronaphthalene,yes,,,,
+2238-07-5,Diglycidyl ether,yes,,,,1000
+2275-18-5,Prothoate,yes,,,,100
+2300-66-5,Dimethylamine dicamba,yes,,,,
+2303-16-4,"Carbamothioic acid, bis(1-methylethyl)- S-(2,3-dichloro-2-propenyl)ester",yes,100,U062,,
+2303-17-5,Triallate,yes,100,U389,,
+2312-35-8,Propargite,yes,10,,,
+2385-85-5,Mirex,yes,1,U235,,
+2395-00-8,Potassium perfluorooctanoate,yes,,,,
+2426-08-6,n-Butyl glycidyl ether,yes,,,,
+2439-01-2,Chinomethionat,yes,,,,
+2439-10-3,Dodine,yes,,,,
+2451-62-9,Triglycidyl isocyanurate,yes,,,,
+2497-07-6,Oxydisulfoton,yes,,,,500
+2524-03-0,Dimethyl chlorothiophosphate,yes,,,,500
+2540-82-1,Formothion,yes,,,,100
+2545-59-7,"2,4,5-T esters",yes,1000,,,
+2556-36-7,"1,4-Cyclohexane diisocyanate",yes,,,,
+2570-26-5,Pentadecylamine,yes,,,,100
+2587-90-8,"Phosphorothioic acid, O,O-dimethyl-5- (2-(methylthio)ethyl)ester",yes,,,,500
+2602-46-2,C.I. Direct Blue 6,yes,,,,
+2631-37-0,Promecarb,yes,1000,P201,,500
+2636-26-2,Cyanophos,yes,,,,1000
+2642-71-9,Azinphos-ethyl,yes,,,,100
+2655-15-4,"2,3,5-Trimethylphenyl methylcarbamate",yes,,,,
+2665-30-7,"Phosphonothioic acid, methyl-, O-(4- nitrophenyl) O-phenyl ester",yes,,,,500
+2699-79-8,Sulfuryl fluoride,yes,,,,
+2702-72-9,"2,4-D sodium salt",yes,,,,
+2703-13-1,"Phosphonothioic acid, methyl-, O-ethyl O-(4-(methylthio)phenyl) ester",yes,,,,500
+2757-18-8,Thallous malonate,yes,,,,100
+2763-96-4,5-(Aminomethyl)-3-isoxazolol,yes,1000,P007,,500
+2764-72-9,Diquat,yes,1000,,,
+2778-04-3,Endothion,yes,,,,500
+2795-39-3,Potassium perfluorooctanesulfonate,yes,,,,
+2832-40-8,C.I. Disperse Yellow 3,yes,,,,
+2837-89-0,"2-Chloro-1,1,1,2-tetrafluoroethane",yes,,,,
+2921-88-2,Chlorpyrifos,yes,1,,,
+2923-26-4,Sodium perfluorohexanoate,yes,,,,
+2944-67-4,Ferric ammonium oxalate,yes,1000,,,
+2966-54-3,Potassium heptafluorobutanoate,yes,,,,
+2971-38-2,"2,4-D chlorocrotyl ester",yes,100,,,
+2991-51-7,"Glycine, N-ethyl-N- [(heptadecafluorooctyl)sulfonyl]-, potassium salt",yes,,,,
+3012-65-5,"Ammonium citrate, dibasic",yes,5000,,,
+3037-72-7,"Silane, (4-aminobutyl)diethoxymethyl-",yes,,,,1000
+3107-18-4,"Cyclohexanesulfonic acid, undecafluoro- , potassium salt",yes,,,,
+3108-42-7,Ammonium perfluorodecanoate (PFDA NH4),yes,,,,
+3118-97-6,C.I. Solvent Orange 7,yes,,,,
+3164-29-2,Ammonium tartrate,yes,5000,,,
+3165-93-3,"4-Chloro-o-toluidine, hydrochloride",yes,100,U049,,
+3173-72-6,1-5-Naphthalene diisocyanate,yes,,,,100
+3194-55-6,"1,2,5,6,9,10-Hexabromocyclododecane",yes,,,,
+3251-23-8,Cupric nitrate,yes,100,,,
+3254-63-5,"Phosphoric acid, dimethyl 4-(methylthio) phenyl ester",yes,,,,500
+3268-87-9,"1,2,3,4,6,7,8,9-octachlorodibenzo-p- dioxin",yes,,,,
+3288-58-2,"O,O-Diethyl S-methyl dithiophosphate",yes,5000,U087,,
+3296-90-0,"2,2-Bis(bromomethyl)-1,3-propanediol",yes,,,,
+3383-96-8,Temephos,yes,,,,
+3486-35-9,Zinc carbonate,yes,1000,,,
+3547-04-4,DDE b,yes,5000,,,
+3569-57-1,"Sulfoxide, 3-chloropropyl octyl",yes,,,,500
+3615-21-2,"Benzimidazole, 4,5-dichloro-2- (trifluoromethyl)-",yes,,,,500
+3653-48-3,Methoxone sodium salt,yes,,,,
+3689-24-5,Sulfotep,yes,100,P109,,500
+3691-35-8,Chlorophacinone,yes,,,,100
+3697-24-3,5-Methylchrysene,yes,,,,
+3734-97-2,Amiton oxalate,yes,,,,100
+3735-23-7,Methyl phenkapton,yes,,,,500
+3761-53-3,C.I. Food Red 5,yes,,,,
+3813-14-7,"2,4,5-T amines",yes,5000,,,
+3825-26-1,Ammonium perfluorooctanoate,yes,,,,
+3830-45-3,Sodium perfluorodecanoate (PFDA-Na),yes,,,,
+3871-99-6,"1-Hexanesulfonic acid, 1,1,2,2,3,3,4,4,5,5,6,6,6-tridecafluoro-, potassium salt",yes,,,,
+3872-25-1,"1-Pentanesulfonic acid, 1,1,2,2,3,3,4,4,5,5,5-undecafluoro-, potassium salt",yes,,,,
+3878-19-1,Fuberidazole,yes,,,,100
+4044-65-9,Bitoscanate,yes,,,,500
+4080-31-3,"1-(3-Chloroallyl)-3,5,7-triaza-1- azoniaadamantane chloride",yes,,,,
+4098-71-9,Isophorone diisocyanate,yes,,,,500
+4104-14-7,Phosacetim,yes,,,,100
+4109-96-0,Dichlorosilane,yes,,,,
+4128-73-8,"4,4'-Diisocyanatodiphenyl ether",yes,,,,
+4151-50-2,Sulfluramid,yes,,,,
+4170-30-3,2-Butenal,yes,100,U053,,1000
+4301-50-2,Fluenetil,yes,,,,100
+4418-66-0,"Phenol, 2,2'-thiobis[4-chloro-6-methyl-",yes,,,,100
+4549-40-0,N-Nitrosomethylvinylamine,yes,10,P084,,
+4680-78-8,C.I. Acid Green 3,yes,,,,
+4835-11-4,"Hexamethylenediamine, N,N'-dibutyl-",yes,,,,500
+4980-53-4,"2-Propenoic acid, 2-methyl-, 3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11, 12,12,13,13,14,14,15,15,16,16,16- nonacosafluorohexadecyl ester",yes,,,,
+5064-31-3,Nitrilotriacetic acid trisodium salt,yes,,,,
+5103-71-9,"Chlordane, alpha isomer",yes,1,U036,,1000
+5103-74-2,"Chlordane, gamma isomer",yes,1,U036,,1000
+5124-30-1,Methylene bis(4-cyclohexylisocyanate),yes,,,,
+5234-68-4,Carboxin,yes,,,,
+5344-82-1,"Thiourea, (2-chlorophenyl)-",yes,100,P026,,100
+5385-75-1,"Dibenzo[a,e]fluoranthene",yes,,,,
+5522-43-0,1-Nitropyrene,yes,,,,
+5598-13-0,Chlorpyrifos-methyl,yes,,,,
+5836-29-3,Coumatetralyl,yes,,,,500
+5902-51-2,Terbacil,yes,,,,
+5952-26-1,"Ethanol, 2,2'-oxybis-, dicarbamate",yes,5000,U395,,
+5972-73-6,Ammonium oxalate,yes,5000,,,
+6009-70-7,Ammonium oxalate,yes,5000,,,
+6014-75-1,"2-Propenoic acid, 2-methyl-, 3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11, 12,12,13,13,14,14,14- pentacosafluorotetradecyl ester",yes,,,,
+6369-96-6,"2,4,5-T amines",yes,5000,,,
+6369-97-7,"2,4,5-T amines",yes,5000,,,
+6459-94-5,C.I. Acid Red 114,yes,,,,
+6533-73-9,Thallium(I) carbonate,yes,100,U215,,100
+6923-22-4,Monocrotophos,yes,,,,10
+7005-72-3,4-Chlorophenyl phenyl ether,yes,5000,,,
+7287-19-6,Prometryn,yes,,,,
+7311-27-5,"Ethanol, 2-[2-[2-[2-(4- nonylphenoxy)ethoxy]ethoxy]ethoxy]-",yes,,,,
+7421-93-4,Endrin aldehyde,yes,1,,,
+7428-48-0,Lead stearate,yes,10,,,
+7429-90-5,Aluminum,yes,,,,
+7439-89-6,Iron,yes,,,,
+7439-92-1,Lead,yes,10,,,
+7439-96-5,Manganese,yes,,,,
+7439-97-6,Mercury,yes,1,U151,,
+7440-02-0,Nickel compounds,yes,100,,,
+7440-22-4,Silver,yes,1000,,,
+7440-23-5,Sodium,yes,10,,,
+7440-28-0,Thallium,yes,1000,U204,,100
+7440-31-5,Tin,yes,,,,
+7440-36-0,Antimony,yes,5000,,,
+7440-38-2,Arsenic,yes,1,,,
+7440-39-3,Barium compounds,yes,,,,
+7440-41-7,Beryllium,yes,10,P015,,
+7440-43-9,Cadmium,yes,10,,,
+7440-47-3,Chromium,yes,5000,,,
+7440-48-4,Cobalt compounds,yes,,,,
+7440-50-8,Copper compounds,yes,5000,,,
+7440-62-2,Vanadium,yes,,,,
+7440-66-6,Zinc compounds,yes,1000,,,
+7446-08-4,Selenium dioxide,yes,10,,,
+7446-09-5,Sulfur dioxide,yes,,,,500
+7446-11-9,Sulfur trioxide,yes,,,,100
+7446-14-2,Lead sulfate,yes,10,,,
+7446-18-6,Thallium(I) sulfate,yes,100,P115,,100
+7446-27-7,Lead phosphate,yes,10,U145,,
+7447-39-4,Cupric chloride,yes,10,,,
+7487-94-7,Mercuric chloride,yes,1,U151,,500
+7488-56-4,Selenium sulfide,yes,10,U205,,
+7496-02-8,6-Nitrochrysene,yes,,,,
+7550-45-0,Titanium tetrachloride,yes,1000,,,100
+7553-56-2,Iodine,yes,,,,
+7558-79-4,"Sodium phosphate, dibasic",yes,5000,,,
+7580-67-8,Lithium hydride,yes,,,,100
+7601-54-9,"Sodium phosphate, tribasic",yes,5000,,,
+7631-86-9,Silica (amorphous),yes,,,,
+7631-89-2,Sodium arsenate,yes,1,,,1000
+7631-90-5,Sodium bisulfite,yes,5000,,,
+7632-00-0,Sodium nitrite,yes,100,,,
+7637-07-2,Boron trifluoride,yes,,,,500
+7645-25-2,Lead arsenate,yes,1,,,
+7646-85-7,Zinc chloride,yes,1000,,,
+7647-01-0,Hydrochloric acid,yes,5000,,,500
+7647-18-9,Antimony pentachloride,yes,1000,,,
+7664-38-2,Phosphoric acid,yes,5000,,,
+7664-39-3,Hydrogen fluoride,yes,100,U134,,100
+7664-41-7,Ammonia,yes,100,,,500
+7664-93-9,Sulfuric acid,yes,1000,,,1000
+7681-49-4,Sodium fluoride,yes,1000,,,
+7681-52-9,Sodium hypochlorite,yes,100,,,
+7696-12-0,Tetramethrin,yes,,,,
+7697-37-2,Nitric acid,yes,1000,,,1000
+7699-45-8,Zinc bromide,yes,1000,,,
+7705-08-0,Ferric chloride,yes,1000,,,
+7718-54-9,Nickel chloride,yes,100,,,
+7719-12-2,Phosphorus trichloride,yes,1000,,,1000
+7720-78-7,Ferrous sulfate,yes,1000,,,
+7722-64-7,Potassium permanganate,yes,100,,,
+7722-84-1,Hydrogen peroxide,yes,,,D001,1000
+7723-14-0,Phosphorus (yellow),yes,1,P048,,100
+7726-95-6,Bromine,yes,,,,500
+7727-43-7,Barium sulfate,yes,,,,
+7733-02-0,Zinc sulfate,yes,1000,,,
+7738-94-5,Chromic acid,yes,10,,D007,
+7758-01-2,Potassium bromate,yes,,,,
+7758-94-3,Ferrous chloride,yes,100,,,
+7758-95-4,Lead chloride,yes,10,,,
+7758-97-6,Lead chromate,yes,,,,
+7758-98-7,Cupric sulfate,yes,10,,,
+7761-88-8,Silver nitrate,yes,1,,,
+7773-06-0,Ammonium sulfamate,yes,5000,,,
+7775-11-3,Sodium chromate,yes,10,,D007,
+7778-39-4,Arsenic acid,yes,1,P010,,1000
+7778-44-1,Calcium arsenate,yes,1,,,500
+7778-50-9,Potassium dichromate,yes,10,,D007,
+7778-54-3,Calcium hypochlorite,yes,10,,,
+7779-86-4,Zinc hydrosulfite,yes,1000,,,
+7779-88-6,Zinc nitrate,yes,1000,,,
+7782-41-4,Fluorine,yes,10,P056,,500
+7782-49-2,Selenium,yes,100,,,
+7782-50-5,Chlorine,yes,10,,,100
+7782-63-0,Ferrous sulfate,yes,1000,,,
+7782-82-3,Sodium selenite,yes,100,,,
+7782-86-7,Mercurous nitrate,yes,10,,,
+7783-00-8,Selenious acid,yes,10,U204,,1000
+7783-06-4,Hydrogen sulfide,yes,100,U135,,500
+7783-07-5,Hydrogen selenide,yes,,,,10
+7783-35-9,Mercuric sulfate,yes,10,,,
+7783-46-2,Lead fluoride,yes,10,,,
+7783-49-5,Zinc fluoride,yes,1000,,,
+7783-50-8,Ferric fluoride,yes,100,,,
+7783-56-4,Antimony trifluoride,yes,1000,,,
+7783-60-0,"Sulfur fluoride (SF4), (T-4)-",yes,,,,100
+7783-70-2,Antimony pentafluoride,yes,,,,500
+7783-80-4,Tellurium hexafluoride,yes,,,,100
+7784-34-1,Arsenic trichloride,yes,1,,,500
+7784-40-9,Lead arsenate,yes,1,,,
+7784-41-0,Potassium arsenate,yes,1,,,
+7784-42-1,Arsine,yes,1,P042,,100
+7784-46-5,Sodium arsenite,yes,1,,,500
+7786-34-7,Mevinphos,yes,10,,,500
+7786-81-4,Nickel sulfate,yes,100,,,
+7787-32-8,Barium fluoride,yes,,,,
+7787-47-5,Beryllium chloride,yes,1,,,
+7787-49-7,Beryllium fluoride,yes,1,,,
+7787-55-5,Beryllium nitrate,yes,1,,,
+7788-98-9,Ammonium chromate,yes,10,,,
+7789-00-6,Potassium chromate,yes,10,,D007,
+7789-06-2,Strontium chromate,yes,10,,,
+7789-09-5,Ammonium bichromate,yes,10,,,
+7789-30-2,Bromine pentafluoride,yes,,,,500
+7789-42-6,Cadmium bromide,yes,10,,,
+7789-43-7,Cobalt bromide,yes,1000,,,
+7789-61-9,Antimony tribromide,yes,1000,,,
+7790-91-2,Chlorine trifluoride,yes,,,,500
+7790-94-5,Chlorosulfonic acid,yes,1000,,,
+7791-12-0,Thallous chloride,yes,100,U216,,100
+7791-21-1,Chlorine monoxide,yes,,,,
+7791-23-3,Selenium oxychloride,yes,,,,500
+7803-51-2,Phosphine,yes,100,P096,,500
+7803-55-6,Ammonium vanadate,yes,1000,P119,,
+7803-62-5,Silane,yes,,,,
+8001-35-2,Toxaphene,yes,1,P123,,500
+8001-58-9,Creosote,yes,,,,
+8003-19-8,Dichloropropane - Dichloropropene (mixture),yes,100,,,
+8003-34-7,Pyrethrins,yes,1,,,
+8014-95-7,Oleum (fuming sulfuric acid),yes,1000,,,
+8065-48-3,Demeton,yes,,,,500
+9006-42-2,Metiram,yes,,,,
+9016-45-9,"Poly(oxy-1,2-ethanediyl), α- (nonylphenyl)-ω-hydroxy-",yes,,,,
+9016-87-9,Polymeric diphenylmethane diisocyanate,yes,,,,
+10022-70-5,Sodium hypochlorite,yes,100,,,
+10025-67-9,Sulfur monochloride,yes,1000,,,
+10025-73-7,Chromic chloride,yes,,,,1
+10025-78-2,"Silane, trichloro-",yes,,,,
+10025-87-3,Phosphorus oxychloride,yes,5000,,,1000
+10025-91-9,Antimony trichloride,yes,1000,,,
+10026-11-6,Zirconium tetrachloride,yes,5000,,,
+10026-13-8,Phosphorus pentachloride,yes,,,,500
+10028-15-6,Ozone,yes,,,,100
+10028-22-5,Ferric sulfate,yes,1000,,,
+10031-59-1,Thallium sulfate,yes,100,P115,,100
+10034-93-2,Hydrazine sulfate (1:1),yes,,,,
+10039-32-4,"Sodium phosphate, dibasic",yes,5000,,,
+10043-01-3,Aluminum sulfate,yes,5000,,,
+10045-89-3,Ferrous ammonium sulfate,yes,1000,,,
+10045-94-0,Mercuric nitrate,yes,10,,,
+10049-04-4,Chlorine dioxide,yes,,,,
+10049-05-5,Chromous chloride,yes,1000,,,
+10061-01-5,"cis-1,3-Dichloropropene",yes,,,,
+10061-02-6,"trans-1,3-Dichloropropene",yes,,,,
+10099-74-8,Lead nitrate,yes,10,,,
+10101-53-8,Chromic sulfate,yes,1000,,,
+10101-63-0,Lead iodide,yes,10,,,
+10101-89-0,"Sodium phosphate, tribasic",yes,5000,,,
+10102-06-4,Uranyl nitrate,yes,100,,,
+10102-18-8,Sodium selenite,yes,100,,,100
+10102-20-2,Sodium tellurite,yes,,,,500
+10102-43-9,Nitric oxide,yes,10,P076,,100
+10102-44-0,Nitrogen dioxide,yes,10,P078,,100
+10102-45-1,Thallium(I) nitrate,yes,100,U217,,
+10102-48-4,Lead arsenate,yes,1,,,
+10108-64-2,Cadmium chloride,yes,10,,,
+10124-36-4,Cadmium sulfate,yes,10,,,
+10124-50-2,Potassium arsenite,yes,1,,,500
+10140-65-5,"Sodium phosphate, dibasic",yes,5000,,,
+10140-87-1,"Ethanol, 1,2-dichloro-, acetate",yes,,,,1000
+10192-30-0,Ammonium bisulfite,yes,5000,,,
+10196-04-0,Ammonium sulfite,yes,5000,,,
+10210-68-1,Cobalt carbonyl,yes,,,,10
+10222-01-2,"2,2-Dibromo-3-nitrilopropionamide",yes,,,,
+10265-92-6,Methamidophos,yes,,,,100
+10294-34-5,"Borane, trichloro-",yes,,,,500
+10311-84-9,Dialifor,yes,,,,100
+10347-54-3,"1,4-Bis(methylisocyanate)cyclohexane",yes,,,,
+10361-37-2,Barium chloride,yes,,,,
+10361-89-4,"Sodium phosphate, tribasic",yes,5000,,,
+10380-29-7,"Cupric sulfate, ammoniated",yes,100,,,
+10415-75-5,Mercurous nitrate,yes,10,,,
+10421-48-4,Ferric nitrate,yes,1000,,,
+10453-86-8,Resmethrin,yes,,,,
+10476-95-6,Methacrolein diacetate,yes,,,,1000
+10495-86-0,Ammonium perfluorobutanoate,yes,,,,
+10544-72-6,Nitrogen dioxide,yes,,,,
+10588-01-9,Sodium dichromate,yes,10,,D007,1000
+10599-90-3,Chloramines,yes,,,,
+10605-21-7,Carbendazim,yes,10,U372,,
+11066-49-2,Isononylphenol,yes,,,,
+11096-82-5,Aroclor 1260,yes,1,,,
+11097-69-1,Aroclor 1254,yes,1,,,
+11104-28-2,Aroclor 1221,yes,1,,,
+11141-16-5,Aroclor 1232,yes,1,,,
+12002-03-8,Cupric acetoarsenite,yes,1,,,500
+12035-72-2,Nickel subsulfide,yes,,,,
+12039-52-0,Thallium selenite,yes,1000,P114,,
+12044-79-0,Arsenic disulfide,yes,1,,,
+12054-48-7,Nickel hydroxide,yes,10,,,
+12108-13-3,"Manganese, tricarbonyl methylcyclopentadienyl",yes,,,,100
+12122-67-7,Zineb,yes,,,,
+12125-01-8,Ammonium fluoride,yes,100,,,
+12125-02-9,Ammonium chloride,yes,5000,,,
+12135-76-1,Ammonium sulfide,yes,100,,,
+12185-10-3,Phosphorus (yellow or white),yes,,,,
+12427-38-2,Maneb,yes,,,,
+12672-29-6,Aroclor 1248,yes,1,,,
+12674-11-2,Aroclor 1016,yes,1,,,
+12771-08-3,Sulfur monochloride,yes,1000,,,
+13071-79-9,Terbufos,yes,,,,100
+13171-21-6,Phosphamidon,yes,,,,100
+13194-48-4,Ethoprop,yes,,,,1000
+13252-13-6,Hexafluoropropylene oxide dimer acid,yes,,,,
+13356-08-6,Fenbutatin oxide,yes,,,,
+13410-01-0,Sodium selenate,yes,,,,100
+13450-90-3,Gallium trichloride,yes,,,,500
+13463-39-3,Nickel carbonyl,yes,10,P073,,1
+13463-40-6,"Iron carbonyl (Fe(CO)5), (TB-5-11)-",yes,,,,100
+13463-67-7,Titanium dioxide,yes,,,,
+13474-88-9,"1,1-Dichloro-1,2,2,3,3- pentafluoropropane",yes,,,,
+13560-99-1,"2,4,5-T salts",yes,1000,,,
+13597-99-4,Beryllium nitrate,yes,1,,,
+13674-87-8,"Tris(1,3-dichloro-2-propyl) phosphate",yes,,,,
+13684-56-5,Desmedipham,yes,,,,
+13746-89-9,Zirconium nitrate,yes,5000,,,
+13765-19-0,Calcium chromate,yes,10,U032,,
+13814-96-5,Lead fluoborate,yes,10,,,
+13826-83-0,Ammonium fluoborate,yes,5000,,,
+13952-84-6,sec-Butylamine,yes,1000,,,
+14017-41-5,Cobaltous sulfamate,yes,1000,,,
+14103-61-8,"Bis(3,5,5-trimethylhexyl) phthalate",yes,,,,
+14167-18-1,Salcomine,yes,,,,500
+14216-75-2,Nickel nitrate,yes,100,,,
+14258-49-2,Ammonium oxalate,yes,5000,,,
+14307-35-8,Lithium chromate,yes,10,,,
+14307-43-8,Ammonium tartrate,yes,5000,,,
+14484-64-1,Ferbam,yes,,,,
+14639-97-5,Zinc ammonium chloride,yes,1000,,,
+14639-98-6,Zinc ammonium chloride,yes,1000,,,
+14644-61-2,Zirconium sulfate,yes,5000,,,
+14808-60-7,Silica (crystalline),yes,,,,
+15271-41-7,"Bicyclo[2.2.1]heptane-2-carbonitrile, 5- chloro-6- ((((methylamino)carbonyl)oxy)imino)-,(1- alpha,2-beta,4-alpha,5-alpha,6E))-",yes,,,,500
+15339-36-3,"Manganese, bis(dimethylcarbamodithioato-S,S')-",yes,10,P196,,
+15646-96-5,"2,4,4-Trimethylhexamethylene diisocyanate",yes,,,,
+15699-18-0,Nickel ammonium sulfate,yes,100,,,
+15739-80-7,Lead sulfate,yes,10,,,
+15950-66-0,"2,3,4-Trichlorophenol",yes,10,,,
+15972-60-8,Alachlor,yes,,,,
+16071-86-6,C.I. Direct Brown 95,yes,,,,
+16517-11-6,"Octadecanoic acid, pentatriacontafluoro-",yes,,,,
+16543-55-8,N-Nitrosonornicotine,yes,,,,
+16721-80-5,Sodium hydrosulfide,yes,5000,,,
+16752-77-5,"Ethanimidothioic acid, N- [[methylamino)carbonyl]",yes,100,P066,,500
+16871-71-9,Zinc silicofluoride,yes,5000,,,
+16919-19-0,Ammonium silicofluoride,yes,1000,,,
+16923-95-8,Zirconium potassium fluoride,yes,1000,,,
+16938-22-0,"2,2,4-Trimethylhexamethylene diisocyanate",yes,,,,
+17194-00-2,Barium hydroxide,yes,,,,
+17202-41-4,"1-Nonanesulfonic acid, 1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,9- nonadecafluoro-, ammonium salt",yes,,,,
+17702-41-9,Decaborane,yes,,,,500
+17702-57-7,Formparanate,yes,100,P197,,100
+17741-60-5,"1,1,2,2-Tetrahydroperfluorododecyl acrylate",yes,,,,
+17804-35-2,Benomyl,yes,10,U271,,
+18540-29-9,Chromium(VI),yes,10,,,
+18883-66-4,Streptozotocin,yes,1,U206,,
+19044-88-3,Oryzalin,yes,,,,
+19287-45-7,Diborane,yes,,P041,,100
+19408-74-3,"1,2,3,7,8,9-hexachlorodibenzo-p-dioxin",yes,,,,
+19624-22-7,Pentaborane,yes,,,,500
+19666-30-9,Oxydiazon,yes,,,,
+20325-40-0,"3,3'-Dimethoxybenzidine dihydrochloride",yes,,,,
+20354-26-1,Methazole,yes,,,,
+20427-84-3,"Ethanol, 2-[2-(4-nonylphenoxy)ethoxy]-",yes,,,,
+20548-62-3,Bis(7-methyloctyl) phthalate,yes,,,,
+20816-12-0,Osmium oxide OsO4 (T-4)-,yes,1000,P087,,
+20830-75-5,Digoxin,yes,,,,10
+20830-81-3,Daunomycin,yes,10,U059,,
+20859-73-8,Aluminum phosphide,yes,100,P006,,500
+21087-64-9,Metribuzin,yes,,,,
+21548-32-3,Fosthietan,yes,,,,500
+21609-90-5,Leptophos,yes,,,,500
+21615-47-4,Ammonium perfluorohexanoate,yes,,,,
+21652-58-4,Perfluorooctyl Ethylene,yes,,,,
+21725-46-2,Cyanazine,yes,,,,
+21908-53-2,Mercuric oxide,yes,,,,500
+21923-23-9,Chlorthiophos,yes,,,,500
+22224-92-6,Fenamiphos,yes,,,,10
+22781-23-3,Bendiocarb,yes,100,U278,,
+22961-82-6,Bendiocarb phenol,yes,1000,U364,,
+23135-22-0,Oxamyl,yes,100,P194,,100
+23422-53-9,Formetanate hydrochloride,yes,100,P198,,500
+23505-41-1,Pirimifos-ethyl,yes,,,,1000
+23564-05-8,Thiophanate-methyl,yes,10,U409,,
+23564-06-9,Thiophanate-ethyl,yes,,,,
+23950-58-5,"Benzamide, 3,5-dichloro-N-(1,1- dimethyl-2-propynyl",yes,5000,U192,,
+24017-47-8,Triazofos,yes,,,,500
+24448-09-7,"1-Octanesulfonamide, 1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,8- heptadecafluoro-N-(2-hydroxyethyl)-N- methyl-",yes,,,,
+24934-91-6,Chlormephos,yes,,,,500
+25154-52-3,Nonylphenol,yes,,,,
+25154-54-5,Dinitrobenzene (mixed isomers),yes,100,,,
+25154-55-6,Nitrophenol (mixed isomers),yes,100,,,
+25155-23-1,Tris(dimethylphenol) phosphate,yes,,,,
+25155-30-0,Sodium dodecylbenzenesulfonate,yes,1000,,,
+25167-67-3,Butene,yes,,,,
+25167-82-2,Trichlorophenol,yes,10,,,
+25167-83-3,Trichlorophenol,yes,,,,
+25168-15-4,"2,4,5-T esters",yes,1000,,,
+25168-26-7,"2,4-D Esters",yes,100,,,
+25268-77-3,2- [[(Heptadecafluorooctyl)sulfonyl]methyla mino]ethyl acrylate,yes,,,,
+25311-71-1,Isofenphos,yes,,,,
+25321-14-6,Dinitrotoluene (mixed isomers),yes,10,,,
+25321-22-6,Dichlorobenzene,yes,100,,,
+25376-45-8,Diaminotoluene (mixed isomers),yes,10,U221,,
+25550-58-7,Dinitrophenol,yes,10,,,
+25637-99-4,Hexabromocyclododecane,yes,,,,
+26002-80-2,Phenothrin,yes,,,,
+26027-38-3,"Poly(oxy-1,2-ethanediyl), α-(4- nonylphenyl)-ω-hydroxy-",yes,,,,
+26264-06-2,Calcium dodecylbenzenesulfonate,yes,1000,,,
+26419-73-8,"Carbamic acid, methyl-, O-(((2,4- dimethyl-1,3-dithiolan-2- yl)methylene)amino)-",yes,100,P185,,100
+26471-62-5,Toluene diisocyanate (mixed),yes,100,U223,,500
+26543-97-5,4-Isononylphenol,yes,,,,
+26571-11-9,"3,6,9,12,15,18,21,24- Octaoxahexacosan-1-ol, 26- (nonylphenoxy)-",yes,,,,
+26628-22-8,Sodium azide (Na(N3)),yes,1000,P105,,500
+26638-19-7,Dichloropropane,yes,1000,,,
+26644-46-2,Triforine,yes,,,,
+26952-23-8,Dichloropropene,yes,1,U061,,
+27137-85-5,Trichloro(dichlorophenyl)silane,yes,,,,500
+27176-87-0,Dodecylbenzenesulfonic acid,yes,1000,,,
+27176-93-8,"Ethanol, 2-[2-(nonylphenoxy)ethoxy]-",yes,,,,
+27177-05-5,"3,6,9,12,15,18,21-Heptaoxatricosan-1- ol, 23-(nonylphenoxy)-",yes,,,,
+27177-08-8,"3,6,9,12,15,18,21,24,27- Nonaoxanonacosan-1-ol, 29- (nonylphenoxy)-",yes,,,,
+27314-13-2,Norflurazon,yes,,,,
+27323-41-7,Triethanolamine dodecylbenzene sulfonate,yes,1000,,,
+27619-90-5,"1-Decanesulfonyl chloride, 3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,10- heptadecafluoro-",yes,,,,
+27619-91-6,"1-Dodecanesulfonyl chloride, 3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11, 12,12,12-heneicosafluoro-",yes,,,,
+27619-94-9,6:2 Fluorotelomer sulfonate sodium salt,yes,,,,
+27619-97-2,6:2 Fluorotelomer sulfonate acid,yes,,,,
+27774-13-6,Vanadyl sulfate,yes,1000,,,
+27905-45-9,"1,1,2,2-Tetrahydroperfluorodecyl acrylate",yes,,,,
+27986-36-3,"Ethanol, 2-(nonylphenoxy)-",yes,,,,
+28249-77-6,Thiobencarb,yes,,U238,,
+28300-74-5,Antimony potassium tartrate,yes,100,,,
+28347-13-9,Xylylene dichloride,yes,,,,100
+28407-37-6,C.I. Direct Blue 218,yes,,,,
+28434-00-6,d-trans-Allethrin,yes,,P098,,
+28553-12-0,Diisononyl phthalate,yes,,,,
+28772-56-7,Bromadiolone,yes,,,,100
+29081-56-9,"1-Octanesulfonic acid, 1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,8- heptadecafluoro-, ammonium salt",yes,,,,
+29082-74-4,Octachlorostyrene,yes,,,,
+29117-08-6,"Poly(oxy-1,2-ethanediyl), α-[2- [ethyl[(heptadecafluorooctyl)sulfonyl]am ino]ethyl]-ω-hydroxy-",yes,,,,
+29232-93-7,Pirimiphos-methyl,yes,,,,500
+29420-49-3,Potassium perfluorobutane sulfonate,yes,,,,
+29457-72-5,Lithium (perfluorooctane)sulfonate,yes,,,,
+30046-31-2,"Tetradecane, 1,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10, 10,11,11,12,12-pentacosafluoro-14- iodo-",yes,,,,
+30525-89-4,Paraformaldehyde,yes,1000,,,
+30558-43-1,"Ethanimidothioic acid, 2- (dimethylamino)-N-hydroxy-2-oxo-, methyl ester",yes,5000,U394,,
+30560-19-1,Acephate,yes,,,,
+30674-80-7,Methacryloyloxyethyl isocyanate,yes,,,,100
+31218-83-4,Propetamphos,yes,,,,
+31506-32-8,"1-Octanesulfonamide, 1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,8- heptadecafluoro-N-methyl-",yes,,,,
+32534-95-5,"2,4,5-TP esters",yes,100000,,,
+33089-61-1,Amitraz,yes,,P089,,
+33213-65-9,beta - Endosulfan,yes,1,,,
+34014-18-1,Tebuthiuron,yes,,,,
+34077-87-7,Dichlorotrifluoroethane,yes,,,,
+34362-49-7,"1,1,2,2-Tetrahydroperfluorohexadecyl acrylate",yes,,,,
+34395-24-9,"1,1,2,2-Tetrahydroperfluorotetradecyl acrylate",yes,,,,
+35367-38-5,Diflubenzuron,yes,,,,
+35400-43-2,Sulprofos,yes,,,,
+35554-44-0,Imazalil,yes,,,,
+35691-65-7,"1-Bromo-1-(bromomethyl)-1,3- propanedicarbonitrile",yes,,,,
+35822-46-9,"1,2,3,4,6,7,8-heptachlorodibenzo-p- dioxin",yes,,,,
+36478-76-9,Uranyl nitrate,yes,100,,,
+37205-87-1,"Poly(oxy-1,2-ethanediyl), α- (isononylphenyl)-ω-hydroxy-",yes,,,,
+37211-05-5,Nickel chloride,yes,100,,,
+37338-48-0,"Poly[oxy(methyl-1,2-ethanediyl)], α-[2- [ethyl[(heptadecafluorooctyl)sulfonyl]am ino]ethyl]-ω-hydroxy-",yes,,,,
+38006-74-5,"1-Propanaminium, 3- [[(heptadecafluorooctyl)sulfonyl]amino]- N,N,N- trimethyl-, chloride",yes,,,,
+38622-18-3,Diphenylhydrazine,yes,,,,
+38661-72-2,"1,3-Bis(methylisocyanate)cyclohexane",yes,,,,
+38727-55-8,Diethatyl ethyl,yes,,,,
+39001-02-0,"1,2,3,4,6,7,8,9-octachlorodibenzofuran",yes,,,,
+39156-41-7,"2,4-Diaminoanisole sulfate",yes,,,,
+39196-18-4,Thiofanox,yes,100,P045,,1000
+39227-28-6,"1,2,3,4,7,8-hexachlorodibenzo-p-dioxin",yes,,,,
+39239-77-5,"1-Tetradecanol, 3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11, 12,12,13,13,14,14,14-pentacosafluoro-",yes,,,,
+39300-45-3,Dinocap,yes,,,,
+39515-41-8,Fenpropathrin,yes,,,,
+40321-76-4,"1,2,3,7,8-pentachlorodibenzo-p-dioxin",yes,,,,
+40487-42-1,Pendimethalin,yes,,,,
+41198-08-7,Profenofos,yes,,,,
+41766-75-0,"3,3'-Dimethylbenzidine dihydrofluoride",yes,,,,
+42397-64-8,"1,6-Dinitropyrene",yes,,,,
+42397-65-9,"1,8-Dinitropyrene",yes,,,,
+42504-46-1,Isopropanolamine dodecylbenzene sulfonate,yes,1000,,,
+42874-03-3,Oxyfluorfen,yes,,,,
+43121-43-3,Triadimefon,yes,,,,
+45048-62-2,Perfluorobutanoate,yes,,,,
+45187-15-3,Perfluorobutanesulfonate,yes,,,,
+50471-44-8,Vinclozolin,yes,,,,
+50782-69-9,"Phosphonothioic acid, methyl-, S-(2- (bis(1-methylethyl)amino)ethyl) O-ethyl ester",yes,,,,100
+51207-31-9,"2,3,7,8-Tetrachlorodibenzofuran",yes,,P037,,
+51235-04-2,Hexazinone,yes,,,,
+51338-27-3,Diclofop methyl,yes,,,,
+51630-58-1,Fenvalerate,yes,,,,
+51938-25-1,"Poly(oxy-1,2-ethanediyl), α-(2- nonylphenyl)-ω-hydroxy-",yes,,,,
+52166-82-2,"1-Propanaminium, N,N,N-trimethyl-3- [[(tridecafluorohexyl)sulfonyl]amino]-, chloride",yes,,,,
+52628-25-8,Zinc ammonium chloride,yes,5001,,,
+52645-53-1,Permethrin,yes,,,,
+52740-16-6,Calcium arsenite,yes,10,U219,,
+52888-80-9,"Carbamothioic acid, dipropyl-, S- (phenylmethyl) ester",yes,5000,U387,,
+53404-19-6,"Bromacil, lithium salt",yes,,,,
+53404-37-8,"2,4-D 2-ethyl-4-methylpentyl ester",yes,,,,
+53404-60-7,"Dazomet, sodium salt",yes,,,,
+53467-11-1,"2,4-D Esters",yes,100,,,
+53469-21-9,Aroclor 1242,yes,1,,,
+53558-25-1,Pyriminil,yes,,,,100
+55285-14-8,Carbosulfan,yes,1000,P189,,
+55290-64-7,Dimethipin,yes,,,,
+55406-53-6,3-Iodo-2-propynyl butylcarbamate,yes,,,,
+55488-87-4,Ferric ammonium oxalate,yes,1000,U123,,
+55671-32-4,Cupric oxalate,yes,100,,,
+55673-89-7,"1,2,3,4,7,8,9-heptachlorodibenzofuran",yes,,,,
+55910-10-6,"Glycine, N- [(heptadecafluorooctyl)sulfonyl]-N- propyl-, potassium salt",yes,,,,
+56189-09-4,Lead stearate,yes,10,,,
+56372-23-7,"Poly(oxy-1,2-ethanediyl), α-[2- [ethyl[(tridecafluorohexyl)sulfonyl]amino ]ethyl]-ω-hydroxy-",yes,,,,
+56773-42-3,"Ethanaminium, N,N,N-triethyl-, salt with 1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,8- heptadecafluoro-1-octanesulfonic acid (1:1)",yes,,,,
+57117-31-4,"2,3,4,7,8-pentachlorodibenzofuran",yes,,,,
+57117-41-6,"1,2,3,7,8-pentachlorodibenzofuran",yes,,,,
+57117-44-9,"1,2,3,6,7,8-hexachlorodibenzofuran",yes,,,,
+57213-69-1,Triclopyr-triethylammonium salt,yes,,,,
+57653-85-7,"1,2,3,6,7,8-hexachlorodibenzo-p-dioxin",yes,,,,
+57835-92-4,4–Nitropyrene,yes,,,,
+58270-08-9,"Zinc, dichloro(4,4-dimethyl- 5((((methylamino)carbonyl)oxy)imino)pe ntanenitrile)-, (T-4)-",yes,,,,100
+59071-10-2,"2-Propenoic acid, 2- [ethyl[(pentadecafluoroheptyl)sulfonyl]a mino]ethyl ester",yes,,,,
+59587-38-1,6:2 Fluorotelomer sulfonate potassium salt,yes,,,,
+59587-39-2,6:2 Fluorotelomer sulfonate ammonium salt,yes,,,,
+59669-26-0,Thiodicarb,yes,100,U410,,
+60168-88-9,Fenarimol,yes,,,,
+60207-90-1,Propiconazole,yes,,,,
+60270-55-5,"1-Heptanesulfonic acid, 1,1,2,2,3,3,4,4,5,5,6,6,7,7,7- pentadecafluoro-, potassium salt",yes,,,,
+60699-51-6,"1-Hexadecanol, 3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11, 12,12,13,13,14,14,15,15,16,16,16- nonacosafluoro-",yes,,,,
+60851-34-5,"2,3,4,6,7,8-hexachlorodibenzofuran",yes,,,,
+61660-12-6,"1-Octanesulfonamide, N-ethyl- 1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,8- heptadecafluoro-N-[3- (trimethoxysilyl)propyl]-",yes,,,,
+61792-07-2,"2,4,5-T esters",yes,1000,,,
+61798-68-3,"Pyridinium, 1- (3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,10- heptadecafluorodecyl)-, salt with 4- methylbenzenesulfonic acid (1:1)",yes,,,,
+62037-80-3,Hexafluoropropylene oxide dimer acid ammonium salt,yes,,,,
+62207-76-5,"Cobalt, ((2,2'-(1,2- ethanediylbis(nitrilomethylidyne))bis(6- fluorophenylato))(2-)-N,N',O,O')-",yes,,,,100
+62476-59-9,"Acifluorfen, sodium salt",yes,,,,
+63938-10-3,Chlorotetrafluoroethane,yes,,,,
+64902-72-3,Chlorsulfuron,yes,,,,
+64969-34-2,"3,3'-Dichlorobenzidine sulfate",yes,,,,
+65104-45-2,"2-Propenoic acid, 2-methyl-, 3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11, 12,12,12-heneicosafluorododecyl ester, polymer with 3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,10- heptadecafluorodecyl 2-methyl-2- propenoate, methyl 2-methyl-2- propenoate, 3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11, 12,12,13,13,14,14,14- pentacosafluorotetradecyl 2-methyl-2- propenoate and 3,3,4,4,5,5,6,6,7,7,8,8,8- tridecafluorooctyl 2-methyl-2- propenoate",yes,,,,
+65104-65-6,"1-Eicosanol, 3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11, 12,12,13,13,14,14,15,15,16,16,17,17,1 8,18,19,19,20,20,20- heptatriacontafluoro-",yes,,,,
+65104-67-8,"1-Octadecanol, 3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11, 12,12,13,13,14,14,15,15,16,16,17,17,1 8,18,18-tritriacontafluoro-",yes,,,,
+65510-55-6,"Hexadecane, 1,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10, 10,11,11,12,12,13,13,14,14- nonacosafluoro-16-iodo-",yes,,,,
+65530-59-8,"Poly(difluoromethylene), α-fluoro-ω-(2- hydroxyethyl)-, 2-hydroxy-1,2,3- propanetricarboxylate (3:1)",yes,,,,
+65530-61-2,"Poly(difluoromethylene), α-fluoro-ω-[2- (phosphonooxy)ethyl]-",yes,,,,
+65530-62-3,"Poly(difluoromethylene), α,α'- [phosphinicobis(oxy-2,1- ethanediyl)]bis[ω-fluoro-",yes,,,,
+65530-63-4,"Ethanol, 2,2'-iminobis-, compd. with α- fluoro-ω-[2- (phosphonooxy)ethyl]poly(difluoromethy lene) (2:1)",yes,,,,
+65530-64-5,"Ethanol, 2,2'-iminobis-, compd. with α,α'- [phosphinicobis(oxy-2,1- ethanediyl)]bis[ω- fluoropoly(difluoromethylene)] (1:1)",yes,,,,
+65530-65-6,"Poly(difluoromethylene), α-fluoro-ω-[2- [(1-oxooctadecyl)oxy]ethyl]-",yes,,,,
+65530-66-7,"Poly(difluoromethylene), α-fluoro-ω-[2- [(2-methyl-1-oxo-2-propenyl)oxy]ethyl]-",yes,,,,
+65530-69-0,"Poly(difluoromethylene), α-[2-[(2- carboxyethyl)thio]ethyl]-ω-fluoro-, lithium salt",yes,,,,
+65530-70-3,"Poly(difluoromethylene), α,α'- [phosphinicobis(oxy-2,1- ethanediyl)]bis[ω-fluoro-, ammonium salt",yes,,,,
+65530-71-4,"Poly(difluoromethylene), α-fluoro-ω-[2- (phosphonooxy)ethyl]-, monoammonium salt",yes,,,,
+65530-72-5,"Poly(difluoromethylene), α-fluoro-ω-[2- (phosphonooxy)ethyl]-, diammonium salt",yes,,,,
+65530-74-7,"Ethanol, 2,2'-iminobis-, compd. with α- fluoro-ω-[2- (phosphonooxy)ethyl]poly(difluoromethy lene) (1:1)",yes,,,,
+65530-83-8,"Poly(difluoromethylene), α-[2-[(2- carboxyethyl)thio]ethyl]-ω-fluoro-",yes,,,,
+65545-80-4,"Poly(oxy-1,2-ethanediyl), α-hydro-ω- hydroxy-, ether with α-fluoro-ω-(2- hydroxyethyl)poly(difluoromethylene) (1:1)",yes,,,,
+65605-56-3,"Poly(difluoromethylene), α-fluoro-ω-(2- hydroxyethyl)-, dihydrogen 2-hydroxy- 1,2,3-propanetricarboxylate",yes,,,,
+65605-57-4,"Poly(difluoromethylene), α-fluoro-ω-(2- hydroxyethyl)-, hydrogen 2-hydroxy- 1,2,3-propanetricarboxylate",yes,,,,
+65605-58-5,"2-Propenoic acid, esters, 2-methyl-, dodecyl ester, polymer with α-fluoro-ω- [2-[(2-methyl-1-oxo-2-propen-1- yl)oxy]ethyl]poly(difluoromethylene)",yes,,,,
+65605-59-6,"2-Propenoic acid, 2-methyl-, dodecyl ester, polymer with α-fluoro-ω-[2-[(2- methyl-1-oxo-2-propen-1- yl)oxy]ethyl]poly(difluoromethylene) and N-(hydroxymethyl)-2-propenamide",yes,,U068,,
+65605-73-4,"Poly(difluoromethylene), α-fluoro-ω-[2- [(1-oxo-2-propenyl)oxy]ethyl]-, homopolymer",yes,,,,
+65636-35-3,"Ethanaminium, N,N-diethyl-N-methyl-2- [(2-methyl-1-oxo-2-propenyl)oxy]-, methyl sulfate, polymer with 2- ethylhexyl 2-methyl-2- propenoate, α- fluoro-ω-[2-[(2-methyl-1-oxo-2- propenyl)oxy]ethyl]poly(difluoromethyle ne), 2-hydroxyethyl 2-methyl-2- propenoate and N-(hydroxymethyl)-2- propenamide",yes,,,,
+66441-23-4,Fenoxaprop-ethyl,yes,,,,
+67485-29-4,Hydramethylnon,yes,,,,
+67562-39-4,"1,2,3,4,6,7,8-heptachlorodibenzofuran",yes,,,,
+67584-42-3,"Cyclohexanesulfonic acid, decafluoro(pentafluoroethyl)-, potassium salt",yes,,,,
+67584-52-5,"Glycine, N-ethyl-N- [(undecafluoropentyl)sulfonyl]-, potassium salt",yes,,,,
+67584-53-6,"Glycine, N-ethyl-N- [(tridecafluorohexyl)sulfonyl]-, potassium salt",yes,,,,
+67584-56-9,"2-Propenoic acid, 2- [methyl[(undecafluoropentyl)sulfonyl]am ino]ethyl ester",yes,,,,
+67584-57-0,"2-Propenoic acid, 2- [methyl[(tridecafluorohexyl)sulfonyl]ami no]ethyl ester",yes,,,,
+67584-58-1,"1-Propanaminium, N,N,N-trimethyl-3- [[(pentadecafluoroheptyl)sulfonyl]amino] , iodide",yes,,,,
+67584-62-7,"Glycine, N-ethyl-N- [(pentadecafluoroheptyl)sulfonyl]-, potassium salt",yes,,,,
+67905-19-5,Perfluoropalmitic acid,yes,,,,
+67906-42-7,"1-Decanesulfonic acid, 1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10 ,10-heneicosafluoro-, ammonium salt",yes,,,,
+67969-69-1,"1-Octanesulfonamide, N-ethyl- 1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,8- heptadecafluoro-N-[2- (phosphonooxy)ethyl]-, diammonium salt",yes,,,,
+68084-62-8,"2-Propenoic acid, 2- [methyl[(pentadecafluoroheptyl)sulfonyl] amino]ethyl ester",yes,,,,
+68085-85-8,Cyhalothrin,yes,,,,
+68140-18-1,"Thiols, C4-10, γ-ω-perfluoro",yes,,,,
+68140-20-5,"Thiols, C6-12, γ-ω-perfluoro",yes,,,,
+68140-21-6,"Thiols, C10-20, γ-ω-perfluoro",yes,,,,
+68141-02-6,Chromium(III) perfluorooctanoate,yes,,,,
+68156-01-4,"Cyclohexanesulfonic acid, nonafluorobis(trifluoromethyl)-, potassium salt",yes,,,,
+68156-07-0,"Cyclohexanesulfonic acid, decafluoro(trifluoromethyl)-, potassium salt",yes,,U115,,
+68187-25-7,"Butanoic acid, 4-[[3- (dimethylamino)propyl]amino]-4-oxo-, 2(or 3)-[(γ-ω-perfluoro-C6-20-alkyl)thio] derivs.",yes,,,,
+68187-47-3,"1-Propanesulfonic acid, 2-methyl-, 2-[[1- oxo-3-[(γ-ω-perfluoro-C4-16- alkyl)thio]propyl]amino] derivs., sodium salts",yes,,,,
+68188-12-5,"Alkyl iodides, C4-20, γ-ω-perfluoro",yes,,,,
+68227-96-3,"2-Propenoic acid, butyl ester, telomer with 2- [[(heptadecafluorooctyl)sulfonyl]methyla mino]ethyl 2-propenoate, 2- [methyl[(nonafluorobutyl)sulfonyl]amino] ethyl 2-propenoate, α-(2- methyl-1-oxo- 2-propenyl)-ω-hydroxypoly(oxy-1,4- butanediyl), α-(2- methyl-1-oxo-2- propenyl)-ω-[(2-methyl-1-oxo-2- propenyl)oxy]poly(oxy-1,4-butanediyl), 2- [methyl [(pentadecafluoroheptyl)sulfonyl]amino] ethyl 2-propenoate, 2- [methyl[(tridecafluorohexyl)sulfonyl]ami no]ethyl 2-propenoate, 2- [methyl[(undecafluoropentyl)sulfonyl]am ino]ethyl 2-propenoate and 1- octanethiol",yes,,,,
+68239-43-0,"2-Propenoic acid, 2-methyl-, 2- ethylhexyl ester, polymer with α-fluoro- ω-[2-[(2-methyl-1-oxo-2-propen-1- yl)oxy]ethyl]poly(difluoromethylene), 2- hydroxyethyl 2-methyl-2-propenoate and N-(hydroxymethyl)-2-propenamide",yes,,,,
+68259-07-4,"1-Heptanesulfonic acid, 1,1,2,2,3,3,4,4,5,5,6,6,7,7,7- pentadecafluoro-, ammonium salt",yes,,,,
+68259-08-5,"1-Hexanesulfonic acid, 1,1,2,2,3,3,4,4,5,5,6,6,6-tridecafluoro-, ammonium salt",yes,,,,
+68259-09-6,"1-Pentanesulfonic acid, 1,1,2,2,3,3,4,4,5,5,5-undecafluoro-, ammonium salt",yes,,,,
+68259-38-1,"Poly[oxy(methyl-1,2-ethanediyl)], α-[2- [ethyl[(tridecafluorohexyl)sulfonyl]amino ]ethyl]-ω-hydroxy-",yes,,,,
+68259-39-2,"Poly[oxy(methyl-1,2-ethanediyl)], α-[2- [ethyl[(pentadecafluoroheptyl)sulfonyl]a mino]ethyl]-ω-hydroxy-",yes,,,,
+68298-62-4,"2-Propenoic acid, 2- [butyl[(heptadecafluorooctyl)sulfonyl]am ino]ethyl ester, telomer with 2- [butyl[(pentadecafluoroheptyl)sulfonyl]a mino]ethyl 2-propenoate, methyloxirane polymer with oxirane di-2-propenoate, methyloxirane polymer with oxirane mono-2-propenoate and 1-octanethiol",yes,,,,
+68298-80-6,"Poly(oxy-1,2-ethanediyl), α-[2- [ethyl[(undecafluoropentyl)sulfonyl]amin o]ethyl]-ω-hydroxy-",yes,,,,
+68298-81-7,"Poly(oxy-1,2-ethanediyl), α-[2- [ethyl[(pentadecafluoroheptyl)sulfonyl]a mino]ethyl]-ω-hydroxy-",yes,,,,
+68310-17-8,"Poly[oxy(methyl-1,2-ethanediyl)], α-[2- [ethyl[(undecafluoropentyl)sulfonyl]amin o]ethyl]-ω-hydroxy-",yes,,,,
+68359-37-5,Cyfluthrin,yes,,,,
+68391-08-2,"Alcohols, C8-14, γ-ω-perfluoro",yes,,U006,,
+68412-54-4,"Poly(oxy-1,2-ethanediyl), α- (nonylphenyl)-ω-hydroxy-, branched",yes,,,,
+68412-68-0,"Phosphonic acid, perfluoro-C6-12-alkyl derivs.",yes,,,,
+68412-69-1,"Phosphinic acid, bis(perfluoro-C6-12- alkyl) derivs.",yes,,,,
+68515-48-0,"Di(C8–10, C9 rich) branched alkyl phthalates",yes,,,,
+68515-62-8,"1,4-Benzenedicarboxylic acid, dimethyl ester, reaction products with bis(2- hydroxyethyl) terephthalate, ethylene glycol, α-fluoro-ω-(2- hydroxyethyl)poly(difluoromethylene), hexakis(methoxymethyl)melamine and polyethylene glycol",yes,,,,
+68555-74-8,"1-Pentanesulfonamide, 1,1,2,2,3,3,4,4,5,5,5-undecafluoro-N-(2- hydroxyethyl)-N-methyl-",yes,,,,
+68555-75-9,"1-Hexanesulfonamide, 1,1,2,2,3,3,4,4,5,5,6,6,6-tridecafluoro-N- (2- hydroxyethyl)-N-methyl-",yes,,,,
+68555-76-0,"1-Heptanesulfonamide, 1,1,2,2,3,3,4,4,5,5,6,6,7,7,7- pentadecafluoro-N-(2-hydroxyethyl)-N- methyl-",yes,,,,
+68555-81-7,"1-Propanaminium, N,N,N-trimethyl-3- [[(pentadecafluoroheptyl)sulfonyl]amino] , chloride",yes,,,,
+68555-91-9,"2-Propenoic acid, 2-methyl-, 2- [ethyl[(heptadecafluorooctyl)sulfonyl]am ino]ethyl ester, polymer with 2- [ethyl[(nonafluorobutyl)sulfonyl]amino]et hyl-methyl-2-propenoate, 2- [ethyl[(pentadecafluoroheptyl)sulfonyl]a mino]ethyl 2-methyl-2-propenoate, 2- [ethyl[(tridecafluorohexyl)sulfonyl]amino ]ethyl 2-methyl- 2-propenoate, 2- [ethyl[(undecafluoropentyl)sulfonyl]amin o]ethyl 2-methyl-2-propenoate and octadecyl 2-methyl-2-propenoate",yes,,,,
+68758-57-6,"1-Tetradecanesulfonyl chloride, 3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11, 12,12,13,13,14,14,14-pentacosafluoro-",yes,,,,
+68867-60-7,"2-Propenoic acid, 2- [[(heptadecafluorooctyl)sulfonyl]methyla mino]ethyl ester, polymer with 2-[methyl [(nonafluorobutyl)sulfonyl]amino]ethyl 2- propenoate, 2- [methyl[(pentadecafluoroheptyl)sulfonyl] amino]ethyl 2- propenoate, 2- [methyl[(tridecafluorohexyl)sulfonyl]ami no]ethyl 2- propenoate, 2- [methyl[(undecafluoropentyl)sulfonyl]am ino]ethyl 2- propenoate and α-(1-oxo-2- propenyl)-ω-methoxypoly(oxy-1,2- ethanediyl)",yes,,,,
+68957-55-1,"1-Propanaminium, N,N,N-trimethyl-3- [[(undecafluoropentyl)sulfonyl]amino]-, chloride",yes,,,,
+68957-57-3,"1-Propanaminium, N,N,N-trimethyl-3- [[(undecafluoropentyl)sulfonyl]amino]-, iodide",yes,,,,
+68957-58-4,"1-Propanaminium, N,N,N-trimethyl-3- [[(tridecafluorohexyl)sulfonyl]amino]-, iodide",yes,,,,
+68957-62-0,"1-Heptanesulfonamide, N-ethyl- 1,1,2,2,3,3,4,4,5,5,6,6,7,7,7- pentadecafluoro-",yes,,,,
+68958-60-1,"Poly(oxy-1,2-ethanediyl), α-[2- [ethyl[(pentadecafluoroheptyl)sulfonyl]a mino]ethyl]-ω-methoxy-",yes,,,,
+68958-61-2,"Poly(oxy-1,2-ethanediyl), α-[2- [ethyl[(heptadecafluorooctyl)sulfonyl]am ino]ethyl]-ω-methoxy-",yes,,,,
+69409-94-5,Fluvalinate,yes,,,,
+69806-50-4,Fluazifop-butyl,yes,,,,
+70225-14-8,"1-Octanesulfonic acid, 1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,8- heptadecafluoro-, compd. with 2,2'- iminobis[ethanol] (1:1)",yes,,,,
+70225-15-9,"1-Heptanesulfonic acid, 1,1,2,2,3,3,4,4,5,5,6,6,7,7,7- pentadecafluoro-, compd. with 2,2'- iminobis[ethanol] (1:1)",yes,,,,
+70225-16-0,"1-Hexanesulfonic acid, 1,1,2,2,3,3,4,4,5,5,6,6,6-tridecafluoro-, compd. with 2,2'-iminobis[ethanol] (1:1)",yes,,,,
+70225-17-1,"1-Pentanesulfonic acid, 1,1,2,2,3,3,4,4,5,5,5-undecafluoro-, compd. with 2,2'-iminobis[ethanol] (1:1)",yes,,,,
+70648-26-9,"1,2,3,4,7,8-hexachlorodibenzofuran",yes,,,,
+70969-47-0,"Thiols, C8-20, γ-ω-perfluoro, telomers with acrylamide",yes,,,,
+70983-59-4,"Poly(oxy-1,2-ethanediyl), α-methyl-ω- hydroxy-, 2-hydroxy-3-[(γ-ω-perfluoro- C6-20-alkyl)thio]propyl ethers",yes,,,,
+70983-60-7,"1-Propanaminium, 2-hydroxy-N,N,N- trimethyl-, 3-[(γ-ω-perfluoro-C6-20- alkyl)thio] derivs., chlorides",yes,,,,
+71549-78-5,Branched dinonyl phthalate,yes,,,,
+71608-60-1,"Pentanoic acid, 4,4-bis[(γ-ω-perfluoro- C8-20-alkyl)thio] derivs.",yes,,,,
+71751-41-2,Abamectin,yes,,,,
+72178-02-0,Fomesafen,yes,,,,
+72490-01-8,Fenoxycarb,yes,,,,
+72623-77-9,"Fatty acids, C6-18, perfluoro, ammonium salts",yes,,,,
+72918-21-9,"1,2,3,7,8,9-hexachlorodibenzofuran",yes,,,,
+72968-38-8,"Fatty acids, C7-13, perfluoro, ammonium salts",yes,,,,
+74051-80-2,Sethoxydim,yes,,,,
+74499-44-8,"Phosphoric acid, γ-ω-perfluoro-C8-16- alkyl esters, compds. with diethanolamine",yes,,,,
+75790-84-0,"4-Methyldiphenylmethane-3,4- diisocyanate",yes,,,,
+75790-87-3,"2,4'-Diisocyanatodiphenyl sulfide",yes,,,,
+76578-14-8,Quizalofop-ethyl,yes,,,,
+77501-63-4,Lactofen,yes,,,,
+78560-44-8,"Silane, trichloro(3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,1 0,10-heptadecafluorodecyl)-",yes,,,,
+80010-37-3,"Poly(difluoromethylene), α-fluoro-ω-[2- sulphoethyl)-",yes,,,,
+82113-65-3,"1,1,1-Trifluoro-N- [(trifluoromethyl)sulfonyl] methanesulfonamide",yes,,,,
+82657-04-3,Bifenthrin,yes,,,,
+83048-65-1,"Silane, (3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,10- heptadecafluorodecyl)trimethoxy-",yes,,,,
+84852-15-3,"4-Nonylphenol, branched",yes,,,,
+88671-89-0,Myclobutanil,yes,,,,
+90076-65-6,Lithium bis[(trifluoromethyl)sulfonyl] azanide,yes,,,,
+90454-18-5,"Dichloro-1,1,2-trifluoroethane",yes,,,,
+90481-04-2,"Nonylphenol, branched",yes,,,,
+90982-32-4,Chlorimuron-ethyl,yes,,,,
+95144-12-0,"Poly(difluoromethylene), α-fluoro-ω-[2- (phosphonooxy)ethyl]-, ammonium salt",yes,,,,
+97553-95-2,"Thiocyanic acid, γ-ω-perfluoro-C4-20- alkyl esters",yes,,,,
+97659-47-7,"Alkenes, C8-14 α-, δ-ω-perfluoro",yes,,,,
+101200-48-0,Tribenuron-methyl,yes,,,,
+111512-56-2,"1,1-Dichloro-1,2,3,3,3- pentafluoropropane",yes,,,,
+111983-10-9,"Bis(3-ethylheptan-2-yl) benzene-1,2- dicarboxylate",yes,,,,
+111984-09-9,"3,3'-Dimethoxybenzidine monohydrochloride",yes,,,,
+118400-71-8,"Disulfides, bis(γ-ω-perfluoro-C6-20- alkyl)",yes,,,,
+123171-68-6,"Poly(difluoromethylene), α-[2- (acetyloxy)-3- [(carboxymethyl)dimethylammonio]prop yl]-ω-fluoro-, inner salt",yes,,,,
+125476-71-3,"Silicic acid (H4SiO4), disodium salt, reaction products with chlorotrimethylsilane and 3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,10- heptadecafluoro-1-decanol",yes,,,,
+127087-87-0,"Poly(oxy-1,2-ethanediyl), α-(4- nonylphenyl)-ω-hydroxy-, branched",yes,,,,
+127564-92-5,Dichloropentafluoropropane,yes,,,,
+128903-21-9,"2,2-Dichloro-1,1,1,3,3- pentafluoropropane",yes,,,,
+134190-37-7,Diethyldiisocyanatobenzene,yes,,,,
+135228-60-3,"Hexane, 1,6-diisocyanato-, homopolymer, γ-ω-perfluoro-C6-20-alc.- blocked",yes,,,,
+136013-79-1,"1,3-Dichloro-1,1,2,3,3- pentafluoropropane",yes,,,,
+142636-88-2,"2-Propenoic acid, 2-methyl-, octadecyl ester, polymer with 3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11, 12,12,12-heneicosafluorododecyl 2- propenoate, 3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,10- heptadecafluorodecyl 2-propenoate and 3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11, 12,12,13,13,14,14,14- pentacosafluorotetradecyl 2-propenoate",yes,,,,
+143372-54-7,"Siloxanes and Silicones, (3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,10- heptadecafluorodecyl)oxy Me, hydroxy Me, Me octyl, ethers with polyethylene glycol mono-Me ether",yes,,,,
+148240-85-1,"1,3-Propanediol, 2,2-bis[[(γ-ω-perfluoro- C4-10-alkyl)thio]methyl] derivs., phosphates, ammonium salts",yes,,,,
+148240-87-3,"1,3-Propanediol, 2,2-bis[[(γ-ω-perfluoro- C6-12-alkyl)thio]methyl] derivs., phosphates, ammonium salts",yes,,,,
+148240-89-5,"1,3-Propanediol, 2,2-bis[[(γ-ω-perfluoro- C10-20-alkyl)thio]methyl] derivs., phosphates, ammonium salts",yes,,U140,,
+150135-57-2,"2-Propenoic acid, 2-methyl-, 2- (dimethylamino)ethyl ester, polymers with Bu acrylate, γ-ω-perfluoro-C8-14- alkyl acrylate and polyethylene glycol monomethacrylate, 2,2'-azobis[2,4- dimethylpentanenitrile]- initiated",yes,,,,
+178094-69-4,"1-Octanesulfonamide, N-[3- (dimethyloxidoamino)propyl]- 1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,8- heptadecafluoro-, potassium salt",yes,,,,
+178535-23-4,"Fatty acids, linseed-oil, γ-ω-perfluoro- C8-14-alkyl esters",yes,,,,
+180582-79-0,"Sulfonic acids, C6-12-alkane, γ-ω- perfluoro, ammonium salts",yes,,,,
+182176-52-9,"Ethaneperoxoic acid, reaction products with 3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,10- heptadecafluorodecyl thiocyanate and 3,3,4,4,5,5,6,6,7,7,8,8,8- tridecafluorooctyl thiocyanate",yes,,,,
+196316-34-4,"2-Propenoic acid, 2-methyl-, 2- (dimethylamino)ethyl ester, polymers with γ-ω-perfluoro-C10-16-alkyl acrylate and vinyl acetate, acetates",yes,,U159,,
+200513-42-4,"2-Propenoic acid, 2-methyl-, polymer with butyl 2-methyl-2-propenoate, 3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,10- heptadecafluorodecyl 2-propenoate, 2- hydroxyethyl 2-methyl-2-propenoate and methyl 2-methyl-2-propenoate",yes,,,,
+203743-03-7,"2-Propenoic acid, 2-methyl-, hexadecyl ester, polymers with 2-hydroxyethyl methacrylate, γ-ω-perfluoro-C10-16- alkyl acrylate and stearyl methacrylate",yes,,,,
+238420-68-3,"Propanedioic acid, mono(γ-ω-perfluoro- C8-12-alkyl) derivs., di-me esters",yes,,,,
+238420-80-9,"Propanedioic acid, mono(γ-ω-perfluoro- C8-12-alkyl) derivs., bis[4- (ethenyloxy)butyl] esters",yes,,U227,,
+425670-75-3,6:2 Fluorotelomer sulfonate anion,yes,,,,
+1078142-10-5,"1,3-Propanediol, 2,2-bis[[(γ-ω-perfluoro- C6-12-alkyl)thio]methyl] derivs., polymers with 2,2-bis[[(γ-ω-perfluoro- C10-20-alkyl)thio]methyl]-1,3- propanediol, 1,6-diisocyanato-2,2,4(or 2,4,4)-trimethylhexane, 2-heptyl-3,4- bis(9-isocyanatononyl)-1- pentylcyclohexane and 2,2'- (methylimino)bis[ethanol]",yes,,,,
+1078712-88-5,"Thiols, C4-20, γ-ω-perfluoro, telomers with acrylamide and acrylic acid, sodium salts",yes,,,,
+1078715-61-3,"1-Propanaminium, 3-amino-N- (carboxymethyl)-N,N-dimethyl-, N-[2-[(γ- ω-perfluoro-C4-20-alkyl)thio]acetyl] derivs., inner salts",yes,,,,
+2728655-42-1,"Alcohols, C8-16, γ-ω-perfluoro, reaction products with 1,6 diisocyanatohexane, glycidol and stearyl alc.",yes,,U008,,
+2738952-61-7,"Acetamide, N-[3-(dimethylamino)propyl]- , 2-[(γ-ω-perfluoro-C4-20-alkyl)thio] derivs.",yes,,,,
+2742694-36-4,"Acetamide, N-(2-aminoethyl)-, 2-[(γ-ω- perfluoro-C4-20-alkyl)thio] derivs., polymers with N1,N1-dimethyl-1,3- propanediamine, epichlorohydrin and ethylenediamine, oxidized",yes,,,,
+2744262-09-5,"Acetic acid, 2-[(γ-ω-perfluoro-C4-20- alkyl)thio] derivs., 2-hydroxypropyl esters",yes,,,,
+2816091-53-7,"Betaines, dimethyl(.gamma.-.omega.- perfluoro-.gamma.-hydro-C8-18-alkyl)",yes,,,,
+3030471-22-5,"Acetic acid, [(γ-ω-perfluoro-C8-10- alkyl)thio] derivs., Bu esters",yes,,,,

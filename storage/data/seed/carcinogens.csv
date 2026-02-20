@@ -268,7 +268,7 @@ cas_number,chemical_name,agency,classification,description
 59-89-2,N-Nitrosomorpholine,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
 59-89-2,N-Nitrosomorpholine,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
 16543-55-8,N-Nitrosonornicotine (NNN),IARC,Group 1,Causes esophageal and oral cancers from tobacco use
-64091-91-4,"4-(Methylnitrosamino)-1-(3-pyridyl)-1-butanone (NNK)",IARC,Group 1,Causes lung cancer from tobacco use
+64091-91-4,4-(Methylnitrosamino)-1-(3-pyridyl)-1-butanone (NNK),IARC,Group 1,Causes lung cancer from tobacco use
 100-75-4,N-Nitrosopiperidine,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
 100-75-4,N-Nitrosopiperidine,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
 930-55-2,N-Nitrosopyrrolidine,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
@@ -363,7 +363,7 @@ cas_number,chemical_name,agency,classification,description
 98-95-3,Nitrobenzene,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
 1464-53-5,"Diepoxybutane (1,2:3,4-diepoxybutane)",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
 1464-53-5,Diepoxybutane,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
-106-87-6,"4-Vinyl-1-cyclohexene diepoxide (vinyl cyclohexene dioxide)",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+106-87-6,4-Vinyl-1-cyclohexene diepoxide (vinyl cyclohexene dioxide),IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
 106-87-6,Vinyl cyclohexene dioxide,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
 2426-08-6,n-Butyl glycidyl ether,IARC,Group 2B,Possibly carcinogenic to humans based on limited evidence
 122-66-7,"1,2-Diphenylhydrazine (hydrazobenzene)",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
@@ -502,8 +502,8 @@ cas_number,chemical_name,agency,classification,description
 120-71-8,p-Cresidine,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
 99-55-8,5-Nitro-ortho-toluidine,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
 99-55-8,5-Nitro-ortho-toluidine,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
-531-82-8,"N-[4-(5-Nitro-2-furyl)-2-thiazolyl]acetamide",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
-555-84-0,"1-[(5-Nitrofurfurylidene)amino]-2-imidazolidinone",IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+531-82-8,N-[4-(5-Nitro-2-furyl)-2-thiazolyl]acetamide,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
+555-84-0,1-[(5-Nitrofurfurylidene)amino]-2-imidazolidinone,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
 67-45-8,Furazolidone,IARC,Group 3,Not classifiable as to its carcinogenicity to humans
 59-87-0,Nitrofurazone,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
 59-87-0,Nitrofurazone,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
@@ -556,3 +556,338 @@ cas_number,chemical_name,agency,classification,description
 ,Bleomycins,IARC,Group 2B,Possibly carcinogenic to humans based on limited evidence
 ,Streptozotocin,IARC,Group 2B,Possibly carcinogenic to humans based on sufficient animal evidence
 18883-66-4,Streptozotocin,NTP,RAHC,Reasonably anticipated to be a human carcinogen based on sufficient animal evidence
+26148-68-5,"A-alpha-C (2-Amino-9H-pyrido[2,3-b]indole)",IARC,Group 2B,Possibly carcinogenic to humans
+75-07-0,Acetaldehyde associated with consumption of alcoholic beverages,IARC,Group 1,Known carcinogenic to humans
+60-35-5,Acetamide,IARC,Group 2B,Possibly carcinogenic to humans
+23214-92-8,Adriamycin,IARC,Group 2A,Probably carcinogenic to humans
+3688-53-7,AF-2 [2-(2-Furyl)-3-(5-nitro-2-furyl)acrylamide],IARC,Group 2B,Possibly carcinogenic to humans
+1402-68-2,"Aflatoxins (B1, B2, G1, G2, M1)",IARC,Group 1,Known carcinogenic to humans
+95-85-2,2-Amino-4-chlorophenol,IARC,Group 2B,Possibly carcinogenic to humans
+81-49-2,"1-Amino-2,4-dibromoanthraquinone",IARC,Group 2B,Possibly carcinogenic to humans
+712-68-5,"2-Amino-5-(5-nitro-2-furyl)-1,3,4-thiadiazole",IARC,Group 2B,Possibly carcinogenic to humans
+51264-14-3,Amsacrine,IARC,Group 2B,Possibly carcinogenic to humans
+84-65-1,Anthraquinone,IARC,Group 2B,Possibly carcinogenic to humans
+1309-64-4,Antimony trioxide,IARC,Group 2B,Possibly carcinogenic to humans
+140-57-8,Aramite®,IARC,Group 2B,Possibly carcinogenic to humans
+313-67-7,"Aristolochic acid, plants containing",IARC,Group 1,Known carcinogenic to humans
+320-67-2,Azacitidine,IARC,Group 2A,Probably carcinogenic to humans
+115-02-6,Azaserine,IARC,Group 2B,Possibly carcinogenic to humans
+202-33-5,Benz[j]aceanthrylene,IARC,Group 2B,Possibly carcinogenic to humans
+271-89-6,Benzofuran,IARC,Group 2B,Possibly carcinogenic to humans
+195-19-7,Benzo[c]phenanthrene,IARC,Group 2B,Possibly carcinogenic to humans
+119-61-9,Benzophenone,IARC,Group 2B,Possibly carcinogenic to humans
+50-32-8,Benzo[a]pyrene,IARC,Group 1,Known carcinogenic to humans
+1694-09-3,Benzyl violet 4B,IARC,Group 2B,Possibly carcinogenic to humans
+3296-90-0,"2,2-Bis(bromomethyl)propane-1,3-diol",IARC,Group 2B,Possibly carcinogenic to humans
+64742-93-4,"Bitumens, occupational exposure to oxidized bitumens and their emissions during roofing",IARC,Group 2A,Probably carcinogenic to humans
+8052-42-4,"Bitumens, occupational exposure to straight-run bitumens",IARC,Group 2B,Possibly carcinogenic to humans
+11056-06-7,Bleomycins,IARC,Group 2B,Possibly carcinogenic to humans
+5589-96-8,Bromochloroacetic acid,IARC,Group 2B,Possibly carcinogenic to humans
+75-27-4,Bromodichloromethane,IARC,Group 2B,Possibly carcinogenic to humans
+106-94-5,1-Bromopropane,IARC,Group 2B,Possibly carcinogenic to humans
+55-98-1,Busulfan,IARC,Group 1,Known carcinogenic to humans
+57018-52-7,1-tert-Butoxypropan-2-ol,IARC,Group 2B,Possibly carcinogenic to humans
+25013-16-5,Butylated hydroxyanisole (BHA),IARC,Group 2B,Possibly carcinogenic to humans
+3068-88-0,beta-Butyrolactone,IARC,Group 2B,Possibly carcinogenic to humans
+331-39-5,Caffeic acid,IARC,Group 2B,Possibly carcinogenic to humans
+2425-06-1,Captafol,IARC,Group 2A,Probably carcinogenic to humans
+86-74-8,Carbazole,IARC,Group 2B,Possibly carcinogenic to humans
+1333-86-4,Carbon black,IARC,Group 2B,Possibly carcinogenic to humans
+308068-56-6,"Carbon nanotubes, multiwalled MWCNT-7",IARC,Group 2B,Possibly carcinogenic to humans
+53973-98-1,"Carrageenan, degraded (Poligeenan)",IARC,Group 2B,Possibly carcinogenic to humans
+120-80-9,Catechol,IARC,Group 2B,Possibly carcinogenic to humans
+75-87-6,Chloral,IARC,Group 2A,Probably carcinogenic to humans
+302-17-0,Chloral hydrate,IARC,Group 2A,Probably carcinogenic to humans
+56-75-7,Chloramphenicol,IARC,Group 2A,Probably carcinogenic to humans
+115-28-6,Chlorendic acid,IARC,Group 2B,Possibly carcinogenic to humans
+98-87-3,"alpha-Chlorinated toluenes (benzal chloride,",IARC,Group 2A,Probably carcinogenic to humans
+494-03-1,Chlornaphazine,IARC,Group 1,Known carcinogenic to humans
+106-47-8,para-Chloroaniline,IARC,Group 2B,Possibly carcinogenic to humans
+77439-76-0,3-Chloro-4-(dichloromethyl)-5-hydroxy-2(5H)-furanone,IARC,Group 2B,Possibly carcinogenic to humans
+513-37-1,1-Chloro-2-methylpropene,IARC,Group 2B,Possibly carcinogenic to humans
+563-47-3,"3-Chloro-2-methylpropene, technical grade Chloronitrobenzenes",IARC,Group 2B,Possibly carcinogenic to humans
+88-73-3,2-Chloronitrobenzene,IARC,Group 2B,Possibly carcinogenic to humans
+100-00-5,4-Chloronitrobenzene,IARC,Group 2B,Possibly carcinogenic to humans
+95-83-0,4-Chloro-ortho-phenylenediamine,IARC,Group 2B,Possibly carcinogenic to humans
+126-99-8,Chloroprene,IARC,Group 2B,Possibly carcinogenic to humans
+1897-45-6,Chlorothalonil,IARC,Group 2B,Possibly carcinogenic to humans
+95-69-2,4-Chloro-ortho-toluidine,IARC,Group 2A,Probably carcinogenic to humans
+54749-90-5,Chlorozotocin,IARC,Group 2A,Probably carcinogenic to humans
+6459-94-5,CI Acid Red 114,IARC,Group 2B,Possibly carcinogenic to humans
+2429-74-5,CI Direct Blue 15,IARC,Group 2B,Possibly carcinogenic to humans
+59865-13-3,Ciclosporin,IARC,Group 1,Known carcinogenic to humans
+6358-53-8,Citrus Red No. 2,IARC,Group 2B,Possibly carcinogenic to humans
+8007-45-2,Coal-tar distillation,IARC,Group 1,Known carcinogenic to humans
+65996-93-2,Coal-tar pitch,IARC,Group 1,Known carcinogenic to humans
+7440-48-4,Cobalt metal with tungsten carbide,IARC,Group 2A,Probably carcinogenic to humans
+68603-42-9,Coconut oil diethanolamine condensate,IARC,Group 2B,Possibly carcinogenic to humans
+120-71-8,para-Cresidine,IARC,Group 2B,Possibly carcinogenic to humans
+98-82-8,Cumene,IARC,Group 2B,Possibly carcinogenic to humans
+14901-08-7,Cycasin,IARC,Group 2B,Possibly carcinogenic to humans
+27208-37-3,Cyclopenta[cd]pyrene,IARC,Group 2A,Probably carcinogenic to humans
+4342-03-4,Dacarbazine,IARC,Group 2B,Possibly carcinogenic to humans
+117-10-2,"Dantron (Chrysazin; 1,8-Dihydroxyanthraquinone)",IARC,Group 2B,Possibly carcinogenic to humans
+20830-81-3,Daunomycin,IARC,Group 2B,Possibly carcinogenic to humans
+613-35-4,"N,N'-Diacetylbenzidine",IARC,Group 2B,Possibly carcinogenic to humans
+101-80-4,"4,4'-Diaminodiphenyl ether",IARC,Group 2B,Possibly carcinogenic to humans
+333-41-5,Diazinon,IARC,Group 2A,Probably carcinogenic to humans
+224-42-0,"Dibenz[a,j]acridine",IARC,Group 2A,Probably carcinogenic to humans
+224-53-3,"Dibenz[c,h]acridine",IARC,Group 2B,Possibly carcinogenic to humans
+189-64-0,"Dibenzo[a,h]pyrene",IARC,Group 2B,Possibly carcinogenic to humans
+631-64-1,Dibromoacetic acid,IARC,Group 2B,Possibly carcinogenic to humans
+3252-43-5,Dibromoacetonitrile,IARC,Group 2B,Possibly carcinogenic to humans
+96-13-9,"2,3-Dibromopropan-1-ol",IARC,Group 2B,Possibly carcinogenic to humans
+79-43-6,Dichloroacetic acid,IARC,Group 2B,Possibly carcinogenic to humans
+28434-86-8,"3,3'-Dichloro-4,4'-diaminodiphenyl ether",IARC,Group 2B,Possibly carcinogenic to humans
+89-61-2,"1,4-Dichloro-2-nitrobenzene",IARC,Group 2B,Possibly carcinogenic to humans
+611-06-3,"2,4-Dichloro-1-nitrobenzene",IARC,Group 2B,Possibly carcinogenic to humans
+96-23-1,"1,3-Dichloro-2-propanol",IARC,Group 2B,Possibly carcinogenic to humans
+62-73-7,Dichlorvos,IARC,Group 2B,Possibly carcinogenic to humans
+60-57-1,"Dieldrin, and aldrin metabolized to dieldrin",IARC,Group 2A,Probably carcinogenic to humans
+1615-80-1,"1,2-Diethylhydrazine",IARC,Group 2B,Possibly carcinogenic to humans
+56-53-1,Diethylstilbestrol,IARC,Group 1,Known carcinogenic to humans
+101-90-6,Diglycidyl resorcinol ether,IARC,Group 2B,Possibly carcinogenic to humans
+20830-75-5,Digoxin,IARC,Group 2B,Possibly carcinogenic to humans
+94-58-6,Dihydrosafrole,IARC,Group 2B,Possibly carcinogenic to humans
+2973-10-6,Diisopropyl sulfate,IARC,Group 2B,Possibly carcinogenic to humans
+119-90-4,"3,3'-Dimethoxybenzidine (ortho-Dianisidine)",IARC,Group 2B,Possibly carcinogenic to humans
+25962-77-0,"trans-2-[(Dimethylamino)methylimino]-5-[2-(5-nitro-2- furyl)-vinyl]-1,3,4-oxadiazole",IARC,Group 2B,Possibly carcinogenic to humans
+87-62-7,"2,6-Dimethylaniline (2,6-Xylidine)",IARC,Group 2B,Possibly carcinogenic to humans
+75-60-5,Dimethylarsinic acid,IARC,Group 2B,Possibly carcinogenic to humans
+79-44-7,Dimethylcarbamoyl chloride,IARC,Group 2A,Probably carcinogenic to humans
+57-14-7,"1,1-Dimethylhydrazine",IARC,Group 2B,Possibly carcinogenic to humans
+540-73-8,"1,2-Dimethylhydrazine",IARC,Group 2A,Probably carcinogenic to humans
+99-97-8,"N,N-Dimethyl-p-toluidine",IARC,Group 2B,Possibly carcinogenic to humans
+105735-71-5,"3,7-Dinitrofluoranthene",IARC,Group 2B,Possibly carcinogenic to humans
+22506-53-2,"3,9-Dinitrofluoranthene",IARC,Group 2B,Possibly carcinogenic to humans
+75321-20-9,"1,3-Dinitropyrene",IARC,Group 2B,Possibly carcinogenic to humans
+42397-64-8,"1,6-Dinitropyrene",IARC,Group 2B,Possibly carcinogenic to humans
+42397-65-9,"1,8-Dinitropyrene",IARC,Group 2B,Possibly carcinogenic to humans
+121-14-2,"2,4-Dinitrotoluene",IARC,Group 2B,Possibly carcinogenic to humans
+606-20-2,"2,6-Dinitrotoluene",IARC,Group 2B,Possibly carcinogenic to humans
+2475-45-8,Disperse Blue,IARC,Group 1,Known carcinogenic to humans
+106-88-7,"1,2-Epoxybutane",IARC,Group 2B,Possibly carcinogenic to humans
+66733-21-9,Erionite,IARC,Group 1,Known carcinogenic to humans
+103-11-7,2-Ethylhexyl acrylate,IARC,Group 2B,Possibly carcinogenic to humans
+62-50-0,Ethyl methanesulfonate,IARC,Group 2B,Possibly carcinogenic to humans
+759-73-9,N-Ethyl-N-nitrosourea,IARC,Group 2A,Probably carcinogenic to humans
+33419-42-0,Etoposide in combination with cisplatin and bleomycin,IARC,Group 1,Known carcinogenic to humans
+3570-75-0,2-(2-Formylhydrazino)-4-(5-nitro-2-furyl)thiazole,IARC,Group 2B,Possibly carcinogenic to humans
+116355-83-0,"Fusarium moniliforme, toxins derived from (fumonisin B ,",IARC,Group 2B,Possibly carcinogenic to humans
+98-00-0,Furfuryl alcohol,IARC,Group 2B,Possibly carcinogenic to humans
+90045-36-6,Ginkgo biloba extract,IARC,Group 2B,Possibly carcinogenic to humans
+67730-11-4,"Glu-P-1 (2-Amino-6-methyldipyrido[1,2-a:3',2'- d]imidazole)",IARC,Group 2B,Possibly carcinogenic to humans
+67730-10-3,"Glu-P-2 (2-Aminodipyrido[1,2-a:3',2'-d]imidazole)",IARC,Group 2B,Possibly carcinogenic to humans
+765-34-4,Glycidaldehyde,IARC,Group 2B,Possibly carcinogenic to humans
+1071-83-6,Glyphosate,IARC,Group 2A,Probably carcinogenic to humans
+126-07-8,Griseofulvin,IARC,Group 2B,Possibly carcinogenic to humans
+2784-94-3,HC Blue No.,IARC,Group 1,Known carcinogenic to humans
+142-83-6,"2,4-Hexadienal",IARC,Group 2B,Possibly carcinogenic to humans
+302-01-2,Hydrazine,IARC,Group 2A,Probably carcinogenic to humans
+58-93-5,Hydrochlorothiazide,IARC,Group 2B,Possibly carcinogenic to humans
+129-43-1,1-Hydroxyanthraquinone,IARC,Group 2B,Possibly carcinogenic to humans
+22398-80-7,Indium phosphide,IARC,Group 2A,Probably carcinogenic to humans
+50926-11-9,Indium tin oxide,IARC,Group 2B,Possibly carcinogenic to humans
+76180-96-6,"IQ (2-Amino-3-methylimidazo[4,5-f]quinoline)",IARC,Group 2A,Probably carcinogenic to humans
+9004-66-4,Iron-dextran complex,IARC,Group 2B,Possibly carcinogenic to humans
+542-56-3,Isobutyl nitrite,IARC,Group 2B,Possibly carcinogenic to humans
+78-79-5,Isoprene,IARC,Group 2B,Possibly carcinogenic to humans
+9000-38-8,Kava extract,IARC,Group 2B,Possibly carcinogenic to humans
+303-34-4,Lasiocarpine,IARC,Group 2B,Possibly carcinogenic to humans
+7439-92-1,Lead,IARC,Group 2B,Possibly carcinogenic to humans
+121-75-5,Malathion,IARC,Group 2A,Probably carcinogenic to humans
+68006-83-7,"MeA-alpha-C (2-Amino-3-methyl-9H-pyrido[2,3-b]indole)",IARC,Group 2B,Possibly carcinogenic to humans
+71-58-9,Medroxyprogesterone acetate,IARC,Group 2B,Possibly carcinogenic to humans
+77094-11-2,"MeIQ (2-Amino-3,4-dimethylimidazo[4,5-f]quinoline)",IARC,Group 2B,Possibly carcinogenic to humans
+77500-04-0,"MeIQx (2-Amino-3,8-dimethylimidazo[4,5-f]quinoxaline)",IARC,Group 2B,Possibly carcinogenic to humans
+108-78-1,Melamine,IARC,Group 2B,Possibly carcinogenic to humans
+149-30-4,2-Mercaptobenzothiazole,IARC,Group 2A,Probably carcinogenic to humans
+531-76-0,Merphalan,IARC,Group 2B,Possibly carcinogenic to humans
+298-81-7,Methoxsalen (8-methoxypsoralen) plus ultraviolet A radiation 100A,IARC,Group 1,Known carcinogenic to humans
+484-20-8,5-Methoxypsoralen,IARC,Group 2A,Probably carcinogenic to humans
+96-33-3,Methyl acrylate,IARC,Group 2B,Possibly carcinogenic to humans
+124-58-3,Monomethylarsonic acid,IARC,Group 2B,Possibly carcinogenic to humans
+75-55-8,2-Methylaziridine (Propyleneimine),IARC,Group 2B,Possibly carcinogenic to humans
+592-62-1,Methylazoxymethanol acetate,IARC,Group 2B,Possibly carcinogenic to humans
+13909-09-6,Methyl-CCNU,IARC,Group 1,Known carcinogenic to humans
+3697-24-3,5-Methylchrysene,IARC,Group 2B,Possibly carcinogenic to humans
+838-88-0,"4,4'-Methylene bis(2-methylaniline)",IARC,Group 2B,Possibly carcinogenic to humans
+93-15-2,Methyleugenol,IARC,Group 2B,Possibly carcinogenic to humans
+693-98-1,2-Methylimidazole,IARC,Group 2B,Possibly carcinogenic to humans
+822-36-6,4-Methylimidazole,IARC,Group 2B,Possibly carcinogenic to humans
+108-10-1,Methyl isobutyl ketone,IARC,Group 2B,Possibly carcinogenic to humans
+70-25-7,N-Methyl-N´-nitro-N-nitrosoguanidine (MNNG),IARC,Group 2A,Probably carcinogenic to humans
+98-83-9,-Methylstyrene,IARC,Group 2B,Possibly carcinogenic to humans
+56-04-2,Methylthiouracil,IARC,Group 2B,Possibly carcinogenic to humans
+101-61-1,"Michler’s base [4,4´-methylenebis(N,N-dimethyl)- benzenamine]",IARC,Group 2B,Possibly carcinogenic to humans
+90-94-8,"Michler’s ketone [4,4´-Bis(dimethylamino)benzophenone]",IARC,Group 2B,Possibly carcinogenic to humans
+101043-37-2,Microcystin-LR,IARC,Group 2B,Possibly carcinogenic to humans
+65271-80-9,Mitoxantrone,IARC,Group 2B,Possibly carcinogenic to humans
+1313-27-5,Molybdenum trioxide,IARC,Group 2B,Possibly carcinogenic to humans
+96-24-2,"3-Monochloro-1,2-propanediol",IARC,Group 2B,Possibly carcinogenic to humans
+315-22-0,Monocrotaline,IARC,Group 2B,Possibly carcinogenic to humans
+3795-88-8,5-(Morpholinomethyl)-3-[(5-nitrofurfurylidene)amino]-2- oxazolidinone,IARC,Group 2B,Possibly carcinogenic to humans
+123-35-3,β-Myrcene,IARC,Group 2B,Possibly carcinogenic to humans
+3771-19-5,Nafenopin,IARC,Group 2B,Possibly carcinogenic to humans
+61-57-4,Niridazole,IARC,Group 2B,Possibly carcinogenic to humans
+139-13-9,Nitrilotriacetic acid and its salts,IARC,Group 2B,Possibly carcinogenic to humans
+91-23-6,2-Nitroanisole,IARC,Group 2B,Possibly carcinogenic to humans
+100-17-4,para-Nitroanisole,IARC,Group 2B,Possibly carcinogenic to humans
+17117-34-9,3-Nitrobenzanthrone,IARC,Group 2B,Possibly carcinogenic to humans
+7496-02-8,6-Nitrochrysene,IARC,Group 2A,Probably carcinogenic to humans
+1836-75-5,Nitrofen (technical-grade),IARC,Group 2B,Possibly carcinogenic to humans
+51-75-2,Nitrogen mustard,IARC,Group 2A,Probably carcinogenic to humans
+126-85-2,Nitrogen mustard N-oxide,IARC,Group 2B,Possibly carcinogenic to humans
+57835-92-4,4-Nitropyrene,IARC,Group 2B,Possibly carcinogenic to humans
+1116-54-7,N-Nitrosodiethanolamine,IARC,Group 2B,Possibly carcinogenic to humans
+621-64-7,N-Nitrosodi-n-propylamine,IARC,Group 2B,Possibly carcinogenic to humans
+60153-49-3,3-(N-Nitrosomethylamino)propionitrile,IARC,Group 2B,Possibly carcinogenic to humans
+10595-95-6,N-Nitrosomethylethylamine,IARC,Group 2B,Possibly carcinogenic to humans
+88-72-2,2-Nitrotoluene,IARC,Group 2A,Probably carcinogenic to humans
+303-47-9,Ochratoxin A,IARC,Group 2B,Possibly carcinogenic to humans
+2646-17-5,Oil Orange SS,IARC,Group 2B,Possibly carcinogenic to humans
+604-75-1,Oxazepam,IARC,Group 2B,Possibly carcinogenic to humans
+12174-11-7,"Palygorskite (Attapulgite) (long fibres, > 5 micrometres)",IARC,Group 2B,Possibly carcinogenic to humans
+794-93-4,Panfuran S (containing dihydroxymethylfuratrizine),IARC,Group 2B,Possibly carcinogenic to humans
+56-38-2,Parathion,IARC,Group 2B,Possibly carcinogenic to humans
+57465-28-8,"3,4,5,3’,4’-Pentachlorobiphenyl (PCB-126)",IARC,Group 1,Known carcinogenic to humans
+57117-31-4,"2,3,4,7,8-Pentachlorodibenzofuran",IARC,Group 1,Known carcinogenic to humans
+37319-17-8,Pentosan polysulfate sodium,IARC,Group 2B,Possibly carcinogenic to humans
+335-67-1,Perfluorooctanoic acid (PFOA),IARC,Group 2B,Possibly carcinogenic to humans
+62-44-2,Phenacetin,IARC,Group 1,Known carcinogenic to humans
+136-40-3,Phenazopyridine hydrochloride,IARC,Group 2B,Possibly carcinogenic to humans
+77-09-8,Phenolphthalein,IARC,Group 2B,Possibly carcinogenic to humans
+63-92-3,Phenoxybenzamine hydrochloride,IARC,Group 2B,Possibly carcinogenic to humans
+95-54-5,ortho-Phenylenediamine,IARC,Group 2B,Possibly carcinogenic to humans
+615-28-1,ortho-Phenylenediamine dihydrochloride,IARC,Group 2B,Possibly carcinogenic to humans
+122-60-1,Phenyl glycidyl ether,IARC,Group 2B,Possibly carcinogenic to humans
+105650-23-5,"PhIP (2-Amino-1-methyl-6-phenylimidazo[4,5-b]pyridine)",IARC,Group 2B,Possibly carcinogenic to humans
+14596-37-3,"Phosphorus-32, as phosphate",IARC,Group 1,Known carcinogenic to humans
+111025-46-8,Pioglitazone,IARC,Group 2A,Probably carcinogenic to humans
+7440-07-5,Plutonium,IARC,Group 1,Known carcinogenic to humans
+59536-65-1,Polybrominated biphenyls,IARC,Group 2A,Probably carcinogenic to humans
+1336-36-3,Polychlorinated biphenyls,IARC,Group 1,Known carcinogenic to humans
+7758-01-2,Potassium bromate,IARC,Group 2B,Possibly carcinogenic to humans
+125-33-7,Primidone,IARC,Group 2B,Possibly carcinogenic to humans
+1120-71-4,"1,3-Propane sultone",IARC,Group 2A,Probably carcinogenic to humans
+51-52-5,Propylthiouracil,IARC,Group 2B,Possibly carcinogenic to humans
+89-82-7,Pulegone,IARC,Group 2B,Possibly carcinogenic to humans
+110-86-1,Pyridine,IARC,Group 2B,Possibly carcinogenic to humans
+91-22-5,Quinoline,IARC,Group 2B,Possibly carcinogenic to humans
+13233-32-4,Radium-224 and its decay products,IARC,Group 1,Known carcinogenic to humans
+13982-63-3,Radium-226 and its decay products,IARC,Group 1,Known carcinogenic to humans
+15262-20-1,Radium-228 and its decay products,IARC,Group 1,Known carcinogenic to humans
+10043-92-2,Radon-222 and its decay products,IARC,Group 1,Known carcinogenic to humans
+23246-96-0,Riddelliine,IARC,Group 2B,Possibly carcinogenic to humans
+94-59-7,Safrole,IARC,Group 2B,Possibly carcinogenic to humans
+68308-34-9,Shale oils,IARC,Group 1,Known carcinogenic to humans
+308076-74-6,"Silicon carbide, fibrous",IARC,Group 2B,Possibly carcinogenic to humans
+409-21-2,Silicon carbide whiskers,IARC,Group 2A,Probably carcinogenic to humans
+132-27-4,Sodium ortho-phenylphenate,IARC,Group 2B,Possibly carcinogenic to humans
+10048-13-2,Sterigmatocystin,IARC,Group 2B,Possibly carcinogenic to humans
+18883-66-4,Streptozotocin,IARC,Group 2B,Possibly carcinogenic to humans
+96-09-3,"Styrene-7,8-oxide",IARC,Group 2A,Probably carcinogenic to humans
+95-06-7,Sulfallate,IARC,Group 2B,Possibly carcinogenic to humans
+599-79-1,Sulfasalazine,IARC,Group 2B,Possibly carcinogenic to humans
+505-60-2,Sulfur mustard,IARC,Group 1,Known carcinogenic to humans
+10540-29-1,Tamoxifen,IARC,Group 1,Known carcinogenic to humans
+29767-20-2,Teniposide,IARC,Group 2A,Probably carcinogenic to humans
+79-94-7,Tetrabromobisphenol A,IARC,Group 2A,Probably carcinogenic to humans
+14047-09-7,"3,3′,4,4′-Tetrachloroazobenzene",IARC,Group 2A,Probably carcinogenic to humans
+1746-01-6,"2,3,7,8-Tetrachlorodibenzo-para-dioxin",IARC,Group 1,Known carcinogenic to humans
+630-20-6,"1,1,1,2-Tetrachloroethane",IARC,Group 2B,Possibly carcinogenic to humans
+22248-79-9,Tetrachlorvinphos,IARC,Group 2B,Possibly carcinogenic to humans
+116-14-3,Tetrafluoroethylene,IARC,Group 2A,Probably carcinogenic to humans
+109-99-9,Tetrahydrofuran,IARC,Group 2B,Possibly carcinogenic to humans
+509-14-8,Tetranitromethane,IARC,Group 2B,Possibly carcinogenic to humans
+62-55-5,Thioacetamide,IARC,Group 2B,Possibly carcinogenic to humans
+52-24-4,Thiotepa,IARC,Group 1,Known carcinogenic to humans
+141-90-2,Thiouracil,IARC,Group 2B,Possibly carcinogenic to humans
+7440-29-1,Thorium-232 and its decay products,IARC,Group 1,Known carcinogenic to humans
+26471-62-5,Toluene diisocyanates,IARC,Group 2B,Possibly carcinogenic to humans
+299-75-2,Treosulfan,IARC,Group 1,Known carcinogenic to humans
+396-01-0,Triamterene,IARC,Group 2B,Possibly carcinogenic to humans
+817-09-4,Trichlormethine (Trimustine hydrochloride),IARC,Group 2B,Possibly carcinogenic to humans
+76-03-9,Trichloroacetic acid,IARC,Group 2B,Possibly carcinogenic to humans
+88-06-2,"2,4,6-Trichlorophenol",IARC,Group 2B,Possibly carcinogenic to humans
+96-18-4,"1,2,3-Trichloropropane",IARC,Group 2A,Probably carcinogenic to humans
+15625-89-5,"Trimethylolpropane triacrylate, technical grade",IARC,Group 2B,Possibly carcinogenic to humans
+126-72-7,"Tris(2,3-dibromopropyl) phosphate",IARC,Group 2A,Probably carcinogenic to humans
+62450-06-0,"Trp-P-1 (3-Amino-1,4-dimethyl-5H-pyrido[4,3-b]indole)",IARC,Group 2B,Possibly carcinogenic to humans
+62450-07-1,"Trp-P-2 (3-Amino-1-methyl-5H-pyrido[4,3-b]indole)",IARC,Group 2B,Possibly carcinogenic to humans
+72-57-1,Trypan blue,IARC,Group 2B,Possibly carcinogenic to humans
+1314-62-1,Vanadium pentoxide,IARC,Group 2B,Possibly carcinogenic to humans
+108-05-4,Vinyl acetate,IARC,Group 2B,Possibly carcinogenic to humans
+593-60-2,Vinyl bromide,IARC,Group 2A,Probably carcinogenic to humans
+100-40-3,4-Vinylcyclohexene,IARC,Group 2B,Possibly carcinogenic to humans
+75-02-5,Vinyl fluoride,IARC,Group 2A,Probably carcinogenic to humans
+7481-89-2,Zalcitabine,IARC,Group 2B,Possibly carcinogenic to humans
+30516-87-1,Zidovudine (AZT),IARC,Group 2B,Possibly carcinogenic to humans
+59865-13-3,Cyclosporin A,NTP,Known,Known to be a human carcinogen
+95-53-4,o-Toluidine,NTP,Known,Known to be a human carcinogen
+53-96-3,2-Acetylaminofluorene,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+117-79-3,2-Aminoanthraquinone,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+81-49-2,"1-Amino-2,4-dibromoanthraquinone",NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+82-28-0,1-Amino-2-methylanthraquinone,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+61-82-5,Amitrole,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+320-67-2,Azacitidine,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+569-61-9,Basic Red 9 Monohydrochloride,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+3296-90-0,"2,2-Bis(bromomethyl)-1,3-propanediol",NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+75-27-4,Bromodichloromethane,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+106-94-5,1-Bromopropane,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+25013-16-5,Butylated Hydroxyanisole,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+2425-06-1,Captafol,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+115-28-6,Chlorendic Acid,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+563-47-3,3-Chloro-2-methylpropene,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+95-83-0,4-Chloro-o-phenylenediamine,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+126-99-8,Chloroprene,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+135-20-6,Cupferron,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+136-35-6,Diazoaminobenzene,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+96-12-8,"1,2-Dibromo-3-chloropropane",NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+96-13-9,"2,3-Dibromo-1-propanol",NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+91-94-1,"3,3-Dichlorobenzidine",NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+50-29-3,DDT,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+101-90-6,Diglycidyl Resorcinol Ether,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+119-90-4,"3,3-Dimethoxybenzidine",NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+60-11-7,4-Dimethylaminoazobenzene,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+57-14-7,"1,1-Dimethylhydrazine",NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+513-37-1,Dimethylvinyl Chloride (1-Chloro-2-methylpropene),NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+96-45-7,Ethylene Thiourea,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+62-50-0,Ethyl Methanesulfonate,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+9004-66-4,Iron Dextran Complex,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+75-55-8,2-Methylaziridine,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+101-61-1,"4,4-Methylenebis(N,N-dimethyl)benzenamine",NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+93-15-2,Methyleugenol,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+90-94-8,Michlers Ketone,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+139-13-9,Nitrilotriacetic Acid,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+91-23-6,o-Nitroanisole,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+1836-75-5,Nitrofen,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+51-75-2,Nitrogen Mustard Hydrochloride,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+88-72-2,o-Nitrotoluene,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+68-22-4,Norethisterone,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+303-47-9,Ochratoxin A,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+101-80-4,"4,4-Oxydianiline",NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+434-07-1,Oxymetholone,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+136-40-3,Phenazopyridine Hydrochloride,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+77-09-8,Phenolphthalein,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+63-92-3,Phenoxybenzamine Hydrochloride,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+57-41-0,Phenytoin,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+57-83-0,Progesterone,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+1120-71-4,"1,3-Propane Sultone",NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+57-57-8,beta-Propiolactone,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+51-52-5,Propylthiouracil,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+50-55-5,Reserpine,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+23246-96-0,Riddelliine,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+94-59-7,Safrole,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+7446-34-6,Selenium Sulfide,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+95-06-7,Sulfallate,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+116-14-3,Tetrafluoroethylene,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+509-14-8,Tetranitromethane,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+62-55-5,Thioacetamide,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+62-56-6,Thiourea,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+26471-62-5,Toluene Diisocyanates,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+88-06-2,"2,4,6-Trichlorophenol",NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+96-18-4,"1,2,3-Trichloropropane",NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+593-60-2,Vinyl Bromide,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+75-02-5,Vinyl Fluoride,NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen
+108171-26-2,"Chlorinated Paraffins (C12, 60% Chlorine)",NTP,Reasonably Anticipated,Reasonably anticipated to be a human carcinogen

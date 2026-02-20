@@ -565,15 +565,8 @@ else
     print_warn "Seed data loader not found. Skipping."
 fi
 
-print_step "Attempting live data refresh from federal sources..."
-print_info "If any source is unreachable, the pre-loaded seed data will be preserved."
-
-if [ -f "$INSTALL_DIR/scripts/refresh-federal-data.php" ]; then
-    COMPOSER_ALLOW_SUPERUSER=1 php "$INSTALL_DIR/scripts/refresh-federal-data.php" --quiet 2>&1 || true
-    print_success "Live data refresh complete (check Admin > Data Sources for status)."
-else
-    print_warn "Refresh script not found. Skipping live update."
-fi
+print_info "Live federal data can be refreshed later via Admin > Data Sources"
+print_info "or by running: php cron/refresh-federal.php"
 
 # ============================================================
 # Step 8: Configure Apache

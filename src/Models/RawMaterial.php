@@ -352,6 +352,122 @@ class RawMaterial
     }
 
     /* ------------------------------------------------------------------
+     *  SDS History
+     * ----------------------------------------------------------------*/
+
+    /**
+     * Get all SDS uploads for a raw material, newest first.
+     */
+    public static function getSdsHistory(int $rmId): array
+    {
+        $db = Database::getInstance();
+        return $db->fetchAll(
+            "SELECT rms.*, u.display_name AS uploaded_by_name
+             FROM raw_material_sds rms
+             LEFT JOIN users u ON u.id = rms.uploaded_by
+             WHERE rms.raw_material_id = ?
+             ORDER BY rms.uploaded_at DESC",
+            [$rmId]
+        );
+    }
+
+    /**
+     * Get the newest (current) SDS for a raw material.
+     */
+    public static function getCurrentSds(int $rmId): ?array
+    {
+        $db = Database::getInstance();
+        return $db->fetch(
+            "SELECT rms.*, u.display_name AS uploaded_by_name
+             FROM raw_material_sds rms
+             LEFT JOIN users u ON u.id = rms.uploaded_by
+             WHERE rms.raw_material_id = ?
+             ORDER BY rms.uploaded_at DESC
+             LIMIT 1",
+            [$rmId]
+        );
+    }
+
+    /**
+     * Add a new SDS file to the history (never overwrites previous entries).
+     *
+     * @return int  New raw_material_sds ID.
+     */
+    public static function addSds(int $rmId, string $filePath, string $originalFilename, ?int $fileSize, ?string $notes, ?int $userId): int
+    {
+        $db = Database::getInstance();
+
+        $id = (int) $db->insert('raw_material_sds', [
+            'raw_material_id'   => $rmId,
+            'file_path'         => $filePath,
+            'original_filename' => $originalFilename,
+            'file_size'         => $fileSize,
+            'notes'             => $notes,
+            'uploaded_by'       => $userId,
+        ]);
+
+        // Also update the legacy supplier_sds_path to point to the newest SDS
+        $db->update('raw_materials', ['supplier_sds_path' => $filePath], 'id = ?', [$rmId]);
+
+        return $id;
+    }
+
+    /**
+     * Look up a CAS number in cas_master and regulatory tables to find its chemical name.
+     */
+    public static function lookupCas(string $cas): ?array
+    {
+        $db = Database::getInstance();
+
+        // Try cas_master first
+        $row = $db->fetch(
+            "SELECT cas_number, preferred_name AS chemical_name FROM cas_master WHERE cas_number = ?",
+            [$cas]
+        );
+        if ($row && !empty($row['chemical_name'])) {
+            return $row;
+        }
+
+        // Try prop65_list
+        $row = $db->fetch(
+            "SELECT cas_number, chemical_name FROM prop65_list WHERE cas_number = ?",
+            [$cas]
+        );
+        if ($row && !empty($row['chemical_name'])) {
+            return $row;
+        }
+
+        // Try sara313_list
+        $row = $db->fetch(
+            "SELECT cas_number, chemical_name FROM sara313_list WHERE cas_number = ?",
+            [$cas]
+        );
+        if ($row && !empty($row['chemical_name'])) {
+            return $row;
+        }
+
+        // Try carcinogen_list
+        $row = $db->fetch(
+            "SELECT cas_number, chemical_name FROM carcinogen_list WHERE cas_number = ? LIMIT 1",
+            [$cas]
+        );
+        if ($row && !empty($row['chemical_name'])) {
+            return $row;
+        }
+
+        // Try hap_list
+        $row = $db->fetch(
+            "SELECT cas_number, chemical_name FROM hap_list WHERE cas_number = ?",
+            [$cas]
+        );
+        if ($row && !empty($row['chemical_name'])) {
+            return $row;
+        }
+
+        return null;
+    }
+
+    /* ------------------------------------------------------------------
      *  Formula usage check
      * ----------------------------------------------------------------*/
 

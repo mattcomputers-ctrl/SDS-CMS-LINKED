@@ -41,9 +41,11 @@ class RawMaterialController
         }
 
         view('raw-materials/form', [
-            'pageTitle' => 'Add Raw Material',
-            'item'      => null,
-            'mode'      => 'create',
+            'pageTitle'    => 'Add Raw Material',
+            'item'         => null,
+            'mode'         => 'create',
+            'constituents' => [],
+            'sdsHistory'   => [],
         ]);
     }
 
@@ -60,13 +62,29 @@ class RawMaterialController
 
         try {
             // Handle SDS file upload
-            $sdsPath = $this->handleSdsUpload();
-            if ($sdsPath !== null) {
-                $data['supplier_sds_path'] = $sdsPath;
+            $sdsInfo = $this->handleSdsUpload();
+            if ($sdsInfo !== null) {
+                $data['supplier_sds_path'] = $sdsInfo['path'];
             }
 
             $id = RawMaterial::create($data);
             AuditService::log('raw_material', $id, 'create', $data);
+
+            // Save SDS to history table if uploaded
+            if ($sdsInfo !== null) {
+                RawMaterial::addSds(
+                    $id,
+                    $sdsInfo['path'],
+                    $sdsInfo['original_name'],
+                    $sdsInfo['size'],
+                    null,
+                    current_user_id()
+                );
+            }
+
+            // Save constituents if provided
+            $this->saveConstituentsFromPost($id);
+
             $_SESSION['_flash']['success'] = 'Raw material created successfully.';
             redirect('/raw-materials/' . $id . '/edit');
         } catch (\Throwable $e) {
@@ -84,10 +102,14 @@ class RawMaterialController
             redirect('/raw-materials');
         }
 
+        $sdsHistory = RawMaterial::getSdsHistory((int) $id);
+
         view('raw-materials/form', [
-            'pageTitle' => 'Edit: ' . $item['internal_code'],
-            'item'      => $item,
-            'mode'      => 'edit',
+            'pageTitle'    => 'Edit: ' . $item['internal_code'],
+            'item'         => $item,
+            'mode'         => 'edit',
+            'constituents' => $item['constituents'] ?? [],
+            'sdsHistory'   => $sdsHistory,
         ]);
     }
 
@@ -109,31 +131,29 @@ class RawMaterialController
         $data['expected_updated_at'] = $data['updated_at'] ?? null;
 
         try {
-            // Handle SDS removal
-            if (!empty($data['remove_sds']) && !empty($item['supplier_sds_path'])) {
-                $fullPath = \SDS\Core\App::basePath() . '/public/uploads/' . $item['supplier_sds_path'];
-                if (file_exists($fullPath)) {
-                    unlink($fullPath);
-                }
-                $data['supplier_sds_path'] = null;
-            }
+            // Handle SDS file upload — always adds to history, never removes old
+            $sdsInfo = $this->handleSdsUpload();
+            if ($sdsInfo !== null) {
+                $data['supplier_sds_path'] = $sdsInfo['path'];
 
-            // Handle SDS file upload (replaces existing)
-            $sdsPath = $this->handleSdsUpload();
-            if ($sdsPath !== null) {
-                // Remove old file if it exists
-                if (!empty($item['supplier_sds_path'])) {
-                    $oldPath = \SDS\Core\App::basePath() . '/public/uploads/' . $item['supplier_sds_path'];
-                    if (file_exists($oldPath)) {
-                        unlink($oldPath);
-                    }
-                }
-                $data['supplier_sds_path'] = $sdsPath;
+                // Add to SDS history
+                RawMaterial::addSds(
+                    (int) $id,
+                    $sdsInfo['path'],
+                    $sdsInfo['original_name'],
+                    $sdsInfo['size'],
+                    trim($data['sds_notes'] ?? '') ?: null,
+                    current_user_id()
+                );
             }
 
             $diff = AuditService::diff($item, $data);
             RawMaterial::update((int) $id, $data);
             AuditService::log('raw_material', $id, 'update', $diff);
+
+            // Save constituents
+            $this->saveConstituentsFromPost((int) $id);
+
             $_SESSION['_flash']['success'] = 'Raw material updated.';
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = $e->getMessage();
@@ -162,19 +182,12 @@ class RawMaterialController
         redirect('/raw-materials');
     }
 
+    /**
+     * Legacy constituents page — redirects to the edit page where constituents are now inline.
+     */
     public function constituents(string $id): void
     {
-        $item = RawMaterial::findById((int) $id);
-        if ($item === null) {
-            $_SESSION['_flash']['error'] = 'Raw material not found.';
-            redirect('/raw-materials');
-        }
-
-        view('raw-materials/constituents', [
-            'pageTitle'    => 'Constituents: ' . $item['internal_code'],
-            'item'         => $item,
-            'constituents' => $item['constituents'] ?? [],
-        ]);
+        redirect('/raw-materials/' . $id . '/edit');
     }
 
     public function viewSds(string $id): void
@@ -199,6 +212,42 @@ class RawMaterialController
         exit;
     }
 
+    /**
+     * View a specific historical SDS file by its raw_material_sds ID.
+     */
+    public function viewSdsVersion(string $sdsId): void
+    {
+        $db = \SDS\Core\Database::getInstance();
+        $sds = $db->fetch(
+            "SELECT rms.*, rm.internal_code
+             FROM raw_material_sds rms
+             JOIN raw_materials rm ON rm.id = rms.raw_material_id
+             WHERE rms.id = ?",
+            [(int) $sdsId]
+        );
+
+        if ($sds === null) {
+            $_SESSION['_flash']['error'] = 'SDS version not found.';
+            redirect('/raw-materials');
+        }
+
+        $pdfPath = \SDS\Core\App::basePath() . '/public/uploads/' . $sds['file_path'];
+
+        if (!file_exists($pdfPath)) {
+            $_SESSION['_flash']['error'] = 'SDS file not found on disk.';
+            redirect('/raw-materials/' . $sds['raw_material_id'] . '/edit');
+        }
+
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: inline; filename="SDS_' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $sds['internal_code']) . '_v' . $sds['id'] . '.pdf"');
+        header('Content-Length: ' . filesize($pdfPath));
+        readfile($pdfPath);
+        exit;
+    }
+
+    /**
+     * Legacy saveConstituents route — now handled via the main update flow.
+     */
     public function saveConstituents(string $id): void
     {
         if (!is_editor()) {
@@ -213,6 +262,52 @@ class RawMaterialController
             redirect('/raw-materials');
         }
 
+        try {
+            $count = $this->saveConstituentsFromPost((int) $id);
+            AuditService::log('raw_material', $id, 'update_constituents', [
+                'count' => $count,
+            ]);
+            $_SESSION['_flash']['success'] = 'Constituents saved (' . $count . ' entries).';
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error'] = $e->getMessage();
+        }
+
+        redirect('/raw-materials/' . $id . '/edit');
+    }
+
+    /**
+     * AJAX endpoint: look up a CAS number and return chemical name.
+     */
+    public function casLookup(): void
+    {
+        header('Content-Type: application/json');
+
+        $cas = trim($_GET['cas'] ?? '');
+        if ($cas === '' || !preg_match('/^\d{2,7}-\d{2}-\d$/', $cas)) {
+            echo json_encode(['found' => false]);
+            exit;
+        }
+
+        $result = RawMaterial::lookupCas($cas);
+        if ($result !== null) {
+            echo json_encode([
+                'found'         => true,
+                'cas_number'    => $result['cas_number'],
+                'chemical_name' => $result['chemical_name'],
+            ]);
+        } else {
+            echo json_encode(['found' => false]);
+        }
+        exit;
+    }
+
+    /**
+     * Parse constituent data from POST and save.
+     *
+     * @return int Number of constituents saved.
+     */
+    private function saveConstituentsFromPost(int $rmId): int
+    {
         $constituents = [];
         $casNumbers   = $_POST['cas_number'] ?? [];
         $chemNames    = $_POST['chemical_name'] ?? [];
@@ -238,26 +333,17 @@ class RawMaterialController
             ];
         }
 
-        try {
-            RawMaterial::saveConstituents((int) $id, $constituents);
-            AuditService::log('raw_material', $id, 'update_constituents', [
-                'count' => count($constituents),
-            ]);
-            $_SESSION['_flash']['success'] = 'Constituents saved (' . count($constituents) . ' entries).';
-        } catch (\Throwable $e) {
-            $_SESSION['_flash']['error'] = $e->getMessage();
-        }
-
-        redirect('/raw-materials/' . $id . '/constituents');
+        RawMaterial::saveConstituents($rmId, $constituents);
+        return count($constituents);
     }
 
     /**
      * Handle supplier SDS PDF upload.
      *
-     * @return string|null  Relative path under public/uploads/ on success, null if no upload.
+     * @return array|null  Array with 'path', 'original_name', 'size' on success, null if no upload.
      * @throws \RuntimeException on validation failure.
      */
-    private function handleSdsUpload(): ?string
+    private function handleSdsUpload(): ?array
     {
         if (empty($_FILES['supplier_sds']) || $_FILES['supplier_sds']['error'] === UPLOAD_ERR_NO_FILE) {
             return null;
@@ -296,6 +382,10 @@ class RawMaterialController
             throw new \RuntimeException('Failed to save uploaded SDS file.');
         }
 
-        return 'supplier-sds/' . $filename;
+        return [
+            'path'          => 'supplier-sds/' . $filename,
+            'original_name' => $file['name'],
+            'size'          => $file['size'],
+        ];
     }
 }

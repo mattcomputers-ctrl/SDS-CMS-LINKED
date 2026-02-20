@@ -24,6 +24,7 @@ class BackupService
         'cas_master',
         'raw_materials',
         'raw_material_constituents',
+        'raw_material_sds',
         'finished_goods',
         'formulas',
         'formula_lines',

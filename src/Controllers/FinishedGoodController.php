@@ -6,6 +6,8 @@ namespace SDS\Controllers;
 
 use SDS\Core\CSRF;
 use SDS\Models\FinishedGood;
+use SDS\Models\Formula;
+use SDS\Models\RawMaterial;
 use SDS\Services\AuditService;
 
 class FinishedGoodController
@@ -43,13 +45,16 @@ class FinishedGoodController
             redirect('/finished-goods');
         }
 
-        $families = FinishedGood::getFamilies();
+        $families     = FinishedGood::getFamilies();
+        $rawMaterials = RawMaterial::all(['per_page' => 999, 'sort' => 'internal_code', 'dir' => 'asc']);
 
         view('finished-goods/form', [
-            'pageTitle' => 'Add Finished Good',
-            'item'      => null,
-            'mode'      => 'create',
-            'families'  => $families,
+            'pageTitle'    => 'Add Finished Good',
+            'item'         => null,
+            'mode'         => 'create',
+            'families'     => $families,
+            'rawMaterials' => $rawMaterials,
+            'formula'      => null,
         ]);
     }
 
@@ -67,6 +72,10 @@ class FinishedGoodController
         try {
             $id = FinishedGood::create($data);
             AuditService::log('finished_good', $id, 'create', $data);
+
+            // Save formula if lines were provided
+            $this->saveFormulaFromPost($id);
+
             $_SESSION['_flash']['success'] = 'Finished good created successfully.';
             redirect('/finished-goods/' . $id . '/edit');
         } catch (\Throwable $e) {
@@ -84,13 +93,17 @@ class FinishedGoodController
             redirect('/finished-goods');
         }
 
-        $families = FinishedGood::getFamilies();
+        $families     = FinishedGood::getFamilies();
+        $rawMaterials = RawMaterial::all(['per_page' => 999, 'sort' => 'internal_code', 'dir' => 'asc']);
+        $formula      = Formula::findCurrentByFinishedGood((int) $id);
 
         view('finished-goods/form', [
-            'pageTitle' => 'Edit: ' . $item['product_code'],
-            'item'      => $item,
-            'mode'      => 'edit',
-            'families'  => $families,
+            'pageTitle'    => 'Edit: ' . $item['product_code'],
+            'item'         => $item,
+            'mode'         => 'edit',
+            'families'     => $families,
+            'rawMaterials' => $rawMaterials,
+            'formula'      => $formula,
         ]);
     }
 
@@ -112,11 +125,59 @@ class FinishedGoodController
             $diff = AuditService::diff($item, $_POST);
             FinishedGood::update((int) $id, $_POST);
             AuditService::log('finished_good', $id, 'update', $diff);
+
+            // Save formula if lines were provided
+            $this->saveFormulaFromPost((int) $id);
+
             $_SESSION['_flash']['success'] = 'Finished good updated.';
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = $e->getMessage();
         }
 
         redirect('/finished-goods/' . $id . '/edit');
+    }
+
+    /**
+     * Parse formula lines from POST and create a new formula version if lines exist.
+     */
+    private function saveFormulaFromPost(int $fgId): void
+    {
+        $rmIds = $_POST['raw_material_id'] ?? [];
+        $pcts  = $_POST['pct'] ?? [];
+        $lines = [];
+
+        foreach ($rmIds as $i => $rmId) {
+            $rmId = (int) $rmId;
+            $pct  = (float) ($pcts[$i] ?? 0);
+
+            if ($rmId <= 0 || $pct <= 0) {
+                continue;
+            }
+
+            $lines[] = [
+                'raw_material_id' => $rmId,
+                'pct'             => $pct,
+                'sort_order'      => $i + 1,
+            ];
+        }
+
+        // Only save if lines were actually provided
+        if (empty($lines)) {
+            return;
+        }
+
+        $notes = trim($_POST['formula_notes'] ?? '');
+
+        $formulaId = Formula::create(
+            $fgId,
+            $lines,
+            $notes ?: null,
+            current_user_id()
+        );
+
+        AuditService::log('formula', $formulaId, 'create', [
+            'finished_good_id' => $fgId,
+            'line_count'       => count($lines),
+        ]);
     }
 }

@@ -139,15 +139,17 @@ class App
         $router->get('/lookup/download/{id}', 'LookupController@download');
 
         // ── Raw Materials ────────────────────────────────────────────
-        $router->get('/raw-materials',                    'RawMaterialController@index');
-        $router->get('/raw-materials/create',             'RawMaterialController@create');
-        $router->post('/raw-materials',                   'RawMaterialController@store');
-        $router->get('/raw-materials/{id}/edit',          'RawMaterialController@edit');
-        $router->post('/raw-materials/{id}',              'RawMaterialController@update');
-        $router->post('/raw-materials/{id}/delete',       'RawMaterialController@delete');
-        $router->get('/raw-materials/{id}/sds',             'RawMaterialController@viewSds');
-        $router->get('/raw-materials/{id}/constituents',  'RawMaterialController@constituents');
-        $router->post('/raw-materials/{id}/constituents', 'RawMaterialController@saveConstituents');
+        $router->get('/raw-materials',                       'RawMaterialController@index');
+        $router->get('/raw-materials/create',                'RawMaterialController@create');
+        $router->post('/raw-materials',                      'RawMaterialController@store');
+        $router->get('/raw-materials/cas-lookup',            'RawMaterialController@casLookup');
+        $router->get('/raw-materials/{id}/edit',             'RawMaterialController@edit');
+        $router->post('/raw-materials/{id}',                 'RawMaterialController@update');
+        $router->post('/raw-materials/{id}/delete',          'RawMaterialController@delete');
+        $router->get('/raw-materials/{id}/sds',              'RawMaterialController@viewSds');
+        $router->get('/raw-materials/sds-version/{sdsId}',   'RawMaterialController@viewSdsVersion');
+        $router->get('/raw-materials/{id}/constituents',     'RawMaterialController@constituents');
+        $router->post('/raw-materials/{id}/constituents',    'RawMaterialController@saveConstituents');
 
         // ── SDS Book (plant lookup) ────────────────────────────────────
         $router->get('/sds-book',                         'SDSBookController@index');

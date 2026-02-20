@@ -2,39 +2,30 @@
 
 <div class="toolbar">
     <form method="GET" action="/sds-book" class="search-form" style="flex: 1; display: flex; gap: 0.5rem; align-items: center;">
-        <input type="text" name="q" value="<?= e($search) ?>" placeholder="Search by product code, name, or supplier..." style="flex: 1;">
-        <select name="type" style="width: auto;">
-            <option value="all" <?= $type === 'all' ? 'selected' : '' ?>>All SDS</option>
-            <option value="supplier" <?= $type === 'supplier' ? 'selected' : '' ?>>Supplier SDS</option>
-            <option value="finished" <?= $type === 'finished' ? 'selected' : '' ?>>Finished Goods SDS</option>
-        </select>
+        <input type="text" name="q" value="<?= e($search) ?>" placeholder="Search by internal code, supplier, or product name..." style="flex: 1;">
         <button type="submit" class="btn btn-primary">Search</button>
-        <?php if ($search || $type !== 'all'): ?>
+        <?php if ($search): ?>
             <a href="/sds-book" class="btn btn-outline">Clear</a>
         <?php endif; ?>
     </form>
-    <?php if (is_admin()): ?>
-        <a href="/sds-book/export" class="btn btn-primary">Export All FG SDS</a>
-    <?php endif; ?>
 </div>
 
-<p class="text-muted"><?= $total ?> safety data sheet(s) found.</p>
+<p class="text-muted"><?= $total ?> raw material SDS document(s) found. The newest SDS for each raw material is shown.</p>
 
 <?php if (empty($results)): ?>
     <div class="card" style="text-align: center; padding: 2rem;">
-        <p class="text-muted">No SDS documents found<?= $search ? ' for "' . e($search) . '"' : '' ?>.</p>
+        <p class="text-muted">No supplier SDS documents found<?= $search ? ' for "' . e($search) . '"' : '' ?>.</p>
         <p class="text-muted">Supplier SDS files can be uploaded on each raw material's edit page.</p>
     </div>
 <?php else: ?>
     <table class="table">
         <thead>
             <tr>
-                <th>Product</th>
+                <th>Raw Material</th>
                 <th>Supplier</th>
-                <th>Type</th>
-                <th>Rev</th>
-                <th>Lang</th>
+                <th>Current SDS</th>
                 <th>Date</th>
+                <th>History</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -43,32 +34,24 @@
             <tr>
                 <td><strong><?= e($r['product_name']) ?></strong></td>
                 <td><?= e($r['supplier']) ?: '<span class="text-muted">—</span>' ?></td>
+                <td><?= e($r['filename'] ?? '—') ?></td>
+                <td><?= $r['date'] ? e(date('m/d/Y', strtotime($r['date']))) : '<span class="text-muted">—</span>' ?></td>
                 <td>
-                    <?php if ($r['source'] === 'supplier'): ?>
-                        <span class="badge" style="background: #0077cc; color: #fff;">Supplier</span>
+                    <?php if ($r['sds_count'] > 1): ?>
+                        <a href="<?= e($r['edit_url']) ?>" class="text-muted"><?= (int) $r['sds_count'] ?> version(s)</a>
                     <?php else: ?>
-                        <span class="badge" style="background: #28a745; color: #fff;">Finished Good</span>
+                        <span class="text-muted">1 version</span>
                     <?php endif; ?>
                 </td>
-                <td><?= $r['version'] !== null ? 'v' . $r['version'] : '—' ?></td>
-                <td><?= e($r['language']) ?: '—' ?></td>
-                <td><?= $r['date'] ? e($r['date']) : '<span class="text-muted">—</span>' ?></td>
                 <td style="white-space: nowrap;">
                     <a href="<?= e($r['view_url']) ?>" target="_blank" class="btn btn-sm btn-primary">View PDF</a>
+                    <a href="<?= e($r['edit_url']) ?>" class="btn btn-sm btn-outline">Edit</a>
                     <?php if (is_admin()): ?>
-                        <?php if ($r['source'] === 'supplier'): ?>
-                            <form method="POST" action="/sds-book/delete-supplier/<?= (int) $r['id'] ?>" class="inline-form"
-                                  onsubmit="return confirm('Remove this supplier SDS from the book?')">
-                                <?= csrf_field() ?>
-                                <button type="submit" class="btn btn-sm btn-danger">Delete</button>
-                            </form>
-                        <?php else: ?>
-                            <form method="POST" action="/sds-book/delete-fg/<?= (int) $r['id'] ?>" class="inline-form"
-                                  onsubmit="return confirm('Remove this SDS version from the book?')">
-                                <?= csrf_field() ?>
-                                <button type="submit" class="btn btn-sm btn-danger">Delete</button>
-                            </form>
-                        <?php endif; ?>
+                        <form method="POST" action="/sds-book/delete-supplier/<?= (int) $r['id'] ?>" class="inline-form"
+                              onsubmit="return confirm('Clear the current SDS for this raw material? Historical SDS files are preserved.')">
+                            <?= csrf_field() ?>
+                            <button type="submit" class="btn btn-sm btn-danger">Clear</button>
+                        </form>
                     <?php endif; ?>
                 </td>
             </tr>
@@ -80,7 +63,7 @@
         <div class="pagination">
             <?php for ($i = 1; $i <= $pages; $i++): ?>
                 <?php
-                    $params = ['q' => $search, 'type' => $type, 'page' => $i];
+                    $params = ['q' => $search, 'page' => $i];
                     $url = '/sds-book?' . http_build_query($params);
                 ?>
                 <?php if ($i === $page): ?>

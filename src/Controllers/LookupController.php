@@ -12,7 +12,7 @@ class LookupController
     public function index(): void
     {
         view('lookup/index', [
-            'pageTitle' => 'SDS Lookup',
+            'pageTitle' => 'Finished Goods SDS Lookup',
             'results'   => null,
             'query'     => '',
         ]);
@@ -28,7 +28,7 @@ class LookupController
         }
 
         view('lookup/index', [
-            'pageTitle' => 'SDS Lookup',
+            'pageTitle' => 'Finished Goods SDS Lookup',
             'results'   => $results,
             'query'     => $query,
         ]);

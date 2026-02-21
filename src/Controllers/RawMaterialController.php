@@ -86,7 +86,7 @@ class RawMaterialController
             $this->saveConstituentsFromPost($id);
 
             $_SESSION['_flash']['success'] = 'Raw material created successfully.';
-            redirect('/raw-materials/' . $id . '/edit');
+            redirect('/raw-materials');
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = $e->getMessage();
             $_SESSION['_flash']['_old_input'] = $data;

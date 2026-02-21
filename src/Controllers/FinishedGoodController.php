@@ -77,7 +77,7 @@ class FinishedGoodController
             $this->saveFormulaFromPost($id);
 
             $_SESSION['_flash']['success'] = 'Finished good created successfully.';
-            redirect('/finished-goods/' . $id . '/edit');
+            redirect('/finished-goods');
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = $e->getMessage();
             $_SESSION['_flash']['_old_input'] = $data;

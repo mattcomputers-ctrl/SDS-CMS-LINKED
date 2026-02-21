@@ -359,6 +359,27 @@ class RawMaterial
                 ]);
             }
 
+            // Auto-learn: add new CAS/name pairs to cas_master for future lookups
+            foreach ($constituents as $c) {
+                $cas  = trim($c['cas_number'] ?? '');
+                $name = trim($c['chemical_name'] ?? '');
+                if ($cas !== '' && $name !== '') {
+                    try {
+                        $existing = $db->fetch("SELECT cas_number, preferred_name FROM cas_master WHERE cas_number = ?", [$cas]);
+                        if (!$existing) {
+                            $db->insert('cas_master', [
+                                'cas_number'     => $cas,
+                                'preferred_name' => $name,
+                            ]);
+                        } elseif (empty($existing['preferred_name'])) {
+                            $db->update('cas_master', ['preferred_name' => $name], 'cas_number = ?', [$cas]);
+                        }
+                    } catch (\Throwable $e) {
+                        // Non-fatal — skip if duplicate or other issue
+                    }
+                }
+            }
+
             $db->commit();
         } catch (\Throwable $e) {
             $db->rollback();

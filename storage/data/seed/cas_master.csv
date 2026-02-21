@@ -1,0 +1,267 @@
+cas_number,preferred_name,molecular_formula,molecular_weight
+50-00-0,Formaldehyde,CH2O,30.0260
+56-81-5,Glycerol,C3H8O3,92.0938
+57-55-6,Propylene Glycol,C3H8O2,76.0944
+64-17-5,Ethanol,C2H6O,46.0684
+64-19-7,Acetic Acid,C2H4O2,60.0520
+67-56-1,Methanol,CH4O,32.0419
+67-63-0,Isopropyl Alcohol,C3H8O,60.0950
+67-64-1,Acetone,C3H6O,58.0791
+71-23-8,1-Propanol,C3H8O,60.0950
+71-36-3,n-Butanol,C4H10O,74.1216
+71-43-2,Benzene,C6H6,78.1118
+75-05-8,Acetonitrile,C2H3N,41.0520
+78-93-3,Methyl Ethyl Ketone (MEK),C4H8O,72.1057
+79-20-9,Methyl Acetate,C3H6O2,74.0785
+80-62-6,Methyl Methacrylate,C5H8O2,100.1158
+84-74-2,Dibutyl Phthalate,C16H22O4,278.3435
+85-44-9,Phthalic Anhydride,C8H4O3,148.1161
+85-68-7,Butyl Benzyl Phthalate,C19H20O4,312.3594
+96-33-3,Methyl Acrylate,C4H6O2,86.0892
+98-82-8,Cumene (Isopropylbenzene),C9H12,120.1916
+100-41-4,Ethylbenzene,C8H10,106.1650
+100-42-5,Styrene,C8H8,104.1491
+103-09-3,2-Ethylhexyl Acetate,C10H20O2,172.2646
+103-11-7,2-Ethylhexyl Acrylate,C11H20O2,184.2753
+107-21-1,Ethylene Glycol,C2H6O2,62.0678
+107-98-2,Propylene Glycol Monomethyl Ether (PM),C4H10O2,90.1210
+108-10-1,Methyl Isobutyl Ketone (MIBK),C6H12O,100.1589
+108-65-6,Propylene Glycol Monomethyl Ether Acetate (PMA),C6H12O3,132.1577
+108-87-2,Methylcyclohexane,C7H14,98.1861
+108-88-3,Toluene,C7H8,92.1384
+108-94-1,Cyclohexanone,C6H10O,98.1430
+110-19-0,Isobutyl Acetate,C6H12O2,116.1583
+110-43-0,2-Heptanone,C7H14O,114.1855
+110-54-3,n-Hexane,C6H14,86.1754
+110-82-7,Cyclohexane,C6H12,84.1595
+111-76-2,2-Butoxyethanol,C6H14O2,118.1742
+111-87-5,1-Octanol,C8H18O,130.2279
+112-07-2,2-Butoxyethyl Acetate,C8H16O3,160.2108
+115-10-6,Dimethyl Ether,C2H6O,46.0684
+123-42-2,Diacetone Alcohol,C6H12O2,116.1583
+123-86-4,n-Butyl Acetate,C6H12O2,116.1583
+127-19-5,N,N-Dimethylacetamide (DMAc),C4H9NO,87.1204
+128-37-0,Butylated Hydroxytoluene (BHT),C15H24O,220.3505
+141-32-2,n-Butyl Acrylate,C7H12O2,128.1690
+141-78-6,Ethyl Acetate,C4H8O2,88.1051
+142-82-5,n-Heptane,C7H16,100.2019
+144-62-7,Oxalic Acid,C2H2O4,90.0349
+150-76-5,4-Methoxyphenol (MEHQ),C7H8O2,124.1372
+763-69-9,Ethyl 3-Ethoxypropionate (EEP),C7H14O3,146.1836
+811-97-2,1,1,1,2-Tetrafluoroethane (HFC-134a),C2H2F4,102.0309
+822-06-0,Hexamethylene Diisocyanate (HDI),C8H12N2O2,168.1940
+868-77-9,2-Hydroxyethyl Methacrylate (HEMA),C6H10O3,130.1418
+1185-55-3,Trimethoxysilylpropyl Methacrylate,C10H20O5Si,248.3453
+1330-20-7,"Xylene (mixed isomers)",C8H10,106.1650
+1333-86-4,Carbon Black,C,12.0107
+1344-28-1,Aluminum Oxide (Alumina),Al2O3,101.9613
+2210-28-8,Propyl Methacrylate,C7H12O2,128.1690
+2425-79-8,"1,4-Butanediol Diglycidyl Ether",C10H18O4,202.2480
+2426-08-6,n-Butyl Glycidyl Ether,C7H14O2,130.1849
+2495-37-6,Benzyl Methacrylate,C11H12O2,176.2118
+2768-02-7,Vinyltrimethoxysilane,C5H12O3Si,148.2229
+3524-68-3,Pentaerythritol Triacrylate (PETA),C14H18O7,298.2895
+4098-71-9,Isophorone Diisocyanate (IPDI),C12H18N2O2,222.2834
+4130-08-9,Vinyltriethoxysilane,C8H18O3Si,190.3091
+4170-30-3,Crotonaldehyde,C4H6O,70.0898
+5888-33-5,Isobornyl Acrylate (IBOA),C13H20O2,208.2968
+6846-50-0,"2,2,4-Trimethyl-1,3-pentanediol Diisobutyrate (TXIB)",C16H30O4,286.4082
+7429-90-5,Aluminum (metal),Al,26.9815
+7440-02-0,Nickel,Ni,58.6934
+7440-21-3,Silicon,Si,28.0855
+7440-22-4,Silver,Ag,107.8682
+7440-31-5,Tin,Sn,118.7100
+7440-43-9,Cadmium,Cd,112.4110
+7440-47-3,Chromium,Cr,51.9961
+7440-50-8,Copper,Cu,63.5460
+7440-66-6,Zinc,Zn,65.3800
+7439-92-1,Lead,Pb,207.2000
+7439-96-5,Manganese,Mn,54.9380
+7439-97-6,Mercury,Hg,200.5900
+7440-44-0,Carbon,C,12.0107
+7553-56-2,Iodine,I2,253.8089
+7631-86-9,"Silicon Dioxide (Silica, Amorphous)",SiO2,60.0843
+7631-99-4,Sodium Nitrate,NaNO3,84.9947
+7664-41-7,Ammonia,NH3,17.0305
+7664-93-9,Sulfuric Acid,H2SO4,98.0785
+7681-57-4,Sodium Metabisulfite,Na2S2O5,190.1070
+7722-84-1,Hydrogen Peroxide,H2O2,34.0147
+7726-95-6,Bromine,Br2,159.8080
+7732-18-5,Water,H2O,18.0153
+7757-82-6,Sodium Sulfate,Na2SO4,142.0421
+7758-29-4,Sodium Tripolyphosphate,Na5P3O10,367.8642
+7779-90-0,Zinc Phosphate,Zn3(PO4)2,386.1098
+7782-42-5,Graphite,C,12.0107
+7784-30-7,Aluminum Phosphate,AlPO4,121.9529
+8001-35-2,Toxaphene,C10H10Cl8,413.7800
+8042-47-5,Mineral Oil (White),,,
+8052-42-4,Asphalt,,,
+10101-41-4,Calcium Sulfate Dihydrate,CaSO4·2H2O,172.1712
+13463-67-7,Titanium Dioxide,TiO2,79.8658
+13530-65-9,Zinc Chromate,ZnCrO4,181.4030
+14464-46-1,Cristobalite (Crystalline Silica),SiO2,60.0843
+14807-96-6,"Talc (Magnesium Silicate Hydroxide)",Mg3Si4O10(OH)2,379.2668
+14808-60-7,"Quartz (Crystalline Silica)",SiO2,60.0843
+15206-55-0,Methyl Benzoylformate (MBF),C9H8O3,164.1580
+21645-51-2,Aluminum Hydroxide,Al(OH)3,78.0036
+25053-09-2,"Acrylic Polymer (generic)",,,
+25068-38-6,"Bisphenol A Diglycidyl Ether (BADGE/DGEBA)",C21H24O4,340.4104
+25085-99-8,"Bisphenol A Epoxy Resin",,,
+25322-68-3,Polyethylene Glycol (PEG),,,
+25322-69-4,Polypropylene Glycol (PPG),,,
+26403-90-5,"Phenol, methylenebis(dibutyldithiocarbamate)",,,
+26530-20-1,2-Octyl-2H-isothiazol-3-one (OIT),C11H19NOS,213.3394
+26761-40-0,Diisodecyl Phthalate (DIDP),C28H46O4,446.6640
+27813-02-1,Phenoxyethyl Acrylate (PEA),C11H12O3,192.2112
+28553-12-0,Diisononyl Phthalate (DINP),C26H42O4,418.6106
+29590-42-9,Dimethylol Propionic Acid (DMPA),C5H10O4,134.1305
+30525-89-4,Paraformaldehyde,(CH2O)n,30.0260
+31566-31-1,Glyceryl Monostearate,C21H42O4,358.5567
+34590-94-8,Dipropylene Glycol Monomethyl Ether (DPM),C7H16O3,148.1998
+37971-36-1,2-Phenoxyethyl Acrylate,C11H12O3,192.2112
+42978-66-5,Dipropylene Glycol Diacrylate (DPGDA),C12H18O5,242.2685
+52628-03-2,Tripropylene Glycol Diacrylate (TPGDA),C15H24O7,316.3468
+57472-68-1,"Dipropylene Glycol Diacrylate (DPGDA, alt CAS)",C12H18O5,242.2685
+64742-47-8,"Petroleum Distillates (Hydrotreated Light)",,,
+64742-48-9,"Petroleum Distillates (Hydrotreated Heavy Naphtha)",,,
+64742-49-0,Petroleum Naphtha (Light Aliphatic),,,
+64742-88-7,Stoddard Solvent (Mineral Spirits),,,
+64742-89-8,"VM&P Naphtha (Petroleum Spirits)",,,
+64742-94-5,Heavy Aromatic Solvent Naphtha,,,
+64742-95-6,Light Aromatic Solvent Naphtha,,,
+75980-60-8,"Diphenyl(2,4,6-trimethylbenzoyl)phosphine Oxide (TPO)",C22H21O2P,348.3742
+84434-11-7,Ethoxylated Trimethylolpropane Triacrylate (TMP(EO)TA),,,
+128-37-0,Butylated Hydroxytoluene (BHT),C15H24O,220.3505
+147-14-8,"Phthalocyanine Blue (Pigment Blue 15)",C32H16CuN8,576.0694
+1328-53-6,"Phthalocyanine Green (Pigment Green 7)",,,
+2425-85-6,"Pigment Red 3 (Toluidine Red)",C17H13ClN4O3,356.7630
+3520-72-7,"Pigment Red 166",C40H24Cl4N6O4,766.4638
+4424-06-0,"Pigment Red 170",C26H22N4O4,454.4787
+5102-83-0,Pigment Yellow 13,C36H34Cl2N6O4,673.6045
+5468-75-7,Pigment Yellow 74,C18H18N4O6,386.3584
+5567-15-7,Pigment Yellow 83,C36H32Cl2N6O8,735.5851
+6358-85-6,Pigment Yellow 12 (Diarylide Yellow),C32H26Cl2N6O4,617.4946
+6535-46-2,"Pigment Red 57:1 (Lithol Rubine)",C18H12CaN2O6S,432.4434
+12225-21-7,Pigment Orange 16,C26H20ClN5O5,517.9273
+12236-62-3,"Pigment Red 48:2 (Calcium 2B Toner)",C18H12BrCaN2O6S,492.3427
+15625-89-5,Trimethylolpropane Triacrylate (TMPTA),C15H20O6,296.3148
+15880-43-0,"Pigment Red 63:1",C17H13CaN3O5S,431.4735
+2082-79-3,"Octadecyl 3-(3,5-di-tert-butyl-4-hydroxyphenyl)propionate (Irganox 1076)",C35H62O3,531.8733
+2440-22-4,"2-(2H-Benzotriazol-2-yl)-p-cresol (Tinuvin P)",C13H11N3O,225.2461
+6683-19-8,"Pentaerythritol tetrakis(3-(3,5-di-tert-butyl-4-hydroxyphenyl)propionate) (Irganox 1010)",C73H108O12,1177.6300
+75-07-0,Acetaldehyde,C2H4O,44.0526
+75-65-0,tert-Butanol,C4H10O,74.1216
+78-83-1,Isobutanol,C4H10O,74.1216
+78-92-2,sec-Butanol,C4H10O,74.1216
+79-09-4,Propionic Acid,C3H6O2,74.0785
+79-10-7,Acrylic Acid,C3H4O2,72.0627
+84-66-2,Diethyl Phthalate,C12H14O4,222.2372
+84-69-5,Diisobutyl Phthalate (DIBP),C16H22O4,278.3435
+84-75-3,Di-n-hexyl Phthalate,C18H26O4,306.3966
+85-42-7,Hexahydrophthalic Anhydride (HHPA),C8H10O3,154.1630
+90-72-2,"2,4,6-Tri(dimethylaminomethyl)phenol (DMP-30)",C15H27N3O,265.3920
+91-20-3,Naphthalene,C10H8,128.1705
+97-90-5,Ethylene Glycol Dimethacrylate (EGDMA),C10H14O4,198.2158
+100-51-6,Benzyl Alcohol,C7H8O,108.1378
+101-68-8,"Methylene Diphenyl Diisocyanate (MDI)",C15H10N2O2,250.2520
+102-71-6,Triethanolamine,C6H15NO3,149.1882
+103-23-1,"Bis(2-ethylhexyl) Adipate (DEHA)",C22H42O4,370.5666
+104-76-7,2-Ethyl-1-hexanol,C8H18O,130.2279
+105-99-7,Dibutyl Adipate,C14H26O4,258.3536
+106-65-0,Dimethyl Succinate,C6H10O4,146.1412
+108-31-6,Maleic Anhydride,C4H2O3,98.0569
+108-95-2,Phenol,C6H6O,94.1112
+109-59-1,2-Isopropoxyethanol,C5H12O2,104.1476
+109-60-4,n-Propyl Acetate,C5H10O2,102.1317
+110-49-6,2-Methoxyethyl Acetate,C5H10O3,118.1311
+111-15-9,2-Ethoxyethyl Acetate,C6H12O3,132.1577
+111-46-6,Diethylene Glycol,C4H10O3,106.1204
+111-77-3,2-(2-Methoxyethoxy)ethanol (DEGME),C5H12O3,120.1476
+112-34-5,Diethylene Glycol Monobutyl Ether (Butyl Carbitol),C8H18O3,162.2260
+112-35-6,Triethylene Glycol Monomethyl Ether,C7H16O4,164.1998
+115-86-6,Triphenyl Phosphate,C18H15O4P,326.2834
+119-47-1,"2,2'-Methylenebis(6-tert-butyl-4-methylphenol)",C23H32O2,340.5004
+120-47-8,Ethylparaben,C9H10O3,166.1739
+121-44-8,Triethylamine,C6H15N,101.1900
+123-91-1,1,4-Dioxane,C4H8O2,88.1051
+124-04-9,Adipic Acid,C6H10O4,146.1412
+126-99-8,Chloroprene,C4H5Cl,88.5354
+127-18-4,Tetrachloroethylene (Perchloroethylene),C2Cl4,165.8334
+128-44-9,Sodium Saccharin,C7H4NNaO3S,205.1651
+131-11-3,Dimethyl Phthalate,C10H10O4,194.1840
+137-26-8,Thiram,C6H12N2S4,240.4319
+541-02-6,Decamethylcyclopentasiloxane (D5),C10H30O5Si5,370.7697
+556-67-2,Octamethylcyclotetrasiloxane (D4),C8H24O4Si4,296.6158
+919-30-2,3-Aminopropyltriethoxysilane (APTES),C9H23NO3Si,221.3690
+1760-24-3,N-(2-Aminoethyl)-3-aminopropyltrimethoxysilane,C8H22N2O3Si,222.3574
+2530-83-8,3-Glycidoxypropyltrimethoxysilane,C9H20O5Si,236.3388
+2867-47-2,2-(Dimethylamino)ethyl Methacrylate (DMAEMA),C8H15NO2,157.2102
+4067-16-7,"Pentaerythritol Tetraacrylate (PETTA, tech)",C17H20O8,352.3361
+4074-88-8,Ethylene Glycol Diacrylate (EGDA),C8H10O4,170.1626
+7085-85-0,Ethyl Cyanoacrylate,C6H7NO2,125.1253
+10233-13-3,Isopropyl Laurate,C15H30O2,242.3975
+13048-33-4,"1,6-Hexanediol Diacrylate (HDDA)",C12H18O4,226.2691
+15206-55-0,Methyl Benzoylformate (Photoinitiator MBF),C9H8O3,164.1580
+24650-42-8,"2,2-Dimethoxy-2-phenylacetophenone (Irgacure 651/BDK)",C16H16O3,256.2960
+55965-84-9,"Methylisothiazolinone/Methylchloroisothiazolinone (MIT/CMIT)",,,
+71868-10-5,2-Hydroxy-2-methylpropiophenone (Darocur 1173),C10H12O2,164.2011
+75980-60-8,"Diphenyl(2,4,6-trimethylbenzoyl)phosphine Oxide (TPO)",C22H21O2P,348.3742
+947-19-3,"1-Hydroxycyclohexyl Phenyl Ketone (Irgacure 184)",C13H16O2,204.2661
+106990-43-6,"Ethyl(2,4,6-trimethylbenzoyl) Phenylphosphinate (TPO-L)",C18H21O3P,316.3318
+162881-26-7,"Phenylbis(2,4,6-trimethylbenzoyl)phosphine Oxide (Irgacure 819/BAPO)",C26H27O3P,418.4676
+6197-30-4,Ethylhexyl Methoxycinnamate (UV absorber),C18H26O3,290.3973
+2440-22-4,UV Absorber Tinuvin P,C13H11N3O,225.2461
+27554-26-3,Diisooctyl Phthalate (DIOP),C24H38O4,390.5547
+29761-21-5,Isodecyl Diphenyl Phosphate,C22H31O4P,390.4553
+31570-04-4,"Tris(2,4-di-tert-butylphenyl) Phosphite (Irgafos 168)",C42H63O3P,651.9161
+36437-37-3,2-(2-Hydroxy-3-tert-butyl-5-methylphenyl)-5-chloro-2H-benzotriazole (Tinuvin 326),C17H18ClN3O,315.7961
+55818-57-0,"Calcium Zinc stabilizer (generic)",,,
+56539-66-3,"3,3,5-Trimethylcyclohexyl Acrylate",C12H20O2,196.2860
+68002-97-1,Poly(oxy-1,2-ethanediyl) Tridecyl Hydroxy (Trideceth),,,
+68037-01-4,Hydrocarbon Resin (hydrogenated),,,
+68131-39-5,Alcohol Ethoxylate (C12-C15),,,
+68412-54-4,Nonylphenol Ethoxylate (NP-9),,,
+68439-46-3,Alcohol Ethoxylate (C9-C11),,,
+68476-86-8,Liquefied Petroleum Gas (LPG),,,
+68553-81-1,Hydrogenated C9 Petroleum Resin,,,
+68647-72-3,Hydrocarbon Resin (C9 aromatic),,,
+69011-36-5,Polystyrene,,,
+68611-44-9,"Rosin, maleated",,,
+1317-33-5,Molybdenum Disulfide (MoS2),MoS2,160.0710
+1305-78-8,Calcium Oxide (Quicklime),CaO,56.0774
+1305-62-0,Calcium Hydroxide,Ca(OH)2,74.0927
+471-34-1,Calcium Carbonate,CaCO3,100.0869
+546-93-0,Magnesium Carbonate,MgCO3,84.3139
+1309-37-1,Iron Oxide Red (Pigment Red 101),Fe2O3,159.6882
+1309-48-4,Magnesium Oxide,MgO,40.3044
+1310-73-2,Sodium Hydroxide,NaOH,39.9971
+1314-13-2,Zinc Oxide,ZnO,81.3794
+1314-23-4,Zirconium Dioxide,ZrO2,123.2188
+1314-56-3,Phosphorus Pentoxide,P4O10,283.8891
+1314-98-3,Zinc Sulfide,ZnS,97.4450
+1317-65-3,Calcium Carbonate (natural/ground),CaCO3,100.0869
+1332-37-2,Iron Oxide (generic),Fe2O3,159.6882
+1332-58-7,Kaolin (China Clay),Al2Si2O5(OH)4,258.1602
+1333-86-4,Carbon Black,C,12.0107
+1345-05-7,Lithopone (ZnS/BaSO4),,,
+7727-43-7,Barium Sulfate (Baryte/Blanc Fixe),BaSO4,233.3896
+7757-79-1,Potassium Nitrate,KNO3,101.1032
+7775-14-6,Sodium Dithionite,Na2S2O4,174.1076
+9002-88-4,Polyethylene (PE),,,
+9002-89-5,Polyvinyl Alcohol (PVA),,,
+9003-07-0,Polypropylene (PP),,,
+9003-11-6,Poloxamer (block copolymer),,,
+9003-20-7,Polyvinyl Acetate (PVAc),,,
+9003-36-5,Epichlorohydrin-Bisphenol A Resin,,,
+9004-34-6,Microcrystalline Cellulose,,,
+9004-70-0,Nitrocellulose,,,
+9005-25-8,Starch,,,
+25038-59-9,Polyethylene Terephthalate (PET),,,
+25085-02-3,Polyacrylamide,,,
+25086-48-0,Polyvinyl Butyral (PVB),,,
+25190-06-1,Polyether Polyol,,,
+25618-55-7,Polyglycerol,,,
+25928-94-3,Epoxy Resin (Novolac type),,,
+26062-79-3,Polydiallyldimethylammonium Chloride (PolyDADMAC),,,
+63148-62-9,Polydimethylsiloxane (PDMS/Silicone Oil),,,
+68037-39-8,Amino-functional Silicone,,,

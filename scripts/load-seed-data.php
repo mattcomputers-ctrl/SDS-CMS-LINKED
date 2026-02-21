@@ -15,6 +15,7 @@
  *   5. NIOSH exposure limits          (storage/data/seed/niosh.json)
  *   6. EPA regulatory data            (storage/data/seed/epa.csv)
  *   7. DOT transport classifications  (storage/data/seed/dot.csv)
+ *   8. CAS Master (chemical identity)  (storage/data/seed/cas_master.csv)
  *
  * Usage:
  *   php scripts/load-seed-data.php [--quiet]
@@ -56,7 +57,7 @@ out("", $quiet);
 // =====================================================================
 $prop65File = $seedDir . '/prop65.csv';
 if (file_exists($prop65File)) {
-    out("[1/7] Loading Prop 65 data...", $quiet);
+    out("[1/8] Loading Prop 65 data...", $quiet);
     $handle = fopen($prop65File, 'r');
     fgetcsv($handle); // skip header
     $inserted = 0;
@@ -105,7 +106,7 @@ if (file_exists($prop65File)) {
     $totalUpdated  += $updated;
     $totalErrors   += $errors;
 } else {
-    out("[1/7] Prop 65 seed file not found — skipping.", $quiet);
+    out("[1/8] Prop 65 seed file not found — skipping.", $quiet);
 }
 
 // =====================================================================
@@ -113,7 +114,7 @@ if (file_exists($prop65File)) {
 // =====================================================================
 $carcFile = $seedDir . '/carcinogens.csv';
 if (file_exists($carcFile)) {
-    out("[2/7] Loading carcinogen registry data...", $quiet);
+    out("[2/8] Loading carcinogen registry data...", $quiet);
     $handle = fopen($carcFile, 'r');
     fgetcsv($handle); // skip header
     $inserted = 0;
@@ -164,7 +165,7 @@ if (file_exists($carcFile)) {
     $totalUpdated  += $updated;
     $totalErrors   += $errors;
 } else {
-    out("[2/7] Carcinogen seed file not found — skipping.", $quiet);
+    out("[2/8] Carcinogen seed file not found — skipping.", $quiet);
 }
 
 // =====================================================================
@@ -172,7 +173,7 @@ if (file_exists($carcFile)) {
 // =====================================================================
 $hapFile = $seedDir . '/hap.csv';
 if (file_exists($hapFile)) {
-    out("[3/7] Loading Hazardous Air Pollutant (HAP) data...", $quiet);
+    out("[3/8] Loading Hazardous Air Pollutant (HAP) data...", $quiet);
     $handle = fopen($hapFile, 'r');
     fgetcsv($handle); // skip header
     $inserted = 0;
@@ -218,7 +219,7 @@ if (file_exists($hapFile)) {
     $totalUpdated  += $updated;
     $totalErrors   += $errors;
 } else {
-    out("[3/7] HAP seed file not found — skipping.", $quiet);
+    out("[3/8] HAP seed file not found — skipping.", $quiet);
 }
 
 // =====================================================================
@@ -226,7 +227,7 @@ if (file_exists($hapFile)) {
 // =====================================================================
 $saraFile = $seedDir . '/sara313.csv';
 if (file_exists($saraFile)) {
-    out("[4/7] Loading SARA 313 / TRI data...", $quiet);
+    out("[4/8] Loading SARA 313 / TRI data...", $quiet);
     $handle = fopen($saraFile, 'r');
     fgetcsv($handle); // skip header
     $inserted = 0;
@@ -275,7 +276,7 @@ if (file_exists($saraFile)) {
     $totalUpdated  += $updated;
     $totalErrors   += $errors;
 } else {
-    out("[4/7] SARA 313 seed file not found — skipping.", $quiet);
+    out("[4/8] SARA 313 seed file not found — skipping.", $quiet);
 }
 
 // =====================================================================
@@ -283,7 +284,7 @@ if (file_exists($saraFile)) {
 // =====================================================================
 $nioshFile = $seedDir . '/niosh.json';
 if (file_exists($nioshFile)) {
-    out("[5/7] Loading NIOSH exposure limit data...", $quiet);
+    out("[5/8] Loading NIOSH exposure limit data...", $quiet);
 
     $niosh = new \SDS\Services\FederalData\Connectors\NIOSHConnector($db);
     $result = $niosh->importFromJson($nioshFile);
@@ -295,7 +296,7 @@ if (file_exists($nioshFile)) {
     $totalInserted += $inserted;
     $totalErrors   += $errors;
 } else {
-    out("[5/7] NIOSH seed file not found — skipping.", $quiet);
+    out("[5/8] NIOSH seed file not found — skipping.", $quiet);
 }
 
 // =====================================================================
@@ -303,7 +304,7 @@ if (file_exists($nioshFile)) {
 // =====================================================================
 $epaFile = $seedDir . '/epa.csv';
 if (file_exists($epaFile)) {
-    out("[6/7] Loading EPA regulatory data...", $quiet);
+    out("[6/8] Loading EPA regulatory data...", $quiet);
 
     $epa = new \SDS\Services\FederalData\Connectors\EPAConnector($db);
     $result = $epa->importFromCsv($epaFile);
@@ -315,7 +316,7 @@ if (file_exists($epaFile)) {
     $totalInserted += $inserted;
     $totalErrors   += $errors;
 } else {
-    out("[6/7] EPA seed file not found — skipping.", $quiet);
+    out("[6/8] EPA seed file not found — skipping.", $quiet);
 }
 
 // =====================================================================
@@ -323,7 +324,7 @@ if (file_exists($epaFile)) {
 // =====================================================================
 $dotFile = $seedDir . '/dot.csv';
 if (file_exists($dotFile)) {
-    out("[7/7] Loading DOT transport classification data...", $quiet);
+    out("[7/8] Loading DOT transport classification data...", $quiet);
 
     $dot = new \SDS\Services\FederalData\Connectors\DOTConnector($db);
     $result = $dot->importFromCsv($dotFile);
@@ -335,7 +336,71 @@ if (file_exists($dotFile)) {
     $totalInserted += $inserted;
     $totalErrors   += $errors;
 } else {
-    out("[7/7] DOT seed file not found — skipping.", $quiet);
+    out("[7/8] DOT seed file not found — skipping.", $quiet);
+}
+
+// =====================================================================
+// 8. CAS Master (Chemical Identity Database)
+// =====================================================================
+$casMasterFile = $seedDir . '/cas_master.csv';
+if (file_exists($casMasterFile)) {
+    out("[8/8] Loading CAS master chemical identity data...", $quiet);
+    $handle = fopen($casMasterFile, 'r');
+    fgetcsv($handle); // skip header
+    $inserted = 0;
+    $updated  = 0;
+    $errors   = 0;
+
+    while (($row = fgetcsv($handle)) !== false) {
+        $cas = trim($row[0] ?? '');
+        if ($cas === '' || !preg_match('/^\d+-\d+-\d+$/', $cas)) {
+            continue;
+        }
+
+        $preferredName = trim($row[1] ?? '');
+        if ($preferredName === '') {
+            continue;
+        }
+
+        $formula = (isset($row[2]) && trim($row[2]) !== '') ? trim($row[2]) : null;
+        $weight  = (isset($row[3]) && trim($row[3]) !== '') ? (float) $row[3] : null;
+
+        try {
+            $existing = $db->fetch("SELECT cas_number, preferred_name FROM cas_master WHERE cas_number = ?", [$cas]);
+            if ($existing) {
+                // Only update if the existing preferred_name is empty
+                if (empty($existing['preferred_name'])) {
+                    $db->update('cas_master', [
+                        'preferred_name'    => $preferredName,
+                        'molecular_formula' => $formula,
+                        'molecular_weight'  => $weight,
+                    ], 'cas_number = ?', [$cas]);
+                    $updated++;
+                }
+            } else {
+                $db->insert('cas_master', [
+                    'cas_number'        => $cas,
+                    'preferred_name'    => $preferredName,
+                    'molecular_formula' => $formula,
+                    'molecular_weight'  => $weight,
+                ]);
+                $inserted++;
+            }
+        } catch (\Throwable $e) {
+            $errors++;
+            if (!$quiet) {
+                error_log("CAS Master {$cas}: " . $e->getMessage());
+            }
+        }
+    }
+    fclose($handle);
+
+    out("  CAS Master: {$inserted} inserted, {$updated} updated, {$errors} errors", $quiet);
+    $totalInserted += $inserted;
+    $totalUpdated  += $updated;
+    $totalErrors   += $errors;
+} else {
+    out("[8/8] CAS Master seed file not found — skipping.", $quiet);
 }
 
 // =====================================================================

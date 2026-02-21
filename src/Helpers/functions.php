@@ -167,6 +167,9 @@ function flash_messages(): string
         }
     }
 
+    // Clear old form input so it doesn't persist to subsequent pages
+    unset($_SESSION['_flash']['_old_input']);
+
     return $html;
 }
 

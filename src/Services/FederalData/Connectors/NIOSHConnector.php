@@ -146,21 +146,39 @@ class NIOSHConnector implements FederalDataInterface
                     'retrieved_at'  => gmdate('Y-m-d\TH:i:s\Z'),
                 ];
 
-                // Parse exposure limits from the entry
+                // Parse exposure limits from the entry.
+                // The JSON uses suffixed field names: rel_twa_mgm3, rel_twa_ppm, etc.
+                // Prefer mg/m3 values; fall back to ppm if mg/m3 is not available.
                 $limitFields = [
-                    'rel_twa'     => ['type' => 'REL-TWA',  'units' => 'mg/m3'],
-                    'rel_stel'    => ['type' => 'REL-STEL', 'units' => 'mg/m3'],
-                    'rel_ceiling' => ['type' => 'REL-Ceiling', 'units' => 'mg/m3'],
-                    'idlh'        => ['type' => 'IDLH',     'units' => 'mg/m3'],
-                    'pel_twa'     => ['type' => 'PEL-TWA',  'units' => 'mg/m3'],
+                    'rel_twa'     => 'REL-TWA',
+                    'rel_stel'    => 'REL-STEL',
+                    'rel_ceiling' => 'REL-Ceiling',
+                    'idlh'        => 'IDLH',
+                    'pel_twa'     => 'PEL-TWA',
                 ];
 
-                foreach ($limitFields as $field => $meta) {
-                    if (!empty($entry[$field])) {
+                foreach ($limitFields as $field => $type) {
+                    $mgm3Key = $field . '_mgm3';
+                    $ppmKey  = $field . '_ppm';
+
+                    if (!empty($entry[$mgm3Key])) {
                         $result['exposure_limits'][] = [
-                            'type'  => $meta['type'],
+                            'type'  => $type,
+                            'value' => (string) $entry[$mgm3Key],
+                            'units' => 'mg/m3',
+                        ];
+                    } elseif (!empty($entry[$ppmKey])) {
+                        $result['exposure_limits'][] = [
+                            'type'  => $type,
+                            'value' => (string) $entry[$ppmKey],
+                            'units' => 'ppm',
+                        ];
+                    } elseif (!empty($entry[$field])) {
+                        // Legacy format: plain field name
+                        $result['exposure_limits'][] = [
+                            'type'  => $type,
                             'value' => (string) $entry[$field],
-                            'units' => $entry[$field . '_units'] ?? $meta['units'],
+                            'units' => $entry[$field . '_units'] ?? 'mg/m3',
                         ];
                     }
                 }

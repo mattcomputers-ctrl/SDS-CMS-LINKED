@@ -371,24 +371,26 @@ class PDFService
     private function renderSection8(\TCPDF $pdf, array $s): void
     {
         if (!empty($s['exposure_limits'])) {
-            $pdf->SetFont('helvetica', 'B', 8);
+            $pdf->SetFont('helvetica', 'B', 7);
             $pdf->SetFillColor(230, 230, 230);
-            $w = [25, 60, 25, 25, 20, 20];
+            $w = [22, 42, 22, 20, 17, 15, 37];
             $pdf->Cell($w[0], 5, 'CAS', 1, 0, 'C', true);
             $pdf->Cell($w[1], 5, 'Chemical', 1, 0, 'C', true);
             $pdf->Cell($w[2], 5, 'Type', 1, 0, 'C', true);
             $pdf->Cell($w[3], 5, 'Value', 1, 0, 'C', true);
             $pdf->Cell($w[4], 5, 'Units', 1, 0, 'C', true);
-            $pdf->Cell($w[5], 5, 'Conc%', 1, 1, 'C', true);
-            $pdf->SetFont('helvetica', '', 8);
+            $pdf->Cell($w[5], 5, 'Conc%', 1, 0, 'C', true);
+            $pdf->Cell($w[6], 5, 'Notes', 1, 1, 'C', true);
+            $pdf->SetFont('helvetica', '', 7);
 
             foreach ($s['exposure_limits'] as $el) {
                 $pdf->Cell($w[0], 5, $el['cas_number'] ?? '', 1, 0, 'C');
-                $pdf->Cell($w[1], 5, substr($el['chemical_name'] ?? '', 0, 35), 1, 0, 'L');
+                $pdf->Cell($w[1], 5, substr($el['chemical_name'] ?? '', 0, 28), 1, 0, 'L');
                 $pdf->Cell($w[2], 5, $el['limit_type'] ?? '', 1, 0, 'C');
                 $pdf->Cell($w[3], 5, $el['value'] ?? '', 1, 0, 'C');
                 $pdf->Cell($w[4], 5, $el['units'] ?? '', 1, 0, 'C');
-                $pdf->Cell($w[5], 5, round((float) ($el['concentration_pct'] ?? 0), 2), 1, 1, 'C');
+                $pdf->Cell($w[5], 5, round((float) ($el['concentration_pct'] ?? 0), 2), 1, 0, 'C');
+                $pdf->Cell($w[6], 5, substr($el['notes'] ?? '', 0, 25), 1, 1, 'L');
             }
             $pdf->Ln(2);
         }
@@ -462,6 +464,9 @@ class PDFService
                     foreach ($comp['exposure_limits'] as $el) {
                         $pdf->Cell(5, 4, '', 0, 0);
                         $limitText = ($el['limit_type'] ?? '') . ': ' . ($el['value'] ?? '') . ' ' . ($el['units'] ?? '');
+                        if (!empty($el['notes'])) {
+                            $limitText .= ' (' . $el['notes'] . ')';
+                        }
                         $pdf->MultiCell(0, 4, $limitText, 0, 'L');
                     }
                 }

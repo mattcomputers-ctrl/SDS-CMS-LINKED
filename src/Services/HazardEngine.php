@@ -119,14 +119,18 @@ class HazardEngine
             );
 
             foreach ($limits as $limit) {
-                $exposureLimits[] = [
-                    'cas_number'    => $cas,
-                    'chemical_name' => $name,
+                $entry = [
+                    'cas_number'        => $cas,
+                    'chemical_name'     => $name,
                     'concentration_pct' => $conc,
-                    'limit_type'    => $limit['limit_type'],
-                    'value'         => $limit['value'],
-                    'units'         => $limit['units'],
+                    'limit_type'        => $limit['limit_type'],
+                    'value'             => $limit['value'],
+                    'units'             => $limit['units'],
                 ];
+                if (!empty($limit['notes'])) {
+                    $entry['notes'] = $limit['notes'];
+                }
+                $exposureLimits[] = $entry;
             }
 
             // Track CAS numbers that have any hazard data or exposure limits

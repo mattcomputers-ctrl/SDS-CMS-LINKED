@@ -116,7 +116,7 @@
 
         <?php elseif ($num === 8 && !empty($section['exposure_limits'])): // ── Exposure Controls ── ?>
             <table class="table table-sm">
-                <thead><tr><th>CAS</th><th>Chemical</th><th>Type</th><th>Value</th><th>Units</th></tr></thead>
+                <thead><tr><th>CAS</th><th>Chemical</th><th>Type</th><th>Value</th><th>Units</th><th>Notes</th></tr></thead>
                 <tbody>
                 <?php foreach ($section['exposure_limits'] as $el): ?>
                     <tr>
@@ -125,6 +125,7 @@
                         <td><?= e($el['limit_type']) ?></td>
                         <td><?= e($el['value']) ?></td>
                         <td><?= e($el['units']) ?></td>
+                        <td><?= e($el['notes'] ?? '') ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
@@ -160,13 +161,14 @@
 
                         <?php if (!empty($comp['exposure_limits'])): ?>
                             <table class="table table-sm" style="margin-top: 0.3rem; font-size: 0.85rem;">
-                                <thead><tr><th>Limit Type</th><th>Value</th><th>Units</th></tr></thead>
+                                <thead><tr><th>Limit Type</th><th>Value</th><th>Units</th><th>Notes</th></tr></thead>
                                 <tbody>
                                 <?php foreach ($comp['exposure_limits'] as $el): ?>
                                     <tr>
                                         <td><?= e($el['limit_type']) ?></td>
                                         <td><?= e($el['value']) ?></td>
                                         <td><?= e($el['units']) ?></td>
+                                        <td><?= e($el['notes'] ?? '') ?></td>
                                     </tr>
                                 <?php endforeach; ?>
                                 </tbody>

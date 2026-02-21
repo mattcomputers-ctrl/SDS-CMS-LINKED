@@ -550,8 +550,11 @@ class RawMaterial
             [$cas]
         );
         $sourceMap = [
+            'OSHA'      => 'OSHA PEL',
             'osha_pel'  => 'OSHA PEL',
+            'NIOSH'     => 'NIOSH REL',
             'niosh'     => 'NIOSH REL',
+            'ACGIH'     => 'ACGIH TLV',
             'acgih_tlv' => 'ACGIH TLV',
         ];
         foreach ($sources as $s) {

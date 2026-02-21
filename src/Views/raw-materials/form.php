@@ -292,11 +292,14 @@ var regTagClasses = {
     'HAP':        'reg-tag-hap'
 };
 
-// Exposure limit source display names
+// Exposure limit source display names (handles both naming conventions)
 var sourceDisplayNames = {
     'osha_pel':  'OSHA PEL',
+    'OSHA':      'OSHA PEL',
     'niosh':     'NIOSH',
-    'acgih_tlv': 'ACGIH'
+    'NIOSH':     'NIOSH',
+    'acgih_tlv': 'ACGIH',
+    'ACGIH':     'ACGIH'
 };
 
 // Build a compact exposure limit summary string for a source

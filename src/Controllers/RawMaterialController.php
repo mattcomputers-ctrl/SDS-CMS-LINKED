@@ -276,7 +276,8 @@ class RawMaterialController
     }
 
     /**
-     * AJAX endpoint: look up a CAS number and return chemical name.
+     * AJAX endpoint: look up a CAS number and return chemical name,
+     * exposure limits, and regulatory list membership.
      */
     public function casLookup(): void
     {
@@ -291,11 +292,37 @@ class RawMaterialController
         try {
             $result = RawMaterial::lookupCas($cas);
             if ($result !== null) {
-                echo json_encode([
+                $response = [
                     'found'         => true,
                     'cas_number'    => $result['cas_number'],
                     'chemical_name' => $result['chemical_name'],
-                ]);
+                ];
+
+                // Attach regulatory list membership
+                $lists = RawMaterial::getRegulatoryLists($cas);
+                if (!empty($lists)) {
+                    $response['regulatory_lists'] = $lists;
+                }
+
+                // Attach exposure limits (grouped by source)
+                $limits = RawMaterial::getExposureLimits($cas);
+                if (!empty($limits)) {
+                    $grouped = [];
+                    foreach ($limits as $lim) {
+                        $src = $lim['source_name'];
+                        if (!isset($grouped[$src])) {
+                            $grouped[$src] = [];
+                        }
+                        $grouped[$src][] = [
+                            'type'  => $lim['limit_type'],
+                            'value' => $lim['value'],
+                            'units' => $lim['units'],
+                        ];
+                    }
+                    $response['exposure_limits'] = $grouped;
+                }
+
+                echo json_encode($response);
             } else {
                 echo json_encode(['found' => false]);
             }

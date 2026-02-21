@@ -150,7 +150,7 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
 
         <!-- CAS Constituents (inline) -->
         <h3>CAS Constituents</h3>
-        <p class="text-muted">Enter the CAS numbers and concentrations from the supplier SDS. Chemical name will auto-populate when a valid CAS number is entered.</p>
+        <p class="text-muted">Enter the CAS numbers and concentrations from the supplier SDS. Chemical name will auto-populate when a valid CAS number is entered. Regulatory list membership and exposure limits are shown automatically.</p>
 
         <table class="table" id="constituentsTable">
             <thead>
@@ -168,8 +168,14 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
             <?php if (!empty($constituents)): ?>
                 <?php foreach ($constituents as $i => $c): ?>
                 <tr class="constituent-row">
-                    <td><input type="text" name="cas_number[<?= $i ?>]" value="<?= e($c['cas_number']) ?>" placeholder="67-56-1" class="input-sm cas-input"></td>
-                    <td><input type="text" name="chemical_name[<?= $i ?>]" value="<?= e($c['chemical_name']) ?>" class="input-sm chem-name-input"></td>
+                    <td>
+                        <input type="text" name="cas_number[<?= $i ?>]" value="<?= e($c['cas_number']) ?>" placeholder="67-56-1" class="input-sm cas-input">
+                        <div class="cas-reg-tags"></div>
+                    </td>
+                    <td>
+                        <input type="text" name="chemical_name[<?= $i ?>]" value="<?= e($c['chemical_name']) ?>" class="input-sm chem-name-input">
+                        <div class="cas-exposure-info"></div>
+                    </td>
                     <td><input type="number" name="pct_min[<?= $i ?>]" value="<?= e((string) ($c['pct_min'] ?? '')) ?>" step="0.0001" class="input-xs"></td>
                     <td><input type="number" name="pct_max[<?= $i ?>]" value="<?= e((string) ($c['pct_max'] ?? '')) ?>" step="0.0001" class="input-xs"></td>
                     <td><input type="number" name="pct_exact[<?= $i ?>]" value="<?= e((string) ($c['pct_exact'] ?? '')) ?>" step="0.0001" class="input-xs"></td>
@@ -179,8 +185,14 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                 <?php endforeach; ?>
             <?php else: ?>
                 <tr class="constituent-row">
-                    <td><input type="text" name="cas_number[0]" placeholder="67-56-1" class="input-sm cas-input"></td>
-                    <td><input type="text" name="chemical_name[0]" class="input-sm chem-name-input"></td>
+                    <td>
+                        <input type="text" name="cas_number[0]" placeholder="67-56-1" class="input-sm cas-input">
+                        <div class="cas-reg-tags"></div>
+                    </td>
+                    <td>
+                        <input type="text" name="chemical_name[0]" class="input-sm chem-name-input">
+                        <div class="cas-exposure-info"></div>
+                    </td>
                     <td><input type="number" name="pct_min[0]" step="0.0001" class="input-xs"></td>
                     <td><input type="number" name="pct_max[0]" step="0.0001" class="input-xs"></td>
                     <td><input type="number" name="pct_exact[0]" step="0.0001" class="input-xs"></td>
@@ -212,6 +224,33 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
 </div>
 <?php endif; ?>
 
+<style>
+.cas-reg-tags { margin-top: 3px; line-height: 1.6; }
+.cas-reg-tags .reg-tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-right: 3px;
+    margin-bottom: 2px;
+    white-space: nowrap;
+}
+.reg-tag-osha    { background: #dbeafe; color: #1e40af; }
+.reg-tag-niosh   { background: #dcfce7; color: #166534; }
+.reg-tag-acgih   { background: #fef3c7; color: #92400e; }
+.reg-tag-prop65  { background: #fecaca; color: #991b1b; }
+.reg-tag-sara    { background: #e0e7ff; color: #3730a3; }
+.reg-tag-carc    { background: #fca5a5; color: #7f1d1d; }
+.reg-tag-hap     { background: #fbcfe8; color: #9d174d; }
+.cas-exposure-info {
+    margin-top: 3px;
+    font-size: 11px;
+    color: #555;
+    line-height: 1.4;
+}
+.cas-exposure-info .el-line { white-space: nowrap; }
+</style>
 <script>
 // Add constituent row
 document.getElementById('addRow').addEventListener('click', function() {
@@ -220,8 +259,8 @@ document.getElementById('addRow').addEventListener('click', function() {
     var idx = rows.length;
     var tr = document.createElement('tr');
     tr.className = 'constituent-row';
-    tr.innerHTML = '<td><input type="text" name="cas_number[' + idx + ']" placeholder="67-56-1" class="input-sm cas-input"></td>' +
-        '<td><input type="text" name="chemical_name[' + idx + ']" class="input-sm chem-name-input"></td>' +
+    tr.innerHTML = '<td><input type="text" name="cas_number[' + idx + ']" placeholder="67-56-1" class="input-sm cas-input"><div class="cas-reg-tags"></div></td>' +
+        '<td><input type="text" name="chemical_name[' + idx + ']" class="input-sm chem-name-input"><div class="cas-exposure-info"></div></td>' +
         '<td><input type="number" name="pct_min[' + idx + ']" step="0.0001" class="input-xs"></td>' +
         '<td><input type="number" name="pct_max[' + idx + ']" step="0.0001" class="input-xs"></td>' +
         '<td><input type="number" name="pct_exact[' + idx + ']" step="0.0001" class="input-xs"></td>' +
@@ -242,10 +281,84 @@ document.addEventListener('click', function(e) {
     }
 });
 
+// Regulatory tag CSS class mapping
+var regTagClasses = {
+    'OSHA PEL':   'reg-tag-osha',
+    'NIOSH REL':  'reg-tag-niosh',
+    'ACGIH TLV':  'reg-tag-acgih',
+    'CA Prop 65': 'reg-tag-prop65',
+    'SARA 313':   'reg-tag-sara',
+    'Carcinogen': 'reg-tag-carc',
+    'HAP':        'reg-tag-hap'
+};
+
+// Exposure limit source display names
+var sourceDisplayNames = {
+    'osha_pel':  'OSHA PEL',
+    'niosh':     'NIOSH',
+    'acgih_tlv': 'ACGIH'
+};
+
+// Build a compact exposure limit summary string for a source
+function formatLimits(limits) {
+    var parts = [];
+    var seen = {};
+    for (var i = 0; i < limits.length; i++) {
+        var lim = limits[i];
+        // Prefer ppm display, show mg/m3 only if no ppm exists for that type
+        var key = lim.type;
+        if (seen[key] && lim.units === 'mg/m3') continue;
+        seen[key] = true;
+        var label = lim.type.replace(/^(PEL|REL|TLV)-/, '');
+        parts.push(label + ': ' + lim.value + ' ' + lim.units);
+    }
+    return parts.join(', ');
+}
+
+// Render regulatory tags and exposure info into a row
+function renderRegData(row, data) {
+    var tagsDiv = row.querySelector('.cas-reg-tags');
+    var infoDiv = row.querySelector('.cas-exposure-info');
+    if (!tagsDiv || !infoDiv) return;
+
+    // Clear previous
+    tagsDiv.innerHTML = '';
+    infoDiv.innerHTML = '';
+
+    // Regulatory list tags
+    if (data.regulatory_lists && data.regulatory_lists.length > 0) {
+        for (var i = 0; i < data.regulatory_lists.length; i++) {
+            var listName = data.regulatory_lists[i];
+            var span = document.createElement('span');
+            span.className = 'reg-tag ' + (regTagClasses[listName] || '');
+            span.textContent = listName;
+            tagsDiv.appendChild(span);
+        }
+    }
+
+    // Exposure limit summary
+    if (data.exposure_limits) {
+        var lines = [];
+        for (var src in data.exposure_limits) {
+            if (!data.exposure_limits.hasOwnProperty(src)) continue;
+            var displayName = sourceDisplayNames[src] || src;
+            var summary = formatLimits(data.exposure_limits[src]);
+            if (summary) {
+                lines.push('<span class="el-line"><strong>' + displayName + ':</strong> ' + summary + '</span>');
+            }
+        }
+        if (lines.length > 0) {
+            infoDiv.innerHTML = lines.join('<br>');
+        }
+    }
+}
+
 // CAS auto-lookup: when a CAS input loses focus, look up the chemical name
 function attachCasLookup(input) {
     input.addEventListener('blur', function() {
         var cas = input.value.trim();
+        var row = input.closest('tr');
+
         if (cas === '') return;
         if (!/^\d{2,7}-\d{2}-\d$/.test(cas)) {
             input.style.borderColor = '#dc3545';
@@ -272,41 +385,64 @@ function attachCasLookup(input) {
         input.style.borderColor = '#198754';
         input.title = '';
 
-        // Look up the chemical name
-        var row = input.closest('tr');
+        // Look up the chemical name, regulatory lists, and exposure limits
         var chemNameInput = row.querySelector('.chem-name-input');
 
-        // Only auto-populate if the chemical name is empty
-        if (chemNameInput && chemNameInput.value.trim() === '') {
-            chemNameInput.placeholder = 'Looking up...';
-            fetch('/raw-materials/cas-lookup?cas=' + encodeURIComponent(cas), {
-                credentials: 'same-origin',
-                headers: { 'Accept': 'application/json' }
+        fetch('/raw-materials/cas-lookup?cas=' + encodeURIComponent(cas), {
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json' }
+        })
+            .then(function(resp) {
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                return resp.json();
             })
-                .then(function(resp) {
-                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                    return resp.json();
-                })
-                .then(function(data) {
-                    chemNameInput.placeholder = '';
-                    if (data.found && data.chemical_name) {
+            .then(function(data) {
+                if (data.found) {
+                    // Auto-populate chemical name if empty
+                    if (chemNameInput && chemNameInput.value.trim() === '' && data.chemical_name) {
                         chemNameInput.value = data.chemical_name;
                         chemNameInput.style.borderColor = '#198754';
                         setTimeout(function() { chemNameInput.style.borderColor = ''; }, 2000);
-                    } else {
+                    }
+                    // Render regulatory tags and exposure limits
+                    renderRegData(row, data);
+                } else {
+                    if (chemNameInput && chemNameInput.value.trim() === '') {
                         chemNameInput.placeholder = 'Not found — enter manually';
                     }
-                })
-                .catch(function(err) {
+                }
+            })
+            .catch(function(err) {
+                if (chemNameInput && chemNameInput.value.trim() === '') {
                     chemNameInput.placeholder = 'Lookup failed — enter manually';
-                    console.error('CAS lookup error:', err);
-                });
-        }
+                }
+                console.error('CAS lookup error:', err);
+            });
     });
 }
 
 // Attach CAS lookup to all existing inputs
 document.querySelectorAll('.cas-input').forEach(attachCasLookup);
+
+// Auto-lookup existing CAS numbers on page load (for edit mode)
+document.querySelectorAll('.cas-input').forEach(function(input) {
+    if (input.value.trim() !== '') {
+        // Trigger a lookup to show regulatory data for pre-filled CAS numbers
+        var cas = input.value.trim();
+        var row = input.closest('tr');
+        fetch('/raw-materials/cas-lookup?cas=' + encodeURIComponent(cas), {
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json' }
+        })
+            .then(function(resp) { return resp.ok ? resp.json() : null; })
+            .then(function(data) {
+                if (data && data.found) {
+                    renderRegData(row, data);
+                }
+            })
+            .catch(function() {});
+    }
+});
 </script>
 
 <?php include dirname(__DIR__) . '/layouts/footer.php'; ?>

@@ -455,7 +455,7 @@ class RawMaterial
     {
         $db = Database::getInstance();
 
-        // Try cas_master first
+        // Try cas_master first (includes all seeded exposure limit chemicals)
         $row = $db->fetch(
             "SELECT cas_number, preferred_name AS chemical_name FROM cas_master WHERE cas_number = ?",
             [$cas]
@@ -500,7 +500,82 @@ class RawMaterial
             return $row;
         }
 
+        // Try exposure limits (hazard_source_records) as final fallback
+        $row = $db->fetch(
+            "SELECT cas_number, JSON_UNQUOTE(JSON_EXTRACT(payload_json, '$.chemical_name')) AS chemical_name
+             FROM hazard_source_records
+             WHERE cas_number = ? AND is_current = 1
+             LIMIT 1",
+            [$cas]
+        );
+        if ($row && !empty($row['chemical_name'])) {
+            return $row;
+        }
+
         return null;
+    }
+
+    /**
+     * Get all exposure limits for a CAS number from the exposure_limits table.
+     *
+     * Returns an array of limit rows grouped by source.
+     */
+    public static function getExposureLimits(string $cas): array
+    {
+        $db = Database::getInstance();
+        return $db->fetchAll(
+            "SELECT el.limit_type, el.value, el.units, el.notes,
+                    hsr.source_name, hsr.source_ref
+             FROM exposure_limits el
+             JOIN hazard_source_records hsr ON hsr.id = el.hazard_source_record_id AND hsr.is_current = 1
+             WHERE el.cas_number = ?
+             ORDER BY hsr.source_name, el.limit_type, el.units",
+            [$cas]
+        );
+    }
+
+    /**
+     * Get regulatory list membership for a CAS number.
+     *
+     * Returns an array of list names the CAS appears in.
+     */
+    public static function getRegulatoryLists(string $cas): array
+    {
+        $db    = Database::getInstance();
+        $lists = [];
+
+        // Exposure limit sources
+        $sources = $db->fetchAll(
+            "SELECT DISTINCT source_name FROM hazard_source_records WHERE cas_number = ? AND is_current = 1",
+            [$cas]
+        );
+        $sourceMap = [
+            'osha_pel'  => 'OSHA PEL',
+            'niosh'     => 'NIOSH REL',
+            'acgih_tlv' => 'ACGIH TLV',
+        ];
+        foreach ($sources as $s) {
+            $key = $s['source_name'];
+            if (isset($sourceMap[$key])) {
+                $lists[] = $sourceMap[$key];
+            }
+        }
+
+        // Regulatory chemical lists
+        if ($db->fetch("SELECT 1 FROM prop65_list WHERE cas_number = ?", [$cas])) {
+            $lists[] = 'CA Prop 65';
+        }
+        if ($db->fetch("SELECT 1 FROM sara313_list WHERE cas_number = ?", [$cas])) {
+            $lists[] = 'SARA 313';
+        }
+        if ($db->fetch("SELECT 1 FROM carcinogen_list WHERE cas_number = ? LIMIT 1", [$cas])) {
+            $lists[] = 'Carcinogen';
+        }
+        if ($db->fetch("SELECT 1 FROM hap_list WHERE cas_number = ?", [$cas])) {
+            $lists[] = 'HAP';
+        }
+
+        return $lists;
     }
 
     /* ------------------------------------------------------------------

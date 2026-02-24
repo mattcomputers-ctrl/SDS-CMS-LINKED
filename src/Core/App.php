@@ -200,7 +200,7 @@ class App
             $r->post('/exempt-vocs/{id}',        'AdminController@updateExemptVoc');
             $r->post('/exempt-vocs/{id}/delete', 'AdminController@deleteExemptVoc');
 
-            // Competent person determinations
+            // CAS number determinations
             $r->get('/determinations',              'AdminController@determinations');
             $r->get('/determinations/create',       'AdminController@createDetermination');
             $r->post('/determinations',             'AdminController@storeDetermination');

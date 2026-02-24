@@ -138,7 +138,41 @@ class HazardEngine
                 $hazardousCas[$cas] = true;
             }
 
+            // Fall back to CAS number determination if no federal data
             if (empty($hazardData)) {
+                $cpdResult = $this->applyCASDetermination($db, $cas, $name, $conc);
+                if ($cpdResult !== null) {
+                    $hazardousCas[$cas] = true;
+                    // Merge determination data
+                    foreach ($cpdResult['h_statements'] as $code => $stmt) {
+                        $allHStmts[$code] = $stmt;
+                    }
+                    foreach ($cpdResult['p_statements'] as $code => $stmt) {
+                        $allPStmts[$code] = $stmt;
+                    }
+                    foreach ($cpdResult['pictograms'] as $p) {
+                        $allPictograms[$p] = true;
+                    }
+                    if ($cpdResult['signal_word'] !== null) {
+                        $curPri = self::SIGNAL_HIERARCHY[$signalWord] ?? 0;
+                        $newPri = self::SIGNAL_HIERARCHY[$cpdResult['signal_word']] ?? 0;
+                        if ($newPri > $curPri) {
+                            $signalWord = $cpdResult['signal_word'];
+                        }
+                    }
+                    foreach ($cpdResult['hazard_classes'] as $hcEntry) {
+                        $allHClasses[] = $hcEntry;
+                    }
+                    // Exposure limits from determination
+                    foreach ($cpdResult['exposure_limits'] as $el) {
+                        $exposureLimits[] = $el;
+                    }
+                    $this->traceStep('cpd_applied', "CAS {$cas} uses CAS number determination", [
+                        'cas' => $cas, 'h_count' => count($cpdResult['h_statements']),
+                    ]);
+                    continue;
+                }
+
                 $this->traceStep('no_data', "No hazard data for CAS {$cas} ({$name})", [
                     'cas' => $cas, 'concentration_pct' => $conc,
                 ]);
@@ -436,6 +470,94 @@ class HazardEngine
         });
 
         return $result;
+    }
+
+    /**
+     * Look up a CAS number determination and convert it to hazard data
+     * that can be merged into the classification result.
+     *
+     * @return array|null  Null if no active determination exists.
+     */
+    private function applyCASDetermination(Database $db, string $cas, string $name, float $conc): ?array
+    {
+        $cpd = $db->fetch(
+            "SELECT determination_json FROM competent_person_determinations
+             WHERE cas_number = ? AND is_active = 1
+             ORDER BY updated_at DESC LIMIT 1",
+            [$cas]
+        );
+
+        if (!$cpd) {
+            return null;
+        }
+
+        $det = json_decode($cpd['determination_json'] ?? '{}', true);
+        if (empty($det)) {
+            return null;
+        }
+
+        // Parse H-statements
+        $hStmts = [];
+        $hRaw = array_filter(array_map('trim', explode(',', $det['h_statements'] ?? '')));
+        foreach ($hRaw as $code) {
+            $hStmts[$code] = ['code' => $code, 'text' => GHSStatements::hText($code)];
+        }
+
+        // Parse P-statements
+        $pStmts = [];
+        $pRaw = array_filter(array_map('trim', explode(',', $det['p_statements'] ?? '')));
+        foreach ($pRaw as $code) {
+            $pStmts[$code] = ['code' => $code, 'text' => GHSStatements::pText($code)];
+        }
+
+        // Parse pictograms
+        $pictograms = array_filter(array_map('trim', explode(',', $det['pictograms'] ?? '')));
+
+        // Signal word
+        $signalWord = !empty($det['signal_word']) ? $det['signal_word'] : null;
+
+        // Hazard classes
+        $hazardClasses = [];
+        $classRaw = array_filter(array_map('trim', explode(',', $det['hazard_classes'] ?? '')));
+        foreach ($classRaw as $classStr) {
+            $hazardClasses[] = [
+                'class'             => $classStr,
+                'category'          => '',
+                'cas'               => $cas,
+                'chemical'          => $name,
+                'concentration_pct' => $conc,
+                'cutoff_pct'        => 0,
+                'source'            => 'CAS determination',
+            ];
+        }
+
+        // Exposure limits from determination
+        $exposureLimits = [];
+        $detLimits = json_decode($det['exposure_limits'] ?? '[]', true) ?: [];
+        foreach ($detLimits as $el) {
+            if (empty($el['value'])) {
+                continue;
+            }
+            $exposureLimits[] = [
+                'cas_number'        => $cas,
+                'chemical_name'     => $name,
+                'concentration_pct' => $conc,
+                'limit_type'        => $el['limit_type'] ?? '',
+                'value'             => $el['value'] ?? '',
+                'units'             => $el['units'] ?? 'mg/m3',
+                'notes'             => $el['notes'] ?? '',
+                'source'            => 'CAS determination',
+            ];
+        }
+
+        return [
+            'h_statements'   => $hStmts,
+            'p_statements'   => $pStmts,
+            'pictograms'     => $pictograms,
+            'signal_word'    => $signalWord,
+            'hazard_classes' => $hazardClasses,
+            'exposure_limits' => $exposureLimits,
+        ];
     }
 
     private function traceStep(string $type, string $description, array $data): void

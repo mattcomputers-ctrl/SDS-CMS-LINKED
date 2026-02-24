@@ -10,7 +10,7 @@
         <div class="form-grid-2col">
             <div class="form-group full-width">
                 <label>Server URL / IP Address</label>
-                <input type="text" name="app.server_url"
+                <input type="text" name="app__server_url"
                        value="<?= e($settings['app.server_url'] ?? \SDS\Core\App::config('app.url', 'http://' . ($_SERVER['SERVER_ADDR'] ?? 'localhost'))) ?>"
                        placeholder="http://192.168.1.100 or https://sds.yourcompany.com">
                 <small class="text-muted">Include http:// or https:// prefix. Example: http://192.168.1.100</small>
@@ -21,17 +21,17 @@
         <p class="text-muted mb-1">This information appears in Section 1 of every SDS and on the PDF header.</p>
 
         <div class="form-grid-2col">
-            <div class="form-group full-width"><label>Company Name</label><input type="text" name="company.name" value="<?= e($settings['company.name'] ?? '') ?>"></div>
-            <div class="form-group full-width"><label>Street Address</label><input type="text" name="company.address" value="<?= e($settings['company.address'] ?? '') ?>"></div>
-            <div class="form-group"><label>City</label><input type="text" name="company.city" value="<?= e($settings['company.city'] ?? '') ?>"></div>
-            <div class="form-group"><label>State / Province</label><input type="text" name="company.state" value="<?= e($settings['company.state'] ?? '') ?>"></div>
-            <div class="form-group"><label>ZIP / Postal Code</label><input type="text" name="company.zip" value="<?= e($settings['company.zip'] ?? '') ?>"></div>
-            <div class="form-group"><label>Country</label><input type="text" name="company.country" value="<?= e($settings['company.country'] ?? '') ?>"></div>
-            <div class="form-group"><label>Phone</label><input type="text" name="company.phone" value="<?= e($settings['company.phone'] ?? '') ?>"></div>
-            <div class="form-group"><label>Fax</label><input type="text" name="company.fax" value="<?= e($settings['company.fax'] ?? '') ?>"></div>
-            <div class="form-group"><label>Email</label><input type="email" name="company.email" value="<?= e($settings['company.email'] ?? '') ?>"></div>
-            <div class="form-group"><label>Website</label><input type="url" name="company.website" value="<?= e($settings['company.website'] ?? '') ?>" placeholder="https://"></div>
-            <div class="form-group full-width"><label>Emergency Phone (e.g. CHEMTREC)</label><input type="text" name="company.emergency_phone" value="<?= e($settings['company.emergency_phone'] ?? '') ?>"></div>
+            <div class="form-group full-width"><label>Company Name</label><input type="text" name="company__name" value="<?= e($settings['company.name'] ?? '') ?>"></div>
+            <div class="form-group full-width"><label>Street Address</label><input type="text" name="company__address" value="<?= e($settings['company.address'] ?? '') ?>"></div>
+            <div class="form-group"><label>City</label><input type="text" name="company__city" value="<?= e($settings['company.city'] ?? '') ?>"></div>
+            <div class="form-group"><label>State / Province</label><input type="text" name="company__state" value="<?= e($settings['company.state'] ?? '') ?>"></div>
+            <div class="form-group"><label>ZIP / Postal Code</label><input type="text" name="company__zip" value="<?= e($settings['company.zip'] ?? '') ?>"></div>
+            <div class="form-group"><label>Country</label><input type="text" name="company__country" value="<?= e($settings['company.country'] ?? '') ?>"></div>
+            <div class="form-group"><label>Phone</label><input type="text" name="company__phone" value="<?= e($settings['company.phone'] ?? '') ?>"></div>
+            <div class="form-group"><label>Fax</label><input type="text" name="company__fax" value="<?= e($settings['company.fax'] ?? '') ?>"></div>
+            <div class="form-group"><label>Email</label><input type="email" name="company__email" value="<?= e($settings['company.email'] ?? '') ?>"></div>
+            <div class="form-group"><label>Website</label><input type="url" name="company__website" value="<?= e($settings['company.website'] ?? '') ?>" placeholder="https://"></div>
+            <div class="form-group full-width"><label>Emergency Phone (e.g. CHEMTREC)</label><input type="text" name="company__emergency_phone" value="<?= e($settings['company.emergency_phone'] ?? '') ?>"></div>
         </div>
 
         <h2>Company Logo</h2>
@@ -74,14 +74,14 @@
         <div class="form-grid-2col">
             <div class="form-group">
                 <label>Default VOC Calc Mode</label>
-                <select name="sds.voc_calc_mode">
+                <select name="sds__voc_calc_mode">
                     <option value="method24_standard" <?= ($settings['sds.voc_calc_mode'] ?? '') === 'method24_standard' ? 'selected' : '' ?>>Method 24 Standard</option>
                     <option value="method24_less_water_exempt" <?= ($settings['sds.voc_calc_mode'] ?? '') === 'method24_less_water_exempt' ? 'selected' : '' ?>>Method 24 Less Water/Exempt</option>
                 </select>
             </div>
             <div class="form-group">
                 <label>Missing Data Threshold (%)</label>
-                <input type="number" name="sds.missing_threshold_pct" step="0.1" value="<?= e($settings['sds.missing_threshold_pct'] ?? '1.0') ?>">
+                <input type="number" name="sds__missing_threshold_pct" step="0.1" value="<?= e($settings['sds.missing_threshold_pct'] ?? '1.0') ?>">
             </div>
         </div>
 
@@ -89,13 +89,13 @@
         <p class="text-muted mb-1">This statement will appear at the end of every SDS (after Section 16). Use this for legal disclaimers, liability limitations, or any language required by your legal counsel.</p>
 
         <div class="form-group">
-            <textarea name="sds.legal_disclaimer" rows="6" style="font-size: 0.9rem;"><?= e($settings['sds.legal_disclaimer'] ?? '') ?></textarea>
+            <textarea name="sds__legal_disclaimer" rows="6" style="font-size: 0.9rem;"><?= e($settings['sds.legal_disclaimer'] ?? '') ?></textarea>
         </div>
 
         <h2>Data Refresh</h2>
         <div class="form-grid-2col">
-            <div class="form-group"><label>Federal Refresh Interval (hours)</label><input type="number" name="cron.federal_refresh_hours" value="<?= e($settings['cron.federal_refresh_hours'] ?? '168') ?>"></div>
-            <div class="form-group"><label>Audit Log Retention (days)</label><input type="number" name="cron.log_retention_days" value="<?= e($settings['cron.log_retention_days'] ?? '365') ?>"></div>
+            <div class="form-group"><label>Federal Refresh Interval (hours)</label><input type="number" name="cron__federal_refresh_hours" value="<?= e($settings['cron.federal_refresh_hours'] ?? '168') ?>"></div>
+            <div class="form-group"><label>Audit Log Retention (days)</label><input type="number" name="cron__log_retention_days" value="<?= e($settings['cron.log_retention_days'] ?? '365') ?>"></div>
         </div>
 
         <div class="form-actions">

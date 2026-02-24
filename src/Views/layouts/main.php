@@ -28,7 +28,7 @@
                         <li><a href="/admin/users">Users</a></li>
                         <li><a href="/admin/settings">Settings</a></li>
                         <li><a href="/admin/exempt-vocs">Exempt VOC Library</a></li>
-                        <li><a href="/admin/determinations">Determinations</a></li>
+                        <li><a href="/admin/determinations">CAS Determinations</a></li>
                         <li><a href="/admin/federal-data">Federal Data</a></li>
                         <li><a href="/admin/audit-log">Audit Log</a></li>
                         <li><a href="/admin/sds-versions">SDS Versions</a></li>

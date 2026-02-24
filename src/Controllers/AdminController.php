@@ -194,6 +194,8 @@ class AdminController
         }
 
         // Save all text settings
+        // Form field names use '__' (double underscore) as separator instead of '.'
+        // because PHP converts dots in POST field names to underscores.
         foreach ($_POST as $key => $value) {
             if (in_array($key, ['_csrf_token', 'remove_logo', 'remove_login_logo'], true)) {
                 continue;
@@ -202,6 +204,8 @@ class AdminController
             if ($key === '') {
                 continue;
             }
+            // Convert double-underscore separator back to dot for DB storage
+            $key = str_replace('__', '.', $key);
 
             $this->saveSetting($db, $key, $value);
         }
@@ -459,7 +463,7 @@ class AdminController
         );
 
         view('admin/determinations', [
-            'pageTitle' => 'Competent Person Determinations',
+            'pageTitle' => 'CAS Number Determinations',
             'items'     => $items,
         ]);
     }
@@ -468,7 +472,7 @@ class AdminController
     {
         $this->requireAdmin();
         view('admin/determination-form', [
-            'pageTitle' => 'New Competent Person Determination',
+            'pageTitle' => 'New CAS Number Determination',
             'item'      => null,
             'mode'      => 'create',
         ]);
@@ -490,13 +494,7 @@ class AdminController
             return;
         }
 
-        $determination = [
-            'hazard_classes' => trim($_POST['hazard_classes'] ?? ''),
-            'signal_word'    => trim($_POST['signal_word'] ?? ''),
-            'h_statements'   => trim($_POST['h_statements'] ?? ''),
-            'p_statements'   => trim($_POST['p_statements'] ?? ''),
-            'basis'          => trim($_POST['basis'] ?? ''),
-        ];
+        $determination = $this->buildDeterminationJson();
 
         $id = $db->insert('competent_person_determinations', [
             'cas_number'         => $cas,
@@ -532,7 +530,7 @@ class AdminController
         $item['determination'] = json_decode($item['determination_json'] ?? '{}', true);
 
         view('admin/determination-form', [
-            'pageTitle' => 'Edit Determination: ' . $item['cas_number'],
+            'pageTitle' => 'Edit CAS Determination: ' . $item['cas_number'],
             'item'      => $item,
             'mode'      => 'edit',
         ]);
@@ -544,13 +542,7 @@ class AdminController
         CSRF::validateRequest();
         $db = Database::getInstance();
 
-        $determination = [
-            'hazard_classes' => trim($_POST['hazard_classes'] ?? ''),
-            'signal_word'    => trim($_POST['signal_word'] ?? ''),
-            'h_statements'   => trim($_POST['h_statements'] ?? ''),
-            'p_statements'   => trim($_POST['p_statements'] ?? ''),
-            'basis'          => trim($_POST['basis'] ?? ''),
-        ];
+        $determination = $this->buildDeterminationJson();
 
         $db->update('competent_person_determinations', [
             'rationale_text'     => trim($_POST['rationale_text'] ?? ''),
@@ -562,6 +554,103 @@ class AdminController
         AuditService::log('competent_determination', $id, 'update');
         $_SESSION['_flash']['success'] = 'Determination updated.';
         redirect('/admin/determinations');
+    }
+
+    /**
+     * Build the determination JSON from checkbox-based form submission.
+     *
+     * Merges auto-populated codes (from hazard statement selections) with
+     * manually selected H/P codes, resolves signal word and pictograms,
+     * and includes exposure limit data.
+     */
+    private function buildDeterminationJson(): array
+    {
+        // Selected hazard classifications (checkbox keys)
+        $selectedHazards = json_decode($_POST['selected_hazards_json'] ?? '[]', true) ?: [];
+
+        // Resolve auto-populated data from GHS hazard data
+        $ghsData = \SDS\Services\GHSHazardData::all();
+        $autoHCodes = [];
+        $autoPCodes = [];
+        $autoPictograms = [];
+        $autoSignalWord = null;
+        $hazardClasses = [];
+        $signalHierarchy = ['Danger' => 2, 'Warning' => 1];
+
+        foreach ($selectedHazards as $key) {
+            if (!isset($ghsData[$key])) {
+                continue;
+            }
+            $entry = $ghsData[$key];
+            $hazardClasses[] = $entry['class'] . ' ' . $entry['category'];
+
+            foreach ($entry['h_codes'] as $code) {
+                $autoHCodes[$code] = true;
+            }
+            foreach ($entry['p_codes'] as $code) {
+                $autoPCodes[$code] = true;
+            }
+            foreach ($entry['pictograms'] as $pic) {
+                $autoPictograms[$pic] = true;
+            }
+            if ($entry['signal_word'] !== null) {
+                $newPri = $signalHierarchy[$entry['signal_word']] ?? 0;
+                $curPri = $autoSignalWord ? ($signalHierarchy[$autoSignalWord] ?? 0) : 0;
+                if ($newPri > $curPri) {
+                    $autoSignalWord = $entry['signal_word'];
+                }
+            }
+        }
+
+        // Manually selected H/P codes
+        $manualHCodes = $_POST['h_codes_manual'] ?? [];
+        $manualPCodes = $_POST['p_codes_manual'] ?? [];
+
+        // Merge auto + manual codes (de-duplicate)
+        $allHCodes = array_keys($autoHCodes);
+        foreach ($manualHCodes as $code) {
+            $code = trim($code);
+            if ($code !== '' && !in_array($code, $allHCodes, true)) {
+                $allHCodes[] = $code;
+            }
+        }
+        sort($allHCodes);
+
+        $allPCodes = array_keys($autoPCodes);
+        foreach ($manualPCodes as $code) {
+            $code = trim($code);
+            if ($code !== '' && !in_array($code, $allPCodes, true)) {
+                $allPCodes[] = $code;
+            }
+        }
+        sort($allPCodes);
+
+        // Apply pictogram precedence
+        $pictogramKeys = array_keys($autoPictograms);
+        if (in_array('GHS06', $pictogramKeys) || in_array('GHS05', $pictogramKeys)) {
+            $pictogramKeys = array_filter($pictogramKeys, fn($p) => $p !== 'GHS07');
+        }
+        sort($pictogramKeys);
+
+        // Signal word: manual override takes precedence
+        $signalWord = trim($_POST['signal_word'] ?? '');
+        if ($signalWord === '') {
+            $signalWord = $autoSignalWord ?? '';
+        }
+
+        // Exposure limits
+        $exposureLimits = json_decode($_POST['exposure_limits_json'] ?? '[]', true) ?: [];
+
+        return [
+            'selected_hazards' => json_encode($selectedHazards),
+            'hazard_classes'   => implode(', ', array_unique($hazardClasses)),
+            'signal_word'      => $signalWord,
+            'h_statements'     => implode(', ', $allHCodes),
+            'p_statements'     => implode(', ', $allPCodes),
+            'pictograms'       => implode(', ', $pictogramKeys),
+            'exposure_limits'  => json_encode($exposureLimits),
+            'basis'            => trim($_POST['basis'] ?? ''),
+        ];
     }
 
     /* ------------------------------------------------------------------

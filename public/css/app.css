@@ -225,3 +225,63 @@ h1, h2, h3 { font-weight: 600; margin-bottom: 0.5rem; }
 /* ---- Error Pages ---- */
 .error-page { text-align: center; padding: 3rem 1rem; }
 .error-page h2 { font-size: 2rem; color: #dc3545; margin-bottom: 1rem; }
+
+/* ---- CAS Determination Form — Hazard Selection ---- */
+.hazard-selection { margin-bottom: 1rem; }
+.hazard-class-group { margin-bottom: 0.75rem; border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden; }
+.hazard-class-header {
+    background: #f0f2f5; padding: 0.4rem 0.75rem; margin: 0; font-size: 0.85rem;
+    font-weight: 700; color: #003366; border-bottom: 1px solid #e0e0e0; cursor: default;
+}
+.hazard-checkbox-row {
+    display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0.75rem;
+    border-bottom: 1px solid #f0f0f0; cursor: pointer; font-size: 0.85rem;
+    transition: background 0.1s;
+}
+.hazard-checkbox-row:last-child { border-bottom: none; }
+.hazard-checkbox-row:hover { background: #f8f9fa; }
+.hazard-checkbox-row input[type="checkbox"] { flex-shrink: 0; }
+.hazard-cat { font-weight: 600; color: #555; min-width: 160px; flex-shrink: 0; font-size: 0.8rem; }
+.hazard-h-codes { font-weight: 700; color: #003366; min-width: 60px; flex-shrink: 0; font-size: 0.8rem; }
+.hazard-h-text { color: #333; flex: 1; font-size: 0.8rem; }
+.hazard-signal { font-size: 0.7rem; font-weight: 700; padding: 0.1rem 0.4rem; border-radius: 3px; flex-shrink: 0; text-transform: uppercase; }
+.hazard-signal-danger { background: #dc3545; color: #fff; }
+.hazard-signal-warning { background: #fd7e14; color: #fff; }
+.hazard-picto-icon { width: 22px; height: 22px; flex-shrink: 0; }
+
+/* Auto-summary panel */
+.auto-summary { border-left: 4px solid #003366; }
+.auto-summary h3 { font-size: 0.9rem; color: #003366; margin-bottom: 0.5rem; }
+.auto-value { font-size: 0.9rem; color: #333; min-height: 1.5rem; }
+.code-tag {
+    display: inline-block; background: #e8f0fe; color: #003366; padding: 0.1rem 0.4rem;
+    border-radius: 3px; font-size: 0.75rem; font-weight: 600; margin: 0.1rem;
+    cursor: default;
+}
+.code-tag-p { background: #fef3e8; color: #8a4b08; }
+
+/* H/P code checkbox grids */
+.code-selection-grid { margin-bottom: 1rem; }
+.code-group { margin-bottom: 0.5rem; border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden; }
+.code-group-header {
+    background: #f8f9fa; padding: 0.3rem 0.75rem; margin: 0; font-size: 0.8rem;
+    font-weight: 600; color: #555; border-bottom: 1px solid #e0e0e0;
+}
+.code-checkbox-row {
+    display: flex; align-items: flex-start; gap: 0.4rem; padding: 0.25rem 0.75rem;
+    border-bottom: 1px solid #f5f5f5; cursor: pointer; font-size: 0.8rem;
+    transition: background 0.1s;
+}
+.code-checkbox-row:last-child { border-bottom: none; }
+.code-checkbox-row:hover { background: #f8f9fa; }
+.code-checkbox-row input[type="checkbox"] { flex-shrink: 0; margin-top: 0.15rem; }
+.code-label { font-weight: 700; color: #003366; min-width: 100px; flex-shrink: 0; }
+.code-desc { color: #555; flex: 1; }
+.code-checkbox-row.auto-triggered { background: #e8f0fe; }
+.code-checkbox-row.auto-triggered .code-label::after { content: ' (auto)'; font-weight: 400; color: #888; font-size: 0.7rem; }
+
+/* Exposure limits table */
+#exposure-limits-table input, #exposure-limits-table select {
+    font-size: 0.85rem; padding: 0.25rem 0.4rem;
+}
+#exposure-limits-table td { vertical-align: middle; }

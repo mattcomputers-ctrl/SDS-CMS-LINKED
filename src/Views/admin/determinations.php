@@ -1,11 +1,11 @@
 <?php include dirname(__DIR__) . '/layouts/main.php'; ?>
 
 <div class="d-flex justify-between align-center mb-1">
-    <h2>Competent Person Determinations</h2>
-    <a href="/admin/determinations/create" class="btn btn-primary">+ New Determination</a>
+    <h2>CAS Number Determinations</h2>
+    <a href="/admin/determinations/create" class="btn btn-primary">+ New CAS Determination</a>
 </div>
 
-<p class="text-muted">When federal hazard data is missing for a CAS number, a competent person can provide a manual hazard determination with rationale. These are clearly marked as non-federal in Section 16.</p>
+<p class="text-muted">When federal hazard data is missing for a CAS number, define the hazard determination here. Select hazard statements, H/P codes, and exposure limits. These are clearly marked as non-federal in Section 16.</p>
 
 <table class="table">
     <thead>

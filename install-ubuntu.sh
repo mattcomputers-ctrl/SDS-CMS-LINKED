@@ -553,8 +553,8 @@ print_success "Server URL saved (changeable later in Admin > Settings)."
 # ============================================================
 print_header "Step 7: Loading Federal Regulatory Data"
 
-print_step "Loading pre-packaged seed data (Prop 65, IARC/NTP/OSHA, HAPs, SARA 313, NIOSH, EPA, DOT)..."
-print_info "This provides a comprehensive regulatory baseline for all known chemicals."
+print_step "Loading pre-packaged seed data (OSHA PEL, NIOSH REL, ACGIH TLV, Prop 65, SARA 313, HAPs, carcinogens, EPA, DOT)..."
+print_info "This populates exposure limits and regulatory lists for 700+ chemicals."
 
 cd "$INSTALL_DIR"
 if [ -f "$INSTALL_DIR/scripts/load-seed-data.php" ]; then

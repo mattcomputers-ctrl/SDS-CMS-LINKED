@@ -9,10 +9,8 @@ use SDS\Core\App;
 /**
  * PictogramHelper — Generates reliable PNG pictogram images using PHP GD.
  *
- * TCPDF's ImageSVG() is unreliable with complex SVGs, so this helper
- * generates PNG versions of all pictograms (GHS, PPE, Prop 65) using
- * GD drawing primitives. PNGs are cached on disk and regenerated only
- * when missing.
+ * Traces the exact SVG coordinate data from public/assets/pictograms/ at 4×
+ * scale (800×800 px) for crisp PDF rendering.  PNGs are cached on disk.
  *
  * Pictogram types:
  *   - GHS01–GHS09:  Red diamond border, black symbol (GHS/OSHA standard)
@@ -21,17 +19,17 @@ use SDS\Core\App;
  */
 class PictogramHelper
 {
-    /** PNG canvas size in pixels (renders crisp at any PDF size). */
-    private const SIZE = 400;
+    /** PNG canvas size in pixels (4× the 200×200 SVG source). */
+    private const SIZE = 800;
+
+    /** Scale factor from SVG coordinate space (200) to PNG (800). */
+    private const K = 4;
 
     /** Cache directory relative to base path. */
     private const CACHE_DIR = '/public/assets/pictograms/png';
 
     /**
      * Get the absolute path to a PNG pictogram, generating it if needed.
-     *
-     * @param  string $code  Pictogram code (e.g. 'GHS08', 'PPE-eye', 'PROP65')
-     * @return string        Absolute path to PNG file, or '' on failure
      */
     public static function getPngPath(string $code): string
     {
@@ -45,7 +43,6 @@ class PictogramHelper
             return $file;
         }
 
-        // Generate on demand
         $img = self::generate($code);
         if ($img === null) {
             return '';
@@ -58,10 +55,14 @@ class PictogramHelper
     }
 
     /**
-     * Generate all pictograms at once (e.g. during install).
+     * Force-regenerate all pictograms (e.g. after an update).
      */
     public static function generateAll(): void
     {
+        $dir = App::basePath() . self::CACHE_DIR;
+        if (is_dir($dir)) {
+            array_map('unlink', glob($dir . '/*.png'));
+        }
         $codes = [
             'GHS01', 'GHS02', 'GHS03', 'GHS04', 'GHS05',
             'GHS06', 'GHS07', 'GHS08', 'GHS09',
@@ -73,9 +74,9 @@ class PictogramHelper
         }
     }
 
-    /* ------------------------------------------------------------------
+    /* ==================================================================
      *  Dispatcher
-     * ----------------------------------------------------------------*/
+     * ================================================================*/
 
     private static function generate(string $code): ?\GdImage
     {
@@ -87,619 +88,553 @@ class PictogramHelper
         };
     }
 
-    /* ------------------------------------------------------------------
-     *  GHS Pictograms (red diamond, black symbol)
-     * ----------------------------------------------------------------*/
+    /* ==================================================================
+     *  GHS Pictograms  (red diamond, black symbol on white)
+     * ================================================================*/
 
     private static function generateGHS(string $code): ?\GdImage
     {
-        $s = self::SIZE;
+        $s   = self::SIZE;
         $img = self::createCanvas($s);
-        self::drawGHSDiamond($img, $s);
+        self::drawGHSDiamond($img);
 
         $black = imagecolorallocate($img, 0, 0, 0);
         $white = imagecolorallocate($img, 255, 255, 255);
 
-        switch ($code) {
-            case 'GHS01':
-                self::drawExplodingBomb($img, $s, $black);
-                break;
-            case 'GHS02':
-                self::drawFlame($img, $s, $black);
-                break;
-            case 'GHS03':
-                self::drawFlameOverCircle($img, $s, $black, $white);
-                break;
-            case 'GHS04':
-                self::drawGasCylinder($img, $s, $black);
-                break;
-            case 'GHS05':
-                self::drawCorrosion($img, $s, $black, $white);
-                break;
-            case 'GHS06':
-                self::drawSkullCrossbones($img, $s, $black, $white);
-                break;
-            case 'GHS07':
-                self::drawExclamationMark($img, $s, $black);
-                break;
-            case 'GHS08':
-                self::drawHealthHazard($img, $s, $black, $white);
-                break;
-            case 'GHS09':
-                self::drawEnvironment($img, $s, $black);
-                break;
-            default:
-                imagedestroy($img);
-                return null;
-        }
+        $drawn = match ($code) {
+            'GHS01' => self::drawGHS01($img, $black, $white),
+            'GHS02' => self::drawGHS02($img, $black),
+            'GHS03' => self::drawGHS03($img, $black),
+            'GHS04' => self::drawGHS04($img, $black, $white),
+            'GHS05' => self::drawGHS05($img, $black, $white),
+            'GHS06' => self::drawGHS06($img, $black, $white),
+            'GHS07' => self::drawGHS07($img, $black),
+            'GHS08' => self::drawGHS08($img, $black, $white),
+            'GHS09' => self::drawGHS09($img, $black, $white),
+            default  => false,
+        };
 
+        if (!$drawn) {
+            imagedestroy($img);
+            return null;
+        }
         return $img;
     }
 
-    private static function drawGHSDiamond(\GdImage $img, int $s): void
+    /**
+     * Red diamond border — matches SVG:
+     *   polygon points="100,5 195,100 100,195 5,100" stroke="#FF1100" stroke-width="7"
+     */
+    private static function drawGHSDiamond(\GdImage $img): void
     {
+        $K     = self::K;
         $red   = imagecolorallocate($img, 255, 17, 0);
         $white = imagecolorallocate($img, 255, 255, 255);
 
-        $cx = $s / 2;
-        $cy = $s / 2;
-        $r  = ($s / 2) - 5;
-
-        // Outer diamond (red fill)
-        $outer = [(int)$cx, (int)($cy - $r), (int)($cx + $r), (int)$cy, (int)$cx, (int)($cy + $r), (int)($cx - $r), (int)$cy];
+        // Outer red diamond (fill the stroke area)
+        $outer = self::s([100, 5, 195, 100, 100, 195, 5, 100]);
         imagefilledpolygon($img, $outer, $red);
 
-        // Inner diamond (white fill)
-        $ri = $r - 18;
-        $inner = [(int)$cx, (int)($cy - $ri), (int)($cx + $ri), (int)$cy, (int)$cx, (int)($cy + $ri), (int)($cx - $ri), (int)$cy];
+        // Inner white diamond  (inset ≈ stroke-width × √2 ≈ 10 SVG units)
+        $inner = self::s([100, 15, 185, 100, 100, 185, 15, 100]);
         imagefilledpolygon($img, $inner, $white);
     }
 
-    /* --- GHS01: Exploding Bomb --- */
-    private static function drawExplodingBomb(\GdImage $img, int $s, int $black): void
+    /* --- GHS01: Exploding Bomb ----------------------------------------
+     *  SVG group: translate(100,105), bomb circle + fuse + rays + fragments
+     */
+    private static function drawGHS01(\GdImage $img, int $black, int $white): bool
     {
-        $cx = $s / 2;
-        $cy = $s / 2 + 20;
+        $K = self::K;
+        // Bomb body — circle cx=100 cy=115 r=22  (after translate)
+        imagefilledellipse($img, 100 * $K, 115 * $K, 44 * $K, 44 * $K, $black);
 
-        // Central circle (bomb body)
-        imagefilledellipse($img, (int)$cx, (int)$cy, 80, 80, $black);
+        // Fuse stem
+        imagefilledrectangle($img, (100 - 3) * $K, (105 - 18) * $K, (100 + 3) * $K, (105 - 6) * $K, $black);
 
-        // Radiating debris fragments
-        $fragments = [
-            [-60, -80], [-30, -90], [0, -95], [30, -90], [60, -80],
-            [-80, -40], [80, -40],
-            [-90, 10], [90, 10],
-            [-70, 55], [70, 55],
-            [-40, 75], [40, 75],
+        // Explosion rays from bomb (line coords in absolute SVG after translate)
+        imagesetthickness($img, 4 * $K);
+        $rays = [
+            [122, 105, 142, 95],  [120, 93, 138, 80],  [115, 87, 128, 67],
+            [78, 105, 58, 95],    [80, 93, 62, 80],     [85, 87, 72, 67],
+            [110, 85, 115, 63],   [90, 85, 85, 63],
         ];
-        foreach ($fragments as $f) {
-            $fx = (int)($cx + $f[0]);
-            $fy = (int)($cy + $f[1]);
-            imagefilledellipse($img, $fx, $fy, 14, 14, $black);
-        }
-
-        // Radiating lines from center
-        imagesetthickness($img, 3);
-        $lines = [
-            [-50, -70], [0, -85], [50, -70],
-            [-75, -30], [75, -30],
-            [-80, 20], [80, 20],
-            [-60, 60], [60, 60],
-        ];
-        foreach ($lines as $l) {
-            imageline($img, (int)$cx, (int)$cy, (int)($cx + $l[0]), (int)($cy + $l[1]), $black);
+        foreach ($rays as $r) {
+            imageline($img, $r[0] * $K, $r[1] * $K, $r[2] * $K, $r[3] * $K, $black);
         }
         imagesetthickness($img, 1);
-    }
 
-    /* --- GHS02: Flame --- */
-    private static function drawFlame(\GdImage $img, int $s, int $black): void
-    {
-        $cx = $s / 2;
-        // Flame body
-        $points = [
-            (int)($cx), (int)(70),        // top
-            (int)($cx + 15), (int)(100),
-            (int)($cx + 45), (int)(130),
-            (int)($cx + 60), (int)(180),
-            (int)($cx + 65), (int)(220),
-            (int)($cx + 60), (int)(260),
-            (int)($cx + 45), (int)(290),
-            (int)($cx + 20), (int)(310),
-            (int)($cx), (int)(320),        // bottom center
-            (int)($cx - 20), (int)(310),
-            (int)($cx - 45), (int)(290),
-            (int)($cx - 60), (int)(260),
-            (int)($cx - 65), (int)(220),
-            (int)($cx - 60), (int)(180),
-            (int)($cx - 45), (int)(130),
-            (int)($cx - 15), (int)(100),
+        // Fragment circles at ray tips
+        $frags = [
+            [144, 94], [140, 78], [130, 65], [58, 94], [60, 78], [70, 65],
+            [116, 61], [84, 61],
         ];
-        imagefilledpolygon($img, $points, $black);
-    }
-
-    /* --- GHS03: Flame Over Circle --- */
-    private static function drawFlameOverCircle(\GdImage $img, int $s, int $black, int $white): void
-    {
-        $cx = $s / 2;
-
-        // Circle
-        imagefilledellipse($img, (int)$cx, (int)260, 100, 100, $black);
-
-        // Flame above circle
-        $points = [
-            (int)($cx), (int)(65),
-            (int)($cx + 12), (int)(95),
-            (int)($cx + 35), (int)(120),
-            (int)($cx + 50), (int)(160),
-            (int)($cx + 45), (int)(200),
-            (int)($cx + 20), (int)(215),
-            (int)($cx), (int)(220),
-            (int)($cx - 20), (int)(215),
-            (int)($cx - 45), (int)(200),
-            (int)($cx - 50), (int)(160),
-            (int)($cx - 35), (int)(120),
-            (int)($cx - 12), (int)(95),
-        ];
-        imagefilledpolygon($img, $points, $black);
-    }
-
-    /* --- GHS04: Gas Cylinder --- */
-    private static function drawGasCylinder(\GdImage $img, int $s, int $black): void
-    {
-        $cx = (int)($s / 2);
-
-        // Cylinder body
-        imagefilledrectangle($img, $cx - 40, 120, $cx + 40, 310, $black);
-
-        // Rounded top (ellipse)
-        imagefilledellipse($img, $cx, 120, 80, 40, $black);
-
-        // Rounded bottom (ellipse)
-        imagefilledellipse($img, $cx, 310, 80, 40, $black);
-
-        // Valve at top
-        imagefilledrectangle($img, $cx - 8, 85, $cx + 8, 105, $black);
-        imagefilledrectangle($img, $cx - 20, 80, $cx + 20, 90, $black);
-    }
-
-    /* --- GHS05: Corrosion --- */
-    private static function drawCorrosion(\GdImage $img, int $s, int $black, int $white): void
-    {
-        $cx = (int)($s / 2);
-
-        // Left container pouring
-        $lx = $cx - 35;
-        imagefilledrectangle($img, $lx - 25, 85, $lx + 25, 130, $black);
-        // Pour stream
-        $pour = [$lx + 20, 130, $lx + 25, 130, $lx + 35, 200, $lx + 30, 200];
-        imagefilledpolygon($img, $pour, $black);
-
-        // Right container pouring
-        $rx = $cx + 35;
-        imagefilledrectangle($img, $rx - 25, 85, $rx + 25, 130, $black);
-        $pour2 = [$rx - 20, 130, $rx - 25, 130, $rx - 35, 200, $rx - 30, 200];
-        imagefilledpolygon($img, $pour2, $black);
-
-        // Surface being corroded (horizontal bar)
-        imagefilledrectangle($img, $cx - 75, 200, $cx + 75, 215, $black);
-
-        // Corroded material below (hand/material shape)
-        // Dripping/dissolving downward
-        $drips = [-50, -30, -10, 10, 30, 50];
-        foreach ($drips as $dx) {
-            $dh = 20 + rand(10, 40);
-            imagefilledrectangle($img, $cx + $dx - 5, 215, $cx + $dx + 5, 215 + $dh, $black);
+        foreach ($frags as $f) {
+            imagefilledellipse($img, $f[0] * $K, $f[1] * $K, 6 * $K, 6 * $K, $black);
         }
 
-        // Corroded surface below
-        imagefilledrectangle($img, $cx - 60, 280, $cx + 60, 320, $black);
-        // Pitted surface (white holes)
-        imagefilledellipse($img, $cx - 30, 295, 18, 14, $white);
-        imagefilledellipse($img, $cx + 10, 300, 20, 16, $white);
-        imagefilledellipse($img, $cx + 40, 292, 16, 12, $white);
+        // Spark above fuse
+        $spark = self::s([100, 67, 96, 75, 104, 75]);
+        imagefilledpolygon($img, $spark, $black);
+        $spark2 = self::s([108, 69, 104, 77, 110, 78]);
+        imagefilledpolygon($img, $spark2, $black);
+        $spark3 = self::s([92, 69, 96, 77, 90, 78]);
+        imagefilledpolygon($img, $spark3, $black);
+
+        return true;
     }
 
-    /* --- GHS06: Skull and Crossbones --- */
-    private static function drawSkullCrossbones(\GdImage $img, int $s, int $black, int $white): void
+    /* --- GHS02: Flame -------------------------------------------------
+     *  Outer flame path sampled from cubic bezier curves in SVG.
+     */
+    private static function drawGHS02(\GdImage $img, int $black): bool
     {
-        $cx = (int)($s / 2);
+        // Outer flame outline — sampled from SVG bezier M100,30 C…Z
+        $pts = self::s([
+            100, 30,   82, 53,   66, 77,   60, 100,
+            60, 118,   66, 135,  73, 143,  88, 155,
+            82, 147,   77, 135,  80, 118,
+            82, 126,   87, 137,  95, 148,
+            92, 139,   89, 127,  92, 115,
+            95, 123,   99, 134,  105, 148,
+            110, 140,  116, 129, 120, 118,
+            123, 130,  121, 143, 112, 155,
+            122, 147,  132, 135, 140, 118,
+            140, 100,  136, 77,  118, 53,
+        ]);
+        imagefilledpolygon($img, $pts, $black);
+        return true;
+    }
 
-        // Skull (large circle)
-        imagefilledellipse($img, $cx, 150, 110, 100, $black);
+    /* --- GHS03: Flame Over Circle -------------------------------------
+     *  Circle + flame above.
+     */
+    private static function drawGHS03(\GdImage $img, int $black): bool
+    {
+        // Circle at bottom
+        imagefilledellipse($img, 100 * self::K, 135 * self::K, 50 * self::K, 50 * self::K, $black);
 
-        // Eye sockets
-        imagefilledellipse($img, $cx - 22, 140, 28, 24, $white);
-        imagefilledellipse($img, $cx + 22, 140, 28, 24, $white);
+        // Flame sampled from SVG bezier
+        $pts = self::s([
+            100, 40,   82, 60,   68, 78,   68, 95,
+            68, 108,   75, 118,  85, 123,
+            78, 115,   78, 105,  83, 95,
+            86, 105,   90, 115,  95, 120,
+            92, 108,   90, 98,   95, 88,
+            98, 98,    102, 110, 105, 120,
+            110, 115,  114, 105, 117, 95,
+            122, 105,  122, 115, 115, 123,
+            125, 118,  132, 108, 132, 95,
+            132, 78,   118, 60,
+        ]);
+        imagefilledpolygon($img, $pts, $black);
+        return true;
+    }
 
-        // Nasal cavity
-        $nose = [$cx, 155, $cx - 8, 170, $cx + 8, 170];
+    /* --- GHS04: Gas Cylinder ------------------------------------------
+     *  Rect body + ellipse caps + valve from SVG.
+     */
+    private static function drawGHS04(\GdImage $img, int $black, int $white): bool
+    {
+        $K = self::K;
+        // Cylinder body
+        imagefilledrectangle($img, 72 * $K, 60 * $K, 128 * $K, 150 * $K, $black);
+        // Top dome
+        imagefilledellipse($img, 100 * $K, 60 * $K, 56 * $K, 20 * $K, $black);
+        // Bottom dome
+        imagefilledellipse($img, 100 * $K, 150 * $K, 56 * $K, 20 * $K, $black);
+        // Foot
+        imagefilledrectangle($img, 74 * $K, 152 * $K, 126 * $K, 158 * $K, $black);
+        // Valve neck
+        imagefilledrectangle($img, 92 * $K, 42 * $K, 108 * $K, 60 * $K, $black);
+        // Valve top
+        imagefilledrectangle($img, 88 * $K, 38 * $K, 112 * $K, 44 * $K, $black);
+        // Valve handle
+        imagefilledrectangle($img, 85 * $K, 33 * $K, 115 * $K, 39 * $K, $black);
+        // Highlight stripe
+        imagefilledrectangle($img, 82 * $K, 62 * $K, 90 * $K, 148 * $K, $white);
+        return true;
+    }
+
+    /* --- GHS05: Corrosion ---------------------------------------------
+     *  Two tilted test tubes, drips, hand + surface.
+     */
+    private static function drawGHS05(\GdImage $img, int $black, int $white): bool
+    {
+        $K = self::K;
+
+        // Simplified: two containers, drops, corroded surface + hand
+        // Left container (tilted ~-20°)
+        $lTube = self::s([65, 42, 85, 42, 88, 90, 62, 90]);
+        imagefilledpolygon($img, $lTube, $black);
+        imagefilledrectangle($img, 60 * $K, 38 * $K, 90 * $K, 44 * $K, $black);
+
+        // Right container (tilted ~+20°)
+        $rTube = self::s([115, 42, 135, 42, 138, 90, 112, 90]);
+        imagefilledpolygon($img, $rTube, $black);
+        imagefilledrectangle($img, 110 * $K, 38 * $K, 140 * $K, 44 * $K, $black);
+
+        // Drops from left
+        imagefilledellipse($img, 78 * $K, 95 * $K, 6 * $K, 10 * $K, $black);
+        imagefilledellipse($img, 82 * $K, 105 * $K, 5 * $K, 8 * $K, $black);
+        // Drops from right
+        imagefilledellipse($img, 122 * $K, 95 * $K, 6 * $K, 10 * $K, $black);
+        imagefilledellipse($img, 118 * $K, 105 * $K, 5 * $K, 8 * $K, $black);
+
+        // Hand (left side)
+        $hand = self::s([
+            60, 140, 65, 127, 75, 120, 80, 122,
+            80, 128, 78, 135, 78, 148,
+            95, 148, 95, 155, 55, 155, 55, 148,
+        ]);
+        imagefilledpolygon($img, $hand, $black);
+        // Corrosion marks on hand
+        imagefilledrectangle($img, 67 * $K, 133 * $K, 75 * $K, 136 * $K, $white);
+        imagefilledrectangle($img, 70 * $K, 139 * $K, 75 * $K, 141 * $K, $white);
+
+        // Surface bar (right side)
+        imagefilledrectangle($img, 100 * $K, 130 * $K, 145 * $K, 148 * $K, $black);
+        // Corrosion pits
+        imagefilledrectangle($img, 108 * $K, 134 * $K, 118 * $K, 138 * $K, $white);
+        imagefilledrectangle($img, 122 * $K, 136 * $K, 130 * $K, 139 * $K, $white);
+        imagefilledrectangle($img, 112 * $K, 140 * $K, 124 * $K, 143 * $K, $white);
+
+        return true;
+    }
+
+    /* --- GHS06: Skull and Crossbones ----------------------------------
+     *  From SVG: cranium ellipse, jaw path, eye/nose/teeth, crossbones.
+     */
+    private static function drawGHS06(\GdImage $img, int $black, int $white): bool
+    {
+        $K = self::K;
+
+        // Cranium  (ellipse cx=100 cy=72 rx=30 ry=28)
+        imagefilledellipse($img, 100 * $K, 72 * $K, 60 * $K, 56 * $K, $black);
+
+        // Jaw  (polygon approximating M78,85 L78,100 C78,108 88,112 100,112 C112,112 122,108 122,100 L122,85 Z)
+        $jaw = self::s([78, 85, 78, 100, 82, 108, 90, 112, 100, 112, 110, 112, 118, 108, 122, 100, 122, 85]);
+        imagefilledpolygon($img, $jaw, $black);
+
+        // Left eye socket (ellipse cx=88 cy=72 rx=10 ry=9)
+        imagefilledellipse($img, 88 * $K, 72 * $K, 20 * $K, 18 * $K, $white);
+        // Right eye socket (cx=112)
+        imagefilledellipse($img, 112 * $K, 72 * $K, 20 * $K, 18 * $K, $white);
+
+        // Nose (triangle 96,85 100,92 104,85)
+        $nose = self::s([96, 85, 100, 92, 104, 85]);
         imagefilledpolygon($img, $nose, $white);
 
-        // Jaw/teeth area
-        imagefilledrectangle($img, $cx - 30, 180, $cx + 30, 200, $black);
-        // Teeth gaps
-        for ($tx = $cx - 25; $tx < $cx + 25; $tx += 12) {
-            imagefilledrectangle($img, $tx + 4, 183, $tx + 8, 197, $white);
+        // Teeth (4 rects with white gaps)
+        $teethX = [85, 93, 101, 109];
+        foreach ($teethX as $tx) {
+            imagefilledrectangle($img, $tx * $K, 99 * $K, ($tx + 6) * $K, 107 * $K, $white);
         }
 
-        // Crossbones
-        imagesetthickness($img, 10);
-        imageline($img, $cx - 70, 220, $cx + 70, 310, $black);
-        imageline($img, $cx + 70, 220, $cx - 70, 310, $black);
+        // Crossbones (lines stroke-width=10)
+        imagesetthickness($img, 10 * $K);
+        imageline($img, 55 * $K, 125 * $K, 145 * $K, 160 * $K, $black);
+        imageline($img, 145 * $K, 125 * $K, 55 * $K, 160 * $K, $black);
         imagesetthickness($img, 1);
 
-        // Bone ends (small circles)
-        $boneEnds = [
-            [$cx - 70, 220], [$cx + 70, 220],
-            [$cx - 70, 310], [$cx + 70, 310],
+        // Bone knobs (pairs of circles at each end from SVG)
+        $knobs = [
+            [53, 123, 7], [57, 127, 6],
+            [147, 123, 7], [143, 127, 6],
+            [53, 162, 7], [57, 158, 6],
+            [147, 162, 7], [143, 158, 6],
         ];
-        foreach ($boneEnds as $be) {
-            imagefilledellipse($img, $be[0], $be[1], 20, 18, $black);
+        foreach ($knobs as $kb) {
+            imagefilledellipse($img, $kb[0] * $K, $kb[1] * $K, $kb[2] * 2 * $K, $kb[2] * 2 * $K, $black);
         }
+
+        return true;
     }
 
-    /* --- GHS07: Exclamation Mark --- */
-    private static function drawExclamationMark(\GdImage $img, int $s, int $black): void
+    /* --- GHS07: Exclamation Mark --------------------------------------
+     *  SVG: M88,45 L112,45 L108,125 L92,125 Z  +  circle cx=100 cy=148 r=13
+     */
+    private static function drawGHS07(\GdImage $img, int $black): bool
     {
-        $cx = (int)($s / 2);
+        // Tapered stem
+        $stem = self::s([88, 45, 112, 45, 108, 125, 92, 125]);
+        imagefilledpolygon($img, $stem, $black);
 
-        // Exclamation line (tapered rectangle)
-        $bar = [
-            $cx - 14, 85,
-            $cx + 14, 85,
-            $cx + 10, 250,
-            $cx - 10, 250,
-        ];
-        imagefilledpolygon($img, $bar, $black);
-
-        // Exclamation dot
-        imagefilledellipse($img, $cx, 290, 30, 30, $black);
+        // Dot
+        imagefilledellipse($img, 100 * self::K, 148 * self::K, 26 * self::K, 26 * self::K, $black);
+        return true;
     }
 
-    /* --- GHS08: Health Hazard (person silhouette with starburst on chest) --- */
-    private static function drawHealthHazard(\GdImage $img, int $s, int $black, int $white): void
+    /* --- GHS08: Health Hazard -----------------------------------------
+     *  Person silhouette + 6-pointed starburst on chest.
+     *  All coordinates from GHS08.svg (no transforms, no curves).
+     */
+    private static function drawGHS08(\GdImage $img, int $black, int $white): bool
     {
-        $cx = (int)($s / 2);
+        $K = self::K;
 
-        // Head
-        imagefilledellipse($img, $cx, 100, 42, 42, $black);
+        // Head — circle cx=100 cy=45 r=14
+        imagefilledellipse($img, 100 * $K, 45 * $K, 28 * $K, 28 * $K, $black);
 
-        // Torso
-        $torso = [
-            $cx - 30, 125,
-            $cx + 30, 125,
-            $cx + 35, 240,
-            $cx - 35, 240,
-        ];
-        imagefilledpolygon($img, $torso, $black);
+        // Torso — M82,60 L118,60 L122,118 L78,118 Z
+        imagefilledpolygon($img, self::s([82, 60, 118, 60, 122, 118, 78, 118]), $black);
 
-        // Left arm
-        $lArm = [
-            $cx - 28, 128,
-            $cx - 32, 125,
-            $cx - 75, 180,
-            $cx - 68, 188,
-        ];
-        imagefilledpolygon($img, $lArm, $black);
+        // Left arm — M82,62 L56,90 L50,84 L72,60 Z
+        imagefilledpolygon($img, self::s([82, 62, 56, 90, 50, 84, 72, 60]), $black);
 
-        // Right arm
-        $rArm = [
-            $cx + 28, 128,
-            $cx + 32, 125,
-            $cx + 75, 180,
-            $cx + 68, 188,
-        ];
-        imagefilledpolygon($img, $rArm, $black);
+        // Right arm — M118,62 L144,90 L150,84 L128,60 Z
+        imagefilledpolygon($img, self::s([118, 62, 144, 90, 150, 84, 128, 60]), $black);
 
-        // Left leg
-        $lLeg = [
-            $cx - 35, 238,
-            $cx - 10, 238,
-            $cx - 5, 325,
-            $cx - 30, 325,
-        ];
-        imagefilledpolygon($img, $lLeg, $black);
+        // Left leg — M78,118 L70,164 L82,164 L88,118 Z
+        imagefilledpolygon($img, self::s([78, 118, 70, 164, 82, 164, 88, 118]), $black);
 
-        // Right leg
-        $rLeg = [
-            $cx + 35, 238,
-            $cx + 10, 238,
-            $cx + 5, 325,
-            $cx + 30, 325,
-        ];
-        imagefilledpolygon($img, $rLeg, $black);
+        // Right leg — M122,118 L130,164 L118,164 L112,118 Z
+        imagefilledpolygon($img, self::s([122, 118, 130, 164, 118, 164, 112, 118]), $black);
 
-        // Six-pointed starburst on chest (white cutout)
-        $starCx = $cx;
-        $starCy = 175;
-        $outerR = 28;
-        $innerR = 14;
-        $starPoints = [];
-        for ($i = 0; $i < 12; $i++) {
-            $angle = deg2rad(-90 + $i * 30);
-            $r = ($i % 2 === 0) ? $outerR : $innerR;
-            $starPoints[] = (int)($starCx + $r * cos($angle));
-            $starPoints[] = (int)($starCy + $r * sin($angle));
+        // Starburst on chest (white cutout) — exact SVG path
+        // M100,68 L103,74 L110,72 L106,78 L112,82 L105,83 L106,90 L100,86 L94,90 L95,83 L88,82 L94,78 L90,72 L97,74 Z
+        imagefilledpolygon($img, self::s([
+            100, 68,  103, 74,  110, 72,  106, 78,
+            112, 82,  105, 83,  106, 90,  100, 86,
+            94, 90,   95, 83,   88, 82,   94, 78,
+            90, 72,   97, 74,
+        ]), $white);
+
+        return true;
+    }
+
+    /* --- GHS09: Environment (dead tree + fish) ------------------------
+     *  Traced from GHS09.svg.
+     */
+    private static function drawGHS09(\GdImage $img, int $black, int $white): bool
+    {
+        $K = self::K;
+
+        // Tree trunk (rect x=68 y=55 w=10 h=70)
+        imagefilledrectangle($img, 68 * $K, 55 * $K, 78 * $K, 125 * $K, $black);
+
+        // Branches (lines from trunk)
+        imagesetthickness($img, 5 * $K);
+        imageline($img, 73 * $K, 65 * $K, 95 * $K, 50 * $K, $black);
+        imageline($img, 73 * $K, 72 * $K, 52 * $K, 55 * $K, $black);
+        imageline($img, 73 * $K, 85 * $K, 90 * $K, 75 * $K, $black);
+        imageline($img, 73 * $K, 95 * $K, 55 * $K, 85 * $K, $black);
+        imagesetthickness($img, 3 * $K);
+        imageline($img, 90 * $K, 53 * $K, 95 * $K, 42 * $K, $black);
+        imageline($img, 55 * $K, 58 * $K, 48 * $K, 48 * $K, $black);
+        imagesetthickness($img, 1);
+
+        // Ground/water line (wavy)
+        imagesetthickness($img, 3 * $K);
+        $waveY = 130;
+        $waveXs = [40, 55, 70, 85, 100, 115, 130, 145, 160];
+        for ($i = 0; $i < count($waveXs) - 1; $i++) {
+            $y1 = ($i % 2 === 0) ? $waveY : $waveY - 5;
+            $y2 = (($i + 1) % 2 === 0) ? $waveY : $waveY - 5;
+            imageline($img, $waveXs[$i] * $K, $y1 * $K, $waveXs[$i + 1] * $K, $y2 * $K, $black);
         }
-        imagefilledpolygon($img, $starPoints, $white);
-    }
-
-    /* --- GHS09: Environment (dead tree and fish) --- */
-    private static function drawEnvironment(\GdImage $img, int $s, int $black): void
-    {
-        $cx = (int)($s / 2);
-
-        // Dead tree — trunk
-        imagefilledrectangle($img, $cx - 35 - 8, 90, $cx - 35 + 8, 250, $black);
-
-        // Bare branches (lines from trunk)
-        imagesetthickness($img, 5);
-        imageline($img, $cx - 35, 120, $cx - 75, 90, $black);
-        imageline($img, $cx - 35, 140, $cx - 80, 120, $black);
-        imageline($img, $cx - 35, 120, $cx + 5, 85, $black);
-        imageline($img, $cx - 35, 145, $cx + 10, 115, $black);
-        imageline($img, $cx - 35, 170, $cx - 78, 155, $black);
-        imageline($img, $cx - 35, 180, $cx + 5, 155, $black);
         imagesetthickness($img, 1);
 
-        // Ground line
-        imagefilledrectangle($img, $cx - 85, 248, $cx + 85, 258, $black);
-
-        // Dead fish below ground
-        $fishCx = $cx + 25;
-        $fishCy = 295;
-        // Fish body (ellipse)
-        imagefilledellipse($img, $fishCx, $fishCy, 90, 40, $black);
-        // Tail
-        $tail = [
-            $fishCx + 45, $fishCy,
-            $fishCx + 70, $fishCy - 20,
-            $fishCx + 70, $fishCy + 20,
-        ];
-        imagefilledpolygon($img, $tail, $black);
-        // Eye (white)
-        $white = imagecolorallocate($img, 255, 255, 255);
-        imagefilledellipse($img, $fishCx - 20, $fishCy - 5, 14, 14, $white);
-        // X on eye (dead)
-        $darkGrey = imagecolorallocate($img, 0, 0, 0);
-        imagesetthickness($img, 2);
-        imageline($img, $fishCx - 24, $fishCy - 9, $fishCx - 16, $fishCy - 1, $darkGrey);
-        imageline($img, $fishCx - 16, $fishCy - 9, $fishCx - 24, $fishCy - 1, $darkGrey);
+        // Dead fish (belly up) — translated to (115, 145) in SVG
+        $fx = 115;
+        $fy = 145;
+        // Body ellipse rx=25 ry=10
+        imagefilledellipse($img, $fx * $K, $fy * $K, 50 * $K, 20 * $K, $black);
+        // Tail (triangle: 22,0 35,-10 35,10 relative)
+        imagefilledpolygon($img, self::s([
+            $fx + 22, $fy, $fx + 35, $fy - 10, $fx + 35, $fy + 10,
+        ]), $black);
+        // Eye (white circle + X)
+        imagefilledellipse($img, ($fx - 12) * $K, ($fy - 2) * $K, 8 * $K, 8 * $K, $white);
+        imagesetthickness($img, 2 * $K);
+        imageline($img, ($fx - 15) * $K, ($fy - 5) * $K, ($fx - 9) * $K, ($fy + 1) * $K, $black);
+        imageline($img, ($fx - 9) * $K, ($fy - 5) * $K, ($fx - 15) * $K, ($fy + 1) * $K, $black);
         imagesetthickness($img, 1);
+        // Gill arc (white)
+        imagesetthickness($img, 2 * $K);
+        imagearc($img, ($fx - 3) * $K, $fy * $K, 6 * $K, 12 * $K, 270, 90, $white);
+        imagesetthickness($img, 1);
+
+        return true;
     }
 
-    /* ------------------------------------------------------------------
-     *  PPE Pictograms (blue circle, white symbol — ISO 7010 style)
-     * ----------------------------------------------------------------*/
+    /* ==================================================================
+     *  PPE Pictograms (blue circle, white symbol — ISO 7010)
+     * ================================================================*/
 
     private static function generatePPE(string $code): ?\GdImage
     {
-        $s = self::SIZE;
+        $s   = self::SIZE;
         $img = self::createCanvas($s);
 
         $blue  = imagecolorallocate($img, 0, 94, 184);
         $white = imagecolorallocate($img, 255, 255, 255);
+        $cx    = (int)($s / 2);
+        $cy    = (int)($s / 2);
 
-        // Blue circle background
-        imagefilledellipse($img, (int)($s / 2), (int)($s / 2), $s - 20, $s - 20, $blue);
-
-        // White circle inset (creates blue ring)
-        imagefilledellipse($img, (int)($s / 2), (int)($s / 2), $s - 60, $s - 60, $white);
-
+        // Blue filled circle
+        imagefilledellipse($img, $cx, $cy, $s - 40, $s - 40, $blue);
+        // White ring
+        imagefilledellipse($img, $cx, $cy, $s - 80, $s - 80, $white);
         // Blue inner fill
-        imagefilledellipse($img, (int)($s / 2), (int)($s / 2), $s - 64, $s - 64, $blue);
+        imagefilledellipse($img, $cx, $cy, $s - 88, $s - 88, $blue);
 
-        $cx = (int)($s / 2);
-        $cy = (int)($s / 2);
+        $drawn = match ($code) {
+            'PPE-eye'         => self::drawPPEEye($img, $cx, $cy, $white, $blue),
+            'PPE-hand'        => self::drawPPEGlove($img, $cx, $cy, $white),
+            'PPE-respiratory'  => self::drawPPERespirator($img, $cx, $cy, $white, $blue),
+            'PPE-skin'         => self::drawPPESuit($img, $cx, $cy, $white),
+            default            => false,
+        };
 
-        switch ($code) {
-            case 'PPE-eye':
-                self::drawPPEEye($img, $cx, $cy, $white);
-                break;
-            case 'PPE-hand':
-                self::drawPPEGlove($img, $cx, $cy, $white);
-                break;
-            case 'PPE-respiratory':
-                self::drawPPERespirator($img, $cx, $cy, $white);
-                break;
-            case 'PPE-skin':
-                self::drawPPESuit($img, $cx, $cy, $white);
-                break;
-            default:
-                imagedestroy($img);
-                return null;
+        if (!$drawn) {
+            imagedestroy($img);
+            return null;
         }
-
         return $img;
     }
 
-    /* --- PPE-eye: Safety goggles --- */
-    private static function drawPPEEye(\GdImage $img, int $cx, int $cy, int $white): void
+    private static function drawPPEEye(\GdImage $img, int $cx, int $cy, int $white, int $blue): bool
     {
-        // Goggles frame (wide rectangle with rounded ends)
-        imagefilledrectangle($img, $cx - 80, $cy - 30, $cx + 80, $cy + 30, $white);
-        imagefilledellipse($img, $cx - 80, $cy, 40, 60, $white);
-        imagefilledellipse($img, $cx + 80, $cy, 40, 60, $white);
+        // Goggle frame
+        imagefilledrectangle($img, $cx - 160, $cy - 50, $cx + 160, $cy + 50, $white);
+        imagefilledellipse($img, $cx - 160, $cy, 60, 100, $white);
+        imagefilledellipse($img, $cx + 160, $cy, 60, 100, $white);
 
-        // Lens outlines (blue circles inside white)
-        $blue = imagecolorallocate($img, 0, 94, 184);
-        imagefilledellipse($img, $cx - 38, $cy, 52, 42, $blue);
-        imagefilledellipse($img, $cx + 38, $cy, 52, 42, $blue);
+        // Lens outlines
+        imagefilledellipse($img, $cx - 65, $cy, 100, 80, $blue);
+        imagefilledellipse($img, $cx + 65, $cy, 100, 80, $blue);
+        // Lens glass
+        imagefilledellipse($img, $cx - 65, $cy, 80, 60, $white);
+        imagefilledellipse($img, $cx + 65, $cy, 80, 60, $white);
 
-        // Lens glass (white)
-        imagefilledellipse($img, $cx - 38, $cy, 40, 32, $white);
-        imagefilledellipse($img, $cx + 38, $cy, 40, 32, $white);
-
-        // Strap (extend from both sides)
-        imagefilledrectangle($img, $cx - 110, $cy - 8, $cx - 98, $cy + 8, $white);
-        imagefilledrectangle($img, $cx + 98, $cy - 8, $cx + 110, $cy + 8, $white);
+        // Strap
+        imagefilledrectangle($img, $cx - 220, $cy - 14, $cx - 188, $cy + 14, $white);
+        imagefilledrectangle($img, $cx + 188, $cy - 14, $cx + 220, $cy + 14, $white);
+        return true;
     }
 
-    /* --- PPE-hand: Protective glove --- */
-    private static function drawPPEGlove(\GdImage $img, int $cx, int $cy, int $white): void
+    private static function drawPPEGlove(\GdImage $img, int $cx, int $cy, int $white): bool
     {
-        // Wrist/cuff
-        imagefilledrectangle($img, $cx - 35, $cy + 40, $cx + 35, $cy + 100, $white);
-
-        // Palm area
-        imagefilledrectangle($img, $cx - 45, $cy - 30, $cx + 35, $cy + 45, $white);
-
-        // Fingers (4 rounded rectangles extending upward)
-        $fingerX = [$cx - 40, $cx - 16, $cx + 8, $cx + 30];
-        foreach ($fingerX as $i => $fx) {
-            $fTop = $cy - 85 + ($i === 0 ? 15 : ($i === 3 ? 10 : 0));
-            imagefilledrectangle($img, $fx, $fTop, $fx + 18, $cy - 20, $white);
-            imagefilledellipse($img, $fx + 9, $fTop, 18, 14, $white);
+        // Cuff
+        imagefilledrectangle($img, $cx - 70, $cy + 80, $cx + 70, $cy + 190, $white);
+        imagefilledellipse($img, $cx, $cy + 190, 140, 30, $white);
+        // Palm
+        imagefilledrectangle($img, $cx - 88, $cy - 50, $cx + 70, $cy + 85, $white);
+        // Fingers
+        $fx = [$cx - 80, $cx - 32, $cx + 16, $cx + 58];
+        foreach ($fx as $i => $x) {
+            $top = $cy - 160 + ($i === 0 ? 30 : ($i === 3 ? 20 : 0));
+            imagefilledrectangle($img, $x, $top, $x + 36, $cy - 40, $white);
+            imagefilledellipse($img, $x + 18, $top, 36, 24, $white);
         }
-
-        // Thumb (angled to the right)
+        // Thumb
         $thumb = [
-            $cx + 35, $cy + 10,
-            $cx + 38, $cy - 10,
-            $cx + 75, $cy - 40,
-            $cx + 85, $cy - 30,
-            $cx + 55, $cy + 5,
-            $cx + 45, $cy + 15,
+            $cx + 70, $cy + 20, $cx + 76, $cy - 20,
+            $cx + 150, $cy - 80, $cx + 168, $cy - 60,
+            $cx + 110, $cy + 10, $cx + 90, $cy + 30,
         ];
         imagefilledpolygon($img, $thumb, $white);
-
-        // Rounded cuff bottom
-        imagefilledellipse($img, $cx, $cy + 100, 70, 20, $white);
+        return true;
     }
 
-    /* --- PPE-respiratory: Face mask / respirator --- */
-    private static function drawPPERespirator(\GdImage $img, int $cx, int $cy, int $white): void
-    {
-        // Head outline (circle)
-        imagefilledellipse($img, $cx, $cy - 15, 100, 110, $white);
-
-        // Mask covering lower face
-        $blue = imagecolorallocate($img, 0, 94, 184);
-        imagefilledellipse($img, $cx, $cy - 15, 88, 98, $blue);
-
-        // Restore white for mask
-        // Eyes area visible (two white ovals)
-        imagefilledellipse($img, $cx - 20, $cy - 35, 24, 16, $white);
-        imagefilledellipse($img, $cx + 20, $cy - 35, 24, 16, $white);
-
-        // Respirator mask (covers nose and mouth)
-        imagefilledellipse($img, $cx, $cy + 15, 80, 65, $white);
-
-        // Filter cartridge circle on mask
-        imagefilledellipse($img, $cx, $cy + 15, 30, 30, $blue);
-        imagefilledellipse($img, $cx, $cy + 15, 20, 20, $white);
-
-        // Straps (lines going to sides)
-        imagesetthickness($img, 4);
-        imageline($img, $cx - 38, $cy + 5, $cx - 65, $cy - 20, $white);
-        imageline($img, $cx + 38, $cy + 5, $cx + 65, $cy - 20, $white);
-        imagesetthickness($img, 1);
-    }
-
-    /* --- PPE-skin: Protective suit / coverall --- */
-    private static function drawPPESuit(\GdImage $img, int $cx, int $cy, int $white): void
+    private static function drawPPERespirator(\GdImage $img, int $cx, int $cy, int $white, int $blue): bool
     {
         // Head
-        imagefilledellipse($img, $cx, $cy - 75, 36, 36, $white);
-
-        // Torso
-        $torso = [
-            $cx - 30, $cy - 55,
-            $cx + 30, $cy - 55,
-            $cx + 35, $cy + 30,
-            $cx - 35, $cy + 30,
-        ];
-        imagefilledpolygon($img, $torso, $white);
-
-        // Left arm
-        $lArm = [
-            $cx - 28, $cy - 50,
-            $cx - 35, $cy - 52,
-            $cx - 70, $cy - 5,
-            $cx - 60, $cy + 2,
-        ];
-        imagefilledpolygon($img, $lArm, $white);
-
-        // Right arm
-        $rArm = [
-            $cx + 28, $cy - 50,
-            $cx + 35, $cy - 52,
-            $cx + 70, $cy - 5,
-            $cx + 60, $cy + 2,
-        ];
-        imagefilledpolygon($img, $rArm, $white);
-
-        // Left leg
-        $lLeg = [
-            $cx - 32, $cy + 28,
-            $cx - 5, $cy + 28,
-            $cx - 2, $cy + 100,
-            $cx - 30, $cy + 100,
-        ];
-        imagefilledpolygon($img, $lLeg, $white);
-
-        // Right leg
-        $rLeg = [
-            $cx + 32, $cy + 28,
-            $cx + 5, $cy + 28,
-            $cx + 2, $cy + 100,
-            $cx + 30, $cy + 100,
-        ];
-        imagefilledpolygon($img, $rLeg, $white);
+        imagefilledellipse($img, $cx, $cy - 30, 200, 220, $white);
+        // Inner face (blue)
+        imagefilledellipse($img, $cx, $cy - 30, 176, 196, $blue);
+        // Eyes
+        imagefilledellipse($img, $cx - 40, $cy - 70, 48, 32, $white);
+        imagefilledellipse($img, $cx + 40, $cy - 70, 48, 32, $white);
+        // Mask
+        imagefilledellipse($img, $cx, $cy + 30, 160, 130, $white);
+        // Filter
+        imagefilledellipse($img, $cx, $cy + 30, 60, 60, $blue);
+        imagefilledellipse($img, $cx, $cy + 30, 40, 40, $white);
+        // Straps
+        imagesetthickness($img, 8);
+        imageline($img, $cx - 76, $cy + 10, $cx - 130, $cy - 40, $white);
+        imageline($img, $cx + 76, $cy + 10, $cx + 130, $cy - 40, $white);
+        imagesetthickness($img, 1);
+        return true;
     }
 
-    /* ------------------------------------------------------------------
+    private static function drawPPESuit(\GdImage $img, int $cx, int $cy, int $white): bool
+    {
+        // Head
+        imagefilledellipse($img, $cx, $cy - 150, 72, 72, $white);
+        // Torso
+        imagefilledpolygon($img, [
+            $cx - 60, $cy - 110, $cx + 60, $cy - 110,
+            $cx + 70, $cy + 60,  $cx - 70, $cy + 60,
+        ], $white);
+        // Left arm
+        imagefilledpolygon($img, [
+            $cx - 56, $cy - 100, $cx - 70, $cy - 104,
+            $cx - 140, $cy - 10, $cx - 120, $cy + 4,
+        ], $white);
+        // Right arm
+        imagefilledpolygon($img, [
+            $cx + 56, $cy - 100, $cx + 70, $cy - 104,
+            $cx + 140, $cy - 10, $cx + 120, $cy + 4,
+        ], $white);
+        // Left leg
+        imagefilledpolygon($img, [
+            $cx - 64, $cy + 56, $cx - 10, $cy + 56,
+            $cx - 4, $cy + 200, $cx - 60, $cy + 200,
+        ], $white);
+        // Right leg
+        imagefilledpolygon($img, [
+            $cx + 64, $cy + 56, $cx + 10, $cy + 56,
+            $cx + 4, $cy + 200, $cx + 60, $cy + 200,
+        ], $white);
+        return true;
+    }
+
+    /* ==================================================================
      *  Prop 65 Warning Triangle
-     * ----------------------------------------------------------------*/
+     * ================================================================*/
 
     private static function generateProp65(): ?\GdImage
     {
-        $s = self::SIZE;
+        $s   = self::SIZE;
         $img = self::createCanvas($s);
 
         $black  = imagecolorallocate($img, 0, 0, 0);
         $yellow = imagecolorallocate($img, 255, 204, 0);
-        $white  = imagecolorallocate($img, 255, 255, 255);
 
         $cx = (int)($s / 2);
 
-        // Outer triangle (black border)
-        $outerTri = [
-            $cx, 20,              // top
-            $s - 15, $s - 30,     // bottom right
-            15, $s - 30,          // bottom left
-        ];
-        imagefilledpolygon($img, $outerTri, $black);
+        // Outer triangle (black)
+        imagefilledpolygon($img, [$cx, 30, $s - 30, $s - 50, 30, $s - 50], $black);
 
-        // Inner triangle (yellow fill)
-        $inset = 20;
-        $innerTri = [
-            $cx, 20 + (int)($inset * 2.2),
-            $s - 15 - (int)($inset * 1.5), $s - 30 - $inset,
-            15 + (int)($inset * 1.5), $s - 30 - $inset,
-        ];
-        imagefilledpolygon($img, $innerTri, $yellow);
+        // Inner triangle (yellow)
+        imagefilledpolygon($img, [$cx, 90, $s - 80, $s - 85, 80, $s - 85], $yellow);
 
-        // Exclamation mark (black)
-        // Line part (tapered)
-        $bar = [
-            $cx - 12, 120,
-            $cx + 12, 120,
-            $cx + 9, 270,
-            $cx - 9, 270,
-        ];
-        imagefilledpolygon($img, $bar, $black);
-
-        // Dot
-        imagefilledellipse($img, $cx, 305, 28, 28, $black);
+        // Exclamation stem
+        imagefilledpolygon($img, [$cx - 24, 220, $cx + 24, 220, $cx + 18, 530, $cx - 18, 530], $black);
+        // Exclamation dot
+        imagefilledellipse($img, $cx, 600, 56, 56, $black);
 
         return $img;
     }
 
-    /* ------------------------------------------------------------------
-     *  Canvas helper
-     * ----------------------------------------------------------------*/
+    /* ==================================================================
+     *  Helpers
+     * ================================================================*/
+
+    /**
+     * Scale an array of SVG coordinates (x,y pairs) by K.
+     *
+     * @param  int[] $coords  Flat [x1,y1,x2,y2,…] in SVG 200×200 space
+     * @return int[]          Scaled to 800×800 space
+     */
+    private static function s(array $coords): array
+    {
+        $K = self::K;
+        return array_map(fn(int|float $v) => (int)($v * $K), $coords);
+    }
 
     private static function createCanvas(int $size): \GdImage
     {

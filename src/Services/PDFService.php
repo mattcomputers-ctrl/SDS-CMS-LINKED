@@ -213,7 +213,15 @@ class PDFService
             $pdf->SetFont('helvetica', '', 8);
             $seen = [];
             foreach ($s['hazard_classes'] as $hc) {
-                $label = trim(($hc['class'] ?? '') . ' ' . ($hc['category'] ?? ''));
+                $class = trim($hc['class'] ?? '');
+                $category = trim($hc['category'] ?? '');
+                if ($class !== '' && $category !== '') {
+                    $label = $class . ' (' . $category . ')';
+                } elseif ($class !== '') {
+                    $label = $class;
+                } else {
+                    $label = $category;
+                }
                 if ($label !== '' && !isset($seen[$label])) {
                     $seen[$label] = true;
                     $pdf->MultiCell(0, 4, chr(149) . ' ' . $label, 0, 'L');
@@ -264,22 +272,8 @@ class PDFService
             $pdf->SetFont('helvetica', 'B', 9);
             $pdf->Cell(0, 5, $this->label('ppe_recommendations', 'Recommended Personal Protective Equipment (PPE)') . ':', 0, 1);
 
-            // Render PPE pictogram row
+            // Render PPE pictogram table (with descriptions under each pictogram)
             $this->renderPPEPictogramRow($pdf, $ppe);
-
-            $pdf->SetFont('helvetica', '', 9);
-            if (!empty($ppe['respiratory'])) {
-                $pdf->MultiCell(0, 4, chr(149) . ' ' . $this->label('respiratory', 'Respiratory') . ': ' . $ppe['respiratory'], 0, 'L');
-            }
-            if (!empty($ppe['hand_protection'])) {
-                $pdf->MultiCell(0, 4, chr(149) . ' ' . $this->label('hand_protection', 'Hand Protection') . ': ' . $ppe['hand_protection'], 0, 'L');
-            }
-            if (!empty($ppe['eye_protection'])) {
-                $pdf->MultiCell(0, 4, chr(149) . ' ' . $this->label('eye_protection', 'Eye Protection') . ': ' . $ppe['eye_protection'], 0, 'L');
-            }
-            if (!empty($ppe['skin_protection'])) {
-                $pdf->MultiCell(0, 4, chr(149) . ' ' . $this->label('skin_body', 'Skin/Body Protection') . ': ' . $ppe['skin_protection'], 0, 'L');
-            }
         }
 
         // Other hazards
@@ -296,38 +290,48 @@ class PDFService
     private function renderPictogramRow(\TCPDF $pdf, array $pictogramCodes): void
     {
         $pdf->SetFont('helvetica', 'B', 9);
-        $pdf->Cell(50, 5, $this->label('pictograms', 'Pictograms') . ':', 0, 0, 'L');
+        $pdf->Cell(0, 5, $this->label('pictograms', 'Pictograms') . ':', 0, 1, 'L');
         $pdf->SetFont('helvetica', '', 9);
 
         $pictoSize = 14; // mm
-        $spacing   = 2;
-        $x         = $pdf->GetX();
-        $y         = $pdf->GetY();
-        $rendered  = false;
+        $colWidth  = 22; // mm per column (image + spacing)
 
+        // Filter to codes that have valid PNGs
+        $validCodes = [];
         foreach ($pictogramCodes as $code) {
-            $pngPath = PictogramHelper::getPngPath($code);
-            if ($pngPath !== '') {
-                $pdf->Image($pngPath, $x, $y - 1, $pictoSize, $pictoSize, 'PNG');
-                $x += $pictoSize + $spacing;
-                $rendered = true;
+            if (PictogramHelper::getPngPath($code) !== '') {
+                $validCodes[] = $code;
             }
         }
 
-        if ($rendered) {
-            $pdf->Ln($pictoSize + 1);
-            $pdf->SetFont('helvetica', '', 7);
-            $names = array_map(fn($c) => GHSStatements::pictogramName($c), $pictogramCodes);
-            $pdf->Cell(0, 3, implode('  |  ', $names), 0, 1, 'L');
-            $pdf->SetFont('helvetica', '', 9);
-        } else {
+        if (empty($validCodes)) {
             // Fallback: text codes with names
             $labels = [];
             foreach ($pictogramCodes as $code) {
                 $labels[] = $code . ' (' . GHSStatements::pictogramName($code) . ')';
             }
             $pdf->MultiCell(0, 5, implode(', ', $labels), 0, 'L');
+            return;
         }
+
+        // Build HTML table: pictogram images on top row, descriptions on bottom row
+        $html = '<table cellpadding="1"><tr>';
+        foreach ($validCodes as $code) {
+            $pngPath = PictogramHelper::getPngPath($code);
+            $html .= '<td align="center" width="' . $colWidth . 'mm">'
+                   . '<img src="' . $pngPath . '" width="' . ($pictoSize * 3) . '" height="' . ($pictoSize * 3) . '">'
+                   . '</td>';
+        }
+        $html .= '</tr><tr>';
+        foreach ($validCodes as $code) {
+            $name = GHSStatements::pictogramName($code);
+            $html .= '<td align="center" width="' . $colWidth . 'mm">'
+                   . '<span style="font-size:6pt;">' . htmlspecialchars($name) . '</span>'
+                   . '</td>';
+        }
+        $html .= '</tr></table>';
+
+        $pdf->writeHTML($html, true, false, true, false, '');
     }
 
     /**
@@ -336,33 +340,47 @@ class PDFService
     private function renderPPEPictogramRow(\TCPDF $pdf, array $ppe): void
     {
         $ppeMap = [
-            'eye_protection'  => 'PPE-eye',
-            'hand_protection' => 'PPE-hand',
-            'respiratory'     => 'PPE-respiratory',
-            'skin_protection' => 'PPE-skin',
+            'eye_protection'  => ['code' => 'PPE-eye',         'label' => 'Eye Protection'],
+            'hand_protection' => ['code' => 'PPE-hand',        'label' => 'Hand Protection'],
+            'respiratory'     => ['code' => 'PPE-respiratory',  'label' => 'Respiratory'],
+            'skin_protection' => ['code' => 'PPE-skin',        'label' => 'Skin/Body'],
         ];
 
         $pictoSize = 12; // mm
-        $spacing   = 2;
-        $x         = $pdf->GetX();
-        $y         = $pdf->GetY();
-        $rendered  = false;
+        $colWidth  = 22; // mm per column
 
-        foreach ($ppeMap as $field => $code) {
+        // Collect active PPE items
+        $active = [];
+        foreach ($ppeMap as $field => $info) {
             if (empty($ppe[$field])) {
                 continue;
             }
-            $pngPath = PictogramHelper::getPngPath($code);
+            $pngPath = PictogramHelper::getPngPath($info['code']);
             if ($pngPath !== '') {
-                $pdf->Image($pngPath, $x, $y, $pictoSize, $pictoSize, 'PNG');
-                $x += $pictoSize + $spacing;
-                $rendered = true;
+                $active[] = ['png' => $pngPath, 'label' => $info['label']];
             }
         }
 
-        if ($rendered) {
-            $pdf->Ln($pictoSize + 1);
+        if (empty($active)) {
+            return;
         }
+
+        // Build HTML table: pictogram images on top row, descriptions on bottom row
+        $html = '<table cellpadding="1"><tr>';
+        foreach ($active as $item) {
+            $html .= '<td align="center" width="' . $colWidth . 'mm">'
+                   . '<img src="' . $item['png'] . '" width="' . ($pictoSize * 3) . '" height="' . ($pictoSize * 3) . '">'
+                   . '</td>';
+        }
+        $html .= '</tr><tr>';
+        foreach ($active as $item) {
+            $html .= '<td align="center" width="' . $colWidth . 'mm">'
+                   . '<span style="font-size:6pt;">' . htmlspecialchars($item['label']) . '</span>'
+                   . '</td>';
+        }
+        $html .= '</tr></table>';
+
+        $pdf->writeHTML($html, true, false, true, false, '');
     }
 
     private function renderSection3(\TCPDF $pdf, array $s): void
@@ -394,11 +412,12 @@ class PDFService
             $pdf->MultiCell(0, 4, $this->label('no_hazardous_note', 'No hazardous ingredients above disclosure thresholds.'), 0, 'L');
         }
 
-        if (!empty($s['trade_secret_note'])) {
-            $pdf->Ln(2);
-            $pdf->SetFont('helvetica', 'I', 8);
-            $pdf->MultiCell(0, 4, $s['trade_secret_note'], 0, 'L');
-        }
+        // Trade secret / concentration withheld statement
+        $tradeNote = $s['trade_secret_note']
+            ?? 'The exact percentage of composition has been withheld as a trade secret in accordance with 29 CFR 1910.1200(i).';
+        $pdf->Ln(2);
+        $pdf->SetFont('helvetica', 'I', 8);
+        $pdf->MultiCell(0, 4, $tradeNote, 0, 'L');
     }
 
     private function renderSection8(\TCPDF $pdf, array $s): void
@@ -556,24 +575,21 @@ class PDFService
             // Table header
             $pdf->SetFont('helvetica', 'B', 7);
             $pdf->SetFillColor(230, 230, 230);
-            $wHap = [65, 55, 30];
+            $wHap = [100, 40];
             $pdf->Cell($wHap[0], 5, 'Triggering HAP Chemical', 1, 0, 'C', true);
-            $pdf->Cell($wHap[1], 5, 'Chemical Name (in formula)', 1, 0, 'C', true);
-            $pdf->Cell($wHap[2], 5, 'Wt% in Formula', 1, 1, 'C', true);
+            $pdf->Cell($wHap[1], 5, 'Wt% in Formula', 1, 1, 'C', true);
             $pdf->SetFont('helvetica', '', 7);
 
             foreach ($hap['hap_chemicals'] as $chem) {
-                $hapName     = $chem['hap_name'] ?? $chem['chemical_name'] ?? '';
-                $chemName    = $chem['chemical_name'] ?? '';
-                $concPct     = number_format((float) ($chem['concentration_pct'] ?? 0), 2);
-                $pdf->Cell($wHap[0], 5, substr($hapName, 0, 42), 1, 0, 'L');
-                $pdf->Cell($wHap[1], 5, substr($chemName, 0, 36), 1, 0, 'L');
-                $pdf->Cell($wHap[2], 5, $concPct . '%', 1, 1, 'C');
+                $hapName = $chem['hap_name'] ?? $chem['chemical_name'] ?? '';
+                $concPct = number_format((float) ($chem['concentration_pct'] ?? 0), 2);
+                $pdf->Cell($wHap[0], 5, substr($hapName, 0, 65), 1, 0, 'L');
+                $pdf->Cell($wHap[1], 5, $concPct . '%', 1, 1, 'C');
             }
 
             $pdf->SetFont('helvetica', 'B', 8);
-            $pdf->Cell($wHap[0] + $wHap[1], 5, 'Total HAP Content:', 1, 0, 'R');
-            $pdf->Cell($wHap[2], 5, number_format((float) ($hap['total_hap_pct'] ?? 0), 2) . '%', 1, 1, 'C');
+            $pdf->Cell($wHap[0], 5, 'Total HAP Content:', 1, 0, 'R');
+            $pdf->Cell($wHap[1], 5, number_format((float) ($hap['total_hap_pct'] ?? 0), 2) . '%', 1, 1, 'C');
             $pdf->SetFont('helvetica', '', 8);
             $pdf->Ln(2);
         } elseif (isset($hap['has_haps'])) {

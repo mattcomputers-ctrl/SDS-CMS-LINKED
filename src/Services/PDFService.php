@@ -218,7 +218,7 @@ class PDFService
         if (!empty($s['hazard_classes'])) {
             $pdf->SetFont('helvetica', 'B', 9);
             $pdf->Cell(0, 5, $this->label('ghs_classification', 'GHS Classification') . ':', 0, 1);
-            $pdf->SetFont('helvetica', '', 8);
+            $pdf->SetFont('helvetica', '', 9);
             $seen = [];
             foreach ($s['hazard_classes'] as $hc) {
                 $class = trim($hc['class'] ?? '');

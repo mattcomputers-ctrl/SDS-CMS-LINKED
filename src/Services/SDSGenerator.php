@@ -71,14 +71,19 @@ class SDSGenerator
         // Run SARA 313 analysis
         $saraResult = SARA313Service::analyse($calcResult['composition']);
 
-        // Run Prop 65 analysis
-        $prop65Result = Prop65Service::analyse($calcResult['composition']);
+        // Gather manual regulatory data from raw materials in this formula
+        $formulaLines = $calcResult['formula']['lines'] ?? [];
+        $manualProp65 = $this->getManualProp65($formulaLines);
+        $manualHaps   = $this->getManualHaps($formulaLines);
+
+        // Run Prop 65 analysis (CAS-level + manual raw material flags)
+        $prop65Result = Prop65Service::analyse($calcResult['composition'], $manualProp65);
 
         // Run carcinogen analysis (IARC/NTP/OSHA)
         $carcinogenResult = CarcinogenService::analyse($calcResult['composition']);
 
-        // Run HAP analysis (Clean Air Act Section 112(b))
-        $hapResult = HAPService::analyse($calcResult['composition']);
+        // Run HAP analysis (Clean Air Act Section 112(b) + manual entries)
+        $hapResult = HAPService::analyse($calcResult['composition'], $manualHaps);
 
         // Load DOT transport info
         $dotInfo = $this->getDOTInfo($calcResult['composition']);
@@ -161,8 +166,8 @@ class SDSGenerator
             'title' => $this->t->get('section1.title', []),
             'product_identifier'    => $fg['product_code'] . ' — ' . $fg['description'],
             'product_family'        => $fg['family'] ?? '',
-            'recommended_use'       => $overrides[1]['recommended_use'] ?? $this->t->get('section1.recommended_use'),
-            'restrictions'          => $overrides[1]['restrictions'] ?? $this->t->get('section1.restrictions'),
+            'recommended_use'       => $overrides[1]['recommended_use'] ?? ($fg['recommended_use'] ?? '') ?: $this->t->get('section1.recommended_use'),
+            'restrictions'          => $overrides[1]['restrictions'] ?? ($fg['restrictions_on_use'] ?? '') ?: $this->t->get('section1.restrictions'),
             'manufacturer_name'     => $company['name'] ?? '',
             'manufacturer_address'  => trim(($company['address'] ?? '') . ', ' . ($company['city'] ?? '') . ', ' . ($company['state'] ?? '') . ' ' . ($company['zip'] ?? ''), ', '),
             'manufacturer_phone'    => $company['phone'] ?? '',
@@ -174,6 +179,15 @@ class SDSGenerator
 
     private function section2(array $hazard, array $overrides): array
     {
+        // PPE: use derived PPE from hazard codes, falling back to Section 8 overrides
+        $derivedPpe = $hazard['ppe_recommendations'] ?? [];
+        $ppe = [
+            'respiratory'     => $derivedPpe['respiratory'] ?? ($overrides[8]['respiratory'] ?? null),
+            'hand_protection' => $derivedPpe['hand_protection'] ?? ($overrides[8]['hand_protection'] ?? null),
+            'eye_protection'  => $derivedPpe['eye_protection'] ?? ($overrides[8]['eye_protection'] ?? null),
+            'skin_protection' => $derivedPpe['skin_protection'] ?? ($overrides[8]['skin_protection'] ?? null),
+        ];
+
         return [
             'title'               => $this->t->get('section2.title'),
             'signal_word'         => $hazard['signal_word'],
@@ -181,7 +195,7 @@ class SDSGenerator
             'hazard_classes'      => $hazard['hazard_classes'],
             'h_statements'        => $hazard['h_statements'],
             'p_statements'        => $hazard['p_statements'],
-            'ppe_recommendations' => $hazard['ppe_recommendations'],
+            'ppe_recommendations' => $ppe,
             'other_hazards'       => $overrides[2]['other_hazards'] ?? $this->t->get('section2.other_hazards'),
         ];
     }
@@ -559,5 +573,106 @@ class SDSGenerator
             }
         }
         return false;
+    }
+
+    /**
+     * Gather manual Prop 65 flags from raw materials used in the formula.
+     *
+     * Returns an array of entries with chemical name, toxicity types, and
+     * the effective concentration in the finished good.
+     */
+    private function getManualProp65(array $formulaLines): array
+    {
+        $db = Database::getInstance();
+        $rmIds = array_column($formulaLines, 'raw_material_id');
+        if (empty($rmIds)) {
+            return [];
+        }
+
+        // Build raw_material_id => formula pct lookup
+        $pctByRm = [];
+        foreach ($formulaLines as $line) {
+            $pctByRm[(int) $line['raw_material_id']] = (float) ($line['pct'] ?? 0);
+        }
+
+        $placeholders = implode(',', array_fill(0, count($rmIds), '?'));
+        $rows = $db->fetchAll(
+            "SELECT id, internal_code, prop65_chemical_name, prop65_toxicity_types
+             FROM raw_materials
+             WHERE id IN ({$placeholders}) AND is_prop65 = 1
+             AND prop65_chemical_name IS NOT NULL AND prop65_chemical_name != ''",
+            $rmIds
+        );
+
+        $result = [];
+        foreach ($rows as $row) {
+            $rmPct = $pctByRm[(int) $row['id']] ?? 0;
+            $result[] = [
+                'chemical_name'     => $row['prop65_chemical_name'],
+                'cas_number'        => '',
+                'concentration_pct' => $rmPct,
+                'toxicity_type'     => array_map('trim', explode(',', $row['prop65_toxicity_types'] ?? '')),
+                'source'            => 'manual',
+                'raw_material_code' => $row['internal_code'],
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Gather manual HAP entries from raw materials used in the formula.
+     *
+     * Each raw material may have a haps_data JSON column containing
+     * individual HAP chemicals with their weight percent within the RM.
+     * The effective concentration in the FG is calculated from the formula line pct.
+     */
+    private function getManualHaps(array $formulaLines): array
+    {
+        $db = Database::getInstance();
+        $rmIds = array_column($formulaLines, 'raw_material_id');
+        if (empty($rmIds)) {
+            return [];
+        }
+
+        $pctByRm = [];
+        foreach ($formulaLines as $line) {
+            $pctByRm[(int) $line['raw_material_id']] = (float) ($line['pct'] ?? 0);
+        }
+
+        $placeholders = implode(',', array_fill(0, count($rmIds), '?'));
+        $rows = $db->fetchAll(
+            "SELECT id, internal_code, haps_data
+             FROM raw_materials
+             WHERE id IN ({$placeholders}) AND haps_data IS NOT NULL AND haps_data != '[]' AND haps_data != ''",
+            $rmIds
+        );
+
+        $result = [];
+        foreach ($rows as $row) {
+            $haps = json_decode($row['haps_data'] ?? '[]', true);
+            if (!is_array($haps)) {
+                continue;
+            }
+            $rmPct = $pctByRm[(int) $row['id']] ?? 0;
+            foreach ($haps as $hap) {
+                $hapWtPct = (float) ($hap['weight_pct'] ?? 0);
+                if ($hapWtPct <= 0) {
+                    continue;
+                }
+                // Effective HAP concentration in finished good
+                $effectivePct = $hapWtPct * $rmPct / 100;
+                $result[] = [
+                    'chemical_name'     => $hap['chemical_name'] ?? '',
+                    'cas_number'        => $hap['cas_number'] ?? '',
+                    'weight_pct_in_rm'  => $hapWtPct,
+                    'concentration_pct' => round($effectivePct, 4),
+                    'source'            => 'manual',
+                    'raw_material_code' => $row['internal_code'],
+                ];
+            }
+        }
+
+        return $result;
     }
 }

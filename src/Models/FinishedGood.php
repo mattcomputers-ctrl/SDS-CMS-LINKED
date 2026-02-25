@@ -278,12 +278,16 @@ class FinishedGood
             throw new \RuntimeException("A finished good with code '{$code}' already exists.");
         }
 
+        $strOrNull = static fn($key) => isset($data[$key]) && trim((string) $data[$key]) !== '' ? trim((string) $data[$key]) : null;
+
         $insertData = [
-            'product_code' => $code,
-            'description'  => trim($data['description'] ?? ''),
-            'family'       => $data['family'] ?? null,
-            'is_active'    => isset($data['is_active']) ? (int) $data['is_active'] : 1,
-            'created_by'   => $data['created_by'] ?? null,
+            'product_code'       => $code,
+            'description'        => trim($data['description'] ?? ''),
+            'family'             => $data['family'] ?? null,
+            'recommended_use'    => $strOrNull('recommended_use'),
+            'restrictions_on_use' => $strOrNull('restrictions_on_use'),
+            'is_active'          => isset($data['is_active']) ? (int) $data['is_active'] : 1,
+            'created_by'         => $data['created_by'] ?? null,
         ];
 
         $id = $db->insert('finished_goods', $insertData);
@@ -328,7 +332,7 @@ class FinishedGood
             }
         }
 
-        $allowed = ['product_code', 'description', 'family', 'is_active'];
+        $allowed = ['product_code', 'description', 'family', 'is_active', 'recommended_use', 'restrictions_on_use'];
         $updateData = [];
         foreach ($allowed as $col) {
             if (array_key_exists($col, $data)) {

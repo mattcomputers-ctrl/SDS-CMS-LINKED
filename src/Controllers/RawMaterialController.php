@@ -60,6 +60,12 @@ class RawMaterialController
         $data = $_POST;
         $data['created_by'] = current_user_id();
 
+        // Process Prop 65 checkbox (unchecked = not in POST)
+        $data['is_prop65'] = !empty($data['is_prop65']) ? 1 : 0;
+
+        // Build HAPs data JSON from form arrays
+        $data['haps_data'] = $this->buildHapsJson();
+
         try {
             // Handle SDS file upload
             $sdsInfo = $this->handleSdsUpload();
@@ -129,6 +135,12 @@ class RawMaterialController
 
         $data = $_POST;
         $data['expected_updated_at'] = $data['updated_at'] ?? null;
+
+        // Process Prop 65 checkbox (unchecked = not in POST)
+        $data['is_prop65'] = !empty($data['is_prop65']) ? 1 : 0;
+
+        // Build HAPs data JSON from form arrays
+        $data['haps_data'] = $this->buildHapsJson();
 
         try {
             // Handle SDS file upload — always adds to history, never removes old
@@ -366,6 +378,32 @@ class RawMaterialController
 
         RawMaterial::saveConstituents($rmId, $constituents);
         return count($constituents);
+    }
+
+    /**
+     * Build HAPs data JSON from the form's repeating HAP rows.
+     */
+    private function buildHapsJson(): ?string
+    {
+        $hapNames   = $_POST['hap_chemical_name'] ?? [];
+        $hapCas     = $_POST['hap_cas_number'] ?? [];
+        $hapWtPcts  = $_POST['hap_weight_pct'] ?? [];
+
+        $haps = [];
+        foreach ($hapNames as $i => $name) {
+            $name = trim($name);
+            $wt   = (float) ($hapWtPcts[$i] ?? 0);
+            if ($name === '' || $wt <= 0) {
+                continue;
+            }
+            $haps[] = [
+                'chemical_name' => $name,
+                'cas_number'    => trim($hapCas[$i] ?? ''),
+                'weight_pct'    => $wt,
+            ];
+        }
+
+        return !empty($haps) ? json_encode($haps) : null;
     }
 
     /**

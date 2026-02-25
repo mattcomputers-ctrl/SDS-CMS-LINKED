@@ -46,8 +46,8 @@ class PDFService
         $sections = $sdsData['sections'];
         $this->labels = $meta['labels'] ?? [];
 
-        // Create PDF
-        $pdf = new \TCPDF('P', 'mm', 'LETTER', true, 'UTF-8');
+        // Create PDF using custom subclass that handles absolute logo paths
+        $pdf = new SDSTcpdf('P', 'mm', 'LETTER', true, 'UTF-8');
 
         // Document metadata
         $pdf->SetCreator('SDS System');
@@ -61,13 +61,10 @@ class PDFService
         $pdf->setHeaderFont(['helvetica', '', 8]);
         $pdf->setFooterFont(['helvetica', '', 8]);
 
-        // Custom header — include logo if available
+        // Custom header — include logo if available (using absolute path)
         $logoFile = $this->resolveLogoPath($meta['company_logo_path'] ?? '');
-        if ($logoFile !== '') {
-            $pdf->SetHeaderData($logoFile, 18, 'SAFETY DATA SHEET', $meta['product_code'] . ' — ' . ($meta['description'] ?? ''));
-        } else {
-            $pdf->SetHeaderData('', 0, 'SAFETY DATA SHEET', $meta['product_code'] . ' — ' . ($meta['description'] ?? ''));
-        }
+        $pdf->setAbsoluteLogoPath($logoFile);
+        $pdf->SetHeaderData('', ($logoFile !== '' ? 18 : 0), 'SAFETY DATA SHEET', $meta['product_code'] . ' — ' . ($meta['description'] ?? ''));
         $pdf->setFooterData([0, 0, 0], [0, 0, 0]);
 
         // Add first page
@@ -103,7 +100,7 @@ class PDFService
         $sections = $sdsData['sections'];
         $this->labels = $meta['labels'] ?? [];
 
-        $pdf = new \TCPDF('P', 'mm', 'LETTER', true, 'UTF-8');
+        $pdf = new SDSTcpdf('P', 'mm', 'LETTER', true, 'UTF-8');
         $pdf->SetCreator('SDS System');
         $pdf->SetAuthor(App::config('company.name', 'SDS System'));
         $pdf->SetTitle('SDS - ' . $meta['product_code']);
@@ -111,11 +108,8 @@ class PDFService
         $pdf->SetAutoPageBreak(true, self::MARGIN_BOTTOM);
 
         $logoFile = $this->resolveLogoPath($meta['company_logo_path'] ?? '');
-        if ($logoFile !== '') {
-            $pdf->SetHeaderData($logoFile, 18, 'SAFETY DATA SHEET', $meta['product_code']);
-        } else {
-            $pdf->SetHeaderData('', 0, 'SAFETY DATA SHEET', $meta['product_code']);
-        }
+        $pdf->setAbsoluteLogoPath($logoFile);
+        $pdf->SetHeaderData('', ($logoFile !== '' ? 18 : 0), 'SAFETY DATA SHEET', $meta['product_code']);
 
         $pdf->AddPage();
 
@@ -510,6 +504,27 @@ class PDFService
                       . ($chem['deminimis_pct'] ?? '1.0') . '%)';
                 $pdf->MultiCell(0, 4, chr(149) . ' ' . $text, 0, 'L');
             }
+            $pdf->Ln(2);
+        }
+
+        // Hazardous Air Pollutants (HAPs)
+        $hap = $s['hap'] ?? [];
+        if (!empty($hap['has_haps'])) {
+            $pdf->SetFont('helvetica', 'B', 9);
+            $pdf->Cell(0, 5, 'Clean Air Act Section 112(b) — Hazardous Air Pollutants (HAPs):', 0, 1);
+            $pdf->SetFont('helvetica', '', 8);
+            foreach ($hap['hap_chemicals'] as $chem) {
+                $text = ($chem['chemical_name'] ?? '') . ' (CAS ' . ($chem['cas_number'] ?? '') . '): '
+                      . number_format((float) ($chem['concentration_pct'] ?? 0), 2) . '%';
+                $pdf->MultiCell(0, 4, chr(149) . ' ' . $text, 0, 'L');
+            }
+            $pdf->SetFont('helvetica', 'B', 8);
+            $pdf->Cell(0, 5, 'Total HAP Content: ' . number_format((float) ($hap['total_hap_pct'] ?? 0), 2) . '% by weight', 0, 1);
+            $pdf->SetFont('helvetica', '', 8);
+            $pdf->Ln(2);
+        } elseif (isset($hap['has_haps'])) {
+            $pdf->SetFont('helvetica', '', 8);
+            $pdf->MultiCell(0, 4, 'Hazardous Air Pollutants (HAPs): This product does not contain any EPA HAPs listed under Clean Air Act Section 112(b).', 0, 'L');
             $pdf->Ln(2);
         }
 

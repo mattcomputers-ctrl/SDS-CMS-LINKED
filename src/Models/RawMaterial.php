@@ -210,6 +210,10 @@ class RawMaterial
             'appearance'            => $strOrNull('appearance'),
             'odor'                  => $strOrNull('odor'),
             'notes'                 => $strOrNull('notes'),
+            'is_prop65'             => !empty($data['is_prop65']) ? 1 : 0,
+            'prop65_chemical_name'  => $strOrNull('prop65_chemical_name'),
+            'prop65_toxicity_types' => $strOrNull('prop65_toxicity_types'),
+            'haps_data'             => $strOrNull('haps_data'),
             'created_by'            => $data['created_by'] ?? null,
         ];
 
@@ -259,6 +263,7 @@ class RawMaterial
             'voc_wt', 'exempt_voc_wt', 'water_wt', 'specific_gravity', 'density',
             'density_units', 'temp_ref_c', 'solids_wt', 'solids_vol', 'flash_point_c',
             'physical_state', 'appearance', 'odor', 'notes',
+            'is_prop65', 'prop65_chemical_name', 'prop65_toxicity_types', 'haps_data',
         ];
 
         // Numeric columns that must be null instead of empty string

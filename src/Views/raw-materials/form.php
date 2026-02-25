@@ -207,6 +207,81 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
             <button type="button" id="addRow" class="btn btn-sm btn-outline">+ Add Row</button>
         </div>
 
+        <!-- Prop 65 Manual Marking -->
+        <h3>California Proposition 65</h3>
+        <p class="text-muted">If this raw material contains a Prop 65 listed chemical that isn't detected automatically via CAS number lookup, you can manually flag it here.</p>
+
+        <div class="form-group" style="margin-bottom: 0.5rem;">
+            <label style="font-weight: normal;">
+                <input type="checkbox" name="is_prop65" value="1" id="prop65Checkbox"
+                    <?= !empty($item['is_prop65']) ? 'checked' : '' ?>>
+                This raw material contains a California Prop 65 listed chemical
+            </label>
+        </div>
+
+        <div id="prop65Fields" style="display: <?= !empty($item['is_prop65']) ? 'block' : 'none' ?>;">
+            <div class="form-grid-2col">
+                <div class="form-group">
+                    <label>Prop 65 Chemical Name</label>
+                    <input type="text" name="prop65_chemical_name"
+                           value="<?= e($item['prop65_chemical_name'] ?? '') ?>"
+                           placeholder="e.g. Titanium dioxide">
+                </div>
+                <div class="form-group">
+                    <label>Toxicity Type(s)</label>
+                    <select name="prop65_toxicity_types" id="prop65ToxTypes">
+                        <option value="">— Select —</option>
+                        <option value="cancer" <?= ($item['prop65_toxicity_types'] ?? '') === 'cancer' ? 'selected' : '' ?>>Cancer</option>
+                        <option value="developmental" <?= ($item['prop65_toxicity_types'] ?? '') === 'developmental' ? 'selected' : '' ?>>Developmental Toxicity</option>
+                        <option value="female reproductive" <?= ($item['prop65_toxicity_types'] ?? '') === 'female reproductive' ? 'selected' : '' ?>>Female Reproductive Toxicity</option>
+                        <option value="male reproductive" <?= ($item['prop65_toxicity_types'] ?? '') === 'male reproductive' ? 'selected' : '' ?>>Male Reproductive Toxicity</option>
+                        <option value="cancer, developmental" <?= ($item['prop65_toxicity_types'] ?? '') === 'cancer, developmental' ? 'selected' : '' ?>>Cancer + Developmental</option>
+                        <option value="cancer, female reproductive" <?= ($item['prop65_toxicity_types'] ?? '') === 'cancer, female reproductive' ? 'selected' : '' ?>>Cancer + Female Reproductive</option>
+                        <option value="cancer, male reproductive" <?= ($item['prop65_toxicity_types'] ?? '') === 'cancer, male reproductive' ? 'selected' : '' ?>>Cancer + Male Reproductive</option>
+                        <option value="cancer, developmental, female reproductive, male reproductive" <?= ($item['prop65_toxicity_types'] ?? '') === 'cancer, developmental, female reproductive, male reproductive' ? 'selected' : '' ?>>All Types</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- HAPs Manual Entry -->
+        <h3>Hazardous Air Pollutants (HAPs)</h3>
+        <p class="text-muted">If this raw material contains HAP chemicals not automatically detected via CAS lookup, enter them here with their weight percent within this raw material.</p>
+
+        <?php
+        $hapsData = [];
+        if (!empty($item['haps_data'])) {
+            $hapsData = json_decode($item['haps_data'], true) ?: [];
+        }
+        ?>
+
+        <table class="table table-sm" id="hapsTable">
+            <thead>
+                <tr>
+                    <th>HAP Chemical Name</th>
+                    <th>CAS Number</th>
+                    <th>Weight % in RM</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="hapsBody">
+            <?php if (!empty($hapsData)): ?>
+                <?php foreach ($hapsData as $hi => $hap): ?>
+                <tr class="hap-row">
+                    <td><input type="text" name="hap_chemical_name[<?= $hi ?>]" value="<?= e($hap['chemical_name'] ?? '') ?>" class="input-sm" placeholder="e.g. Toluene"></td>
+                    <td><input type="text" name="hap_cas_number[<?= $hi ?>]" value="<?= e($hap['cas_number'] ?? '') ?>" class="input-sm" placeholder="108-88-3"></td>
+                    <td><input type="number" name="hap_weight_pct[<?= $hi ?>]" value="<?= e((string) ($hap['weight_pct'] ?? '')) ?>" step="0.01" min="0" max="100" class="input-xs"></td>
+                    <td><button type="button" class="btn btn-sm btn-danger remove-hap">X</button></td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </tbody>
+        </table>
+
+        <div style="margin-bottom: 1.5rem;">
+            <button type="button" id="addHapRow" class="btn btn-sm btn-outline">+ Add HAP</button>
+        </div>
+
         <div class="form-actions">
             <button type="submit" class="btn btn-primary"><?= $isEdit ? 'Update' : 'Create' ?> Raw Material</button>
             <a href="/raw-materials" class="btn btn-outline">Cancel</a>
@@ -444,6 +519,30 @@ document.querySelectorAll('.cas-input').forEach(function(input) {
                 }
             })
             .catch(function() {});
+    }
+});
+
+// ── Prop 65 toggle ──────────────────────────────────────────
+document.getElementById('prop65Checkbox').addEventListener('change', function() {
+    document.getElementById('prop65Fields').style.display = this.checked ? 'block' : 'none';
+});
+
+// ── HAPs dynamic rows ───────────────────────────────────────
+document.getElementById('addHapRow').addEventListener('click', function() {
+    var tbody = document.getElementById('hapsBody');
+    var idx = tbody.querySelectorAll('.hap-row').length;
+    var tr = document.createElement('tr');
+    tr.className = 'hap-row';
+    tr.innerHTML = '<td><input type="text" name="hap_chemical_name[' + idx + ']" class="input-sm" placeholder="e.g. Toluene"></td>' +
+        '<td><input type="text" name="hap_cas_number[' + idx + ']" class="input-sm" placeholder="108-88-3"></td>' +
+        '<td><input type="number" name="hap_weight_pct[' + idx + ']" step="0.01" min="0" max="100" class="input-xs"></td>' +
+        '<td><button type="button" class="btn btn-sm btn-danger remove-hap">X</button></td>';
+    tbody.appendChild(tr);
+});
+
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('remove-hap')) {
+        e.target.closest('tr').remove();
     }
 });
 </script>

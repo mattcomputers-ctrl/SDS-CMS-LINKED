@@ -47,7 +47,11 @@ class Prop65Service
      *   warning_text: string,
      * }
      */
-    public static function analyse(array $composition): array
+    /**
+     * @param  array $composition    Expanded CAS-level composition
+     * @param  array $manualEntries  Optional manual Prop 65 entries from raw materials
+     */
+    public static function analyse(array $composition, array $manualEntries = []): array
     {
         $db = Database::getInstance();
 
@@ -55,6 +59,7 @@ class Prop65Service
         $cancerChemicals = [];
         $reproChemicals  = [];
 
+        // Check CAS-level composition against the Prop 65 database
         foreach ($composition as $component) {
             $cas  = $component['cas_number'] ?? '';
             $name = $component['chemical_name'] ?? '';
@@ -94,6 +99,38 @@ class Prop65Service
             }
             if (array_intersect(['developmental', 'female reproductive', 'male reproductive'], $types)) {
                 $reproChemicals[] = $displayName;
+            }
+        }
+
+        // Include manual Prop 65 entries from raw materials
+        foreach ($manualEntries as $manual) {
+            $chemName = $manual['chemical_name'] ?? '';
+            if ($chemName === '') {
+                continue;
+            }
+
+            $types = $manual['toxicity_type'] ?? [];
+            if (is_string($types)) {
+                $types = array_map('trim', explode(',', $types));
+            }
+            $types = array_filter($types);
+
+            $listedChemicals[] = [
+                'cas_number'        => $manual['cas_number'] ?? '',
+                'chemical_name'     => $chemName,
+                'concentration_pct' => (float) ($manual['concentration_pct'] ?? 0),
+                'toxicity_type'     => $types,
+                'nsrl_ug'           => null,
+                'madl_ug'           => null,
+                'date_listed'       => null,
+                'source'            => 'manual',
+            ];
+
+            if (in_array('cancer', $types)) {
+                $cancerChemicals[] = $chemName;
+            }
+            if (array_intersect(['developmental', 'female reproductive', 'male reproductive'], $types)) {
+                $reproChemicals[] = $chemName;
             }
         }
 

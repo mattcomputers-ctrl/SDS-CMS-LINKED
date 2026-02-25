@@ -33,13 +33,18 @@ class HAPService
      *   summary_text:   string  — human-readable summary for SDS,
      * }
      */
-    public static function analyse(array $composition): array
+    /**
+     * @param  array $composition    Expanded CAS-level composition from FormulaCalcService
+     * @param  array $manualEntries  Optional manual HAP entries from raw materials
+     */
+    public static function analyse(array $composition, array $manualEntries = []): array
     {
         $db = Database::getInstance();
 
         $hapChemicals  = [];
         $totalHapPct   = 0.0;
 
+        // Check CAS-level composition against the federal HAP list
         foreach ($composition as $component) {
             $cas  = $component['cas_number'] ?? '';
             $name = $component['chemical_name'] ?? '';
@@ -64,6 +69,29 @@ class HAPService
                 'hap_name'          => $row['chemical_name'],
                 'concentration_pct' => $conc,
                 'category'          => $row['category'] ?? '',
+            ];
+
+            $totalHapPct += $conc;
+        }
+
+        // Include manual HAP entries from raw materials
+        foreach ($manualEntries as $manual) {
+            $chemName = $manual['chemical_name'] ?? '';
+            if ($chemName === '') {
+                continue;
+            }
+            $conc = (float) ($manual['concentration_pct'] ?? 0);
+            if ($conc <= 0) {
+                continue;
+            }
+
+            $hapChemicals[] = [
+                'cas_number'        => $manual['cas_number'] ?? '',
+                'chemical_name'     => $chemName,
+                'hap_name'          => $chemName,
+                'concentration_pct' => $conc,
+                'category'          => 'Manual entry',
+                'source'            => 'manual',
             ];
 
             $totalHapPct += $conc;

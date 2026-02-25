@@ -46,6 +46,24 @@ $lines  = $formula ? ($formula['lines'] ?? []) : [];
             </div>
         </div>
 
+        <!-- Recommended Use & Restrictions -->
+        <h3>SDS Product Use</h3>
+        <p class="text-muted">These fields appear in SDS Section 1 — Product Identification.</p>
+        <div class="form-grid-2col">
+            <div class="form-group full-width">
+                <label for="recommended_use">Recommended Use</label>
+                <input type="text" id="recommended_use" name="recommended_use"
+                       value="<?= e(old('recommended_use', $item['recommended_use'] ?? '')) ?>"
+                       placeholder="e.g. Industrial ink for offset printing">
+            </div>
+            <div class="form-group full-width">
+                <label for="restrictions_on_use">Restrictions on Use</label>
+                <input type="text" id="restrictions_on_use" name="restrictions_on_use"
+                       value="<?= e(old('restrictions_on_use', $item['restrictions_on_use'] ?? '')) ?>"
+                       placeholder="e.g. Not for food contact or consumer use">
+            </div>
+        </div>
+
         <!-- Formula -->
         <h3>Formula</h3>
         <?php if ($isEdit && $formula): ?>

@@ -580,7 +580,7 @@ class PDFService
                 $text = ($chem['chemical_name'] ?? '') . ' (CAS ' . ($chem['cas_number'] ?? '') . ') — '
                       . round((float) ($chem['concentration_pct'] ?? 0), 2) . '% (de minimis: '
                       . ($chem['deminimis_pct'] ?? '1.0') . '%)';
-                $pdf->MultiCell(0, 4, chr(149) . ' ' . $text, 0, 'L');
+                $pdf->MultiCell(0, 4, "\xE2\x80\xA2 " . $text, 0, 'L');
             }
             $pdf->Ln(2);
         }
@@ -625,14 +625,21 @@ class PDFService
             $pdf->Cell(0, 5, 'California Proposition 65:', 0, 1);
             $pdf->SetFont('helvetica', '', 8);
 
-            // Warning pictogram + warning text on same line
+            // Warning pictogram + warning text
             $prop65Png = PictogramHelper::getPngPath('PROP65');
+            $imgStartY = $pdf->GetY();
             if ($prop65Png !== '') {
-                $pdf->Image($prop65Png, $pdf->GetX(), $pdf->GetY(), 10, 10, 'PNG');
+                $pdf->Image($prop65Png, $pdf->GetX(), $imgStartY, 10, 10, 'PNG');
                 $pdf->SetX($pdf->GetX() + 12);
             }
 
             $pdf->MultiCell(0, 4, $prop65['warning_text'] ?? '', 0, 'L');
+
+            // Ensure cursor is below the pictogram image (10mm) + padding
+            $minY = $imgStartY + 12;
+            if ($pdf->GetY() < $minY) {
+                $pdf->SetY($minY);
+            }
             $pdf->Ln(1);
         } else {
             $pdf->SetFont('helvetica', 'B', 9);

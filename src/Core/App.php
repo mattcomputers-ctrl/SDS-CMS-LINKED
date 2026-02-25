@@ -226,6 +226,11 @@ class App
             $r->post('/backups/{id}/delete',     'AdminController@deleteBackup');
             $r->get('/backups/{id}/download',    'AdminController@downloadBackup');
 
+            // Pictograms
+            $r->get('/pictograms',               'AdminController@pictograms');
+            $r->post('/pictograms/{code}/upload', 'AdminController@uploadPictogram');
+            $r->post('/pictograms/{code}/delete', 'AdminController@deletePictogram');
+
             // Network Settings
             $r->get('/network-settings',  'AdminController@networkSettings');
             $r->post('/network-settings', 'AdminController@saveNetworkSettings');

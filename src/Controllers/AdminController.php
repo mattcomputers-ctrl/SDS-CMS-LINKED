@@ -654,6 +654,110 @@ class AdminController
     }
 
     /* ------------------------------------------------------------------
+     *  Pictograms
+     * ----------------------------------------------------------------*/
+
+    public function pictograms(): void
+    {
+        $this->requireAdmin();
+
+        $codes = \SDS\Services\PictogramHelper::ALL_CODES;
+        $names = \SDS\Services\PictogramHelper::NAMES;
+
+        $items = [];
+        foreach ($codes as $code) {
+            $items[] = [
+                'code'       => $code,
+                'name'       => $names[$code] ?? $code,
+                'web_path'   => \SDS\Services\PictogramHelper::getWebPath($code),
+                'has_custom' => \SDS\Services\PictogramHelper::hasCustomUpload($code),
+            ];
+        }
+
+        view('admin/pictograms', [
+            'pageTitle' => 'Pictograms',
+            'items'     => $items,
+        ]);
+    }
+
+    public function uploadPictogram(string $code): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+
+        if (!in_array($code, \SDS\Services\PictogramHelper::ALL_CODES, true)) {
+            $_SESSION['_flash']['error'] = 'Invalid pictogram code.';
+            redirect('/admin/pictograms');
+            return;
+        }
+
+        if (empty($_FILES['pictogram_file']) || $_FILES['pictogram_file']['error'] !== UPLOAD_ERR_OK) {
+            $_SESSION['_flash']['error'] = 'No file uploaded or upload error.';
+            redirect('/admin/pictograms');
+            return;
+        }
+
+        $file = $_FILES['pictogram_file'];
+
+        // Validate size (2 MB max)
+        if ($file['size'] > 2 * 1024 * 1024) {
+            $_SESSION['_flash']['error'] = 'File is too large. Maximum size is 2 MB.';
+            redirect('/admin/pictograms');
+            return;
+        }
+
+        // Validate MIME type
+        $allowed = ['image/png', 'image/jpeg', 'image/gif'];
+        $finfo = new \finfo(FILEINFO_MIME_TYPE);
+        $mime = $finfo->file($file['tmp_name']);
+        if (!in_array($mime, $allowed, true)) {
+            $_SESSION['_flash']['error'] = 'Invalid file type. Only PNG, JPG, and GIF are accepted.';
+            redirect('/admin/pictograms');
+            return;
+        }
+
+        $extMap = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/gif' => 'gif'];
+        $ext = $extMap[$mime];
+
+        // Delete any existing custom upload for this code
+        \SDS\Services\PictogramHelper::deleteCustomUpload($code);
+
+        // Save the new file
+        $uploadDir = \SDS\Services\PictogramHelper::getUploadDir();
+        $destPath = $uploadDir . '/' . $code . '.' . $ext;
+
+        if (!move_uploaded_file($file['tmp_name'], $destPath)) {
+            $_SESSION['_flash']['error'] = 'Failed to save the uploaded file.';
+            redirect('/admin/pictograms');
+            return;
+        }
+
+        $name = \SDS\Services\PictogramHelper::NAMES[$code] ?? $code;
+        AuditService::log('pictogram', 0, 'upload', ['code' => $code, 'name' => $name]);
+        $_SESSION['_flash']['success'] = "Pictogram \"{$name}\" ({$code}) updated successfully.";
+        redirect('/admin/pictograms');
+    }
+
+    public function deletePictogram(string $code): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+
+        if (!in_array($code, \SDS\Services\PictogramHelper::ALL_CODES, true)) {
+            $_SESSION['_flash']['error'] = 'Invalid pictogram code.';
+            redirect('/admin/pictograms');
+            return;
+        }
+
+        \SDS\Services\PictogramHelper::deleteCustomUpload($code);
+
+        $name = \SDS\Services\PictogramHelper::NAMES[$code] ?? $code;
+        AuditService::log('pictogram', 0, 'revert', ['code' => $code, 'name' => $name]);
+        $_SESSION['_flash']['success'] = "Pictogram \"{$name}\" ({$code}) reverted to default.";
+        redirect('/admin/pictograms');
+    }
+
+    /* ------------------------------------------------------------------
      *  Federal Data
      * ----------------------------------------------------------------*/
 

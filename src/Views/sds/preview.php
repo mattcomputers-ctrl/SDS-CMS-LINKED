@@ -25,13 +25,18 @@
             <?php if (!empty($section['pictograms'])): ?>
                 <div class="sds-pictograms" style="display: flex; flex-wrap: wrap; gap: 12px; margin: 0.5rem 0;">
                     <strong style="align-self: center;">Pictograms:</strong>
-                    <?php foreach ($section['pictograms'] as $code): ?>
+                    <?php foreach ($section['pictograms'] as $code):
+                        $pictoSrc = \SDS\Services\PictogramHelper::getWebPath($code);
+                    ?>
                         <span style="display: inline-flex; flex-direction: column; align-items: center; width: 70px;">
-                            <img src="/assets/pictograms/png/<?= e($code) ?>.png"
+                            <?php if ($pictoSrc): ?>
+                            <img src="<?= e($pictoSrc) ?>"
                                  alt="<?= e($code) ?>"
                                  title="<?= e($code) ?> — <?= e(\SDS\Services\GHSStatements::pictogramName($code)) ?>"
-                                 style="width: 60px; height: 60px;"
-                                 onerror="this.src='/assets/pictograms/<?= e($code) ?>.svg'">
+                                 style="width: 60px; height: 60px;">
+                            <?php else: ?>
+                            <span class="badge"><?= e($code) ?></span>
+                            <?php endif; ?>
                             <small style="display: block; font-size: 0.7rem; color: #666; text-align: center; width: 100%;"><?= e(\SDS\Services\GHSStatements::pictogramName($code)) ?></small>
                         </span>
                     <?php endforeach; ?>
@@ -88,16 +93,18 @@
                     ];
                 ?>
                 <div style="display: flex; flex-wrap: wrap; gap: 16px; margin: 0.5rem 0;">
-                    <?php foreach ($ppeItems as $field => $info): ?>
-                        <?php if (!empty($ppe[$field])): ?>
+                    <?php foreach ($ppeItems as $field => $info):
+                        if (empty($ppe[$field])) continue;
+                        $ppeSrc = \SDS\Services\PictogramHelper::getWebPath($info['code']);
+                    ?>
                         <span style="display: inline-flex; flex-direction: column; align-items: center; width: 80px;">
-                            <img src="/assets/pictograms/png/<?= e($info['code']) ?>.png"
+                            <?php if ($ppeSrc): ?>
+                            <img src="<?= e($ppeSrc) ?>"
                                  alt="<?= e($info['label']) ?>"
-                                 style="width: 50px; height: 50px;"
-                                 onerror="this.style.display='none'">
+                                 style="width: 50px; height: 50px;">
+                            <?php endif; ?>
                             <small style="display: block; font-size: 0.65rem; color: #666; text-align: center; width: 100%;"><?= e($info['label']) ?></small>
                         </span>
-                        <?php endif; ?>
                     <?php endforeach; ?>
                 </div>
                 <ul style="margin-top: 0.3rem;">
@@ -206,8 +213,10 @@
                 if (!empty($carcinogenResult['has_carcinogens'])):
             ?>
                 <div style="margin-top: 0.5rem;">
-                    <img src="/assets/pictograms/GHS08.svg" alt="GHS08 - Health Hazard" style="width: 40px; height: 40px; vertical-align: middle;"
-                         onerror="this.outerHTML='<span class=\'badge\'>GHS08</span>'">
+                    <?php $ghs08Src = \SDS\Services\PictogramHelper::getWebPath('GHS08'); ?>
+                    <?php if ($ghs08Src): ?>
+                    <img src="<?= e($ghs08Src) ?>" alt="GHS08 - Health Hazard" style="width: 40px; height: 40px; vertical-align: middle;">
+                    <?php endif; ?>
                     <span style="color: #d9534f; font-weight: bold;">Health Hazard</span>
                 </div>
             <?php endif; ?>
@@ -262,8 +271,10 @@
             ?>
                 <div style="margin: 1rem 0;">
                     <h4 style="margin: 0 0 0.5rem 0;">
-                        <img src="/assets/pictograms/png/PROP65.png" alt="Warning" style="width: 30px; height: 30px; vertical-align: middle; margin-right: 6px;"
-                             onerror="this.outerHTML=''">
+                        <?php $prop65Src = \SDS\Services\PictogramHelper::getWebPath('PROP65'); ?>
+                        <?php if ($prop65Src): ?>
+                        <img src="<?= e($prop65Src) ?>" alt="Warning" style="width: 30px; height: 30px; vertical-align: middle; margin-right: 6px;">
+                        <?php endif; ?>
                         California Proposition 65
                     </h4>
                     <p style="margin: 0;"><?= e($prop65['warning_text'] ?? '') ?></p>

@@ -16,13 +16,8 @@
     <?php if (is_editor()): ?>
     <form method="POST" action="/sds/<?= (int) $finishedGood['id'] ?>/publish" class="inline-form">
         <?= csrf_field() ?>
-        <select name="language">
-            <option value="en">English</option>
-            <option value="es">Spanish</option>
-            <option value="fr">French</option>
-        </select>
         <input type="text" name="change_summary" placeholder="Change summary (optional)" class="input-md">
-        <button type="submit" class="btn btn-primary" onclick="return confirm('Publish this SDS? This will generate a PDF and create a new version.')">Publish</button>
+        <button type="submit" class="btn btn-primary" onclick="return confirm('Publish SDS for all languages (EN, ES, FR)? This will generate a PDF for each language and create new versions.')">Publish All Languages</button>
     </form>
     <?php endif; ?>
 </div>

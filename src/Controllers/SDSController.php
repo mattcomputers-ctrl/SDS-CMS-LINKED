@@ -200,69 +200,88 @@ class SDSController
             redirect('/finished-goods');
         }
 
-        $language = $_POST['language'] ?? 'en';
         $changeSummary = trim($_POST['change_summary'] ?? '');
+        $languages = \SDS\Core\App::config('sds.supported_languages', ['en', 'es', 'fr']);
 
         $db = Database::getInstance();
 
         try {
-            // Generate SDS data
-            $generator = new SDSGenerator();
-            $sdsData   = $generator->generate((int) $finished_good_id, $language);
+            $generator  = new SDSGenerator();
+            $pdfService = new PDFService();
 
-            // Enforce missing-data threshold before publishing
-            $blockError = $this->checkMissingHazardData($sdsData, $db);
-            if ($blockError !== null) {
-                $_SESSION['_flash']['error'] = $blockError;
-                redirect('/sds/' . $finished_good_id);
-                return;
+            // Pre-generate all language data and PDFs before committing records
+            $generated = [];
+            foreach ($languages as $lang) {
+                $sdsData = $generator->generate((int) $finished_good_id, $lang);
+
+                // Enforce missing-data threshold once (hazard data is language-independent)
+                if ($lang === $languages[0]) {
+                    $blockError = $this->checkMissingHazardData($sdsData, $db);
+                    if ($blockError !== null) {
+                        $_SESSION['_flash']['error'] = $blockError;
+                        redirect('/sds/' . $finished_good_id);
+                        return;
+                    }
+                }
+
+                $pdfPath      = $pdfService->generate($sdsData);
+                $relativePath = str_replace(\SDS\Core\App::basePath() . '/', '', $pdfPath);
+
+                $generated[] = [
+                    'language'     => $lang,
+                    'sdsData'      => $sdsData,
+                    'relativePath' => $relativePath,
+                ];
             }
 
-            // Generate PDF
-            $pdfService = new PDFService();
-            $pdfPath    = $pdfService->generate($sdsData);
-            $relativePath = str_replace(\SDS\Core\App::basePath() . '/', '', $pdfPath);
+            // All generated successfully — insert version records
+            $publishedVersions = [];
+            $now = date('Y-m-d H:i:s');
 
-            // Determine next version number for this language
-            $lastVersion = $db->fetch(
-                "SELECT MAX(version) AS max_ver FROM sds_versions
-                 WHERE finished_good_id = ? AND language = ?",
-                [(int) $finished_good_id, $language]
-            );
-            $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
+            foreach ($generated as $item) {
+                $lang = $item['language'];
 
-            // Create the published SDS version record
-            $versionId = $db->insert('sds_versions', [
-                'finished_good_id' => (int) $finished_good_id,
-                'language'         => $language,
-                'version'          => $nextVersion,
-                'status'           => 'published',
-                'effective_date'   => date('Y-m-d'),
-                'published_by'     => current_user_id(),
-                'published_at'     => date('Y-m-d H:i:s'),
-                'snapshot_json'    => json_encode($sdsData, JSON_UNESCAPED_UNICODE),
-                'pdf_path'         => $relativePath,
-                'change_summary'   => $changeSummary ?: null,
-                'created_by'       => current_user_id(),
-            ]);
+                $lastVersion = $db->fetch(
+                    "SELECT MAX(version) AS max_ver FROM sds_versions
+                     WHERE finished_good_id = ? AND language = ?",
+                    [(int) $finished_good_id, $lang]
+                );
+                $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
 
-            // Store generation trace
-            $traceData = array_merge(
-                $sdsData['hazard_result']['trace'] ?? [],
-                $sdsData['voc_result']['trace'] ?? []
-            );
-            $db->insert('sds_generation_trace', [
-                'sds_version_id' => $versionId,
-                'trace_json'     => json_encode($traceData, JSON_UNESCAPED_UNICODE),
-            ]);
+                $versionId = $db->insert('sds_versions', [
+                    'finished_good_id' => (int) $finished_good_id,
+                    'language'         => $lang,
+                    'version'          => $nextVersion,
+                    'status'           => 'published',
+                    'effective_date'   => date('Y-m-d'),
+                    'published_by'     => current_user_id(),
+                    'published_at'     => $now,
+                    'snapshot_json'    => json_encode($item['sdsData'], JSON_UNESCAPED_UNICODE),
+                    'pdf_path'         => $item['relativePath'],
+                    'change_summary'   => $changeSummary ?: null,
+                    'created_by'       => current_user_id(),
+                ]);
 
-            AuditService::log('sds_version', $versionId, 'publish', [
-                'finished_good_id' => $finished_good_id,
-                'language'         => $language,
-                'version'          => $nextVersion,
-            ]);
+                // Store generation trace
+                $traceData = array_merge(
+                    $item['sdsData']['hazard_result']['trace'] ?? [],
+                    $item['sdsData']['voc_result']['trace'] ?? []
+                );
+                $db->insert('sds_generation_trace', [
+                    'sds_version_id' => $versionId,
+                    'trace_json'     => json_encode($traceData, JSON_UNESCAPED_UNICODE),
+                ]);
 
-            $_SESSION['_flash']['success'] = "SDS v{$nextVersion} ({$language}) published successfully.";
+                AuditService::log('sds_version', $versionId, 'publish', [
+                    'finished_good_id' => $finished_good_id,
+                    'language'         => $lang,
+                    'version'          => $nextVersion,
+                ]);
+
+                $publishedVersions[] = strtoupper($lang) . " v{$nextVersion}";
+            }
+
+            $_SESSION['_flash']['success'] = 'SDS published successfully: ' . implode(', ', $publishedVersions);
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = 'Publish failed: ' . $e->getMessage();
         }

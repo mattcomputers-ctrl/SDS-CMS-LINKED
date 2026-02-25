@@ -27,6 +27,9 @@ class SDSTcpdf extends \TCPDF
 
     /**
      * Custom header rendering that handles absolute logo paths.
+     *
+     * Uses the page left margin for X positioning (not header_margin,
+     * which is the vertical distance from the page top to the header).
      */
     public function Header(): void // @phpcs:ignore
     {
@@ -37,25 +40,33 @@ class SDSTcpdf extends \TCPDF
         $this->setGraphicVars($this->default_graphic_vars);
         $headerfont = $this->getHeaderFont();
         $headerData = $this->getHeaderData();
-        $headerMargin = max($this->header_margin, $this->GetX());
+
+        // X position: use the page left margin (not header_margin which is vertical)
+        $leftMargin = $this->original_lMargin;
+        // Y position: use header_margin (distance from page top)
+        $topY = $this->header_margin;
 
         $imgWidth = 0;
-        $textX = $headerMargin;
+        $textX = $leftMargin;
 
         // Render logo from absolute path
         if ($this->absoluteLogoPath !== '' && file_exists($this->absoluteLogoPath)) {
             $imgWidth = $headerData['logo_width'] ?: 18;
             $imgType = strtolower(pathinfo($this->absoluteLogoPath, PATHINFO_EXTENSION));
+
+            // Constrain logo height to avoid overflow — max 12mm tall
+            $maxH = 12;
             if ($imgType === 'svg') {
-                $this->ImageSVG($this->absoluteLogoPath, $headerMargin, $this->header_margin, $imgWidth);
+                $this->ImageSVG($this->absoluteLogoPath, $leftMargin, $topY, $imgWidth, $maxH);
             } else {
-                $this->Image($this->absoluteLogoPath, $headerMargin, $this->header_margin, $imgWidth);
+                $this->Image($this->absoluteLogoPath, $leftMargin, $topY, $imgWidth, $maxH, '', '', '', false, 300, '', false, false, 0, 'CM');
             }
-            $textX = $headerMargin + $imgWidth + 2;
+            $textX = $leftMargin + $imgWidth + 2;
         }
 
         // Title
         $this->SetFont($headerfont[0], 'B', $headerfont[2] + 2);
+        $this->SetY($topY);
         $this->SetX($textX);
         $this->Cell(0, 6, $headerData['title'] ?? '', 0, 1, 'L');
 
@@ -68,6 +79,7 @@ class SDSTcpdf extends \TCPDF
         $this->SetLineWidth(0.3);
         $this->SetDrawColor(0, 51, 102);
         $y = $this->GetY() + 1;
-        $this->Line($headerMargin, $y, $this->getPageWidth() - $headerMargin, $y);
+        $rightMargin = $this->original_rMargin;
+        $this->Line($leftMargin, $y, $this->getPageWidth() - $rightMargin, $y);
     }
 }

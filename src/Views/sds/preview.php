@@ -44,7 +44,9 @@
                 <?php
                     $seen = [];
                     foreach ($section['hazard_classes'] as $hc):
-                        $label = trim(($hc['class'] ?? '') . ' ' . ($hc['category'] ?? ''));
+                        $cls = trim($hc['class'] ?? '');
+                        $cat = trim($hc['category'] ?? '');
+                        $label = ($cls !== '' && $cat !== '') ? $cls . ' (' . $cat . ')' : ($cls !== '' ? $cls : $cat);
                         if ($label !== '' && !isset($seen[$label])):
                             $seen[$label] = true;
                 ?>
@@ -213,20 +215,18 @@
             ?>
                 <h4 style="margin-top: 1rem;">Clean Air Act Section 112(b) — Hazardous Air Pollutants (HAPs)</h4>
                 <table class="table table-sm">
-                    <thead><tr><th>Chemical Name</th><th>CAS</th><th>Category</th><th style="text-align: right;">Weight %</th></tr></thead>
+                    <thead><tr><th>Triggering HAP Chemical</th><th style="text-align: right;">Wt% in Formula</th></tr></thead>
                     <tbody>
                     <?php foreach ($hap['hap_chemicals'] as $chem): ?>
                         <tr>
-                            <td><?= e($chem['chemical_name']) ?></td>
-                            <td><?= e($chem['cas_number']) ?></td>
-                            <td><?= e($chem['category']) ?></td>
+                            <td><?= e($chem['hap_name'] ?? $chem['chemical_name']) ?></td>
                             <td style="text-align: right;"><?= number_format((float) $chem['concentration_pct'], 2) ?>%</td>
                         </tr>
                     <?php endforeach; ?>
                     </tbody>
                     <tfoot>
                         <tr style="font-weight: bold; border-top: 2px solid #333;">
-                            <td colspan="3">Total HAP Content</td>
+                            <td>Total HAP Content</td>
                             <td style="text-align: right;"><?= number_format((float) $hap['total_hap_pct'], 2) ?>%</td>
                         </tr>
                     </tfoot>
@@ -239,30 +239,16 @@
                 $prop65 = $section['prop65'] ?? [];
                 if (!empty($prop65['requires_warning'])):
             ?>
-                <div style="margin: 1rem 0; padding: 0.75rem; border: 2px solid #d9534f; background: #fff5f5;">
-                    <h4 style="color: #d9534f; margin: 0 0 0.5rem 0;">
-                        <img src="/assets/pictograms/GHS08.svg" alt="Warning" style="width: 30px; height: 30px; vertical-align: middle; margin-right: 6px;"
+                <div style="margin: 1rem 0;">
+                    <h4 style="margin: 0 0 0.5rem 0;">
+                        <img src="/assets/pictograms/png/PROP65.png" alt="Warning" style="width: 30px; height: 30px; vertical-align: middle; margin-right: 6px;"
                              onerror="this.outerHTML=''">
                         California Proposition 65
                     </h4>
-                    <p style="margin: 0 0 0.5rem 0;"><?= e($prop65['warning_text'] ?? '') ?></p>
-
-                    <?php if (!empty($prop65['listed_chemicals'])): ?>
-                        <table class="table table-sm" style="font-size: 0.85rem;">
-                            <thead><tr><th>Chemical</th><th>CAS</th><th>Conc%</th><th>Listing Type</th></tr></thead>
-                            <tbody>
-                            <?php foreach ($prop65['listed_chemicals'] as $chem): ?>
-                                <tr>
-                                    <td><?= e($chem['chemical_name']) ?></td>
-                                    <td><?= e($chem['cas_number']) ?></td>
-                                    <td><?= number_format((float) ($chem['concentration_pct'] ?? 0), 2) ?></td>
-                                    <td><?= e(implode(', ', $chem['toxicity_type'] ?? [])) ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    <?php endif; ?>
+                    <p style="margin: 0;"><?= e($prop65['warning_text'] ?? '') ?></p>
                 </div>
+            <?php else: ?>
+                <p><strong>California Proposition 65:</strong> This product is not known to contain any chemicals listed under California Proposition 65.</p>
             <?php endif; ?>
 
             <?php if (!empty($section['state_regs']) && empty($prop65['requires_warning'])): ?>

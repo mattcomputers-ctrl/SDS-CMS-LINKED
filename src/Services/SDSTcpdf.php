@@ -33,7 +33,7 @@ class SDSTcpdf extends \TCPDF
      */
     public function Header(): void // @phpcs:ignore
     {
-        if (!$this->header_on) {
+        if (!$this->print_header) {
             return;
         }
 

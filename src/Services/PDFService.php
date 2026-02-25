@@ -340,10 +340,10 @@ class PDFService
     private function renderPPEPictogramRow(\TCPDF $pdf, array $ppe): void
     {
         $ppeMap = [
-            'eye_protection'  => ['code' => 'PPE-eye',         'label' => 'Eye Protection'],
-            'hand_protection' => ['code' => 'PPE-hand',        'label' => 'Hand Protection'],
-            'respiratory'     => ['code' => 'PPE-respiratory',  'label' => 'Respiratory'],
-            'skin_protection' => ['code' => 'PPE-skin',        'label' => 'Skin/Body'],
+            'eye_protection'  => ['code' => 'PPE-eye',         'label' => 'Wear Eye Protection'],
+            'hand_protection' => ['code' => 'PPE-hand',        'label' => 'Wear Gloves'],
+            'respiratory'     => ['code' => 'PPE-respiratory',  'label' => 'Wear Respiratory Protection'],
+            'skin_protection' => ['code' => 'PPE-skin',        'label' => 'Wear Protective Clothing'],
         ];
 
         $pictoSize = 12; // mm
@@ -602,12 +602,10 @@ class PDFService
         $prop65 = $s['prop65'] ?? [];
         if (!empty($prop65['requires_warning'])) {
             $pdf->SetFont('helvetica', 'B', 9);
-            $pdf->SetTextColor(180, 0, 0);
             $pdf->Cell(0, 5, 'California Proposition 65:', 0, 1);
-            $pdf->SetTextColor(0, 0, 0);
             $pdf->SetFont('helvetica', '', 8);
 
-            // Warning pictogram (official CA Prop 65 warning triangle)
+            // Warning pictogram + warning text on same line
             $prop65Png = PictogramHelper::getPngPath('PROP65');
             if ($prop65Png !== '') {
                 $pdf->Image($prop65Png, $pdf->GetX(), $pdf->GetY(), 10, 10, 'PNG');
@@ -616,16 +614,11 @@ class PDFService
 
             $pdf->MultiCell(0, 4, $prop65['warning_text'] ?? '', 0, 'L');
             $pdf->Ln(1);
-
-            // List the specific chemicals
-            if (!empty($prop65['listed_chemicals'])) {
-                $pdf->SetFont('helvetica', '', 7);
-                foreach ($prop65['listed_chemicals'] as $chem) {
-                    $types = implode(', ', $chem['toxicity_type'] ?? []);
-                    $text = ($chem['chemical_name'] ?? '') . ' (CAS ' . ($chem['cas_number'] ?? '') . '): ' . $types;
-                    $pdf->MultiCell(0, 3, '  ' . chr(149) . ' ' . $text, 0, 'L');
-                }
-            }
+        } elseif (isset($prop65)) {
+            $pdf->SetFont('helvetica', 'B', 9);
+            $pdf->Cell(0, 5, 'California Proposition 65:', 0, 1);
+            $pdf->SetFont('helvetica', '', 8);
+            $pdf->MultiCell(0, 4, 'This product is not known to contain any chemicals listed under California Proposition 65.', 0, 'L');
             $pdf->Ln(1);
         }
 

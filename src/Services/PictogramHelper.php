@@ -366,39 +366,27 @@ class PictogramHelper
     }
 
     /* --- GHS08: Health Hazard -----------------------------------------
-     *  Person silhouette + 6-pointed starburst on chest.
-     *  All coordinates from GHS08.svg (no transforms, no curves).
+     *  Uses the reference image (GHS08_reference.jpg) for accurate rendering.
+     *  The reference is the standard GHS health hazard pictogram.
      */
     private static function drawGHS08(\GdImage $img, int $black, int $white): bool
     {
-        $K = self::K;
+        $refPath = App::basePath() . '/public/assets/pictograms/GHS08_reference.jpg';
+        if (!file_exists($refPath)) {
+            return false;
+        }
 
-        // Head — circle cx=100 cy=45 r=14
-        imagefilledellipse($img, 100 * $K, 45 * $K, 28 * $K, 28 * $K, $black);
+        $src = imagecreatefromjpeg($refPath);
+        if ($src === false) {
+            return false;
+        }
 
-        // Torso — M82,60 L118,60 L122,118 L78,118 Z
-        imagefilledpolygon($img, self::s([82, 60, 118, 60, 122, 118, 78, 118]), $black);
+        $sw = imagesx($src);
+        $sh = imagesy($src);
 
-        // Left arm — M82,62 L56,90 L50,84 L72,60 Z
-        imagefilledpolygon($img, self::s([82, 62, 56, 90, 50, 84, 72, 60]), $black);
-
-        // Right arm — M118,62 L144,90 L150,84 L128,60 Z
-        imagefilledpolygon($img, self::s([118, 62, 144, 90, 150, 84, 128, 60]), $black);
-
-        // Left leg — M78,118 L70,164 L82,164 L88,118 Z
-        imagefilledpolygon($img, self::s([78, 118, 70, 164, 82, 164, 88, 118]), $black);
-
-        // Right leg — M122,118 L130,164 L118,164 L112,118 Z
-        imagefilledpolygon($img, self::s([122, 118, 130, 164, 118, 164, 112, 118]), $black);
-
-        // Starburst on chest (white cutout) — exact SVG path
-        // M100,68 L103,74 L110,72 L106,78 L112,82 L105,83 L106,90 L100,86 L94,90 L95,83 L88,82 L94,78 L90,72 L97,74 Z
-        imagefilledpolygon($img, self::s([
-            100, 68,  103, 74,  110, 72,  106, 78,
-            112, 82,  105, 83,  106, 90,  100, 86,
-            94, 90,   95, 83,   88, 82,   94, 78,
-            90, 72,   97, 74,
-        ]), $white);
+        // Copy the reference image onto our canvas (resized to 800x800)
+        imagecopyresampled($img, $src, 0, 0, 0, 0, self::SIZE, self::SIZE, $sw, $sh);
+        imagedestroy($src);
 
         return true;
     }

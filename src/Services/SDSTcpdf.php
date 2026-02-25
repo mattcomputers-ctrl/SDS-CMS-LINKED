@@ -54,12 +54,11 @@ class SDSTcpdf extends \TCPDF
             $imgWidth = $headerData['logo_width'] ?: 18;
             $imgType = strtolower(pathinfo($this->absoluteLogoPath, PATHINFO_EXTENSION));
 
-            // Constrain logo height to avoid overflow — max 12mm tall
-            $maxH = 12;
             if ($imgType === 'svg') {
-                $this->ImageSVG($this->absoluteLogoPath, $leftMargin, $topY, $imgWidth, $maxH);
+                $this->ImageSVG($this->absoluteLogoPath, $leftMargin, $topY, $imgWidth, 12);
             } else {
-                $this->Image($this->absoluteLogoPath, $leftMargin, $topY, $imgWidth, $maxH, '', '', '', false, 300, '', false, false, 0, 'CM');
+                // Simple call: position + width only, let TCPDF auto-scale height
+                $this->Image($this->absoluteLogoPath, $leftMargin, $topY, $imgWidth);
             }
             $textX = $leftMargin + $imgWidth + 2;
         }

@@ -516,19 +516,41 @@ class HazardEngine
         // Signal word
         $signalWord = !empty($det['signal_word']) ? $det['signal_word'] : null;
 
-        // Hazard classes
+        // Hazard classes — use selected_hazards keys to get proper class/category
         $hazardClasses = [];
-        $classRaw = array_filter(array_map('trim', explode(',', $det['hazard_classes'] ?? '')));
-        foreach ($classRaw as $classStr) {
-            $hazardClasses[] = [
-                'class'             => $classStr,
-                'category'          => '',
-                'cas'               => $cas,
-                'chemical'          => $name,
-                'concentration_pct' => $conc,
-                'cutoff_pct'        => 0,
-                'source'            => 'CAS determination',
-            ];
+        $ghsData = GHSHazardData::HAZARD_CLASSIFICATIONS;
+        $selectedHazards = json_decode($det['selected_hazards'] ?? '[]', true) ?: [];
+
+        if (!empty($selectedHazards)) {
+            // Use structured keys like "Flammable Liquids - Category 3"
+            foreach ($selectedHazards as $key) {
+                if (isset($ghsData[$key])) {
+                    $entry = $ghsData[$key];
+                    $hazardClasses[] = [
+                        'class'             => $entry['class'],
+                        'category'          => $entry['category'],
+                        'cas'               => $cas,
+                        'chemical'          => $name,
+                        'concentration_pct' => $conc,
+                        'cutoff_pct'        => 0,
+                        'source'            => 'CAS determination',
+                    ];
+                }
+            }
+        } else {
+            // Fallback: parse from comma-separated hazard_classes string
+            $classRaw = array_filter(array_map('trim', explode(',', $det['hazard_classes'] ?? '')));
+            foreach ($classRaw as $classStr) {
+                $hazardClasses[] = [
+                    'class'             => $classStr,
+                    'category'          => '',
+                    'cas'               => $cas,
+                    'chemical'          => $name,
+                    'concentration_pct' => $conc,
+                    'cutoff_pct'        => 0,
+                    'source'            => 'CAS determination',
+                ];
+            }
         }
 
         // Exposure limits from determination

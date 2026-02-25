@@ -291,10 +291,11 @@ class PDFService
     {
         $pdf->SetFont('helvetica', 'B', 9);
         $pdf->Cell(0, 5, $this->label('pictograms', 'Pictograms') . ':', 0, 1, 'L');
-        $pdf->SetFont('helvetica', '', 9);
 
         $pictoSize = 14; // mm
-        $colWidth  = 22; // mm per column (image + spacing)
+        $colWidth  = 22; // mm per column
+        $startX    = $pdf->GetX();
+        $startY    = $pdf->GetY();
 
         // Filter to codes that have valid PNGs
         $validCodes = [];
@@ -305,7 +306,7 @@ class PDFService
         }
 
         if (empty($validCodes)) {
-            // Fallback: text codes with names
+            $pdf->SetFont('helvetica', '', 9);
             $labels = [];
             foreach ($pictogramCodes as $code) {
                 $labels[] = $code . ' (' . GHSStatements::pictogramName($code) . ')';
@@ -314,24 +315,27 @@ class PDFService
             return;
         }
 
-        // Build HTML table: pictogram images on top row, descriptions on bottom row
-        $html = '<table cellpadding="1"><tr>';
+        // Row 1: render pictogram images
+        $x = $startX;
         foreach ($validCodes as $code) {
             $pngPath = PictogramHelper::getPngPath($code);
-            $html .= '<td align="center" width="' . $colWidth . 'mm">'
-                   . '<img src="' . $pngPath . '" width="' . ($pictoSize * 3) . '" height="' . ($pictoSize * 3) . '">'
-                   . '</td>';
+            $pdf->Image($pngPath, $x, $startY, $pictoSize, $pictoSize, 'PNG');
+            $x += $colWidth;
         }
-        $html .= '</tr><tr>';
+
+        // Row 2: render descriptions centered under each pictogram
+        $labelY = $startY + $pictoSize + 1;
+        $pdf->SetFont('helvetica', '', 6);
+        $x = $startX;
         foreach ($validCodes as $code) {
             $name = GHSStatements::pictogramName($code);
-            $html .= '<td align="center" width="' . $colWidth . 'mm">'
-                   . '<span style="font-size:6pt;">' . htmlspecialchars($name) . '</span>'
-                   . '</td>';
+            $pdf->SetXY($x, $labelY);
+            $pdf->Cell($colWidth, 3, $name, 0, 0, 'C');
+            $x += $colWidth;
         }
-        $html .= '</tr></table>';
 
-        $pdf->writeHTML($html, true, false, true, false, '');
+        $pdf->SetY($labelY + 4);
+        $pdf->SetFont('helvetica', '', 9);
     }
 
     /**
@@ -347,7 +351,7 @@ class PDFService
         ];
 
         $pictoSize = 12; // mm
-        $colWidth  = 22; // mm per column
+        $colWidth  = 28; // mm per column (wider for longer PPE labels)
 
         // Collect active PPE items
         $active = [];
@@ -365,22 +369,28 @@ class PDFService
             return;
         }
 
-        // Build HTML table: pictogram images on top row, descriptions on bottom row
-        $html = '<table cellpadding="1"><tr>';
-        foreach ($active as $item) {
-            $html .= '<td align="center" width="' . $colWidth . 'mm">'
-                   . '<img src="' . $item['png'] . '" width="' . ($pictoSize * 3) . '" height="' . ($pictoSize * 3) . '">'
-                   . '</td>';
-        }
-        $html .= '</tr><tr>';
-        foreach ($active as $item) {
-            $html .= '<td align="center" width="' . $colWidth . 'mm">'
-                   . '<span style="font-size:6pt;">' . htmlspecialchars($item['label']) . '</span>'
-                   . '</td>';
-        }
-        $html .= '</tr></table>';
+        $startX = $pdf->GetX();
+        $startY = $pdf->GetY();
 
-        $pdf->writeHTML($html, true, false, true, false, '');
+        // Row 1: render pictogram images
+        $x = $startX;
+        foreach ($active as $item) {
+            $pdf->Image($item['png'], $x, $startY, $pictoSize, $pictoSize, 'PNG');
+            $x += $colWidth;
+        }
+
+        // Row 2: render descriptions centered under each pictogram
+        $labelY = $startY + $pictoSize + 1;
+        $pdf->SetFont('helvetica', '', 6);
+        $x = $startX;
+        foreach ($active as $item) {
+            $pdf->SetXY($x, $labelY);
+            $pdf->Cell($colWidth, 3, $item['label'], 0, 0, 'C');
+            $x += $colWidth;
+        }
+
+        $pdf->SetY($labelY + 4);
+        $pdf->SetFont('helvetica', '', 9);
     }
 
     private function renderSection3(\TCPDF $pdf, array $s): void
@@ -614,7 +624,7 @@ class PDFService
 
             $pdf->MultiCell(0, 4, $prop65['warning_text'] ?? '', 0, 'L');
             $pdf->Ln(1);
-        } elseif (isset($prop65)) {
+        } else {
             $pdf->SetFont('helvetica', 'B', 9);
             $pdf->Cell(0, 5, 'California Proposition 65:', 0, 1);
             $pdf->SetFont('helvetica', '', 8);

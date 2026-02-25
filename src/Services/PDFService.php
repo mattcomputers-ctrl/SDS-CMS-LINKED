@@ -16,7 +16,7 @@ class PDFService
 {
     /** Standard page margins in mm. */
     private const MARGIN_LEFT   = 15;
-    private const MARGIN_TOP    = 20;
+    private const MARGIN_TOP    = 30;  // accommodates first-page header with ~2" logo
     private const MARGIN_RIGHT  = 15;
     private const MARGIN_BOTTOM = 20;
 
@@ -61,11 +61,14 @@ class PDFService
         $pdf->setHeaderFont(['helvetica', '', 8]);
         $pdf->setFooterFont(['helvetica', '', 8]);
 
-        // Custom header — include logo if available (using absolute path)
+        // Header — logo + "SAFETY DATA SHEET" on first page only
         $logoFile = $this->resolveLogoPath($meta['company_logo_path'] ?? '');
         $pdf->setAbsoluteLogoPath($logoFile);
-        $pdf->SetHeaderData('', ($logoFile !== '' ? 18 : 0), 'SAFETY DATA SHEET', $meta['product_code'] . ' — ' . ($meta['description'] ?? ''));
-        $pdf->setFooterData([0, 0, 0], [0, 0, 0]);
+        $pdf->SetHeaderMargin(5);
+
+        // Footer — product code, page number, revision date on every page
+        $revisionDate = $sections[16]['revision_date'] ?? date('m/d/Y');
+        $pdf->setFooterInfo($meta['product_code'], $revisionDate);
 
         // Add first page
         $pdf->AddPage();
@@ -107,9 +110,14 @@ class PDFService
         $pdf->SetMargins(self::MARGIN_LEFT, self::MARGIN_TOP, self::MARGIN_RIGHT);
         $pdf->SetAutoPageBreak(true, self::MARGIN_BOTTOM);
 
+        // Header — logo + "SAFETY DATA SHEET" on first page only
         $logoFile = $this->resolveLogoPath($meta['company_logo_path'] ?? '');
         $pdf->setAbsoluteLogoPath($logoFile);
-        $pdf->SetHeaderData('', ($logoFile !== '' ? 18 : 0), 'SAFETY DATA SHEET', $meta['product_code']);
+        $pdf->SetHeaderMargin(5);
+
+        // Footer — product code, page number, revision date on every page
+        $revisionDate = $sections[16]['revision_date'] ?? date('m/d/Y');
+        $pdf->setFooterInfo($meta['product_code'], $revisionDate);
 
         $pdf->AddPage();
 

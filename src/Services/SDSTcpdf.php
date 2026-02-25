@@ -5,80 +5,112 @@ declare(strict_types=1);
 namespace SDS\Services;
 
 /**
- * SDSTcpdf — Thin TCPDF subclass that fixes absolute logo path handling.
+ * SDSTcpdf — Thin TCPDF subclass for SDS PDF rendering.
  *
- * TCPDF's default Header() method prepends K_PATH_IMAGES to the logo path,
- * which breaks when the logo is stored at an absolute filesystem path.
- * This subclass overrides Header() to use the absolute path directly.
+ * - Header with logo + "SAFETY DATA SHEET" on the first page only
+ * - Footer with product code, page number, and revision date on every page
  */
 class SDSTcpdf extends \TCPDF
 {
     /** @var string Absolute filesystem path to the header logo image. */
     protected string $absoluteLogoPath = '';
 
-    /**
-     * Set an absolute filesystem path for the header logo.
-     * This bypasses TCPDF's K_PATH_IMAGES prefix behavior.
-     */
+    /** @var string Product code shown in the footer. */
+    protected string $footerProductCode = '';
+
+    /** @var string Revision date shown in the footer. */
+    protected string $footerRevisionDate = '';
+
     public function setAbsoluteLogoPath(string $path): void
     {
         $this->absoluteLogoPath = $path;
     }
 
+    public function setFooterInfo(string $productCode, string $revisionDate): void
+    {
+        $this->footerProductCode = $productCode;
+        $this->footerRevisionDate = $revisionDate;
+    }
+
     /**
-     * Custom header rendering that handles absolute logo paths.
-     *
-     * Uses the page left margin for X positioning (not header_margin,
-     * which is the vertical distance from the page top to the header).
+     * Header — first page only: logo (left) + "SAFETY DATA SHEET" (right).
      */
     public function Header(): void // @phpcs:ignore
     {
+        // Only show header on first page
+        if ($this->getPage() > 1) {
+            return;
+        }
+
         if (!$this->print_header) {
             return;
         }
 
         $this->setGraphicVars($this->default_graphic_vars);
-        $headerfont = $this->getHeaderFont();
-        $headerData = $this->getHeaderData();
 
-        // X position: use the page left margin (not header_margin which is vertical)
         $leftMargin = $this->original_lMargin;
-        // Y position: use header_margin (distance from page top)
+        $rightMargin = $this->original_rMargin;
+        $pageWidth = $this->getPageWidth();
         $topY = $this->header_margin;
 
-        $imgWidth = 0;
-        $textX = $leftMargin;
-
-        // Render logo from absolute path
+        // Logo — approximately 2" wide (≈ 51 mm)
+        $logoWidth = 51;
         if ($this->absoluteLogoPath !== '' && file_exists($this->absoluteLogoPath)) {
-            $imgWidth = $headerData['logo_width'] ?: 18;
             $imgType = strtolower(pathinfo($this->absoluteLogoPath, PATHINFO_EXTENSION));
 
             if ($imgType === 'svg') {
-                $this->ImageSVG($this->absoluteLogoPath, $leftMargin, $topY, $imgWidth, 12);
+                $this->ImageSVG($this->absoluteLogoPath, $leftMargin, $topY, $logoWidth, 0);
             } else {
-                // Simple call: position + width only, let TCPDF auto-scale height
-                $this->Image($this->absoluteLogoPath, $leftMargin, $topY, $imgWidth);
+                $this->Image($this->absoluteLogoPath, $leftMargin, $topY, $logoWidth);
             }
-            $textX = $leftMargin + $imgWidth + 2;
         }
 
-        // Title
-        $this->SetFont($headerfont[0], 'B', $headerfont[2] + 2);
-        $this->SetY($topY);
-        $this->SetX($textX);
-        $this->Cell(0, 6, $headerData['title'] ?? '', 0, 1, 'L');
+        // "SAFETY DATA SHEET" — right-aligned, vertically centered in header area
+        $this->SetFont('helvetica', 'B', 14);
+        $titleY = $topY + 4; // nudge down a bit for visual centering with logo
+        $this->SetY($titleY);
+        $this->SetX($leftMargin);
+        $this->Cell($pageWidth - $leftMargin - $rightMargin, 8, 'SAFETY DATA SHEET', 0, 1, 'R');
 
-        // Subtitle
-        $this->SetFont($headerfont[0], '', $headerfont[2]);
-        $this->SetX($textX);
-        $this->Cell(0, 5, $headerData['string'] ?? '', 0, 1, 'L');
-
-        // Line separator
+        // Separator line below header
         $this->SetLineWidth(0.3);
         $this->SetDrawColor(0, 51, 102);
-        $y = $this->GetY() + 1;
+        $lineY = $topY + 20; // below the logo area
+        $this->Line($leftMargin, $lineY, $pageWidth - $rightMargin, $lineY);
+    }
+
+    /**
+     * Footer — every page: product code (left), page number (center), revision date (right).
+     */
+    public function Footer(): void // @phpcs:ignore
+    {
+        // Position 15 mm from the bottom
+        $this->SetY(-15);
+
+        $this->SetFont('helvetica', '', 8);
+        $this->SetTextColor(0, 0, 0);
+
+        $leftMargin = $this->original_lMargin;
         $rightMargin = $this->original_rMargin;
-        $this->Line($leftMargin, $y, $this->getPageWidth() - $rightMargin, $y);
+        $pageWidth = $this->getPageWidth();
+        $cellWidth = ($pageWidth - $leftMargin - $rightMargin) / 3;
+
+        // Separator line above footer
+        $this->SetLineWidth(0.2);
+        $this->SetDrawColor(150, 150, 150);
+        $this->Line($leftMargin, $this->GetY(), $pageWidth - $rightMargin, $this->GetY());
+        $this->Ln(1);
+
+        $y = $this->GetY();
+
+        // Product code — left
+        $this->SetX($leftMargin);
+        $this->Cell($cellWidth, 5, $this->footerProductCode, 0, 0, 'L');
+
+        // Page number — center
+        $this->Cell($cellWidth, 5, 'Page ' . $this->getAliasNumPage() . ' of ' . $this->getAliasNbPages(), 0, 0, 'C');
+
+        // Revision date — right
+        $this->Cell($cellWidth, 5, 'Rev. ' . $this->footerRevisionDate, 0, 0, 'R');
     }
 }

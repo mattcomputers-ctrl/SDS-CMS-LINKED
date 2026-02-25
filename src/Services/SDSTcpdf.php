@@ -53,29 +53,37 @@ class SDSTcpdf extends \TCPDF
         $pageWidth = $this->getPageWidth();
         $topY = $this->header_margin;
 
-        // Logo — approximately 2" wide (≈ 51 mm)
+        // The header band height (logo + title area before the separator line)
+        $headerHeight = 16; // mm — enough for a ~2" wide logo at typical aspect ratios
+
+        // "SAFETY DATA SHEET" — right-aligned, vertically centered in header band
+        $this->SetFont('helvetica', 'B', 14);
+        $titleCellH = 6; // approximate text height at 14pt
+        $titleY = $topY + ($headerHeight - $titleCellH) / 2;
+        $this->SetY($titleY);
+        $this->SetX($leftMargin);
+        $this->Cell($pageWidth - $leftMargin - $rightMargin, $titleCellH, 'SAFETY DATA SHEET', 0, 1, 'R');
+
+        // Logo — approximately 2" wide (≈ 51 mm), vertically centered in same header band
         $logoWidth = 51;
         if ($this->absoluteLogoPath !== '' && file_exists($this->absoluteLogoPath)) {
             $imgType = strtolower(pathinfo($this->absoluteLogoPath, PATHINFO_EXTENSION));
 
+            // Estimate logo height (assume ~3:1 aspect for typical wide logos; TCPDF auto-scales)
+            $logoHeight = 14; // approximate for centering calculation
+            $logoY = $topY + ($headerHeight - $logoHeight) / 2;
+
             if ($imgType === 'svg') {
-                $this->ImageSVG($this->absoluteLogoPath, $leftMargin, $topY, $logoWidth, 0);
+                $this->ImageSVG($this->absoluteLogoPath, $leftMargin, $logoY, $logoWidth, 0);
             } else {
-                $this->Image($this->absoluteLogoPath, $leftMargin, $topY, $logoWidth);
+                $this->Image($this->absoluteLogoPath, $leftMargin, $logoY, $logoWidth);
             }
         }
 
-        // "SAFETY DATA SHEET" — right-aligned, vertically centered in header area
-        $this->SetFont('helvetica', 'B', 14);
-        $titleY = $topY + 4; // nudge down a bit for visual centering with logo
-        $this->SetY($titleY);
-        $this->SetX($leftMargin);
-        $this->Cell($pageWidth - $leftMargin - $rightMargin, 8, 'SAFETY DATA SHEET', 0, 1, 'R');
-
-        // Separator line below header
+        // Separator line below header band
         $this->SetLineWidth(0.3);
         $this->SetDrawColor(0, 51, 102);
-        $lineY = $topY + 20; // below the logo area
+        $lineY = $topY + $headerHeight + 2;
         $this->Line($leftMargin, $lineY, $pageWidth - $rightMargin, $lineY);
     }
 

@@ -23,16 +23,16 @@
             <?php endif; ?>
 
             <?php if (!empty($section['pictograms'])): ?>
-                <div class="sds-pictograms" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0.5rem 0;">
-                    <strong>Pictograms:</strong>
+                <div class="sds-pictograms" style="display: flex; flex-wrap: wrap; gap: 12px; margin: 0.5rem 0;">
+                    <strong style="align-self: center;">Pictograms:</strong>
                     <?php foreach ($section['pictograms'] as $code): ?>
-                        <span style="display: inline-flex; flex-direction: column; align-items: center;">
-                            <img src="/assets/pictograms/<?= e($code) ?>.svg"
+                        <span style="display: inline-flex; flex-direction: column; align-items: center; width: 70px;">
+                            <img src="/assets/pictograms/png/<?= e($code) ?>.png"
                                  alt="<?= e($code) ?>"
                                  title="<?= e($code) ?> — <?= e(\SDS\Services\GHSStatements::pictogramName($code)) ?>"
                                  style="width: 60px; height: 60px;"
-                                 onerror="this.outerHTML='<span class=\'badge\'><?= e($code) ?></span>'">
-                            <small style="font-size: 0.7rem; color: #666;"><?= e(\SDS\Services\GHSStatements::pictogramName($code)) ?></small>
+                                 onerror="this.src='/assets/pictograms/<?= e($code) ?>.svg'">
+                            <small style="display: block; font-size: 0.7rem; color: #666; text-align: center; width: 100%;"><?= e(\SDS\Services\GHSStatements::pictogramName($code)) ?></small>
                         </span>
                     <?php endforeach; ?>
                 </div>
@@ -79,7 +79,28 @@
             ?>
             <?php if ($hasPPE): ?>
                 <p><strong>Recommended Personal Protective Equipment (PPE):</strong></p>
-                <ul>
+                <?php
+                    $ppeItems = [
+                        'eye_protection'  => ['code' => 'PPE-eye',        'label' => 'Wear Eye Protection'],
+                        'hand_protection' => ['code' => 'PPE-hand',       'label' => 'Wear Gloves'],
+                        'respiratory'     => ['code' => 'PPE-respiratory', 'label' => 'Wear Respiratory Protection'],
+                        'skin_protection' => ['code' => 'PPE-skin',       'label' => 'Wear Protective Clothing'],
+                    ];
+                ?>
+                <div style="display: flex; flex-wrap: wrap; gap: 16px; margin: 0.5rem 0;">
+                    <?php foreach ($ppeItems as $field => $info): ?>
+                        <?php if (!empty($ppe[$field])): ?>
+                        <span style="display: inline-flex; flex-direction: column; align-items: center; width: 80px;">
+                            <img src="/assets/pictograms/png/<?= e($info['code']) ?>.png"
+                                 alt="<?= e($info['label']) ?>"
+                                 style="width: 50px; height: 50px;"
+                                 onerror="this.style.display='none'">
+                            <small style="display: block; font-size: 0.65rem; color: #666; text-align: center; width: 100%;"><?= e($info['label']) ?></small>
+                        </span>
+                        <?php endif; ?>
+                    <?php endforeach; ?>
+                </div>
+                <ul style="margin-top: 0.3rem;">
                 <?php if (!empty($ppe['respiratory'])): ?>
                     <li><strong>Respiratory:</strong> <?= e($ppe['respiratory']) ?></li>
                 <?php endif; ?>

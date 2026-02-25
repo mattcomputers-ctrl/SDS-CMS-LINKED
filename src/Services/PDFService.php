@@ -232,7 +232,7 @@ class PDFService
                 }
                 if ($label !== '' && !isset($seen[$label])) {
                     $seen[$label] = true;
-                    $pdf->MultiCell(0, 4, chr(149) . ' ' . $label, 0, 'L');
+                    $pdf->MultiCell(0, 4, "\xE2\x80\xA2 " . $label, 0, 'L');
                 }
             }
             $pdf->Ln(1);
@@ -323,11 +323,12 @@ class PDFService
             return;
         }
 
-        // Row 1: render pictogram images
+        // Row 1: render pictogram images centered within each column
+        $imgOffset = ($colWidth - $pictoSize) / 2;
         $x = $startX;
         foreach ($validCodes as $code) {
             $pngPath = PictogramHelper::getPngPath($code);
-            $pdf->Image($pngPath, $x, $startY, $pictoSize, $pictoSize, 'PNG');
+            $pdf->Image($pngPath, $x + $imgOffset, $startY, $pictoSize, $pictoSize, 'PNG');
             $x += $colWidth;
         }
 
@@ -380,10 +381,11 @@ class PDFService
         $startX = $pdf->GetX();
         $startY = $pdf->GetY();
 
-        // Row 1: render pictogram images
+        // Row 1: render pictogram images centered within each column
+        $imgOffset = ($colWidth - $pictoSize) / 2;
         $x = $startX;
         foreach ($active as $item) {
-            $pdf->Image($item['png'], $x, $startY, $pictoSize, $pictoSize, 'PNG');
+            $pdf->Image($item['png'], $x + $imgOffset, $startY, $pictoSize, $pictoSize, 'PNG');
             $x += $colWidth;
         }
 

@@ -13,4 +13,4 @@ ALTER TABLE raw_material_constituents
     ADD COLUMN trade_secret_description VARCHAR(200) NULL AFTER is_non_hazardous;
 
 -- Record migration
-INSERT INTO schema_migrations (version, name) VALUES (8, '008_add_raw_material_fields');
+INSERT INTO `schema_migrations` (`version`) VALUES ('008_add_raw_material_fields');

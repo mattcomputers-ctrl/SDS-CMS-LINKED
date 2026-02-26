@@ -23,14 +23,12 @@ $lines  = $formula ? ($formula['lines'] ?? []) : [];
             </div>
             <div class="form-group">
                 <label for="family">Product Family</label>
-                <input type="text" id="family" name="family" list="family-list"
-                       value="<?= e(old('family', $item['family'] ?? '')) ?>"
-                       placeholder="UV offset, aqueous, solvent...">
-                <datalist id="family-list">
+                <select id="family" name="family">
+                    <option value="">— Select —</option>
                     <?php foreach ($families as $f): ?>
-                        <option value="<?= e($f) ?>">
+                        <option value="<?= e($f) ?>" <?= (old('family', $item['family'] ?? '') === $f) ? 'selected' : '' ?>><?= e($f) ?></option>
                     <?php endforeach; ?>
-                </datalist>
+                </select>
             </div>
             <div class="form-group full-width">
                 <label for="description">Description</label>

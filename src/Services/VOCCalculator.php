@@ -592,7 +592,17 @@ class VOCCalculator
             }
 
             // --- VOC Weight Percent ---
-            if ($line['voc_wt'] === null || $line['voc_wt'] === '') {
+            // If the <1% VOC checkbox is checked, use 0.99% for calculations
+            $vocLessThanOne = (int) ($line['voc_less_than_one'] ?? 0);
+
+            if ($vocLessThanOne) {
+                $line['_effective_voc_wt'] = 0.99;
+                $this->addAssumption($rmCode, $rmName, 'VOC wt% set to 0.99% (raw material marked as <1% VOC)');
+                $this->traceStep('voc_less_than_one', "VOC <1% flag set for $rmCode, using 0.99%", [
+                    'raw_material' => $rmCode,
+                    'effective_voc_wt' => 0.99,
+                ]);
+            } elseif ($line['voc_wt'] === null || $line['voc_wt'] === '') {
                 // Check constituents: if all are non-VOC (pigments, oligomers, resins), default to 0
                 $hasVolatileCAS = false;
                 $constituents   = $line['constituents'] ?? [];

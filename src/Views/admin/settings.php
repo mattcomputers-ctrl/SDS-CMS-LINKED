@@ -85,6 +85,18 @@
             </div>
         </div>
 
+        <h2>Product Families</h2>
+        <p class="text-muted mb-1">Enter one product family per line. These appear as dropdown options when creating/editing a finished good.</p>
+        <div class="form-group">
+            <textarea name="sds__product_families" rows="5" style="font-size: 0.9rem;" placeholder="UV Offset&#10;Aqueous&#10;Solvent&#10;Flexo&#10;Digital"><?= e($settings['sds.product_families'] ?? '') ?></textarea>
+        </div>
+
+        <h2>Trade Secret Descriptions</h2>
+        <p class="text-muted mb-1">Enter one trade secret description per line. These appear as dropdown options when marking a CAS constituent as a trade secret.</p>
+        <div class="form-group">
+            <textarea name="sds__trade_secret_descriptions" rows="5" style="font-size: 0.9rem;" placeholder="Proprietary Resin Blend&#10;Proprietary Pigment Dispersion&#10;Proprietary Additive"><?= e($settings['sds.trade_secret_descriptions'] ?? '') ?></textarea>
+        </div>
+
         <h2>Legal / Disclaimer Statement</h2>
         <p class="text-muted mb-1">This statement will appear at the end of every SDS (after Section 16). Use this for legal disclaimers, liability limitations, or any language required by your legal counsel.</p>
 

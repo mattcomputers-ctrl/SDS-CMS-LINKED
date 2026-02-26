@@ -204,7 +204,8 @@ class Formula
                     rm.internal_code,
                     rmc.cas_number, rmc.chemical_name,
                     rmc.pct_exact, rmc.pct_min, rmc.pct_max,
-                    rmc.is_trade_secret
+                    rmc.is_trade_secret, rmc.is_non_hazardous,
+                    rmc.trade_secret_description
              FROM formula_lines fl
              JOIN raw_materials rm ON rm.id = fl.raw_material_id
              JOIN raw_material_constituents rmc ON rmc.raw_material_id = fl.raw_material_id
@@ -236,11 +237,13 @@ class Formula
 
             if (!isset($casBuckets[$cas])) {
                 $casBuckets[$cas] = [
-                    'cas_number'             => $cas,
-                    'chemical_name'          => $row['chemical_name'],
-                    'concentration_pct'      => 0.0,
-                    'is_trade_secret'        => false,
-                    'contributing_materials'  => [],
+                    'cas_number'               => $cas,
+                    'chemical_name'            => $row['chemical_name'],
+                    'concentration_pct'        => 0.0,
+                    'is_trade_secret'          => false,
+                    'is_non_hazardous'         => true, // assume non-hazardous until proven otherwise
+                    'trade_secret_description' => null,
+                    'contributing_materials'    => [],
                 ];
             }
 
@@ -249,6 +252,14 @@ class Formula
             // If any contributing constituent is trade secret, mark the CAS as trade secret
             if ((int) $row['is_trade_secret'] === 1) {
                 $casBuckets[$cas]['is_trade_secret'] = true;
+                if (!empty($row['trade_secret_description'])) {
+                    $casBuckets[$cas]['trade_secret_description'] = $row['trade_secret_description'];
+                }
+            }
+
+            // If any contributing constituent is NOT non-hazardous, mark CAS as hazardous
+            if ((int) ($row['is_non_hazardous'] ?? 0) === 0) {
+                $casBuckets[$cas]['is_non_hazardous'] = false;
             }
 
             $casBuckets[$cas]['contributing_materials'][] = [

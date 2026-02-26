@@ -52,11 +52,15 @@ class FormulaCalcService
         // Get expanded CAS-level composition
         $composition = Formula::getExpandedComposition((int) $formula['id']);
 
+        // Derive formula-level properties from enriched lines
+        $formulaProps = $this->deriveFormulaProperties($enrichedLines);
+
         return [
-            'formula'     => $formula,
-            'composition' => $composition,
-            'voc'         => $vocResult,
-            'warnings'    => $warnings,
+            'formula'        => $formula,
+            'composition'    => $composition,
+            'voc'            => $vocResult,
+            'formula_props'  => $formulaProps,
+            'warnings'       => $warnings,
         ];
     }
 
@@ -76,12 +80,14 @@ class FormulaCalcService
         $vocCalc       = new VOCCalculator($enrichedLines, $vocMode);
         $vocResult     = $vocCalc->calculate();
         $composition   = Formula::getExpandedComposition($formulaId);
+        $formulaProps  = $this->deriveFormulaProperties($enrichedLines);
 
         return [
-            'formula'     => $formula,
-            'composition' => $composition,
-            'voc'         => $vocResult,
-            'warnings'    => $warnings,
+            'formula'        => $formula,
+            'composition'    => $composition,
+            'voc'            => $vocResult,
+            'formula_props'  => $formulaProps,
+            'warnings'       => $warnings,
         ];
     }
 
@@ -126,18 +132,22 @@ class FormulaCalcService
             }
 
             $enriched[] = [
-                'raw_material_id'       => $rmId,
-                'internal_code'         => $rm['internal_code'],
-                'supplier_product_name' => $rm['supplier_product_name'],
-                'pct'                   => (float) $line['pct'],
-                'voc_wt'                => $rm['voc_wt'],
-                'exempt_voc_wt'         => $exemptVocWt,
-                'water_wt'              => $rm['water_wt'],
-                'specific_gravity'      => $rm['specific_gravity'],
-                'solids_wt'             => $rm['solids_wt'],
-                'solids_vol'            => $rm['solids_vol'],
-                'flash_point_c'         => $rm['flash_point_c'],
-                'constituents'          => $rm['constituents'] ?? [],
+                'raw_material_id'          => $rmId,
+                'internal_code'            => $rm['internal_code'],
+                'supplier_product_name'    => $rm['supplier_product_name'],
+                'pct'                      => (float) $line['pct'],
+                'voc_wt'                   => $rm['voc_wt'],
+                'voc_less_than_one'        => (int) ($rm['voc_less_than_one'] ?? 0),
+                'exempt_voc_wt'            => $exemptVocWt,
+                'water_wt'                 => $rm['water_wt'],
+                'specific_gravity'         => $rm['specific_gravity'],
+                'solids_wt'                => $rm['solids_wt'],
+                'solids_vol'               => $rm['solids_vol'],
+                'flash_point_c'            => $rm['flash_point_c'],
+                'flash_point_greater_than' => (int) ($rm['flash_point_greater_than'] ?? 0),
+                'physical_state'           => $rm['physical_state'] ?? null,
+                'solubility'               => $rm['solubility'] ?? null,
+                'constituents'             => $rm['constituents'] ?? [],
             ];
         }
 
@@ -146,6 +156,66 @@ class FormulaCalcService
         }
 
         return $enriched;
+    }
+
+    /**
+     * Derive formula-level properties from enriched lines.
+     *
+     * Returns:
+     *  - all_voc_less_than_one: true if every RM has the <1% VOC flag
+     *  - flash_point_c: lowest flash point across all RMs (null if none set)
+     *  - flash_point_greater_than: true only if the lowest-FP RM has the ">" flag
+     *  - solubility: formula-level solubility string
+     *  - has_non_powder_material: true if any RM is not Powder physical state
+     */
+    private function deriveFormulaProperties(array $enrichedLines): array
+    {
+        $allVocLessThanOne = true;
+        $lowestFp          = null;
+        $lowestFpGt        = false;
+        $solubilities      = [];
+
+        foreach ($enrichedLines as $line) {
+            // VOC <1% logic: all lines must have the flag set
+            if ((int) ($line['voc_less_than_one'] ?? 0) === 0) {
+                $allVocLessThanOne = false;
+            }
+
+            // Flash point: find the lowest across all RMs
+            $fp = $line['flash_point_c'] ?? null;
+            if ($fp !== null && $fp !== '') {
+                $fpVal = (float) $fp;
+                if ($lowestFp === null || $fpVal < $lowestFp) {
+                    $lowestFp   = $fpVal;
+                    $lowestFpGt = (bool) ($line['flash_point_greater_than'] ?? false);
+                }
+            }
+
+            // Solubility: collect all non-empty values
+            $sol = $line['solubility'] ?? null;
+            if ($sol !== null && $sol !== '') {
+                $solubilities[] = $sol;
+            }
+        }
+
+        // Determine formula-level solubility
+        $solubility = '';
+        if (!empty($solubilities)) {
+            $unique = array_unique($solubilities);
+            if (count($unique) === 1) {
+                $solubility = $unique[0]; // All same
+            } else {
+                $solubility = 'Partially soluble in water'; // Mixed
+            }
+        }
+
+        return [
+            'all_voc_less_than_one'    => $allVocLessThanOne,
+            'flash_point_c'            => $lowestFp,
+            'flash_point_greater_than' => $lowestFpGt,
+            'solubility'               => $solubility,
+            'enriched_lines'           => $enrichedLines,
+        ];
     }
 
     /**

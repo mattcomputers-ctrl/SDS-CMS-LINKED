@@ -92,6 +92,11 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                 <label for="voc_wt">VOC wt%</label>
                 <input type="number" id="voc_wt" name="voc_wt" step="0.0001"
                        value="<?= e(old('voc_wt', $item['voc_wt'] ?? '')) ?>">
+                <label style="font-weight: normal; margin-top: 0.25rem;">
+                    <input type="checkbox" name="voc_less_than_one" value="1" id="vocLessThanOne"
+                           <?= !empty($item['voc_less_than_one']) ? 'checked' : '' ?>>
+                    &lt;1%
+                </label>
             </div>
             <div class="form-group">
                 <label for="exempt_voc_wt">Exempt VOC wt%</label>
@@ -119,9 +124,14 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                        value="<?= e(old('solids_vol', $item['solids_vol'] ?? '')) ?>">
             </div>
             <div class="form-group">
-                <label for="flash_point_c">Flash Point (C)</label>
+                <label for="flash_point_c">Flash Point (&deg;C)</label>
                 <input type="number" id="flash_point_c" name="flash_point_c" step="0.1"
                        value="<?= e(old('flash_point_c', $item['flash_point_c'] ?? '')) ?>">
+                <label style="font-weight: normal; margin-top: 0.25rem;">
+                    <input type="checkbox" name="flash_point_greater_than" value="1"
+                           <?= !empty($item['flash_point_greater_than']) ? 'checked' : '' ?>>
+                    Greater than (&gt;)
+                </label>
             </div>
             <div class="form-group">
                 <label for="physical_state">Physical State</label>
@@ -129,6 +139,15 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                     <option value="">—</option>
                     <?php foreach (['Liquid', 'Solid', 'Paste', 'Powder', 'Gas'] as $state): ?>
                         <option value="<?= $state ?>" <?= (old('physical_state', $item['physical_state'] ?? '') === $state) ? 'selected' : '' ?>><?= $state ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="solubility">Solubility</label>
+                <select id="solubility" name="solubility">
+                    <option value="">—</option>
+                    <?php foreach (['Insoluble in water', 'Partially soluble in water', 'Soluble in water'] as $sol): ?>
+                        <option value="<?= $sol ?>" <?= (old('solubility', $item['solubility'] ?? '') === $sol) ? 'selected' : '' ?>><?= $sol ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -161,6 +180,8 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                     <th>% Max</th>
                     <th>% Exact</th>
                     <th>Trade Secret</th>
+                    <th>TS Description</th>
+                    <th>Non-Hazardous</th>
                     <th></th>
                 </tr>
             </thead>
@@ -179,7 +200,16 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                     <td><input type="number" name="pct_min[<?= $i ?>]" value="<?= e((string) ($c['pct_min'] ?? '')) ?>" step="0.0001" class="input-xs"></td>
                     <td><input type="number" name="pct_max[<?= $i ?>]" value="<?= e((string) ($c['pct_max'] ?? '')) ?>" step="0.0001" class="input-xs"></td>
                     <td><input type="number" name="pct_exact[<?= $i ?>]" value="<?= e((string) ($c['pct_exact'] ?? '')) ?>" step="0.0001" class="input-xs"></td>
-                    <td><input type="checkbox" name="is_trade_secret[<?= $i ?>]" value="1" <?= ((int) ($c['is_trade_secret'] ?? 0)) ? 'checked' : '' ?>></td>
+                    <td><input type="checkbox" name="is_trade_secret[<?= $i ?>]" value="1" class="ts-checkbox" <?= ((int) ($c['is_trade_secret'] ?? 0)) ? 'checked' : '' ?>></td>
+                    <td>
+                        <select name="trade_secret_description[<?= $i ?>]" class="input-sm ts-desc-select" <?= ((int) ($c['is_trade_secret'] ?? 0)) ? '' : 'disabled' ?>>
+                            <option value="">—</option>
+                            <?php foreach ($tradeSecretDescriptions ?? [] as $tsd): ?>
+                                <option value="<?= e($tsd) ?>" <?= ($c['trade_secret_description'] ?? '') === $tsd ? 'selected' : '' ?>><?= e($tsd) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </td>
+                    <td><input type="checkbox" name="is_non_hazardous[<?= $i ?>]" value="1" <?= ((int) ($c['is_non_hazardous'] ?? 0)) ? 'checked' : '' ?>></td>
                     <td><button type="button" class="btn btn-sm btn-danger remove-row">X</button></td>
                 </tr>
                 <?php endforeach; ?>
@@ -196,7 +226,16 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                     <td><input type="number" name="pct_min[0]" step="0.0001" class="input-xs"></td>
                     <td><input type="number" name="pct_max[0]" step="0.0001" class="input-xs"></td>
                     <td><input type="number" name="pct_exact[0]" step="0.0001" class="input-xs"></td>
-                    <td><input type="checkbox" name="is_trade_secret[0]" value="1"></td>
+                    <td><input type="checkbox" name="is_trade_secret[0]" value="1" class="ts-checkbox"></td>
+                    <td>
+                        <select name="trade_secret_description[0]" class="input-sm ts-desc-select" disabled>
+                            <option value="">—</option>
+                            <?php foreach ($tradeSecretDescriptions ?? [] as $tsd): ?>
+                                <option value="<?= e($tsd) ?>"><?= e($tsd) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </td>
+                    <td><input type="checkbox" name="is_non_hazardous[0]" value="1"></td>
                     <td><button type="button" class="btn btn-sm btn-danger remove-row">X</button></td>
                 </tr>
             <?php endif; ?>
@@ -327,6 +366,18 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
 .cas-exposure-info .el-line { white-space: nowrap; }
 </style>
 <script>
+// Trade secret description options from admin settings
+var tsDescOptions = <?= json_encode($tradeSecretDescriptions ?? []) ?>;
+
+function buildTsDescSelect(idx) {
+    var html = '<select name="trade_secret_description[' + idx + ']" class="input-sm ts-desc-select" disabled><option value="">—</option>';
+    for (var i = 0; i < tsDescOptions.length; i++) {
+        html += '<option value="' + tsDescOptions[i].replace(/"/g, '&quot;') + '">' + tsDescOptions[i].replace(/</g, '&lt;') + '</option>';
+    }
+    html += '</select>';
+    return html;
+}
+
 // Add constituent row
 document.getElementById('addRow').addEventListener('click', function() {
     var tbody = document.querySelector('#constituentsTable tbody');
@@ -339,7 +390,9 @@ document.getElementById('addRow').addEventListener('click', function() {
         '<td><input type="number" name="pct_min[' + idx + ']" step="0.0001" class="input-xs"></td>' +
         '<td><input type="number" name="pct_max[' + idx + ']" step="0.0001" class="input-xs"></td>' +
         '<td><input type="number" name="pct_exact[' + idx + ']" step="0.0001" class="input-xs"></td>' +
-        '<td><input type="checkbox" name="is_trade_secret[' + idx + ']" value="1"></td>' +
+        '<td><input type="checkbox" name="is_trade_secret[' + idx + ']" value="1" class="ts-checkbox"></td>' +
+        '<td>' + buildTsDescSelect(idx) + '</td>' +
+        '<td><input type="checkbox" name="is_non_hazardous[' + idx + ']" value="1"></td>' +
         '<td><button type="button" class="btn btn-sm btn-danger remove-row">X</button></td>';
     tbody.appendChild(tr);
     // Attach CAS lookup to the new row
@@ -519,6 +572,29 @@ document.querySelectorAll('.cas-input').forEach(function(input) {
                 }
             })
             .catch(function() {});
+    }
+});
+
+// ── Trade secret checkbox toggles description dropdown ──────
+document.addEventListener('change', function(e) {
+    if (e.target.classList.contains('ts-checkbox')) {
+        var row = e.target.closest('tr');
+        var sel = row.querySelector('.ts-desc-select');
+        if (sel) {
+            sel.disabled = !e.target.checked;
+            if (!e.target.checked) sel.value = '';
+        }
+    }
+});
+
+// ── VOC <1% checkbox toggle ────────────────────────────────
+document.getElementById('vocLessThanOne').addEventListener('change', function() {
+    var vocInput = document.getElementById('voc_wt');
+    if (this.checked) {
+        vocInput.value = '';
+        vocInput.disabled = true;
+    } else {
+        vocInput.disabled = false;
     }
 });
 

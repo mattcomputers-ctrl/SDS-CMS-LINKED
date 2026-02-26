@@ -41,11 +41,12 @@ class RawMaterialController
         }
 
         view('raw-materials/form', [
-            'pageTitle'    => 'Add Raw Material',
-            'item'         => null,
-            'mode'         => 'create',
-            'constituents' => [],
-            'sdsHistory'   => [],
+            'pageTitle'              => 'Add Raw Material',
+            'item'                   => null,
+            'mode'                   => 'create',
+            'constituents'           => [],
+            'sdsHistory'             => [],
+            'tradeSecretDescriptions' => $this->loadTradeSecretDescriptions(),
         ]);
     }
 
@@ -60,8 +61,10 @@ class RawMaterialController
         $data = $_POST;
         $data['created_by'] = current_user_id();
 
-        // Process Prop 65 checkbox (unchecked = not in POST)
+        // Process checkbox fields (unchecked = not in POST)
         $data['is_prop65'] = !empty($data['is_prop65']) ? 1 : 0;
+        $data['voc_less_than_one'] = !empty($data['voc_less_than_one']) ? 1 : 0;
+        $data['flash_point_greater_than'] = !empty($data['flash_point_greater_than']) ? 1 : 0;
 
         // Build HAPs data JSON from form arrays
         $data['haps_data'] = $this->buildHapsJson();
@@ -111,11 +114,12 @@ class RawMaterialController
         $sdsHistory = RawMaterial::getSdsHistory((int) $id);
 
         view('raw-materials/form', [
-            'pageTitle'    => 'Edit: ' . $item['internal_code'],
-            'item'         => $item,
-            'mode'         => 'edit',
-            'constituents' => $item['constituents'] ?? [],
-            'sdsHistory'   => $sdsHistory,
+            'pageTitle'              => 'Edit: ' . $item['internal_code'],
+            'item'                   => $item,
+            'mode'                   => 'edit',
+            'constituents'           => $item['constituents'] ?? [],
+            'sdsHistory'             => $sdsHistory,
+            'tradeSecretDescriptions' => $this->loadTradeSecretDescriptions(),
         ]);
     }
 
@@ -136,8 +140,10 @@ class RawMaterialController
         $data = $_POST;
         $data['expected_updated_at'] = $data['updated_at'] ?? null;
 
-        // Process Prop 65 checkbox (unchecked = not in POST)
+        // Process checkbox fields (unchecked = not in POST)
         $data['is_prop65'] = !empty($data['is_prop65']) ? 1 : 0;
+        $data['voc_less_than_one'] = !empty($data['voc_less_than_one']) ? 1 : 0;
+        $data['flash_point_greater_than'] = !empty($data['flash_point_greater_than']) ? 1 : 0;
 
         // Build HAPs data JSON from form arrays
         $data['haps_data'] = $this->buildHapsJson();
@@ -358,6 +364,8 @@ class RawMaterialController
         $pctMaxs      = $_POST['pct_max'] ?? [];
         $pctExacts    = $_POST['pct_exact'] ?? [];
         $secrets      = $_POST['is_trade_secret'] ?? [];
+        $tsDescs      = $_POST['trade_secret_description'] ?? [];
+        $nonHazardous = $_POST['is_non_hazardous'] ?? [];
 
         foreach ($casNumbers as $i => $cas) {
             $cas = trim($cas);
@@ -366,13 +374,15 @@ class RawMaterialController
             }
 
             $constituents[] = [
-                'cas_number'      => $cas,
-                'chemical_name'   => trim($chemNames[$i] ?? ''),
-                'pct_min'         => ($pctMins[$i] ?? '') !== '' ? (float) $pctMins[$i] : null,
-                'pct_max'         => ($pctMaxs[$i] ?? '') !== '' ? (float) $pctMaxs[$i] : null,
-                'pct_exact'       => ($pctExacts[$i] ?? '') !== '' ? (float) $pctExacts[$i] : null,
-                'is_trade_secret' => isset($secrets[$i]) ? 1 : 0,
-                'sort_order'      => $i + 1,
+                'cas_number'               => $cas,
+                'chemical_name'            => trim($chemNames[$i] ?? ''),
+                'pct_min'                  => ($pctMins[$i] ?? '') !== '' ? (float) $pctMins[$i] : null,
+                'pct_max'                  => ($pctMaxs[$i] ?? '') !== '' ? (float) $pctMaxs[$i] : null,
+                'pct_exact'                => ($pctExacts[$i] ?? '') !== '' ? (float) $pctExacts[$i] : null,
+                'is_trade_secret'          => isset($secrets[$i]) ? 1 : 0,
+                'trade_secret_description' => isset($secrets[$i]) ? trim($tsDescs[$i] ?? '') : null,
+                'is_non_hazardous'         => isset($nonHazardous[$i]) ? 1 : 0,
+                'sort_order'               => $i + 1,
             ];
         }
 
@@ -456,5 +466,20 @@ class RawMaterialController
             'original_name' => $file['name'],
             'size'          => $file['size'],
         ];
+    }
+
+    /**
+     * Load trade secret description options from admin settings.
+     *
+     * @return string[]
+     */
+    private function loadTradeSecretDescriptions(): array
+    {
+        $db = \SDS\Core\Database::getInstance();
+        $row = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'sds.trade_secret_descriptions'");
+        if (!$row || empty($row['value'])) {
+            return [];
+        }
+        return array_filter(array_map('trim', explode("\n", $row['value'])));
     }
 }

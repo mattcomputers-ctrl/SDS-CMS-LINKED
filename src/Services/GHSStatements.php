@@ -277,65 +277,196 @@ class GHSStatements
         'GHS09' => 'Environment',
     ];
 
+    /** Cached GHS translation data keyed by language code. */
+    private static array $translationCache = [];
+
+    /**
+     * Load the GHS translation file for a given language.
+     *
+     * @return array  Translation data with keys: signal_words, h_statements, p_statements, pictogram_names, hazard_class_names
+     */
+    private static function loadTranslation(string $lang): array
+    {
+        if (isset(self::$translationCache[$lang])) {
+            return self::$translationCache[$lang];
+        }
+
+        $file = dirname(__DIR__, 2) . '/templates/translations/ghs_' . $lang . '.php';
+        if (file_exists($file)) {
+            self::$translationCache[$lang] = require $file;
+        } else {
+            self::$translationCache[$lang] = [];
+        }
+
+        return self::$translationCache[$lang];
+    }
+
     /**
      * Look up the text for an H-statement code.
      */
-    public static function hText(string $code): string
+    public static function hText(string $code, string $lang = 'en'): string
     {
         $code = strtoupper(trim($code));
+
+        if ($lang !== 'en') {
+            $trans = self::loadTranslation($lang);
+            $text = $trans['h_statements'][$code] ?? null;
+            if ($text !== null) {
+                return $text;
+            }
+        }
+
         return self::H_STATEMENTS[$code] ?? '';
     }
 
     /**
      * Look up the text for a P-statement code.
      */
-    public static function pText(string $code): string
+    public static function pText(string $code, string $lang = 'en'): string
     {
         $code = strtoupper(trim($code));
+
+        if ($lang !== 'en') {
+            $trans = self::loadTranslation($lang);
+            $text = $trans['p_statements'][$code] ?? null;
+            if ($text !== null) {
+                return $text;
+            }
+        }
+
         return self::P_STATEMENTS[$code] ?? '';
     }
 
     /**
      * Get the human-readable name for a pictogram code.
      */
-    public static function pictogramName(string $code): string
+    public static function pictogramName(string $code, string $lang = 'en'): string
     {
         $code = strtoupper(trim($code));
+
+        if ($lang !== 'en') {
+            $trans = self::loadTranslation($lang);
+            $text = $trans['pictogram_names'][$code] ?? null;
+            if ($text !== null) {
+                return $text;
+            }
+        }
+
         return self::PICTOGRAM_NAMES[$code] ?? $code;
     }
 
     /**
-     * Resolve an array of H-statements, filling in missing text from the standard.
-     *
-     * @param  array $statements  [['code' => 'H225', 'text' => ''], ...]
-     * @return array              With text filled in from standard where empty
+     * Translate a signal word (Danger/Warning) to the target language.
      */
-    public static function resolveHStatements(array $statements): array
+    public static function signalWord(?string $word, string $lang = 'en'): ?string
+    {
+        if ($word === null || $word === '') {
+            return $word;
+        }
+
+        if ($lang !== 'en') {
+            $trans = self::loadTranslation($lang);
+            return $trans['signal_words'][$word] ?? $word;
+        }
+
+        return $word;
+    }
+
+    /**
+     * Translate a hazard class name to the target language.
+     */
+    public static function hazardClassName(string $name, string $lang = 'en'): string
+    {
+        if ($lang !== 'en') {
+            $trans = self::loadTranslation($lang);
+            return $trans['hazard_class_names'][$name] ?? $name;
+        }
+
+        return $name;
+    }
+
+    /**
+     * Resolve an array of H-statements, filling in text from the standard.
+     *
+     * @param  array  $statements  [['code' => 'H225', 'text' => ''], ...]
+     * @param  string $lang        Language code
+     * @return array               With text filled in from standard where empty
+     */
+    public static function resolveHStatements(array $statements, string $lang = 'en'): array
     {
         foreach ($statements as &$stmt) {
             $code = $stmt['code'] ?? '';
-            if ($code !== '' && (($stmt['text'] ?? '') === '')) {
-                $stmt['text'] = self::hText($code);
+            if ($code !== '') {
+                $stmt['text'] = self::hText($code, $lang);
             }
         }
         return $statements;
     }
 
     /**
-     * Resolve an array of P-statements, filling in missing text from the standard.
+     * Resolve an array of P-statements, filling in text from the standard.
      *
-     * @param  array $statements  [['code' => 'P210', 'text' => ''], ...]
-     * @return array              With text filled in from standard where empty
+     * @param  array  $statements  [['code' => 'P210', 'text' => ''], ...]
+     * @param  string $lang        Language code
+     * @return array               With text filled in from standard where empty
      */
-    public static function resolvePStatements(array $statements): array
+    public static function resolvePStatements(array $statements, string $lang = 'en'): array
     {
         foreach ($statements as &$stmt) {
             $code = $stmt['code'] ?? '';
-            if ($code !== '' && (($stmt['text'] ?? '') === '')) {
-                $stmt['text'] = self::pText($code);
+            if ($code !== '') {
+                $stmt['text'] = self::pText($code, $lang);
             }
         }
         return $statements;
+    }
+
+    /**
+     * Translate the full hazard result (statements, signal word, pictograms)
+     * to the target language.
+     *
+     * @param  array  $hazardResult  From HazardEngine::classify()
+     * @param  string $lang          Language code
+     * @return array  The hazardResult with translated texts
+     */
+    public static function translateHazardResult(array $hazardResult, string $lang): array
+    {
+        if ($lang === 'en') {
+            return $hazardResult;
+        }
+
+        // Translate H-statements
+        $hazardResult['h_statements'] = self::resolveHStatements(
+            $hazardResult['h_statements'] ?? [],
+            $lang
+        );
+
+        // Translate P-statements
+        $hazardResult['p_statements'] = self::resolvePStatements(
+            $hazardResult['p_statements'] ?? [],
+            $lang
+        );
+
+        // Translate signal word (preserve original for color logic)
+        $hazardResult['signal_word_en'] = $hazardResult['signal_word'] ?? null;
+        $hazardResult['signal_word'] = self::signalWord(
+            $hazardResult['signal_word'] ?? null,
+            $lang
+        );
+
+        // Translate pictogram names (add translated descriptions)
+        $hazardResult['pictogram_names'] = [];
+        foreach ($hazardResult['pictograms'] ?? [] as $code) {
+            $hazardResult['pictogram_names'][$code] = self::pictogramName($code, $lang);
+        }
+
+        // Translate hazard class names
+        foreach ($hazardResult['hazard_classes'] ?? [] as &$hc) {
+            $hc['class_translated'] = self::hazardClassName($hc['class'] ?? '', $lang);
+        }
+        unset($hc);
+
+        return $hazardResult;
     }
 
     /**

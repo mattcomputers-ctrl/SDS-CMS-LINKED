@@ -68,6 +68,15 @@ class SDSGenerator
         $hazardEngine = new HazardEngine();
         $hazardResult = $hazardEngine->classify($calcResult['composition']);
 
+        // Carbon Black CAS# 1333-86-4 special logic:
+        // Apply Carcinogen Category 2 (H351) only if Carbon Black is the only
+        // ingredient OR all other ingredients are powders. If mixed with any
+        // non-powder material, do not apply the carcinogen classification.
+        $this->applyCarbonBlackLogic($hazardResult, $calcResult);
+
+        // Translate GHS data (H/P statements, signal word, pictograms) for target language
+        $hazardResult = GHSStatements::translateHazardResult($hazardResult, $language);
+
         // Run SARA 313 analysis
         $saraResult = SARA313Service::analyse($calcResult['composition']);
 
@@ -191,6 +200,7 @@ class SDSGenerator
         return [
             'title'               => $this->t->get('section2.title'),
             'signal_word'         => $hazard['signal_word'],
+            'signal_word_en'      => $hazard['signal_word_en'] ?? $hazard['signal_word'],
             'pictograms'          => $hazard['pictograms'],
             'hazard_classes'      => $hazard['hazard_classes'],
             'h_statements'        => $hazard['h_statements'],
@@ -205,25 +215,57 @@ class SDSGenerator
         // Only disclose CAS numbers that are classified as hazardous
         $hazardousCas = array_flip($hazardResult['hazardous_cas'] ?? []);
 
-        $disclosed = [];
+        $disclosed      = [];
+        $tradeSecretBuckets = []; // group trade secrets by description
+
         foreach ($composition as $c) {
             $cas  = $c['cas_number'] ?? '';
             $conc = (float) ($c['concentration_pct'] ?? 0);
 
-            // Must be hazardous, above disclosure threshold, and not trade secret
-            if ($cas !== ''
-                && isset($hazardousCas[$cas])
-                && $conc >= 0.1
-                && !($c['is_trade_secret'] ?? false)
-            ) {
-                $disclosed[] = [
-                    'cas_number'          => $cas,
-                    'chemical_name'       => $c['chemical_name'],
-                    'concentration_pct'   => $conc,
-                    'concentration_range' => $this->concentrationRange($conc),
-                ];
+            // Skip non-hazardous constituents
+            if (!empty($c['is_non_hazardous'])) {
+                continue;
             }
+
+            // Must be hazardous and above disclosure threshold
+            if ($cas === '' || !isset($hazardousCas[$cas]) || $conc < 0.1) {
+                continue;
+            }
+
+            // Trade secret items: group by description and merge
+            if (!empty($c['is_trade_secret'])) {
+                $desc = $c['trade_secret_description'] ?? '';
+                if (!isset($tradeSecretBuckets[$desc])) {
+                    $tradeSecretBuckets[$desc] = [
+                        'cas_number'        => 'TRADE SECRET',
+                        'chemical_name'     => $desc ?: 'Trade Secret',
+                        'concentration_pct' => 0.0,
+                    ];
+                }
+                $tradeSecretBuckets[$desc]['concentration_pct'] += $conc;
+                continue;
+            }
+
+            $disclosed[] = [
+                'cas_number'          => $cas,
+                'chemical_name'       => $c['chemical_name'],
+                'concentration_pct'   => $conc,
+                'concentration_range' => $this->concentrationRange($conc),
+            ];
         }
+
+        // Add merged trade secret lines
+        foreach ($tradeSecretBuckets as $bucket) {
+            $disclosed[] = [
+                'cas_number'          => 'TRADE SECRET',
+                'chemical_name'       => $bucket['chemical_name'],
+                'concentration_pct'   => round($bucket['concentration_pct'], 4),
+                'concentration_range' => $this->concentrationRange($bucket['concentration_pct']),
+            ];
+        }
+
+        // Sort by concentration descending
+        usort($disclosed, fn($a, $b) => $b['concentration_pct'] <=> $a['concentration_pct']);
 
         return [
             'title'                => $this->t->get('section3.title'),
@@ -304,20 +346,44 @@ class SDSGenerator
 
     private function section9(array $calcResult, array $overrides): array
     {
-        $voc = $calcResult['voc'];
+        $voc   = $calcResult['voc'];
+        $props = $calcResult['formula_props'] ?? [];
+
+        // Flash point: auto-derive from formula, allow override
+        $flashPoint = $overrides[9]['flash_point'] ?? null;
+        if ($flashPoint === null || $flashPoint === '') {
+            $fpC = $props['flash_point_c'] ?? null;
+            if ($fpC !== null) {
+                $fpF     = round($fpC * 9 / 5 + 32, 1);
+                $prefix  = !empty($props['flash_point_greater_than']) ? '> ' : '';
+                $flashPoint = "{$prefix}{$fpC} °C ({$fpF} °F)";
+            } else {
+                $flashPoint = 'Not determined';
+            }
+        }
+
+        // VOC wt%: if all materials are <1%, display "<1%"
+        $vocWtPctDisplay = round((float) ($voc['total_voc_wt_pct'] ?? 0), 2);
+        if (!empty($props['all_voc_less_than_one'])) {
+            $vocWtPctDisplay = '<1';
+        }
+
+        // Solubility: auto-derive from formula
+        $solubility = $overrides[9]['solubility'] ?? ($props['solubility'] ?? '');
+
         return [
-            'title'           => $this->t->get('section9.title'),
-            'appearance'      => $overrides[9]['appearance'] ?? '',
-            'odor'            => $overrides[9]['odor'] ?? '',
-            'ph'              => $overrides[9]['ph'] ?? 'Not applicable',
-            'boiling_point'   => $overrides[9]['boiling_point'] ?? 'Not determined',
-            'flash_point'     => $overrides[9]['flash_point'] ?? 'Not determined',
-            'specific_gravity' => round((float) ($voc['mixture_sg'] ?? 0), 3) ?: 'Not determined',
-            'voc_lb_per_gal'  => round((float) ($voc['voc_lb_per_gal'] ?? 0), 2),
+            'title'                => $this->t->get('section9.title'),
+            'appearance'           => $overrides[9]['appearance'] ?? '',
+            'odor'                 => $overrides[9]['odor'] ?? '',
+            'boiling_point'        => $overrides[9]['boiling_point'] ?? 'Not determined',
+            'flash_point'          => $flashPoint,
+            'solubility'           => $solubility,
+            'specific_gravity'     => round((float) ($voc['mixture_sg'] ?? 0), 3) ?: 'Not determined',
+            'voc_lb_per_gal'       => round((float) ($voc['voc_lb_per_gal'] ?? 0), 2),
             'voc_less_water_exempt' => round((float) ($voc['voc_lb_per_gal_less_water_exempt'] ?? 0), 2),
-            'solids_wt_pct'   => round((float) ($voc['solids_wt_pct'] ?? 0), 1),
-            'solids_vol_pct'  => $voc['solids_vol_pct'] !== null ? round((float) $voc['solids_vol_pct'], 1) : 'Not determined',
-            'voc_wt_pct'      => round((float) ($voc['total_voc_wt_pct'] ?? 0), 2),
+            'solids_wt_pct'        => round((float) ($voc['solids_wt_pct'] ?? 0), 1),
+            'solids_vol_pct'       => $voc['solids_vol_pct'] !== null ? round((float) $voc['solids_vol_pct'], 1) : 'Not determined',
+            'voc_wt_pct'           => $vocWtPctDisplay,
         ];
     }
 
@@ -563,6 +629,144 @@ class SDSGenerator
             $labels[$key] = $this->t->get('labels.' . $key);
         }
         return $labels;
+    }
+
+    /**
+     * Apply Carbon Black CAS# 1333-86-4 carcinogen logic.
+     *
+     * Carbon Black is classified as Carcinogen Category 2 (H351) only when:
+     *  - It is the sole ingredient, OR
+     *  - All other ingredients have a physical_state of 'Powder'
+     *
+     * If mixed with any non-powder material, the Carcinogen Category 2
+     * classification is removed (but Carbon Black is still listed in Section 3).
+     */
+    private function applyCarbonBlackLogic(array &$hazardResult, array $calcResult): void
+    {
+        $carbonBlackCas = '1333-86-4';
+
+        // Check if Carbon Black is in the composition
+        $hasCarbonBlack = false;
+        foreach ($calcResult['composition'] as $c) {
+            if (($c['cas_number'] ?? '') === $carbonBlackCas) {
+                $hasCarbonBlack = true;
+                break;
+            }
+        }
+
+        if (!$hasCarbonBlack) {
+            return;
+        }
+
+        // Check enriched lines: is Carbon Black the only material,
+        // or are all OTHER materials Powder?
+        $enrichedLines = $calcResult['formula_props']['enriched_lines'] ?? [];
+        $hasNonPowder = false;
+        $lineCount = count($enrichedLines);
+
+        foreach ($enrichedLines as $line) {
+            // Check if this line contains Carbon Black by looking at its constituents
+            $isCarbonBlackLine = false;
+            foreach ($line['constituents'] ?? [] as $constituent) {
+                if (($constituent['cas_number'] ?? '') === $carbonBlackCas) {
+                    $isCarbonBlackLine = true;
+                    break;
+                }
+            }
+
+            // Skip the Carbon Black line itself — we check OTHER materials
+            if ($isCarbonBlackLine) {
+                continue;
+            }
+
+            // If any other material is NOT powder, flag it
+            $state = $line['physical_state'] ?? null;
+            if ($state === null || strtolower($state) !== 'powder') {
+                $hasNonPowder = true;
+                break;
+            }
+        }
+
+        // Determine if carcinogen classification should apply
+        $onlyPowders = !$hasNonPowder; // true if CB is only ingredient or all others are powder
+
+        if ($onlyPowders) {
+            // Add Carcinogen Category 2 + H351 if not already present
+            $hasH351 = false;
+            foreach ($hazardResult['h_statements'] as $stmt) {
+                if (($stmt['code'] ?? '') === 'H351') {
+                    $hasH351 = true;
+                    break;
+                }
+            }
+
+            if (!$hasH351) {
+                $hazardResult['h_statements'][] = [
+                    'code' => 'H351',
+                    'text' => GHSStatements::hText('H351'),
+                ];
+
+                $hazardResult['hazard_classes'][] = [
+                    'class'             => 'Carcinogenicity',
+                    'category'          => 'Category 2',
+                    'cas'               => $carbonBlackCas,
+                    'chemical'          => 'Carbon Black',
+                    'concentration_pct' => 0,
+                    'cutoff_pct'        => 0,
+                    'source'            => 'Carbon Black powder logic',
+                ];
+
+                // Ensure GHS08 (Health Hazard) pictogram is present
+                if (!in_array('GHS08', $hazardResult['pictograms'])) {
+                    $hazardResult['pictograms'][] = 'GHS08';
+                }
+
+                // Ensure 'Warning' signal word at minimum
+                if ($hazardResult['signal_word'] === null) {
+                    $hazardResult['signal_word'] = 'Warning';
+                }
+
+                // Add P-statements for Carcinogenicity Cat 2
+                $carcinPCodes = ['P201', 'P202', 'P281', 'P308+P313', 'P405', 'P501'];
+                $existingPCodes = array_map(fn($s) => $s['code'] ?? '', $hazardResult['p_statements']);
+                foreach ($carcinPCodes as $pCode) {
+                    if (!in_array($pCode, $existingPCodes)) {
+                        $hazardResult['p_statements'][] = [
+                            'code' => $pCode,
+                            'text' => GHSStatements::pText($pCode),
+                        ];
+                    }
+                }
+            }
+        } else {
+            // Remove Carcinogen Cat 2 for Carbon Black if it was added by HazardEngine
+            $hazardResult['h_statements'] = array_values(array_filter(
+                $hazardResult['h_statements'],
+                function ($stmt) use ($hazardResult, $carbonBlackCas) {
+                    if (($stmt['code'] ?? '') !== 'H351') {
+                        return true;
+                    }
+                    // Only remove H351 if Carbon Black is the sole source
+                    foreach ($hazardResult['hazard_classes'] as $hc) {
+                        if (($hc['cas'] ?? '') !== $carbonBlackCas
+                            && stripos($hc['class'] ?? '', 'Carcinogen') !== false
+                            && stripos($hc['category'] ?? '', '2') !== false) {
+                            return true; // Another CAS also has Cat 2 carcinogen — keep H351
+                        }
+                    }
+                    return false;
+                }
+            ));
+
+            // Remove Carbon Black carcinogenicity from hazard_classes
+            $hazardResult['hazard_classes'] = array_values(array_filter(
+                $hazardResult['hazard_classes'],
+                fn($hc) => !(
+                    ($hc['cas'] ?? '') === $carbonBlackCas
+                    && stripos($hc['class'] ?? '', 'Carcinogen') !== false
+                )
+            ));
+        }
     }
 
     private function hasTradeSecrets(array $composition): bool

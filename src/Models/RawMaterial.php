@@ -197,6 +197,7 @@ class RawMaterial
             'supplier_product_name' => trim($data['supplier_product_name'] ?? ''),
             'supplier_sds_path'     => $data['supplier_sds_path'] ?? null,
             'voc_wt'                => $numOrNull('voc_wt'),
+            'voc_less_than_one'     => !empty($data['voc_less_than_one']) ? 1 : 0,
             'exempt_voc_wt'         => $numOrNull('exempt_voc_wt'),
             'water_wt'              => $numOrNull('water_wt'),
             'specific_gravity'      => $numOrNull('specific_gravity'),
@@ -206,7 +207,9 @@ class RawMaterial
             'solids_wt'             => $numOrNull('solids_wt'),
             'solids_vol'            => $numOrNull('solids_vol'),
             'flash_point_c'         => $numOrNull('flash_point_c'),
+            'flash_point_greater_than' => !empty($data['flash_point_greater_than']) ? 1 : 0,
             'physical_state'        => $strOrNull('physical_state'),
+            'solubility'            => $strOrNull('solubility'),
             'appearance'            => $strOrNull('appearance'),
             'odor'                  => $strOrNull('odor'),
             'notes'                 => $strOrNull('notes'),
@@ -260,9 +263,10 @@ class RawMaterial
 
         $allowed = [
             'internal_code', 'supplier', 'supplier_product_name', 'supplier_sds_path',
-            'voc_wt', 'exempt_voc_wt', 'water_wt', 'specific_gravity', 'density',
-            'density_units', 'temp_ref_c', 'solids_wt', 'solids_vol', 'flash_point_c',
-            'physical_state', 'appearance', 'odor', 'notes',
+            'voc_wt', 'voc_less_than_one', 'exempt_voc_wt', 'water_wt',
+            'specific_gravity', 'density', 'density_units', 'temp_ref_c',
+            'solids_wt', 'solids_vol', 'flash_point_c', 'flash_point_greater_than',
+            'physical_state', 'solubility', 'appearance', 'odor', 'notes',
             'is_prop65', 'prop65_chemical_name', 'prop65_toxicity_types', 'haps_data',
         ];
 
@@ -353,14 +357,16 @@ class RawMaterial
             // Insert new
             foreach ($constituents as $i => $c) {
                 $db->insert('raw_material_constituents', [
-                    'raw_material_id' => $rmId,
-                    'cas_number'      => trim($c['cas_number'] ?? ''),
-                    'chemical_name'   => trim($c['chemical_name'] ?? ''),
-                    'pct_min'         => $c['pct_min'] ?? null,
-                    'pct_max'         => $c['pct_max'] ?? null,
-                    'pct_exact'       => $c['pct_exact'] ?? null,
-                    'is_trade_secret' => (int) ($c['is_trade_secret'] ?? 0),
-                    'sort_order'      => (int) ($c['sort_order'] ?? $i + 1),
+                    'raw_material_id'        => $rmId,
+                    'cas_number'             => trim($c['cas_number'] ?? ''),
+                    'chemical_name'          => trim($c['chemical_name'] ?? ''),
+                    'pct_min'                => $c['pct_min'] ?? null,
+                    'pct_max'                => $c['pct_max'] ?? null,
+                    'pct_exact'              => $c['pct_exact'] ?? null,
+                    'is_trade_secret'        => (int) ($c['is_trade_secret'] ?? 0),
+                    'is_non_hazardous'       => (int) ($c['is_non_hazardous'] ?? 0),
+                    'trade_secret_description' => !empty($c['trade_secret_description']) ? trim($c['trade_secret_description']) : null,
+                    'sort_order'             => (int) ($c['sort_order'] ?? $i + 1),
                 ]);
             }
 

@@ -45,7 +45,7 @@ class FinishedGoodController
             redirect('/finished-goods');
         }
 
-        $families     = FinishedGood::getFamilies();
+        $families     = $this->loadProductFamilies();
         $rawMaterials = RawMaterial::all(['per_page' => 999, 'sort' => 'internal_code', 'dir' => 'asc']);
 
         view('finished-goods/form', [
@@ -93,7 +93,7 @@ class FinishedGoodController
             redirect('/finished-goods');
         }
 
-        $families     = FinishedGood::getFamilies();
+        $families     = $this->loadProductFamilies();
         $rawMaterials = RawMaterial::all(['per_page' => 999, 'sort' => 'internal_code', 'dir' => 'asc']);
         $formula      = Formula::findCurrentByFinishedGood((int) $id);
 
@@ -179,5 +179,21 @@ class FinishedGoodController
             'finished_good_id' => $fgId,
             'line_count'       => count($lines),
         ]);
+    }
+
+    /**
+     * Load product families from admin settings, falling back to distinct DB values.
+     *
+     * @return string[]
+     */
+    private function loadProductFamilies(): array
+    {
+        $db  = \SDS\Core\Database::getInstance();
+        $row = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'sds.product_families'");
+        if ($row && !empty($row['value'])) {
+            return array_filter(array_map('trim', explode("\n", $row['value'])));
+        }
+        // Fallback to distinct families already in use
+        return FinishedGood::getFamilies();
     }
 }

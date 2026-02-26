@@ -194,10 +194,6 @@
                 <input type="text" name="override[9][odor]" class="form-control" value="<?= e($section['odor'] ?? '') ?>">
             </div>
             <div class="form-group">
-                <label>pH</label>
-                <input type="text" name="override[9][ph]" class="form-control" value="<?= e($section['ph'] ?? '') ?>">
-            </div>
-            <div class="form-group">
                 <label>Boiling Point</label>
                 <input type="text" name="override[9][boiling_point]" class="form-control" value="<?= e($section['boiling_point'] ?? '') ?>">
             </div>

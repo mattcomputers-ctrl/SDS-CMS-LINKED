@@ -23,6 +23,9 @@ class PDFService
     /** @var array Translated labels for PDF field names */
     private array $labels = [];
 
+    /** @var string Language code for GHS translations */
+    private string $language = 'en';
+
     /**
      * Generate a PDF from SDS data and return the file path.
      *
@@ -45,6 +48,7 @@ class PDFService
         $meta = $sdsData['meta'];
         $sections = $sdsData['sections'];
         $this->labels = $meta['labels'] ?? [];
+        $this->language = $meta['language'] ?? 'en';
 
         // Create PDF using custom subclass that handles absolute logo paths
         $pdf = new SDSTcpdf('P', 'mm', 'LETTER', true, 'UTF-8');
@@ -201,7 +205,7 @@ class PDFService
         // Signal word
         if (!empty($s['signal_word'])) {
             $pdf->SetFont('helvetica', 'B', 14);
-            $color = $s['signal_word'] === 'Danger' ? [220, 0, 0] : [255, 140, 0];
+            $color = ($s['signal_word_en'] ?? $s['signal_word']) === 'Danger' ? [220, 0, 0] : [255, 140, 0];
             $pdf->SetTextColor(...$color);
             $pdf->Cell(0, 7, strtoupper($s['signal_word']), 0, 1);
             $pdf->SetTextColor(0, 0, 0);
@@ -221,7 +225,7 @@ class PDFService
             $pdf->SetFont('helvetica', '', 9);
             $seen = [];
             foreach ($s['hazard_classes'] as $hc) {
-                $class = trim($hc['class'] ?? '');
+                $class = trim($hc['class_translated'] ?? $hc['class'] ?? '');
                 $category = trim($hc['category'] ?? '');
                 if ($class !== '' && $category !== '') {
                     $label = $class . ' (' . $category . ')';
@@ -317,7 +321,7 @@ class PDFService
             $pdf->SetFont('helvetica', '', 9);
             $labels = [];
             foreach ($pictogramCodes as $code) {
-                $labels[] = $code . ' (' . GHSStatements::pictogramName($code) . ')';
+                $labels[] = $code . ' (' . GHSStatements::pictogramName($code, $this->language) . ')';
             }
             $pdf->MultiCell(0, 5, implode(', ', $labels), 0, 'L');
             return;
@@ -337,7 +341,7 @@ class PDFService
         $pdf->SetFont('helvetica', '', 6);
         $x = $startX;
         foreach ($validCodes as $code) {
-            $name = GHSStatements::pictogramName($code);
+            $name = GHSStatements::pictogramName($code, $this->language);
             $pdf->SetXY($x, $labelY);
             $pdf->Cell($colWidth, 3, $name, 0, 0, 'C');
             $x += $colWidth;
@@ -479,9 +483,9 @@ class PDFService
         $props = [
             'Appearance'        => $s['appearance'] ?? '',
             'Odor'              => $s['odor'] ?? '',
-            'pH'                => $s['ph'] ?? '',
             'Boiling Point'     => $s['boiling_point'] ?? '',
             'Flash Point'       => $s['flash_point'] ?? '',
+            'Solubility'        => $s['solubility'] ?? '',
             'Specific Gravity'  => $s['specific_gravity'] ?? '',
             'VOC (lb/gal)'      => $s['voc_lb_per_gal'] ?? '',
             'VOC less W&E (lb/gal)' => $s['voc_less_water_exempt'] ?? '',

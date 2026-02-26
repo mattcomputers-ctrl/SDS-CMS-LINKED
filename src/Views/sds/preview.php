@@ -17,7 +17,7 @@
 
         <?php if ($num === 2): // ── Hazard Identification ── ?>
             <?php if (!empty($section['signal_word'])): ?>
-                <p class="signal-word signal-<?= strtolower($section['signal_word']) ?>" style="font-size: 1.3rem; font-weight: bold; color: <?= $section['signal_word'] === 'Danger' ? '#DC0000' : '#FF8C00' ?>;">
+                <p class="signal-word signal-<?= strtolower($section['signal_word_en'] ?? $section['signal_word']) ?>" style="font-size: 1.3rem; font-weight: bold; color: <?= ($section['signal_word_en'] ?? $section['signal_word']) === 'Danger' ? '#DC0000' : '#FF8C00' ?>;">
                     <?= e(strtoupper($section['signal_word'])) ?>
                 </p>
             <?php endif; ?>
@@ -32,12 +32,12 @@
                             <?php if ($pictoSrc): ?>
                             <img src="<?= e($pictoSrc) ?>"
                                  alt="<?= e($code) ?>"
-                                 title="<?= e($code) ?> — <?= e(\SDS\Services\GHSStatements::pictogramName($code)) ?>"
+                                 title="<?= e($code) ?> — <?= e(\SDS\Services\GHSStatements::pictogramName($code, $language)) ?>"
                                  style="width: 60px; height: 60px;">
                             <?php else: ?>
                             <span class="badge"><?= e($code) ?></span>
                             <?php endif; ?>
-                            <small style="display: block; font-size: 0.7rem; color: #666; text-align: center; width: 100%;"><?= e(\SDS\Services\GHSStatements::pictogramName($code)) ?></small>
+                            <small style="display: block; font-size: 0.7rem; color: #666; text-align: center; width: 100%;"><?= e(\SDS\Services\GHSStatements::pictogramName($code, $language)) ?></small>
                         </span>
                     <?php endforeach; ?>
                 </div>
@@ -49,7 +49,7 @@
                 <?php
                     $seen = [];
                     foreach ($section['hazard_classes'] as $hc):
-                        $cls = trim($hc['class'] ?? '');
+                        $cls = trim($hc['class_translated'] ?? $hc['class'] ?? '');
                         $cat = trim($hc['category'] ?? '');
                         $label = ($cls !== '' && $cat !== '') ? $cls . ' (' . $cat . ')' : ($cls !== '' ? $cls : $cat);
                         if ($label !== '' && !isset($seen[$label])):

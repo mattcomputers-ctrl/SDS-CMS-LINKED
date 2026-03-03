@@ -23,31 +23,6 @@
     </div>
 </div>
 
-<div class="card storage-card">
-    <h2 class="card-title">Storage Space</h2>
-    <div class="storage-stats">
-        <div class="storage-stat">
-            <span class="storage-stat-label">Total</span>
-            <span class="storage-stat-value"><?= number_format($storage['total_gb'], 2) ?> GB</span>
-        </div>
-        <div class="storage-stat">
-            <span class="storage-stat-label">Used</span>
-            <span class="storage-stat-value"><?= number_format($storage['used_gb'], 2) ?> GB <span class="storage-percent">(<?= $storage['used_percent'] ?>%)</span></span>
-        </div>
-        <div class="storage-stat">
-            <span class="storage-stat-label">Free</span>
-            <span class="storage-stat-value"><?= number_format($storage['free_gb'], 2) ?> GB <span class="storage-percent">(<?= $storage['free_percent'] ?>%)</span></span>
-        </div>
-    </div>
-    <div class="storage-bar-container">
-        <div class="storage-bar-used" style="width: <?= $storage['used_percent'] ?>%"></div>
-    </div>
-    <div class="storage-bar-legend">
-        <span class="storage-legend-item"><span class="storage-legend-swatch storage-legend-used"></span> Used</span>
-        <span class="storage-legend-item"><span class="storage-legend-swatch storage-legend-free"></span> Free</span>
-    </div>
-</div>
-
 <div class="grid-2col">
     <div class="card">
         <h2 class="card-title">Recent SDS Activity</h2>

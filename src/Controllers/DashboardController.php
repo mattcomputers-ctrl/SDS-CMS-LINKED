@@ -19,20 +19,6 @@ class DashboardController
             'users'          => (int) ($db->fetch("SELECT COUNT(*) AS cnt FROM users WHERE is_active = 1")['cnt'] ?? 0),
         ];
 
-        // Storage space information
-        $storagePath = '/';
-        $totalBytes = @disk_total_space($storagePath);
-        $freeBytes  = @disk_free_space($storagePath);
-        $usedBytes  = ($totalBytes !== false && $freeBytes !== false) ? $totalBytes - $freeBytes : false;
-
-        $storage = [
-            'total_gb'     => $totalBytes !== false ? round($totalBytes / 1073741824, 2) : 0,
-            'used_gb'      => $usedBytes  !== false ? round($usedBytes  / 1073741824, 2) : 0,
-            'free_gb'      => $freeBytes  !== false ? round($freeBytes  / 1073741824, 2) : 0,
-            'used_percent' => ($totalBytes && $usedBytes !== false) ? round(($usedBytes / $totalBytes) * 100, 1) : 0,
-            'free_percent' => ($totalBytes && $freeBytes !== false) ? round(($freeBytes / $totalBytes) * 100, 1) : 0,
-        ];
-
         $recentSDS = $db->fetchAll(
             "SELECT sv.*, fg.product_code, fg.description, u.display_name AS published_by_name
              FROM sds_versions sv
@@ -54,7 +40,6 @@ class DashboardController
         view('dashboard/index', [
             'pageTitle'    => 'Dashboard',
             'stats'        => $stats,
-            'storage'      => $storage,
             'recentSDS'    => $recentSDS,
             'recentAudit'  => $recentAudit,
         ]);

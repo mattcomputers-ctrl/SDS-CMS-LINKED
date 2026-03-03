@@ -10,11 +10,15 @@
 #   1. Detect the current installation directory
 #   2. Create a pre-update backup
 #   3. Copy updated application files (preserving config, data, uploads)
-#   4. Install/update PHP dependencies (Composer)
-#   5. Run any new database migrations
-#   6. Refresh seed data (upsert — no data loss)
-#   7. Fix file permissions
-#   8. Restart Apache
+#   4. Patch configuration for new features (e.g. add new languages)
+#   5. Install/update PHP dependencies (Composer)
+#   6. Create any missing directories
+#   7. Run any new database migrations
+#   8. Refresh seed data (upsert — no data loss)
+#   9. Fix file permissions
+#  10. Clear application cache
+#  11. Restart Apache
+#  12. Post-update verification
 #
 # Safe to run multiple times. Will NOT overwrite:
 #   - config/config.php (your database & company settings)
@@ -217,9 +221,39 @@ else
 fi
 
 # ============================================================
-# Step 4: Update PHP dependencies
+# Step 4: Patch configuration for new features
 # ============================================================
-print_header "Step 4: Updating PHP Dependencies"
+print_header "Step 4: Patching Configuration"
+
+# Add German ('de') to supported_languages if not already present
+print_step "Checking supported_languages configuration..."
+HAS_DE=$(php -r "\$c = require '$INSTALL_DIR/config/config.php'; echo in_array('de', \$c['sds']['supported_languages'] ?? []) ? 'yes' : 'no';" 2>/dev/null)
+
+if [ "$HAS_DE" = "no" ]; then
+    print_step "Adding German (de) to supported_languages..."
+    # Use PHP to safely patch the config array
+    php -r "
+        \$file = '$INSTALL_DIR/config/config.php';
+        \$content = file_get_contents(\$file);
+        // Add 'de' to the supported_languages array
+        \$content = preg_replace(
+            \"/('supported_languages'\s*=>\s*\[)([^\]]*?)(])/\",
+            '\${1}\${2}, \'de\'\${3}',
+            \$content
+        );
+        // Clean up any double commas or leading commas
+        \$content = preg_replace(\"/, ,/\", ',', \$content);
+        file_put_contents(\$file, \$content);
+    " 2>/dev/null
+    print_success "German language support added to config."
+else
+    print_success "German language already configured."
+fi
+
+# ============================================================
+# Step 5: Update PHP Dependencies
+# ============================================================
+print_header "Step 5: Updating PHP Dependencies"
 
 cd "$INSTALL_DIR"
 
@@ -229,9 +263,9 @@ COMPOSER_ALLOW_SUPERUSER=1 composer install --no-dev --optimize-autoloader --qui
 print_success "PHP dependencies updated."
 
 # ============================================================
-# Step 5: Create any missing directories
+# Step 6: Create any missing directories
 # ============================================================
-print_header "Step 5: Verifying Directory Structure"
+print_header "Step 6: Verifying Directory Structure"
 
 DIRS_CREATED=0
 for dir in \
@@ -256,9 +290,9 @@ else
 fi
 
 # ============================================================
-# Step 6: Run database migrations
+# Step 7: Run database migrations
 # ============================================================
-print_header "Step 6: Running Database Migrations"
+print_header "Step 7: Running Database Migrations"
 
 MIGRATIONS_APPLIED=0
 MIGRATIONS_SKIPPED=0
@@ -288,9 +322,9 @@ else
 fi
 
 # ============================================================
-# Step 7: Refresh seed data
+# Step 8: Refresh seed data
 # ============================================================
-print_header "Step 7: Refreshing Seed Data"
+print_header "Step 8: Refreshing Seed Data"
 
 print_step "Updating regulatory seed data (Prop 65, IARC/NTP/OSHA, HAPs, SARA 313, NIOSH, EPA, DOT)..."
 print_info "This uses upsert logic — existing data is updated, nothing is deleted."
@@ -306,9 +340,9 @@ else
 fi
 
 # ============================================================
-# Step 8: Fix file permissions
+# Step 9: Fix file permissions
 # ============================================================
-print_header "Step 8: Setting File Permissions"
+print_header "Step 9: Setting File Permissions"
 
 print_step "Setting ownership to www-data..."
 chown -R www-data:www-data "$INSTALL_DIR"
@@ -325,9 +359,9 @@ chmod 640 "$INSTALL_DIR/config/config.php"
 print_success "File permissions set."
 
 # ============================================================
-# Step 9: Clear application cache
+# Step 10: Clear application cache
 # ============================================================
-print_header "Step 9: Clearing Cache"
+print_header "Step 10: Clearing Cache"
 
 if [ -d "$INSTALL_DIR/storage/cache" ]; then
     rm -rf "$INSTALL_DIR/storage/cache/"* 2>/dev/null || true
@@ -337,9 +371,9 @@ else
 fi
 
 # ============================================================
-# Step 10: Restart Apache
+# Step 11: Restart Apache
 # ============================================================
-print_header "Step 10: Restarting Apache"
+print_header "Step 11: Restarting Apache"
 
 if systemctl is-active --quiet apache2; then
     print_step "Restarting Apache..."
@@ -354,9 +388,9 @@ else
 fi
 
 # ============================================================
-# Step 11: Verification
+# Step 12: Verification
 # ============================================================
-print_header "Step 11: Post-Update Verification"
+print_header "Step 12: Post-Update Verification"
 
 ERRORS=0
 

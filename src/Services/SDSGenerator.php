@@ -39,6 +39,9 @@ class SDSGenerator
 {
     private TranslationService $t;
 
+    /** @var array|null Cached company settings (shared across instances within a request). */
+    private static ?array $companySettingsCache = null;
+
     public function __construct(?TranslationService $translator = null)
     {
         $this->t = $translator ?? new TranslationService('en');
@@ -157,6 +160,155 @@ class SDSGenerator
         ];
 
         // Append UV acrylate safe-handling language to relevant sections
+        foreach ($uvSectionAppend as $secNum => $appendText) {
+            if (isset($sds['sections'][$secNum])) {
+                $sds['sections'][$secNum]['uv_acrylate_note'] = $appendText;
+            }
+        }
+
+        return $sds;
+    }
+
+    /**
+     * Compute all language-independent data for a finished good.
+     *
+     * Call this once per finished good, then pass the result to
+     * generateFromBase() for each language. This avoids re-running
+     * formula calculations, hazard classification, and regulatory
+     * analyses for every language.
+     *
+     * @param  int   $finishedGoodId
+     * @return array  Base data array to pass to generateFromBase().
+     */
+    public function computeBase(int $finishedGoodId): array
+    {
+        $fg = FinishedGood::findById($finishedGoodId);
+        if ($fg === null) {
+            throw new \RuntimeException('Finished good #' . $finishedGoodId . ' not found.');
+        }
+
+        $calcService = new FormulaCalcService();
+        $calcResult  = $calcService->calculate($finishedGoodId);
+
+        $hazardEngine = new HazardEngine();
+        $hazardResult = $hazardEngine->classify($calcResult['composition']);
+
+        $this->applyCarbonBlackLogic($hazardResult, $calcResult);
+
+        $saraResult = SARA313Service::analyse($calcResult['composition']);
+
+        $formulaLines = $calcResult['formula']['lines'] ?? [];
+        $manualProp65 = $this->getManualProp65($formulaLines);
+        $manualHaps   = $this->getManualHaps($formulaLines);
+
+        $prop65Result     = Prop65Service::analyse($calcResult['composition'], $manualProp65);
+        $carcinogenResult = CarcinogenService::analyse($calcResult['composition']);
+        $hapResult        = HAPService::analyse($calcResult['composition'], $manualHaps);
+
+        $dotInfo = $this->getDOTInfo($calcResult['composition']);
+        $company = $this->getCompanySettings();
+
+        $uvWarnings      = [];
+        $uvSectionAppend = [];
+        if (UVAcrylateRulePack::isApplicable($fg['family'] ?? null)) {
+            $acrylates = UVAcrylateRulePack::detectAcrylates($calcResult['composition']);
+            if (!empty($acrylates)) {
+                $uvSectionAppend = UVAcrylateRulePack::getSafeHandlingLanguage($acrylates);
+                $uvWarnings      = UVAcrylateRulePack::getFormulatorWarnings($acrylates);
+            }
+        }
+
+        return [
+            'fg'               => $fg,
+            'calcResult'       => $calcResult,
+            'hazardResult'     => $hazardResult,
+            'saraResult'       => $saraResult,
+            'prop65Result'     => $prop65Result,
+            'carcinogenResult' => $carcinogenResult,
+            'hapResult'        => $hapResult,
+            'dotInfo'          => $dotInfo,
+            'company'          => $company,
+            'uvWarnings'       => $uvWarnings,
+            'uvSectionAppend'  => $uvSectionAppend,
+        ];
+    }
+
+    /**
+     * Generate the full SDS data structure from pre-computed base data.
+     *
+     * Only performs language-specific work: GHS translation, text overrides,
+     * and section building with the TranslationService.
+     *
+     * @param  array  $base      From computeBase().
+     * @param  string $language
+     * @return array  Complete SDS data with all 16 sections.
+     */
+    public function generateFromBase(array $base, string $language = 'en'): array
+    {
+        $this->t = new TranslationService($language);
+
+        $fg               = $base['fg'];
+        $calcResult       = $base['calcResult'];
+        $hazardResult     = $base['hazardResult'];
+        $saraResult       = $base['saraResult'];
+        $prop65Result     = $base['prop65Result'];
+        $carcinogenResult = $base['carcinogenResult'];
+        $hapResult        = $base['hapResult'];
+        $dotInfo          = $base['dotInfo'];
+        $company          = $base['company'];
+        $uvWarnings       = $base['uvWarnings'];
+        $uvSectionAppend  = $base['uvSectionAppend'];
+
+        // Language-specific: translate GHS data
+        $hazardResult = GHSStatements::translateHazardResult($hazardResult, $language);
+
+        // Language-specific: load text overrides
+        $overrides = $this->getOverrides((int) $fg['id'], $language);
+
+        $finishedGoodId = (int) $fg['id'];
+
+        // Assemble all 16 sections (uses TranslationService for language)
+        $sds = [
+            'meta' => [
+                'finished_good_id' => $finishedGoodId,
+                'product_code'     => $fg['product_code'],
+                'description'      => $fg['description'],
+                'family'           => $fg['family'],
+                'language'         => $language,
+                'generated_at'     => gmdate('Y-m-d\TH:i:s\Z'),
+                'formula_version'  => $calcResult['formula']['version'] ?? null,
+                'company_logo_path' => $company['logo_path'] ?? '',
+                'labels'           => $this->getLabels(),
+                'document'         => $this->getDocumentStrings(),
+            ],
+            'sections' => [
+                1  => $this->section1($fg, $company, $overrides),
+                2  => $this->section2($hazardResult, $overrides),
+                3  => $this->section3($calcResult['composition'], $hazardResult, $overrides),
+                4  => $this->section4($hazardResult, $overrides),
+                5  => $this->section5($calcResult, $overrides),
+                6  => $this->section6($overrides),
+                7  => $this->section7($overrides),
+                8  => $this->section8($hazardResult, $overrides),
+                9  => $this->section9($calcResult, $overrides),
+                10 => $this->section10($overrides),
+                11 => $this->section11($hazardResult, $calcResult['composition'], $carcinogenResult, $overrides),
+                12 => $this->section12($overrides),
+                13 => $this->section13($overrides),
+                14 => $this->section14($dotInfo, $overrides),
+                15 => $this->section15($saraResult, $prop65Result, $hapResult, $overrides),
+                16 => $this->section16($calcResult, $overrides),
+            ],
+            'hazard_result'       => $hazardResult,
+            'voc_result'          => $calcResult['voc'],
+            'sara_result'         => $saraResult,
+            'prop65_result'       => $prop65Result,
+            'carcinogen_result'   => $carcinogenResult,
+            'hap_result'          => $hapResult,
+            'warnings'            => array_merge($calcResult['warnings'], $uvWarnings),
+            'legal_disclaimer'    => $company['legal_disclaimer'] ?? '',
+        ];
+
         foreach ($uvSectionAppend as $secNum => $appendText) {
             if (isset($sds['sections'][$secNum])) {
                 $sds['sections'][$secNum]['uv_acrylate_note'] = $appendText;
@@ -540,6 +692,10 @@ class SDSGenerator
      */
     private function getCompanySettings(): array
     {
+        if (self::$companySettingsCache !== null) {
+            return self::$companySettingsCache;
+        }
+
         $db = Database::getInstance();
         $rows = $db->fetchAll(
             "SELECT `key`, `value` FROM settings WHERE `key` LIKE 'company.%' OR `key` = 'sds.legal_disclaimer'"
@@ -562,6 +718,7 @@ class SDSGenerator
             }
         }
 
+        self::$companySettingsCache = $settings;
         return $settings;
     }
 

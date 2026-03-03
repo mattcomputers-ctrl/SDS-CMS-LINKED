@@ -17,6 +17,8 @@ use SDS\Models\RawMaterial;
  */
 class FormulaCalcService
 {
+    /** @var array<string, string>|null Cached exempt VOC list (shared across instances). */
+    private static ?array $exemptVocCache = null;
     /**
      * Run the full calculation pipeline for a finished good's current formula.
      *
@@ -225,6 +227,10 @@ class FormulaCalcService
      */
     private function loadExemptVocList(): array
     {
+        if (self::$exemptVocCache !== null) {
+            return self::$exemptVocCache;
+        }
+
         $db   = Database::getInstance();
         $rows = $db->fetchAll("SELECT cas_number, chemical_name FROM exempt_voc_list");
 
@@ -232,6 +238,8 @@ class FormulaCalcService
         foreach ($rows as $row) {
             $map[$row['cas_number']] = $row['chemical_name'];
         }
+
+        self::$exemptVocCache = $map;
         return $map;
     }
 }

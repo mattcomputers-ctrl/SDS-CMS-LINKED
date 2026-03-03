@@ -123,10 +123,13 @@ class BulkPublishController
             $code   = $fg['product_code'];
 
             try {
-                // Generate SDS data and PDFs for all languages
+                // Compute language-independent data once per finished good
+                $baseData = $generator->computeBase($fgId);
+
+                // Generate language-specific SDS data and PDFs
                 $generated = [];
                 foreach ($languages as $lang) {
-                    $sdsData      = $generator->generate($fgId, $lang);
+                    $sdsData      = $generator->generateFromBase($baseData, $lang);
                     $pdfPath      = $pdfService->generate($sdsData);
                     $relativePath = str_replace(App::basePath() . '/', '', $pdfPath);
 

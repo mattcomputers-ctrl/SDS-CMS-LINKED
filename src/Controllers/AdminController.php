@@ -1047,6 +1047,100 @@ class AdminController
     }
 
     /* ------------------------------------------------------------------
+     *  Storage
+     * ----------------------------------------------------------------*/
+
+    public function storage(): void
+    {
+        $this->requireAdmin();
+
+        $partitions = [];
+
+        // Parse mount points from /proc/mounts, keeping only real filesystems
+        $mounts = @file('/proc/mounts', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        if ($mounts === false) {
+            // Fallback: just report the root filesystem
+            $mounts = [];
+        }
+
+        $seen = [];
+        foreach ($mounts as $line) {
+            $parts = preg_split('/\s+/', $line);
+            if (count($parts) < 3) {
+                continue;
+            }
+            $device     = $parts[0];
+            $mountPoint = $parts[1];
+            $fsType     = $parts[2];
+
+            // Skip virtual/pseudo filesystems
+            $skipTypes = [
+                'proc', 'sysfs', 'devtmpfs', 'devpts', 'tmpfs', 'cgroup',
+                'cgroup2', 'pstore', 'securityfs', 'debugfs', 'hugetlbfs',
+                'mqueue', 'fusectl', 'configfs', 'binfmt_misc', 'autofs',
+                'rpc_pipefs', 'nfsd', 'tracefs', 'overlay', 'squashfs',
+            ];
+            if (in_array($fsType, $skipTypes, true)) {
+                continue;
+            }
+
+            // Skip if device doesn't start with / (virtual mounts)
+            if (!str_starts_with($device, '/')) {
+                continue;
+            }
+
+            // Deduplicate by mount point
+            if (isset($seen[$mountPoint])) {
+                continue;
+            }
+            $seen[$mountPoint] = true;
+
+            $totalBytes = @disk_total_space($mountPoint);
+            $freeBytes  = @disk_free_space($mountPoint);
+            if ($totalBytes === false) {
+                continue;
+            }
+            $usedBytes = $totalBytes - ($freeBytes !== false ? $freeBytes : 0);
+
+            $partitions[] = [
+                'mount_point'  => $mountPoint,
+                'fs_type'      => $fsType,
+                'total_bytes'  => $totalBytes,
+                'used_bytes'   => $usedBytes,
+                'free_bytes'   => $freeBytes !== false ? $freeBytes : 0,
+                'total_gb'     => round($totalBytes / 1073741824, 2),
+                'used_gb'      => round($usedBytes / 1073741824, 2),
+                'free_gb'      => $freeBytes !== false ? round($freeBytes / 1073741824, 2) : 0,
+                'used_percent' => $totalBytes > 0 ? round(($usedBytes / $totalBytes) * 100, 1) : 0,
+            ];
+        }
+
+        // Fallback: if nothing was found, report root
+        if (empty($partitions)) {
+            $totalBytes = @disk_total_space('/');
+            $freeBytes  = @disk_free_space('/');
+            $usedBytes  = ($totalBytes !== false && $freeBytes !== false) ? $totalBytes - $freeBytes : 0;
+
+            $partitions[] = [
+                'mount_point'  => '/',
+                'fs_type'      => '—',
+                'total_bytes'  => $totalBytes ?: 0,
+                'used_bytes'   => $usedBytes,
+                'free_bytes'   => $freeBytes ?: 0,
+                'total_gb'     => $totalBytes ? round($totalBytes / 1073741824, 2) : 0,
+                'used_gb'      => round($usedBytes / 1073741824, 2),
+                'free_gb'      => $freeBytes ? round($freeBytes / 1073741824, 2) : 0,
+                'used_percent' => ($totalBytes && $totalBytes > 0) ? round(($usedBytes / $totalBytes) * 100, 1) : 0,
+            ];
+        }
+
+        view('admin/storage', [
+            'pageTitle'  => 'Storage',
+            'partitions' => $partitions,
+        ]);
+    }
+
+    /* ------------------------------------------------------------------
      *  Network Settings
      * ----------------------------------------------------------------*/
 

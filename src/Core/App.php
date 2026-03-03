@@ -231,6 +231,9 @@ class App
             $r->post('/pictograms/{code}/upload', 'AdminController@uploadPictogram');
             $r->post('/pictograms/{code}/delete', 'AdminController@deletePictogram');
 
+            // Storage
+            $r->get('/storage', 'AdminController@storage');
+
             // Network Settings
             $r->get('/network-settings',  'AdminController@networkSettings');
             $r->post('/network-settings', 'AdminController@saveNetworkSettings');

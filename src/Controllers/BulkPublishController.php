@@ -20,8 +20,36 @@ class BulkPublishController
     /** Directory for progress/batch files, relative to project root */
     private const PROGRESS_DIR = '/storage/exports';
 
-    /** Number of parallel worker processes */
-    private const WORKER_COUNT = 4;
+    /**
+     * Detect the number of available CPU cores.
+     */
+    private static function getCpuCount(): int
+    {
+        // Linux: /proc/cpuinfo
+        if (is_readable('/proc/cpuinfo')) {
+            $cpuinfo = file_get_contents('/proc/cpuinfo');
+            if ($cpuinfo !== false) {
+                $count = substr_count($cpuinfo, 'processor');
+                if ($count > 0) {
+                    return $count;
+                }
+            }
+        }
+
+        // macOS / BSD: sysctl
+        $result = @shell_exec('sysctl -n hw.ncpu 2>/dev/null');
+        if ($result !== null && ($cores = (int) trim($result)) > 0) {
+            return $cores;
+        }
+
+        // nproc (Linux fallback)
+        $result = @shell_exec('nproc 2>/dev/null');
+        if ($result !== null && ($cores = (int) trim($result)) > 0) {
+            return $cores;
+        }
+
+        return 1;
+    }
 
     /**
      * GET /admin/bulk-publish — Show the bulk publish page.
@@ -90,7 +118,7 @@ class BulkPublishController
 
         $token       = bin2hex(random_bytes(8));
         $totalItems  = count($finishedGoods);
-        $workerCount = min(self::WORKER_COUNT, $totalItems);
+        $workerCount = min(self::getCpuCount(), $totalItems);
         $userId      = current_user_id();
 
         // Write the master progress file (used by progress endpoint)

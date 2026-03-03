@@ -11,6 +11,7 @@
     'use strict';
 
     var DATA = window.GHS_DATA || {};
+    var PICTO_PATHS = window.PICTOGRAM_PATHS || {};
 
     // ── DOM references ─────────────────────────────────────────────
     var hazardCheckboxes     = document.querySelectorAll('.hazard-checkbox');
@@ -109,7 +110,8 @@
             // Pictograms
             if (sortedPictos.length > 0) {
                 autoPictograms.innerHTML = sortedPictos.map(function(p) {
-                    return '<img src="/assets/pictograms/' + p + '.svg" alt="' + p + '" class="hazard-picto-icon" style="width:32px;height:32px;margin-right:4px;" title="' + p + '">';
+                    var src = PICTO_PATHS[p] || ('/assets/pictograms/' + p + '.svg');
+                    return '<img src="' + src + '" alt="' + p + '" class="hazard-picto-icon" style="width:32px;height:32px;margin-right:4px;" title="' + p + '">';
                 }).join('');
             } else {
                 autoPictograms.textContent = 'None';

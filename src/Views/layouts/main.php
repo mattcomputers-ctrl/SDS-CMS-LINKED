@@ -34,6 +34,7 @@
                         <li><a href="/admin/audit-log">Audit Log</a></li>
                         <li><a href="/admin/sds-versions">SDS Versions</a></li>
                         <li><a href="/admin/backups">Backup &amp; Restore</a></li>
+                        <li><a href="/admin/export">Bulk SDS Export</a></li>
                         <li><a href="/admin/storage">Storage</a></li>
                         <li><a href="/admin/network-settings">Network Settings</a></li>
                     </ul>

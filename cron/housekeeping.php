@@ -47,4 +47,10 @@ if (is_dir($tempDir)) {
     echo "Cleaned {$count} temp files.\n";
 }
 
+// Clean expired SDS exports (auto-delete after 2 hours)
+$exportCleanup = \SDS\Controllers\ExportController::cleanupExpiredExports();
+if ($exportCleanup > 0) {
+    echo "Cleaned {$exportCleanup} expired SDS export files.\n";
+}
+
 echo "[" . date('Y-m-d H:i:s') . "] Housekeeping complete.\n";

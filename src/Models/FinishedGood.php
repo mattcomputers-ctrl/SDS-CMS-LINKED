@@ -270,6 +270,89 @@ class FinishedGood
         return $rows;
     }
 
+    /**
+     * Return paginated finished goods with their latest published SDS info per language.
+     *
+     * If $searchTerm is provided, filters by product_code or description.
+     * Results ordered by product_code ASC.
+     *
+     * @return array{rows: array, total: int}
+     */
+    public static function lookupAll(string $searchTerm = '', int $page = 1, int $perPage = 250): array
+    {
+        $db = Database::getInstance();
+
+        $where  = [];
+        $params = [];
+
+        if ($searchTerm !== '') {
+            $where[]  = '(fg.product_code LIKE ? OR fg.description LIKE ?)';
+            $like     = '%' . $searchTerm . '%';
+            $params[] = $like;
+            $params[] = $like;
+        }
+
+        $whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+
+        // Count total
+        $countRow = $db->fetch(
+            "SELECT COUNT(*) AS cnt FROM finished_goods fg {$whereSQL}",
+            $params
+        );
+        $total = (int) ($countRow['cnt'] ?? 0);
+
+        // Build paginated query with latest SDS version per language
+        $offset = ($page - 1) * $perPage;
+
+        // Latest version subquery (reusable for each language)
+        $latestVersionJoin = function (string $alias, string $lang) {
+            return "LEFT JOIN (
+                SELECT sv.finished_good_id, sv.id AS sds_id, sv.version, sv.published_at
+                FROM sds_versions sv
+                INNER JOIN (
+                    SELECT finished_good_id, MAX(version) AS max_ver
+                    FROM sds_versions
+                    WHERE status = 'published' AND language = '{$lang}' AND is_deleted = 0
+                    GROUP BY finished_good_id
+                ) mx ON sv.finished_good_id = mx.finished_good_id
+                     AND sv.version = mx.max_ver
+                     AND sv.language = '{$lang}'
+                     AND sv.status = 'published'
+                     AND sv.is_deleted = 0
+            ) {$alias} ON {$alias}.finished_good_id = fg.id";
+        };
+
+        $sql = "SELECT fg.id, fg.product_code, fg.description, fg.family, fg.is_active,
+                       sv_en.version AS ver_en, sv_en.published_at AS date_en, sv_en.sds_id AS sds_id_en,
+                       sv_es.version AS ver_es, sv_es.published_at AS date_es, sv_es.sds_id AS sds_id_es,
+                       sv_fr.version AS ver_fr, sv_fr.published_at AS date_fr, sv_fr.sds_id AS sds_id_fr,
+                       sv_de.version AS ver_de, sv_de.published_at AS date_de, sv_de.sds_id AS sds_id_de
+                FROM finished_goods fg
+                {$latestVersionJoin('sv_en', 'en')}
+                {$latestVersionJoin('sv_es', 'es')}
+                {$latestVersionJoin('sv_fr', 'fr')}
+                {$latestVersionJoin('sv_de', 'de')}
+                {$whereSQL}
+                ORDER BY fg.product_code ASC
+                LIMIT {$perPage} OFFSET {$offset}";
+
+        $rows = $db->fetchAll($sql, $params);
+
+        // Post-process
+        foreach ($rows as &$row) {
+            $row['has_en'] = $row['ver_en'] !== null;
+            $row['has_es'] = $row['ver_es'] !== null;
+            $row['has_fr'] = $row['ver_fr'] !== null;
+            $row['has_de'] = $row['ver_de'] !== null;
+            // Overall latest version (English takes priority)
+            $row['latest_version'] = $row['ver_en'] ?? $row['ver_es'] ?? $row['ver_fr'] ?? $row['ver_de'];
+            $row['latest_date']    = $row['date_en'] ?? $row['date_es'] ?? $row['date_fr'] ?? $row['date_de'];
+        }
+        unset($row);
+
+        return ['rows' => $rows, 'total' => $total];
+    }
+
     /* ------------------------------------------------------------------
      *  Create / Update
      * ----------------------------------------------------------------*/

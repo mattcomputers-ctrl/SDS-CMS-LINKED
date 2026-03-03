@@ -71,8 +71,11 @@ $exposureLimits = json_decode($det['exposure_limits'] ?? ($old['exposure_limits_
                     <?php if ($entry['signal_word']): ?>
                         <span class="hazard-signal hazard-signal-<?= strtolower($entry['signal_word']) ?>"><?= e($entry['signal_word']) ?></span>
                     <?php endif; ?>
-                    <?php foreach ($entry['pictograms'] as $pic): ?>
-                        <img src="/assets/pictograms/<?= e($pic) ?>.svg" alt="<?= e($pic) ?>" class="hazard-picto-icon" title="<?= e(\SDS\Services\GHSStatements::pictogramName($pic)) ?>">
+                    <?php foreach ($entry['pictograms'] as $pic):
+                        $picWebPath = \SDS\Services\PictogramHelper::getWebPath($pic);
+                        if (!$picWebPath) $picWebPath = '/assets/pictograms/' . $pic . '.svg';
+                    ?>
+                        <img src="<?= e($picWebPath) ?>" alt="<?= e($pic) ?>" class="hazard-picto-icon" title="<?= e(\SDS\Services\GHSStatements::pictogramName($pic)) ?>">
                     <?php endforeach; ?>
                 </label>
                 <?php endforeach; ?>
@@ -289,6 +292,14 @@ $exposureLimits = json_decode($det['exposure_limits'] ?? ($old['exposure_limits_
 <!-- GHS data for JavaScript -->
 <script>
 window.GHS_DATA = <?= json_encode($ghsData, JSON_UNESCAPED_UNICODE) ?>;
+window.PICTOGRAM_PATHS = <?php
+    $picPaths = [];
+    foreach (\SDS\Services\PictogramHelper::ALL_CODES as $c) {
+        $wp = \SDS\Services\PictogramHelper::getWebPath($c);
+        if ($wp) $picPaths[$c] = $wp;
+    }
+    echo json_encode($picPaths, JSON_UNESCAPED_SLASHES);
+?>;
 </script>
 <script src="/js/determination-form.js"></script>
 

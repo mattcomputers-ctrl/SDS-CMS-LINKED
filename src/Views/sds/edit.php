@@ -42,8 +42,11 @@
             <?php if (!empty($section['pictograms'])): ?>
                 <div style="display: flex; gap: 8px; align-items: center; margin: 0.5rem 0;">
                     <strong>Pictograms:</strong>
-                    <?php foreach ($section['pictograms'] as $code): ?>
-                        <img src="/assets/pictograms/<?= e($code) ?>.svg" alt="<?= e($code) ?>"
+                    <?php foreach ($section['pictograms'] as $code):
+                        $picWebPath = \SDS\Services\PictogramHelper::getWebPath($code);
+                        if (!$picWebPath) $picWebPath = '/assets/pictograms/' . $code . '.svg';
+                    ?>
+                        <img src="<?= e($picWebPath) ?>" alt="<?= e($code) ?>"
                              style="width: 50px; height: 50px;" onerror="this.outerHTML='<span><?= e($code) ?></span>'">
                     <?php endforeach; ?>
                     <span class="text-muted">(auto-generated)</span>

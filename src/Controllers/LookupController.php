@@ -11,27 +11,32 @@ class LookupController
 {
     public function index(): void
     {
+        $search  = trim($_GET['q'] ?? '');
+        $page    = max(1, (int) ($_GET['page'] ?? 1));
+        $perPage = 250;
+
+        $result = FinishedGood::lookupAll($search, $page, $perPage);
+
+        $total = $result['total'];
+        $pages = (int) ceil($total / $perPage);
+
         view('lookup/index', [
             'pageTitle' => 'Finished Goods SDS Lookup',
-            'results'   => null,
-            'query'     => '',
+            'items'     => $result['rows'],
+            'total'     => $total,
+            'query'     => $search,
+            'filters'   => [
+                'page'     => $page,
+                'per_page' => $perPage,
+            ],
+            'pages'     => $pages,
         ]);
     }
 
     public function search(): void
     {
-        $query = trim($_GET['q'] ?? '');
-        $results = [];
-
-        if ($query !== '') {
-            $results = FinishedGood::search($query, 50);
-        }
-
-        view('lookup/index', [
-            'pageTitle' => 'Finished Goods SDS Lookup',
-            'results'   => $results,
-            'query'     => $query,
-        ]);
+        // Redirect search to the same page with query param
+        $this->index();
     }
 
     public function download(string $id): void

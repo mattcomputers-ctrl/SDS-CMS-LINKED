@@ -237,6 +237,12 @@ class App
             // Network Settings
             $r->get('/network-settings',  'AdminController@networkSettings');
             $r->post('/network-settings', 'AdminController@saveNetworkSettings');
+
+            // Bulk SDS Export
+            $r->get('/export',                      'ExportController@exportPage');
+            $r->post('/export/start',               'ExportController@startExport');
+            $r->get('/export/progress/{token}',     'ExportController@exportProgress');
+            $r->get('/export/download/{filename}',  'ExportController@downloadExport');
         });
 
         // ── Dispatch ─────────────────────────────────────────────────

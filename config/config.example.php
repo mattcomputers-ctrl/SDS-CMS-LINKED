@@ -82,6 +82,7 @@ return [
         'block_publish_missing'  => true,    // Block if federal hazard data missing
         'missing_threshold_pct'  => 1.0,     // Block if constituent >= this % lacks data
         'voc_calc_mode'          => 'method24_standard',
+        'publish_workers'        => 0,       // 0 = auto (4× CPU cores); set >0 to override
     ],
 
     'cron' => [

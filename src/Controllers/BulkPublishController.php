@@ -52,6 +52,25 @@ class BulkPublishController
     }
 
     /**
+     * Determine worker count for bulk publishing.
+     *
+     * Workers are I/O-bound (DB + TCPDF + disk), so we default to 4× CPU
+     * cores to keep all workers busy while others wait on I/O.  Override
+     * via config sds.publish_workers (set > 0 for a fixed count).
+     */
+    private static function getWorkerCount(int $totalItems): int
+    {
+        $configured = (int) App::config('sds.publish_workers', 0);
+
+        if ($configured > 0) {
+            return min($configured, $totalItems);
+        }
+
+        // Auto: 4× CPU cores (I/O-bound workload)
+        return min(self::getCpuCount() * 4, $totalItems);
+    }
+
+    /**
      * GET /admin/bulk-publish — Show the bulk publish page.
      */
     public function page(): void
@@ -118,15 +137,15 @@ class BulkPublishController
 
         $token       = bin2hex(random_bytes(8));
         $totalItems  = count($finishedGoods);
-        $workerCount = min(self::getCpuCount(), $totalItems);
+        $workerCount = self::getWorkerCount($totalItems);
         $userId      = current_user_id();
 
         // Write the master progress file (used by progress endpoint)
         $masterFile = $progressDir . '/publish_progress_' . $token . '.json';
         file_put_contents($masterFile, json_encode([
             'current' => 0, 'total' => $totalItems, 'percent' => 0,
-            'message' => 'Starting bulk publish...', 'complete' => false,
-            'error' => false, 'workers' => $workerCount,
+            'message' => 'Starting bulk publish with ' . $workerCount . ' workers...',
+            'complete' => false, 'error' => false, 'workers' => $workerCount,
         ]), LOCK_EX);
 
         // Split FGs into batches and write batch files

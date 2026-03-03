@@ -474,11 +474,11 @@ class GHSStatements
         }
 
         // Translate hazard class names and categories
-        foreach ($hazardResult['hazard_classes'] ?? [] as &$hc) {
-            $hc['class_translated'] = self::hazardClassName($hc['class'] ?? '', $lang);
-            $hc['category_translated'] = self::categoryName($hc['category'] ?? '', $lang);
+        // Use index-based loop to avoid PHP foreach-by-reference + ?? operator issue
+        foreach ($hazardResult['hazard_classes'] ?? [] as $i => $hc) {
+            $hazardResult['hazard_classes'][$i]['class_translated'] = self::hazardClassName($hc['class'] ?? '', $lang);
+            $hazardResult['hazard_classes'][$i]['category_translated'] = self::categoryName($hc['category'] ?? '', $lang);
         }
-        unset($hc);
 
         return $hazardResult;
     }

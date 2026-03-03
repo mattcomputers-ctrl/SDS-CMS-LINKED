@@ -58,7 +58,7 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                     $seen = [];
                     foreach ($section['hazard_classes'] as $hc):
                         $cls = trim($hc['class_translated'] ?? $hc['class'] ?? '');
-                        $cat = trim($hc['category'] ?? '');
+                        $cat = trim($hc['category_translated'] ?? $hc['category'] ?? '');
                         $label = ($cls !== '' && $cat !== '') ? $cls . ' (' . $cat . ')' : ($cls !== '' ? $cls : $cat);
                         if ($label !== '' && !isset($seen[$label])):
                             $seen[$label] = true;

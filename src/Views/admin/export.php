@@ -135,6 +135,9 @@
                         downloadLink.href = '/admin/export/download/' + data.downloadFile;
                         completeSizeEl.textContent = data.fileSize ? '(' + data.fileSize + ')' : '';
                         completeEl.style.display = 'block';
+
+                        // Auto-trigger the download
+                        window.location.href = downloadLink.href;
                     }
 
                     btn.disabled = false;

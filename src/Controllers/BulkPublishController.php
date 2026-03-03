@@ -56,11 +56,14 @@ class BulkPublishController
      *
      * Workers are I/O-bound (DB + TCPDF + disk), so we use a minimum of 8
      * workers regardless of detected CPU cores, scaling up to 4× cores on
-     * larger machines.  Override via config sds.publish_workers (set > 0).
+     * larger machines.  Override via admin settings or config sds.publish_workers.
      */
     private static function getWorkerCount(int $totalItems): int
     {
-        $configured = (int) App::config('sds.publish_workers', 0);
+        // Check admin settings (DB) first, fall back to config file
+        $db = Database::getInstance();
+        $row = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'sds.publish_workers'");
+        $configured = $row ? (int) $row['value'] : (int) App::config('sds.publish_workers', 0);
 
         if ($configured > 0) {
             return min($configured, $totalItems);

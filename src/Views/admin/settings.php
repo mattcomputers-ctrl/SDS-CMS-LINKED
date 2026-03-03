@@ -83,6 +83,11 @@
                 <label>Missing Data Threshold (%)</label>
                 <input type="number" name="sds__missing_threshold_pct" step="0.1" value="<?= e($settings['sds.missing_threshold_pct'] ?? '1.0') ?>">
             </div>
+            <div class="form-group">
+                <label>Publishing CPU Workers</label>
+                <input type="number" name="sds__publish_workers" min="0" step="1" value="<?= e($settings['sds.publish_workers'] ?? '0') ?>">
+                <small class="text-muted">0 = auto (minimum 8 workers). Set a specific number to override.</small>
+            </div>
         </div>
 
         <h2>Product Families</h2>

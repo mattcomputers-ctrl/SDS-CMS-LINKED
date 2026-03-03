@@ -237,5 +237,7 @@ return [
         'not_regulated'         => 'Non réglementé',
         'not_applicable'        => 'Non applicable',
         'note'                  => 'Remarque',
+        'revision_note'         => 'Note de Révision',
+        'uv_acrylate_note'      => 'Information UV Acrylate',
     ],
 ];

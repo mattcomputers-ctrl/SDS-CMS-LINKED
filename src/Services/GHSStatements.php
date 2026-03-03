@@ -386,6 +386,19 @@ class GHSStatements
     }
 
     /**
+     * Translate a hazard category name to the target language.
+     */
+    public static function categoryName(string $name, string $lang = 'en'): string
+    {
+        if ($lang !== 'en') {
+            $trans = self::loadTranslation($lang);
+            return $trans['category_names'][$name] ?? $name;
+        }
+
+        return $name;
+    }
+
+    /**
      * Resolve an array of H-statements, filling in text from the standard.
      *
      * @param  array  $statements  [['code' => 'H225', 'text' => ''], ...]
@@ -460,9 +473,10 @@ class GHSStatements
             $hazardResult['pictogram_names'][$code] = self::pictogramName($code, $lang);
         }
 
-        // Translate hazard class names
+        // Translate hazard class names and categories
         foreach ($hazardResult['hazard_classes'] ?? [] as &$hc) {
             $hc['class_translated'] = self::hazardClassName($hc['class'] ?? '', $lang);
+            $hc['category_translated'] = self::categoryName($hc['category'] ?? '', $lang);
         }
         unset($hc);
 

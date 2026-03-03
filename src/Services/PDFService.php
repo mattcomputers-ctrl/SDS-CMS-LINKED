@@ -277,7 +277,7 @@ class PDFService
             $seen = [];
             foreach ($s['hazard_classes'] as $hc) {
                 $class = trim($hc['class_translated'] ?? $hc['class'] ?? '');
-                $category = trim($hc['category'] ?? '');
+                $category = trim($hc['category_translated'] ?? $hc['category'] ?? '');
                 if ($class !== '' && $category !== '') {
                     $label = $class . ' (' . $category . ')';
                 } elseif ($class !== '') {
@@ -749,10 +749,20 @@ class PDFService
             return;
         }
         $pdf->SetFont('helvetica', 'B', 9);
-        $labelWidth = 50;
-        $pdf->Cell($labelWidth, 5, $label . ':', 0, 0, 'L');
-        $pdf->SetFont('helvetica', '', 9);
-        $pdf->MultiCell(0, 5, $value, 0, 'L');
+        $labelText = $label . ':';
+        $defaultWidth = 50;
+        $neededWidth = $pdf->GetStringWidth($labelText) + 2;
+
+        if ($neededWidth > $defaultWidth) {
+            // Label too long for inline layout — place value on next line
+            $pdf->Cell(0, 5, $labelText, 0, 1, 'L');
+            $pdf->SetFont('helvetica', '', 9);
+            $pdf->MultiCell(0, 5, $value, 0, 'L');
+        } else {
+            $pdf->Cell($defaultWidth, 5, $labelText, 0, 0, 'L');
+            $pdf->SetFont('helvetica', '', 9);
+            $pdf->MultiCell(0, 5, $value, 0, 'L');
+        }
     }
 
     /**

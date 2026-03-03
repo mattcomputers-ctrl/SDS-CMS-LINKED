@@ -240,5 +240,7 @@ return [
         'not_regulated'         => 'Not regulated',
         'not_applicable'        => 'Not applicable',
         'note'                  => 'Note',
+        'revision_note'         => 'Revision Note',
+        'uv_acrylate_note'      => 'UV Acrylate Information',
     ],
 ];

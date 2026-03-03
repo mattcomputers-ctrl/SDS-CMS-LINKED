@@ -668,6 +668,8 @@ class SDSGenerator
             'revision_date', 'abbreviations', 'disclaimer',
             // Generic
             'not_determined', 'not_regulated', 'not_applicable', 'note',
+            // PPE pictogram labels
+            'ppe_wear_eye', 'ppe_wear_gloves', 'ppe_wear_respiratory', 'ppe_wear_skin',
         ];
 
         $labels = [];

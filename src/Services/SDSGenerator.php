@@ -126,6 +126,7 @@ class SDSGenerator
                 'formula_version'  => $calcResult['formula']['version'] ?? null,
                 'company_logo_path' => $company['logo_path'] ?? '',
                 'labels'           => $this->getLabels(),
+                'document'         => $this->getDocumentStrings(),
             ],
             'sections' => [
                 1  => $this->section1($fg, $company, $overrides),
@@ -197,6 +198,8 @@ class SDSGenerator
             'skin_protection' => $derivedPpe['skin_protection'] ?? ($overrides[8]['skin_protection'] ?? null),
         ];
 
+        $customOtherHazards = $overrides[2]['other_hazards'] ?? null;
+
         return [
             'title'               => $this->t->get('section2.title'),
             'signal_word'         => $hazard['signal_word'],
@@ -206,7 +209,8 @@ class SDSGenerator
             'h_statements'        => $hazard['h_statements'],
             'p_statements'        => $hazard['p_statements'],
             'ppe_recommendations' => $ppe,
-            'other_hazards'       => $overrides[2]['other_hazards'] ?? $this->t->get('section2.other_hazards'),
+            'other_hazards'       => $customOtherHazards ?? $this->t->get('section2.other_hazards'),
+            'has_other_hazards'   => $customOtherHazards !== null,
         ];
     }
 
@@ -269,7 +273,7 @@ class SDSGenerator
 
         return [
             'title'                => $this->t->get('section3.title'),
-            'substance_or_mixture' => 'Mixture',
+            'substance_or_mixture' => $this->t->get('labels.mixture'),
             'components'           => $disclosed,
             'trade_secret_note'    => $this->hasTradeSecrets($composition)
                 ? $this->t->get('section3.trade_secret_note')
@@ -349,6 +353,8 @@ class SDSGenerator
         $voc   = $calcResult['voc'];
         $props = $calcResult['formula_props'] ?? [];
 
+        $notDetermined = $this->t->get('labels.not_determined');
+
         // Flash point: auto-derive from formula, allow override
         $flashPoint = $overrides[9]['flash_point'] ?? null;
         if ($flashPoint === null || $flashPoint === '') {
@@ -358,7 +364,7 @@ class SDSGenerator
                 $prefix  = !empty($props['flash_point_greater_than']) ? '> ' : '';
                 $flashPoint = "{$prefix}{$fpC} °C ({$fpF} °F)";
             } else {
-                $flashPoint = 'Not determined';
+                $flashPoint = $notDetermined;
             }
         }
 
@@ -375,14 +381,14 @@ class SDSGenerator
             'title'                => $this->t->get('section9.title'),
             'appearance'           => $overrides[9]['appearance'] ?? '',
             'odor'                 => $overrides[9]['odor'] ?? '',
-            'boiling_point'        => $overrides[9]['boiling_point'] ?? 'Not determined',
+            'boiling_point'        => $overrides[9]['boiling_point'] ?? $notDetermined,
             'flash_point'          => $flashPoint,
             'solubility'           => $solubility,
-            'specific_gravity'     => round((float) ($voc['mixture_sg'] ?? 0), 3) ?: 'Not determined',
+            'specific_gravity'     => round((float) ($voc['mixture_sg'] ?? 0), 3) ?: $notDetermined,
             'voc_lb_per_gal'       => round((float) ($voc['voc_lb_per_gal'] ?? 0), 2),
             'voc_less_water_exempt' => round((float) ($voc['voc_lb_per_gal_less_water_exempt'] ?? 0), 2),
             'solids_wt_pct'        => round((float) ($voc['solids_wt_pct'] ?? 0), 1),
-            'solids_vol_pct'       => $voc['solids_vol_pct'] !== null ? round((float) $voc['solids_vol_pct'], 1) : 'Not determined',
+            'solids_vol_pct'       => $voc['solids_vol_pct'] !== null ? round((float) $voc['solids_vol_pct'], 1) : $notDetermined,
             'voc_wt_pct'           => $vocWtPctDisplay,
         ];
     }
@@ -479,12 +485,15 @@ class SDSGenerator
 
     private function section14(array $dotInfo, array $overrides): array
     {
+        $notRegulated  = $this->t->get('labels.not_regulated');
+        $notApplicable = $this->t->get('labels.not_applicable');
+
         return [
             'title'               => $this->t->get('section14.title'),
-            'un_number'           => $dotInfo['un_number'] ?? $overrides[14]['un_number'] ?? 'Not regulated',
-            'proper_shipping_name' => $dotInfo['proper_shipping_name'] ?? $overrides[14]['proper_shipping_name'] ?? 'Not regulated',
-            'hazard_class'        => $dotInfo['hazard_class'] ?? $overrides[14]['hazard_class'] ?? 'Not regulated',
-            'packing_group'       => $dotInfo['packing_group'] ?? $overrides[14]['packing_group'] ?? 'Not applicable',
+            'un_number'           => $dotInfo['un_number'] ?? $overrides[14]['un_number'] ?? $notRegulated,
+            'proper_shipping_name' => $dotInfo['proper_shipping_name'] ?? $overrides[14]['proper_shipping_name'] ?? $notRegulated,
+            'hazard_class'        => $dotInfo['hazard_class'] ?? $overrides[14]['hazard_class'] ?? $notRegulated,
+            'packing_group'       => $dotInfo['packing_group'] ?? $overrides[14]['packing_group'] ?? $notApplicable,
             'note'                => $this->t->get('section14.note'),
         ];
     }
@@ -613,15 +622,52 @@ class SDSGenerator
     private function getLabels(): array
     {
         $keys = [
+            // Section 1
             'product_identifier', 'product_family', 'recommended_use', 'restrictions',
             'manufacturer_info', 'company', 'address', 'phone', 'emergency',
+            // Section 2
             'pictograms', 'ghs_classification', 'hazard_statements',
             'precautionary_statements', 'ppe_recommendations', 'other_hazards',
+            'ppe_wear_eye', 'ppe_wear_gloves', 'ppe_wear_respiratory', 'ppe_wear_skin',
+            // Section 3
             'type', 'cas_number', 'chemical_name', 'concentration',
-            'hazardous_only_note', 'no_hazardous_note',
+            'hazardous_only_note', 'no_hazardous_note', 'mixture',
+            // Section 4
+            'inhalation', 'skin_contact', 'eye_contact', 'ingestion', 'notes_to_physician',
+            // Section 5
+            'suitable_media', 'unsuitable_media', 'specific_hazards', 'firefighter_advice',
+            // Section 6
+            'personal_precautions', 'environmental_precautions', 'containment_cleanup',
+            // Section 7
+            'handling', 'storage',
+            // Section 8
             'engineering_controls', 'respiratory_protection', 'hand_protection',
             'eye_protection', 'skin_protection', 'respiratory', 'skin_body',
-            'disclaimer',
+            'el_cas', 'el_chemical', 'el_type', 'el_value', 'el_units', 'el_conc_pct', 'el_notes',
+            // Section 9
+            'appearance', 'odor', 'boiling_point', 'flash_point', 'solubility',
+            'specific_gravity', 'voc_lb_gal', 'voc_less_we', 'voc_wt_pct',
+            'solids_wt_pct', 'solids_vol_pct',
+            // Section 10
+            'reactivity', 'chemical_stability', 'conditions_avoid',
+            'incompatible_materials', 'decomposition_products',
+            // Section 11
+            'acute_toxicity', 'chronic_effects', 'carcinogenicity',
+            'component_tox_data', 'health_hazard',
+            // Section 12
+            'ecotoxicity', 'persistence', 'bioaccumulation',
+            // Section 13
+            'disposal_methods',
+            // Section 14
+            'un_number', 'proper_shipping_name', 'transport_hazard_class', 'packing_group',
+            // Section 15
+            'osha_status', 'tsca_status', 'sara_313_title',
+            'hap_title', 'hap_triggering', 'hap_wt_pct', 'hap_total', 'hap_none',
+            'prop65_title', 'prop65_none', 'state_regulations',
+            // Section 16
+            'revision_date', 'abbreviations', 'disclaimer',
+            // Generic
+            'not_determined', 'not_regulated', 'not_applicable', 'note',
         ];
 
         $labels = [];
@@ -629,6 +675,20 @@ class SDSGenerator
             $labels[$key] = $this->t->get('labels.' . $key);
         }
         return $labels;
+    }
+
+    /**
+     * Get translated document-level strings (header, footer, section banner).
+     */
+    private function getDocumentStrings(): array
+    {
+        return [
+            'title'           => $this->t->get('document.title'),
+            'section_prefix'  => $this->t->get('document.section_prefix'),
+            'page'            => $this->t->get('document.page'),
+            'page_of'         => $this->t->get('document.page_of'),
+            'revision_prefix' => $this->t->get('document.revision_prefix'),
+        ];
     }
 
     /**

@@ -1,4 +1,12 @@
-<?php include dirname(__DIR__) . '/layouts/main.php'; ?>
+<?php
+include dirname(__DIR__) . '/layouts/main.php';
+$labels = $sds['meta']['labels'] ?? [];
+$doc = $sds['meta']['document'] ?? [];
+$l = function(string $key, string $fallback = '') use ($labels) {
+    return $labels[$key] ?? ($fallback ?: $key);
+};
+$sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
+?>
 
 <p><a href="/sds/<?= (int) $finishedGood['id'] ?>">&larr; Back to SDS Versions</a></p>
 
@@ -7,13 +15,13 @@
         <?php if (!empty($sds['meta']['company_logo_path'])): ?>
             <img src="<?= e($sds['meta']['company_logo_path']) ?>" alt="Company Logo" style="max-height: 60px; max-width: 250px; margin-bottom: 0.5rem;">
         <?php endif; ?>
-        <h2>SAFETY DATA SHEET</h2>
+        <h2><?= e($doc['title'] ?? 'SAFETY DATA SHEET') ?></h2>
         <p class="text-muted">Preview &mdash; <?= e(strtoupper($language)) ?> &mdash; Generated <?= date('m/d/Y H:i') ?></p>
     </div>
 
     <?php foreach ($sds['sections'] as $num => $section): ?>
     <div class="sds-section" id="section-<?= $num ?>">
-        <h3 class="sds-section-title">SECTION <?= $num ?>: <?= e(strtoupper($section['title'] ?? '')) ?></h3>
+        <h3 class="sds-section-title"><?= e($sectionPrefix) ?> <?= $num ?>: <?= e(strtoupper($section['title'] ?? '')) ?></h3>
 
         <?php if ($num === 2): // ── Hazard Identification ── ?>
             <?php if (!empty($section['signal_word'])): ?>
@@ -24,7 +32,7 @@
 
             <?php if (!empty($section['pictograms'])): ?>
                 <div class="sds-pictograms" style="display: flex; flex-wrap: wrap; gap: 12px; margin: 0.5rem 0;">
-                    <strong style="align-self: center;">Pictograms:</strong>
+                    <strong style="align-self: center;"><?= e($l('pictograms')) ?>:</strong>
                     <?php foreach ($section['pictograms'] as $code):
                         $pictoSrc = \SDS\Services\PictogramHelper::getWebPath($code);
                     ?>
@@ -44,7 +52,7 @@
             <?php endif; ?>
 
             <?php if (!empty($section['hazard_classes'])): ?>
-                <p><strong>GHS Classification:</strong></p>
+                <p><strong><?= e($l('ghs_classification')) ?>:</strong></p>
                 <ul>
                 <?php
                     $seen = [];
@@ -61,7 +69,7 @@
             <?php endif; ?>
 
             <?php if (!empty($section['h_statements'])): ?>
-                <p><strong>Hazard Statements:</strong></p>
+                <p><strong><?= e($l('hazard_statements')) ?>:</strong></p>
                 <ul>
                 <?php foreach ($section['h_statements'] as $s): ?>
                     <li><strong><?= e($s['code']) ?></strong><?php if (!empty($s['text'])): ?>: <?= e($s['text']) ?><?php endif; ?></li>
@@ -70,7 +78,7 @@
             <?php endif; ?>
 
             <?php if (!empty($section['p_statements'])): ?>
-                <p><strong>Precautionary Statements:</strong></p>
+                <p><strong><?= e($l('precautionary_statements')) ?>:</strong></p>
                 <ul>
                 <?php foreach ($section['p_statements'] as $s): ?>
                     <li><strong><?= e($s['code']) ?></strong><?php if (!empty($s['text'])): ?>: <?= e($s['text']) ?><?php endif; ?></li>
@@ -83,13 +91,13 @@
                 $hasPPE = !empty($ppe['respiratory']) || !empty($ppe['hand_protection']) || !empty($ppe['eye_protection']) || !empty($ppe['skin_protection']);
             ?>
             <?php if ($hasPPE): ?>
-                <p><strong>Recommended Personal Protective Equipment (PPE):</strong></p>
+                <p><strong><?= e($l('ppe_recommendations')) ?>:</strong></p>
                 <?php
                     $ppeItems = [
-                        'eye_protection'  => ['code' => 'PPE-eye',        'label' => 'Wear Eye Protection'],
-                        'hand_protection' => ['code' => 'PPE-hand',       'label' => 'Wear Gloves'],
-                        'respiratory'     => ['code' => 'PPE-respiratory', 'label' => 'Wear Respiratory Protection'],
-                        'skin_protection' => ['code' => 'PPE-skin',       'label' => 'Wear Protective Clothing'],
+                        'eye_protection'  => ['code' => 'PPE-eye',        'labelKey' => 'ppe_wear_eye'],
+                        'hand_protection' => ['code' => 'PPE-hand',       'labelKey' => 'ppe_wear_gloves'],
+                        'respiratory'     => ['code' => 'PPE-respiratory', 'labelKey' => 'ppe_wear_respiratory'],
+                        'skin_protection' => ['code' => 'PPE-skin',       'labelKey' => 'ppe_wear_skin'],
                     ];
                 ?>
                 <div style="display: flex; flex-wrap: wrap; gap: 16px; margin: 0.5rem 0;">
@@ -100,38 +108,38 @@
                         <span style="display: inline-flex; flex-direction: column; align-items: center; width: 80px;">
                             <?php if ($ppeSrc): ?>
                             <img src="<?= e($ppeSrc) ?>"
-                                 alt="<?= e($info['label']) ?>"
+                                 alt="<?= e($l($info['labelKey'])) ?>"
                                  style="width: 50px; height: 50px;">
                             <?php endif; ?>
-                            <small style="display: block; font-size: 0.65rem; color: #666; text-align: center; width: 100%;"><?= e($info['label']) ?></small>
+                            <small style="display: block; font-size: 0.65rem; color: #666; text-align: center; width: 100%;"><?= e($l($info['labelKey'])) ?></small>
                         </span>
                     <?php endforeach; ?>
                 </div>
                 <ul style="margin-top: 0.3rem;">
                 <?php if (!empty($ppe['respiratory'])): ?>
-                    <li><strong>Respiratory:</strong> <?= e($ppe['respiratory']) ?></li>
+                    <li><strong><?= e($l('respiratory')) ?>:</strong> <?= e($ppe['respiratory']) ?></li>
                 <?php endif; ?>
                 <?php if (!empty($ppe['hand_protection'])): ?>
-                    <li><strong>Hand Protection:</strong> <?= e($ppe['hand_protection']) ?></li>
+                    <li><strong><?= e($l('hand_protection')) ?>:</strong> <?= e($ppe['hand_protection']) ?></li>
                 <?php endif; ?>
                 <?php if (!empty($ppe['eye_protection'])): ?>
-                    <li><strong>Eye Protection:</strong> <?= e($ppe['eye_protection']) ?></li>
+                    <li><strong><?= e($l('eye_protection')) ?>:</strong> <?= e($ppe['eye_protection']) ?></li>
                 <?php endif; ?>
                 <?php if (!empty($ppe['skin_protection'])): ?>
-                    <li><strong>Skin/Body Protection:</strong> <?= e($ppe['skin_protection']) ?></li>
+                    <li><strong><?= e($l('skin_body')) ?>:</strong> <?= e($ppe['skin_protection']) ?></li>
                 <?php endif; ?>
                 </ul>
             <?php endif; ?>
 
-            <?php if (!empty($section['other_hazards']) && $section['other_hazards'] !== 'None known.'): ?>
-                <p><strong>Other Hazards:</strong> <?= e($section['other_hazards']) ?></p>
+            <?php if (!empty($section['has_other_hazards'])): ?>
+                <p><strong><?= e($l('other_hazards')) ?>:</strong> <?= e($section['other_hazards']) ?></p>
             <?php endif; ?>
 
         <?php elseif ($num === 3): // ── Composition ── ?>
-            <p><strong>Type:</strong> <?= e($section['substance_or_mixture'] ?? 'Mixture') ?></p>
+            <p><strong><?= e($l('type')) ?>:</strong> <?= e($section['substance_or_mixture'] ?? $l('mixture')) ?></p>
             <?php if (!empty($section['components'])): ?>
             <table class="table table-sm">
-                <thead><tr><th>CAS</th><th>Chemical Name</th><th>Concentration</th></tr></thead>
+                <thead><tr><th><?= e($l('cas_number')) ?></th><th><?= e($l('chemical_name')) ?></th><th><?= e($l('concentration')) ?></th></tr></thead>
                 <tbody>
                 <?php foreach ($section['components'] as $c): ?>
                     <tr>
@@ -146,7 +154,14 @@
 
         <?php elseif ($num === 8 && !empty($section['exposure_limits'])): // ── Exposure Controls ── ?>
             <table class="table table-sm">
-                <thead><tr><th>CAS</th><th>Chemical</th><th>Type</th><th>Value</th><th>Units</th><th>Notes</th></tr></thead>
+                <thead><tr>
+                    <th><?= e($l('el_cas')) ?></th>
+                    <th><?= e($l('el_chemical')) ?></th>
+                    <th><?= e($l('el_type')) ?></th>
+                    <th><?= e($l('el_value')) ?></th>
+                    <th><?= e($l('el_units')) ?></th>
+                    <th><?= e($l('el_notes')) ?></th>
+                </tr></thead>
                 <tbody>
                 <?php foreach ($section['exposure_limits'] as $el): ?>
                     <tr>
@@ -160,20 +175,58 @@
                 <?php endforeach; ?>
                 </tbody>
             </table>
+            <?php
+                // Field-key-to-label mapping for section 8 remaining fields
+                $sec8LabelMap = [
+                    'engineering' => 'engineering_controls',
+                    'respiratory' => 'respiratory_protection',
+                    'hand_protection' => 'hand_protection',
+                    'eye_protection' => 'eye_protection',
+                    'skin_protection' => 'skin_protection',
+                ];
+            ?>
             <?php foreach ($section as $key => $val): ?>
                 <?php if (!is_string($val) || $key === 'title' || $val === '' || $key === 'exposure_limits') continue; ?>
-                <p><strong><?= e(ucwords(str_replace('_', ' ', $key))) ?>:</strong> <?= e($val) ?></p>
+                <?php $fieldLabel = isset($sec8LabelMap[$key]) ? $l($sec8LabelMap[$key]) : ucwords(str_replace('_', ' ', $key)); ?>
+                <p><strong><?= e($fieldLabel) ?>:</strong> <?= e($val) ?></p>
+            <?php endforeach; ?>
+
+        <?php elseif ($num === 9): // ── Physical/Chemical Properties ── ?>
+            <?php
+                $sec9LabelMap = [
+                    'appearance'           => 'appearance',
+                    'odor'                 => 'odor',
+                    'boiling_point'        => 'boiling_point',
+                    'flash_point'          => 'flash_point',
+                    'solubility'           => 'solubility',
+                    'specific_gravity'     => 'specific_gravity',
+                    'voc_lb_per_gal'       => 'voc_lb_gal',
+                    'voc_less_water_exempt' => 'voc_less_we',
+                    'voc_wt_pct'           => 'voc_wt_pct',
+                    'solids_wt_pct'        => 'solids_wt_pct',
+                    'solids_vol_pct'       => 'solids_vol_pct',
+                ];
+            ?>
+            <?php foreach ($section as $key => $val): ?>
+                <?php if ($key === 'title') continue; ?>
+                <?php if (is_string($val) && $val !== ''): ?>
+                    <?php $fieldLabel = isset($sec9LabelMap[$key]) ? $l($sec9LabelMap[$key]) : ucwords(str_replace('_', ' ', $key)); ?>
+                    <p><strong><?= e($fieldLabel) ?>:</strong> <?= e($val) ?></p>
+                <?php elseif (is_numeric($val)): ?>
+                    <?php $fieldLabel = isset($sec9LabelMap[$key]) ? $l($sec9LabelMap[$key]) : ucwords(str_replace('_', ' ', $key)); ?>
+                    <p><strong><?= e($fieldLabel) ?>:</strong> <?= $val ?></p>
+                <?php endif; ?>
             <?php endforeach; ?>
 
         <?php elseif ($num === 11): // ── Toxicological Information ── ?>
-            <p><strong>Acute Toxicity:</strong> <?= e($section['acute_toxicity'] ?? '') ?></p>
-            <p><strong>Chronic Effects:</strong> <?= e($section['chronic_effects'] ?? '') ?></p>
+            <p><strong><?= e($l('acute_toxicity')) ?>:</strong> <?= e($section['acute_toxicity'] ?? '') ?></p>
+            <p><strong><?= e($l('chronic_effects')) ?>:</strong> <?= e($section['chronic_effects'] ?? '') ?></p>
 
-            <p><strong>Carcinogenicity:</strong></p>
+            <p><strong><?= e($l('carcinogenicity')) ?>:</strong></p>
             <div style="white-space: pre-wrap; margin-left: 1rem;"><?= e($section['carcinogenicity'] ?? '') ?></div>
 
             <?php if (!empty($section['component_toxicology'])): ?>
-                <h4 style="margin-top: 1rem;">Component Toxicological Data</h4>
+                <h4 style="margin-top: 1rem;"><?= e($l('component_tox_data')) ?></h4>
                 <?php foreach ($section['component_toxicology'] as $comp): ?>
                     <div style="margin: 0.5rem 0; padding: 0.5rem; background: #f8f8f8; border-left: 3px solid #003366;">
                         <strong><?= e($comp['chemical_name']) ?></strong>
@@ -191,7 +244,12 @@
 
                         <?php if (!empty($comp['exposure_limits'])): ?>
                             <table class="table table-sm" style="margin-top: 0.3rem; font-size: 0.85rem;">
-                                <thead><tr><th>Limit Type</th><th>Value</th><th>Units</th><th>Notes</th></tr></thead>
+                                <thead><tr>
+                                    <th><?= e($l('el_type')) ?></th>
+                                    <th><?= e($l('el_value')) ?></th>
+                                    <th><?= e($l('el_units')) ?></th>
+                                    <th><?= e($l('el_notes')) ?></th>
+                                </tr></thead>
                                 <tbody>
                                 <?php foreach ($comp['exposure_limits'] as $el): ?>
                                     <tr>
@@ -215,21 +273,30 @@
                 <div style="margin-top: 0.5rem;">
                     <?php $ghs08Src = \SDS\Services\PictogramHelper::getWebPath('GHS08'); ?>
                     <?php if ($ghs08Src): ?>
-                    <img src="<?= e($ghs08Src) ?>" alt="GHS08 - Health Hazard" style="width: 40px; height: 40px; vertical-align: middle;">
+                    <img src="<?= e($ghs08Src) ?>" alt="GHS08 - <?= e($l('health_hazard')) ?>" style="width: 40px; height: 40px; vertical-align: middle;">
                     <?php endif; ?>
-                    <span style="color: #d9534f; font-weight: bold;">Health Hazard</span>
+                    <span style="color: #d9534f; font-weight: bold;"><?= e($l('health_hazard')) ?></span>
                 </div>
             <?php endif; ?>
 
+        <?php elseif ($num === 14): // ── Transport Information ── ?>
+            <p><strong><?= e($l('un_number')) ?>:</strong> <?= e($section['un_number'] ?? '') ?></p>
+            <p><strong><?= e($l('proper_shipping_name')) ?>:</strong> <?= e($section['proper_shipping_name'] ?? '') ?></p>
+            <p><strong><?= e($l('transport_hazard_class')) ?>:</strong> <?= e($section['hazard_class'] ?? '') ?></p>
+            <p><strong><?= e($l('packing_group')) ?>:</strong> <?= e($section['packing_group'] ?? '') ?></p>
+            <?php if (!empty($section['note'])): ?>
+                <p class="text-muted"><em><?= e($section['note']) ?></em></p>
+            <?php endif; ?>
+
         <?php elseif ($num === 15): // ── Regulatory Information ── ?>
-            <p><strong>OSHA Status:</strong> <?= e($section['osha_status'] ?? '') ?></p>
-            <p><strong>TSCA Status:</strong> <?= e($section['tsca_status'] ?? '') ?></p>
+            <p><strong><?= e($l('osha_status')) ?>:</strong> <?= e($section['osha_status'] ?? '') ?></p>
+            <p><strong><?= e($l('tsca_status')) ?>:</strong> <?= e($section['tsca_status'] ?? '') ?></p>
 
             <?php
                 $sara = $section['sara_313'] ?? [];
                 if (!empty($sara['listed_chemicals'] ?? [])):
             ?>
-                <h4>SARA 313 / TRI Reporting</h4>
+                <h4><?= e($l('sara_313_title')) ?></h4>
                 <ul>
                 <?php foreach ($sara['listed_chemicals'] as $chem): ?>
                     <li><?= e($chem['chemical_name']) ?> (CAS <?= e($chem['cas_number']) ?>) &mdash;
@@ -243,9 +310,9 @@
                 $hap = $section['hap'] ?? [];
                 if (!empty($hap['has_haps'])):
             ?>
-                <h4 style="margin-top: 1rem;">Clean Air Act Section 112(b) — Hazardous Air Pollutants (HAPs)</h4>
+                <h4 style="margin-top: 1rem;"><?= e($l('hap_title')) ?></h4>
                 <table class="table table-sm">
-                    <thead><tr><th>Triggering HAP Chemical</th><th style="text-align: right;">Wt% in Formula</th></tr></thead>
+                    <thead><tr><th><?= e($l('hap_triggering')) ?></th><th style="text-align: right;"><?= e($l('hap_wt_pct')) ?></th></tr></thead>
                     <tbody>
                     <?php foreach ($hap['hap_chemicals'] as $chem): ?>
                         <tr>
@@ -256,13 +323,13 @@
                     </tbody>
                     <tfoot>
                         <tr style="font-weight: bold; border-top: 2px solid #333;">
-                            <td>Total HAP Content</td>
+                            <td><?= e($l('hap_total')) ?></td>
                             <td style="text-align: right;"><?= number_format((float) $hap['total_hap_pct'], 2) ?>%</td>
                         </tr>
                     </tfoot>
                 </table>
             <?php elseif (isset($hap['has_haps'])): ?>
-                <p><strong>Hazardous Air Pollutants (HAPs):</strong> This product does not contain any EPA HAPs listed under Clean Air Act Section 112(b).</p>
+                <p><?= e($l('hap_none')) ?></p>
             <?php endif; ?>
 
             <?php
@@ -275,16 +342,16 @@
                         <?php if ($prop65Src): ?>
                         <img src="<?= e($prop65Src) ?>" alt="Warning" style="width: 30px; height: 30px; vertical-align: middle; margin-right: 6px;">
                         <?php endif; ?>
-                        California Proposition 65
+                        <?= e($l('prop65_title')) ?>
                     </h4>
                     <p style="margin: 0;"><?= e($prop65['warning_text'] ?? '') ?></p>
                 </div>
             <?php else: ?>
-                <p><strong>California Proposition 65:</strong> This product is not known to contain any chemicals listed under California Proposition 65.</p>
+                <p><strong><?= e($l('prop65_title')) ?>:</strong> <?= e($l('prop65_none')) ?></p>
             <?php endif; ?>
 
             <?php if (!empty($section['state_regs']) && empty($prop65['requires_warning'])): ?>
-                <p><strong>State Regulations:</strong> <?= e($section['state_regs']) ?></p>
+                <p><strong><?= e($l('state_regulations')) ?>:</strong> <?= e($section['state_regs']) ?></p>
             <?php endif; ?>
 
             <?php if (!empty($section['note'])): ?>
@@ -292,12 +359,46 @@
             <?php endif; ?>
 
         <?php else: // ── Generic section ── ?>
+            <?php
+                // Field-key-to-label mapping for generic sections
+                $genericLabelMap = [
+                    'inhalation'           => 'inhalation',
+                    'skin'                 => 'skin_contact',
+                    'eyes'                 => 'eye_contact',
+                    'ingestion'            => 'ingestion',
+                    'notes'                => 'notes_to_physician',
+                    'suitable_media'       => 'suitable_media',
+                    'unsuitable_media'     => 'unsuitable_media',
+                    'specific_hazards'     => 'specific_hazards',
+                    'firefighter_advice'   => 'firefighter_advice',
+                    'personal_precautions' => 'personal_precautions',
+                    'environmental'        => 'environmental_precautions',
+                    'containment'          => 'containment_cleanup',
+                    'handling'             => 'handling',
+                    'storage'              => 'storage',
+                    'reactivity'           => 'reactivity',
+                    'stability'            => 'chemical_stability',
+                    'conditions_avoid'     => 'conditions_avoid',
+                    'incompatible'         => 'incompatible_materials',
+                    'decomposition'        => 'decomposition_products',
+                    'ecotoxicity'          => 'ecotoxicity',
+                    'persistence'          => 'persistence',
+                    'bioaccumulation'      => 'bioaccumulation',
+                    'methods'              => 'disposal_methods',
+                    'note'                 => 'note',
+                    'revision_date'        => 'revision_date',
+                    'abbreviations'        => 'abbreviations',
+                    'disclaimer'           => 'disclaimer',
+                ];
+            ?>
             <?php foreach ($section as $key => $val): ?>
-                <?php if ($key === 'title' || $key === 'hazard_classes' || $key === 'component_toxicology' || $key === 'carcinogen_result' || $key === 'prop65' || $key === 'sara_313' || $key === 'hap') continue; ?>
+                <?php if ($key === 'title' || $key === 'hazard_classes' || $key === 'component_toxicology' || $key === 'carcinogen_result' || $key === 'prop65' || $key === 'sara_313' || $key === 'hap' || $key === 'has_other_hazards' || $key === 'uv_acrylate_note') continue; ?>
                 <?php if (is_string($val) && $val !== ''): ?>
-                    <p><strong><?= e(ucwords(str_replace('_', ' ', $key))) ?>:</strong> <?= e($val) ?></p>
+                    <?php $fieldLabel = isset($genericLabelMap[$key]) ? $l($genericLabelMap[$key]) : ucwords(str_replace('_', ' ', $key)); ?>
+                    <p><strong><?= e($fieldLabel) ?>:</strong> <?= e($val) ?></p>
                 <?php elseif (is_numeric($val)): ?>
-                    <p><strong><?= e(ucwords(str_replace('_', ' ', $key))) ?>:</strong> <?= $val ?></p>
+                    <?php $fieldLabel = isset($genericLabelMap[$key]) ? $l($genericLabelMap[$key]) : ucwords(str_replace('_', ' ', $key)); ?>
+                    <p><strong><?= e($fieldLabel) ?>:</strong> <?= $val ?></p>
                 <?php endif; ?>
             <?php endforeach; ?>
         <?php endif; ?>
@@ -306,7 +407,7 @@
 
     <?php if (!empty($sds['legal_disclaimer'])): ?>
     <div class="sds-section" id="section-disclaimer">
-        <h3 class="sds-section-title">DISCLAIMER</h3>
+        <h3 class="sds-section-title"><?= e($l('disclaimer')) ?></h3>
         <p style="white-space: pre-wrap;"><?= e($sds['legal_disclaimer']) ?></p>
     </div>
     <?php endif; ?>

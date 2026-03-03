@@ -7,7 +7,7 @@ namespace SDS\Services;
 /**
  * SDSTcpdf — Thin TCPDF subclass for SDS PDF rendering.
  *
- * - Header with logo + "SAFETY DATA SHEET" on the first page only
+ * - Header with logo + translated document title on the first page only
  * - Footer with product code, page number, and revision date on every page
  */
 class SDSTcpdf extends \TCPDF
@@ -21,6 +21,9 @@ class SDSTcpdf extends \TCPDF
     /** @var string Revision date shown in the footer. */
     protected string $footerRevisionDate = '';
 
+    /** @var array Translated document-level strings. */
+    protected array $documentStrings = [];
+
     public function setAbsoluteLogoPath(string $path): void
     {
         $this->absoluteLogoPath = $path;
@@ -32,8 +35,13 @@ class SDSTcpdf extends \TCPDF
         $this->footerRevisionDate = $revisionDate;
     }
 
+    public function setDocumentStrings(array $strings): void
+    {
+        $this->documentStrings = $strings;
+    }
+
     /**
-     * Header — first page only: logo (left) + "SAFETY DATA SHEET" (right).
+     * Header — first page only: logo (left) + document title (right).
      */
     public function Header(): void // @phpcs:ignore
     {
@@ -56,13 +64,14 @@ class SDSTcpdf extends \TCPDF
         // The header band height (logo + title area before the separator line)
         $headerHeight = 16; // mm — enough for a ~2" wide logo at typical aspect ratios
 
-        // "SAFETY DATA SHEET" — right-aligned, vertically centered in header band
+        // Document title — right-aligned, vertically centered in header band
+        $docTitle = $this->documentStrings['title'] ?? 'SAFETY DATA SHEET';
         $this->SetFont('helvetica', 'B', 14);
         $titleCellH = 6; // approximate text height at 14pt
         $titleY = $topY + ($headerHeight - $titleCellH) / 2;
         $this->SetY($titleY);
         $this->SetX($leftMargin);
-        $this->Cell($pageWidth - $leftMargin - $rightMargin, $titleCellH, 'SAFETY DATA SHEET', 0, 1, 'R');
+        $this->Cell($pageWidth - $leftMargin - $rightMargin, $titleCellH, $docTitle, 0, 1, 'R');
 
         // Logo — approximately 2" wide (≈ 51 mm), vertically centered in same header band
         $logoWidth = 51;
@@ -115,10 +124,15 @@ class SDSTcpdf extends \TCPDF
         $this->SetX($leftMargin);
         $this->Cell($cellWidth, 5, $this->footerProductCode, 0, 0, 'L');
 
-        // Page number — center
-        $this->Cell($cellWidth, 5, 'Page ' . $this->getAliasNumPage() . ' of ' . $this->getAliasNbPages(), 0, 0, 'C');
+        // Page number — center (translated)
+        $pageTxt = ($this->documentStrings['page'] ?? 'Page') . ' '
+                 . $this->getAliasNumPage() . ' '
+                 . ($this->documentStrings['page_of'] ?? 'of') . ' '
+                 . $this->getAliasNbPages();
+        $this->Cell($cellWidth, 5, $pageTxt, 0, 0, 'C');
 
-        // Revision date — right
-        $this->Cell($cellWidth, 5, 'Rev. ' . $this->footerRevisionDate, 0, 0, 'R');
+        // Revision date — right (translated prefix)
+        $revPrefix = $this->documentStrings['revision_prefix'] ?? 'Rev.';
+        $this->Cell($cellWidth, 5, $revPrefix . ' ' . $this->footerRevisionDate, 0, 0, 'R');
     }
 }

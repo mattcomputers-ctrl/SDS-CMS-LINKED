@@ -93,7 +93,17 @@ return [
         'abbreviations' => 'CAS = Chemical Abstracts Service; SGH = Système Général Harmonisé; OSHA = Administration de la Sécurité et de la Santé au Travail; COV = Composés Organiques Volatils.',
     ],
 
+    // Document-level strings (header, footer, section banner)
+    'document' => [
+        'title'           => 'FICHE DE DONNÉES DE SÉCURITÉ',
+        'section_prefix'  => 'SECTION',
+        'page'            => 'Page',
+        'page_of'         => 'de',
+        'revision_prefix' => 'Rév.',
+    ],
+
     'labels' => [
+        // Section 1
         'product_identifier'    => 'Identifiant du Produit',
         'product_family'        => 'Famille de Produit',
         'recommended_use'       => 'Utilisation Recommandée',
@@ -103,18 +113,51 @@ return [
         'address'               => 'Adresse',
         'phone'                 => 'Téléphone',
         'emergency'             => 'Urgence',
+
+        // Section 2
         'pictograms'            => 'Pictogrammes',
         'ghs_classification'    => 'Classification SGH',
         'hazard_statements'     => 'Mentions de Danger',
         'precautionary_statements' => 'Conseils de Prudence',
         'ppe_recommendations'   => 'Équipement de Protection Individuelle (EPI) Recommandé',
         'other_hazards'         => 'Autres Dangers',
+        'ppe_wear_eye'          => 'Porter une Protection Oculaire',
+        'ppe_wear_gloves'       => 'Porter des Gants',
+        'ppe_wear_respiratory'  => 'Porter une Protection Respiratoire',
+        'ppe_wear_skin'         => 'Porter des Vêtements de Protection',
+
+        // Section 3
         'type'                  => 'Type',
         'cas_number'            => 'Numéro CAS',
         'chemical_name'         => 'Nom Chimique',
         'concentration'         => 'Concentration',
         'hazardous_only_note'   => 'Seuls les ingrédients dangereux sont énumérés. Les composants non dangereux sont omis.',
         'no_hazardous_note'     => 'Aucun ingrédient dangereux au-dessus des seuils de divulgation.',
+        'mixture'               => 'Mélange',
+
+        // Section 4 (First-Aid)
+        'inhalation'            => 'Inhalation',
+        'skin_contact'          => 'Contact avec la Peau',
+        'eye_contact'           => 'Contact avec les Yeux',
+        'ingestion'             => 'Ingestion',
+        'notes_to_physician'    => 'Notes pour le Médecin',
+
+        // Section 5 (Fire-Fighting)
+        'suitable_media'        => 'Moyens d\'Extinction Appropriés',
+        'unsuitable_media'      => 'Moyens d\'Extinction Non Appropriés',
+        'specific_hazards'      => 'Dangers Spécifiques',
+        'firefighter_advice'    => 'Conseils aux Pompiers',
+
+        // Section 6 (Accidental Release)
+        'personal_precautions'  => 'Précautions Individuelles',
+        'environmental_precautions' => 'Précautions Environnementales',
+        'containment_cleanup'   => 'Confinement et Nettoyage',
+
+        // Section 7 (Handling and Storage)
+        'handling'              => 'Manipulation',
+        'storage'               => 'Stockage',
+
+        // Section 8 (Exposure Controls) — table headers
         'engineering_controls'  => 'Mesures Techniques',
         'respiratory_protection' => 'Protection Respiratoire',
         'hand_protection'       => 'Protection des Mains',
@@ -122,6 +165,77 @@ return [
         'skin_protection'       => 'Protection de la Peau',
         'respiratory'           => 'Respiratoire',
         'skin_body'             => 'Protection de la Peau/Corps',
+        'el_cas'                => 'CAS',
+        'el_chemical'           => 'Chimique',
+        'el_type'               => 'Type',
+        'el_value'              => 'Valeur',
+        'el_units'              => 'Unités',
+        'el_conc_pct'           => 'Conc%',
+        'el_notes'              => 'Notes',
+
+        // Section 9 (Physical/Chemical Properties)
+        'appearance'            => 'Apparence',
+        'odor'                  => 'Odeur',
+        'boiling_point'         => 'Point d\'Ébullition',
+        'flash_point'           => 'Point d\'Éclair',
+        'solubility'            => 'Solubilité',
+        'specific_gravity'      => 'Densité Relative',
+        'voc_lb_gal'            => 'COV (lb/gal)',
+        'voc_less_we'           => 'COV moins E&E (lb/gal)',
+        'voc_wt_pct'            => 'COV (% en poids)',
+        'solids_wt_pct'         => 'Solides (% en poids)',
+        'solids_vol_pct'        => 'Solides (% en vol)',
+
+        // Section 10 (Stability and Reactivity)
+        'reactivity'            => 'Réactivité',
+        'chemical_stability'    => 'Stabilité Chimique',
+        'conditions_avoid'      => 'Conditions à Éviter',
+        'incompatible_materials' => 'Matériaux Incompatibles',
+        'decomposition_products' => 'Produits de Décomposition Dangereux',
+
+        // Section 11 (Toxicological Information)
+        'acute_toxicity'        => 'Toxicité Aiguë',
+        'chronic_effects'       => 'Effets Chroniques',
+        'carcinogenicity'       => 'Cancérogénicité',
+        'component_tox_data'    => 'Données Toxicologiques par Composant',
+        'health_hazard'         => 'Danger pour la Santé',
+
+        // Section 12 (Ecological Information)
+        'ecotoxicity'           => 'Écotoxicité',
+        'persistence'           => 'Persistance et Dégradabilité',
+        'bioaccumulation'       => 'Potentiel de Bioaccumulation',
+
+        // Section 13 (Disposal)
+        'disposal_methods'      => 'Méthodes d\'Élimination',
+
+        // Section 14 (Transport)
+        'un_number'             => 'Numéro ONU',
+        'proper_shipping_name'  => 'Désignation Officielle de Transport',
+        'transport_hazard_class' => 'Classe de Danger',
+        'packing_group'         => 'Groupe d\'Emballage',
+
+        // Section 15 (Regulatory)
+        'osha_status'           => 'Statut OSHA',
+        'tsca_status'           => 'Statut TSCA',
+        'sara_313_title'        => 'SARA 313 / Déclaration TRI',
+        'hap_title'             => 'Clean Air Act Section 112(b) — Polluants Atmosphériques Dangereux (HAP)',
+        'hap_triggering'        => 'Chimique HAP Déclencheur',
+        'hap_wt_pct'            => '% en Poids dans la Formule',
+        'hap_total'             => 'Teneur Totale en HAP',
+        'hap_none'              => 'Ce produit ne contient aucun HAP de l\'EPA listé en vertu de la Section 112(b) du Clean Air Act.',
+        'prop65_title'          => 'Proposition 65 de Californie',
+        'prop65_none'           => 'Ce produit n\'est pas connu pour contenir des substances chimiques listées dans la Proposition 65 de Californie.',
+        'state_regulations'     => 'Réglementations des États',
+
+        // Section 16 (Other Information)
+        'revision_date'         => 'Date de Révision',
+        'abbreviations'         => 'Abréviations',
         'disclaimer'            => 'AVIS DE NON-RESPONSABILITÉ',
+
+        // Generic / shared
+        'not_determined'        => 'Non déterminé',
+        'not_regulated'         => 'Non réglementé',
+        'not_applicable'        => 'Non applicable',
+        'note'                  => 'Remarque',
     ],
 ];

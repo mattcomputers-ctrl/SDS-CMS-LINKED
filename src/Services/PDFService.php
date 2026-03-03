@@ -20,8 +20,53 @@ class PDFService
     private const MARGIN_RIGHT  = 15;
     private const MARGIN_BOTTOM = 20;
 
+    /**
+     * Map data-array field keys to label keys for the generic section renderer.
+     * Keys not listed here fall back to ucwords(str_replace('_', ' ', $key)).
+     */
+    private const FIELD_LABEL_MAP = [
+        // Section 4
+        'inhalation'           => 'inhalation',
+        'skin'                 => 'skin_contact',
+        'eyes'                 => 'eye_contact',
+        'ingestion'            => 'ingestion',
+        'notes'                => 'notes_to_physician',
+        // Section 5
+        'suitable_media'       => 'suitable_media',
+        'unsuitable_media'     => 'unsuitable_media',
+        'specific_hazards'     => 'specific_hazards',
+        'firefighter_advice'   => 'firefighter_advice',
+        // Section 6
+        'personal_precautions' => 'personal_precautions',
+        'environmental'        => 'environmental_precautions',
+        'containment'          => 'containment_cleanup',
+        // Section 7
+        'handling'             => 'handling',
+        'storage'              => 'storage',
+        // Section 10
+        'reactivity'           => 'reactivity',
+        'stability'            => 'chemical_stability',
+        'conditions_avoid'     => 'conditions_avoid',
+        'incompatible'         => 'incompatible_materials',
+        'decomposition'        => 'decomposition_products',
+        // Section 12
+        'ecotoxicity'          => 'ecotoxicity',
+        'persistence'          => 'persistence',
+        'bioaccumulation'      => 'bioaccumulation',
+        'note'                 => 'note',
+        // Section 13
+        'methods'              => 'disposal_methods',
+        // Section 16
+        'revision_date'        => 'revision_date',
+        'abbreviations'        => 'abbreviations',
+        'disclaimer'           => 'disclaimer',
+    ];
+
     /** @var array Translated labels for PDF field names */
     private array $labels = [];
+
+    /** @var array Translated document-level strings */
+    private array $document = [];
 
     /** @var string Language code for GHS translations */
     private string $language = 'en';
@@ -49,6 +94,7 @@ class PDFService
         $sections = $sdsData['sections'];
         $this->labels = $meta['labels'] ?? [];
         $this->language = $meta['language'] ?? 'en';
+        $this->document = $meta['document'] ?? [];
 
         // Create PDF using custom subclass that handles absolute logo paths
         $pdf = new SDSTcpdf('P', 'mm', 'LETTER', true, 'UTF-8');
@@ -65,10 +111,11 @@ class PDFService
         $pdf->setHeaderFont(['helvetica', '', 8]);
         $pdf->setFooterFont(['helvetica', '', 8]);
 
-        // Header — logo + "SAFETY DATA SHEET" on first page only
+        // Header — logo + translated document title on first page only
         $logoFile = $this->resolveLogoPath($meta['company_logo_path'] ?? '');
         $pdf->setAbsoluteLogoPath($logoFile);
         $pdf->SetHeaderMargin(5);
+        $pdf->setDocumentStrings($this->document);
 
         // Footer — product code, page number, revision date on every page
         $revisionDate = $sections[16]['revision_date'] ?? date('m/d/Y');
@@ -106,6 +153,8 @@ class PDFService
         $meta = $sdsData['meta'];
         $sections = $sdsData['sections'];
         $this->labels = $meta['labels'] ?? [];
+        $this->language = $meta['language'] ?? 'en';
+        $this->document = $meta['document'] ?? [];
 
         $pdf = new SDSTcpdf('P', 'mm', 'LETTER', true, 'UTF-8');
         $pdf->SetCreator('SDS System');
@@ -114,10 +163,11 @@ class PDFService
         $pdf->SetMargins(self::MARGIN_LEFT, self::MARGIN_TOP, self::MARGIN_RIGHT);
         $pdf->SetAutoPageBreak(true, self::MARGIN_BOTTOM);
 
-        // Header — logo + "SAFETY DATA SHEET" on first page only
+        // Header — logo + translated document title on first page only
         $logoFile = $this->resolveLogoPath($meta['company_logo_path'] ?? '');
         $pdf->setAbsoluteLogoPath($logoFile);
         $pdf->SetHeaderMargin(5);
+        $pdf->setDocumentStrings($this->document);
 
         // Footer — product code, page number, revision date on every page
         $revisionDate = $sections[16]['revision_date'] ?? date('m/d/Y');
@@ -140,12 +190,13 @@ class PDFService
     private function renderSection(\TCPDF $pdf, int $sectionNum, array $section): void
     {
         $title = $section['title'] ?? "Section {$sectionNum}";
+        $sectionPrefix = $this->document['section_prefix'] ?? 'SECTION';
 
         // Section header
         $pdf->SetFont('helvetica', 'B', 11);
         $pdf->SetFillColor(0, 51, 102);
         $pdf->SetTextColor(255, 255, 255);
-        $pdf->Cell(0, 7, "SECTION {$sectionNum}: " . strtoupper($title), 0, 1, 'L', true);
+        $pdf->Cell(0, 7, strtoupper($sectionPrefix) . " {$sectionNum}: " . strtoupper($title), 0, 1, 'L', true);
         $pdf->SetTextColor(0, 0, 0);
         $pdf->Ln(2);
 
@@ -186,18 +237,18 @@ class PDFService
 
     private function renderSection1(\TCPDF $pdf, array $s): void
     {
-        $this->labelValue($pdf, $this->label('product_identifier', 'Product Identifier'), $s['product_identifier'] ?? '');
-        $this->labelValue($pdf, $this->label('product_family', 'Product Family'), $s['product_family'] ?? '');
-        $this->labelValue($pdf, $this->label('recommended_use', 'Recommended Use'), $s['recommended_use'] ?? '');
-        $this->labelValue($pdf, $this->label('restrictions', 'Restrictions on Use'), $s['restrictions'] ?? '');
+        $this->labelValue($pdf, $this->label('product_identifier'), $s['product_identifier'] ?? '');
+        $this->labelValue($pdf, $this->label('product_family'), $s['product_family'] ?? '');
+        $this->labelValue($pdf, $this->label('recommended_use'), $s['recommended_use'] ?? '');
+        $this->labelValue($pdf, $this->label('restrictions'), $s['restrictions'] ?? '');
         $pdf->Ln(2);
         $pdf->SetFont('helvetica', 'B', 9);
-        $pdf->Cell(0, 5, $this->label('manufacturer_info', 'Manufacturer / Supplier Information'), 0, 1);
+        $pdf->Cell(0, 5, $this->label('manufacturer_info'), 0, 1);
         $pdf->SetFont('helvetica', '', 9);
-        $this->labelValue($pdf, $this->label('company', 'Company'), $s['manufacturer_name'] ?? '');
-        $this->labelValue($pdf, $this->label('address', 'Address'), $s['manufacturer_address'] ?? '');
-        $this->labelValue($pdf, $this->label('phone', 'Phone'), $s['manufacturer_phone'] ?? '');
-        $this->labelValue($pdf, $this->label('emergency', 'Emergency'), $s['emergency_phone'] ?? '');
+        $this->labelValue($pdf, $this->label('company'), $s['manufacturer_name'] ?? '');
+        $this->labelValue($pdf, $this->label('address'), $s['manufacturer_address'] ?? '');
+        $this->labelValue($pdf, $this->label('phone'), $s['manufacturer_phone'] ?? '');
+        $this->labelValue($pdf, $this->label('emergency'), $s['emergency_phone'] ?? '');
     }
 
     private function renderSection2(\TCPDF $pdf, array $s): void
@@ -221,7 +272,7 @@ class PDFService
         // Hazard classes summary
         if (!empty($s['hazard_classes'])) {
             $pdf->SetFont('helvetica', 'B', 9);
-            $pdf->Cell(0, 5, $this->label('ghs_classification', 'GHS Classification') . ':', 0, 1);
+            $pdf->Cell(0, 5, $this->label('ghs_classification') . ':', 0, 1);
             $pdf->SetFont('helvetica', '', 9);
             $seen = [];
             foreach ($s['hazard_classes'] as $hc) {
@@ -245,7 +296,7 @@ class PDFService
         // Hazard statements
         if (!empty($s['h_statements'])) {
             $pdf->SetFont('helvetica', 'B', 9);
-            $pdf->Cell(0, 5, $this->label('hazard_statements', 'Hazard Statements') . ':', 0, 1);
+            $pdf->Cell(0, 5, $this->label('hazard_statements') . ':', 0, 1);
             $pdf->SetFont('helvetica', '', 9);
             foreach ($s['h_statements'] as $stmt) {
                 $code = $stmt['code'] ?? '';
@@ -262,7 +313,7 @@ class PDFService
         // Precautionary statements
         if (!empty($s['p_statements'])) {
             $pdf->SetFont('helvetica', 'B', 9);
-            $pdf->Cell(0, 5, $this->label('precautionary_statements', 'Precautionary Statements') . ':', 0, 1);
+            $pdf->Cell(0, 5, $this->label('precautionary_statements') . ':', 0, 1);
             $pdf->SetFont('helvetica', '', 9);
             foreach ($s['p_statements'] as $stmt) {
                 $code = $stmt['code'] ?? '';
@@ -282,16 +333,16 @@ class PDFService
         if ($hasPPE) {
             $pdf->Ln(1);
             $pdf->SetFont('helvetica', 'B', 9);
-            $pdf->Cell(0, 5, $this->label('ppe_recommendations', 'Recommended Personal Protective Equipment (PPE)') . ':', 0, 1);
+            $pdf->Cell(0, 5, $this->label('ppe_recommendations') . ':', 0, 1);
 
             // Render PPE pictogram table (with descriptions under each pictogram)
             $this->renderPPEPictogramRow($pdf, $ppe);
         }
 
-        // Other hazards
-        if (!empty($s['other_hazards']) && $s['other_hazards'] !== 'None known.') {
+        // Other hazards — only show if a custom override was provided
+        if (!empty($s['has_other_hazards'])) {
             $pdf->Ln(1);
-            $this->labelValue($pdf, $this->label('other_hazards', 'Other Hazards'), $s['other_hazards']);
+            $this->labelValue($pdf, $this->label('other_hazards'), $s['other_hazards'] ?? '');
         }
     }
 
@@ -302,7 +353,7 @@ class PDFService
     private function renderPictogramRow(\TCPDF $pdf, array $pictogramCodes): void
     {
         $pdf->SetFont('helvetica', 'B', 9);
-        $pdf->Cell(0, 5, $this->label('pictograms', 'Pictograms') . ':', 0, 1, 'L');
+        $pdf->Cell(0, 5, $this->label('pictograms') . ':', 0, 1, 'L');
 
         $pictoSize = 14; // mm
         $colWidth  = 22; // mm per column
@@ -357,10 +408,10 @@ class PDFService
     private function renderPPEPictogramRow(\TCPDF $pdf, array $ppe): void
     {
         $ppeMap = [
-            'eye_protection'  => ['code' => 'PPE-eye',         'label' => 'Wear Eye Protection'],
-            'hand_protection' => ['code' => 'PPE-hand',        'label' => 'Wear Gloves'],
-            'respiratory'     => ['code' => 'PPE-respiratory',  'label' => 'Wear Respiratory Protection'],
-            'skin_protection' => ['code' => 'PPE-skin',        'label' => 'Wear Protective Clothing'],
+            'eye_protection'  => ['code' => 'PPE-eye',         'labelKey' => 'ppe_wear_eye'],
+            'hand_protection' => ['code' => 'PPE-hand',        'labelKey' => 'ppe_wear_gloves'],
+            'respiratory'     => ['code' => 'PPE-respiratory',  'labelKey' => 'ppe_wear_respiratory'],
+            'skin_protection' => ['code' => 'PPE-skin',        'labelKey' => 'ppe_wear_skin'],
         ];
 
         $pictoSize = 12; // mm
@@ -374,7 +425,7 @@ class PDFService
             }
             $pngPath = PictogramHelper::getPngPath($info['code']);
             if ($pngPath !== '') {
-                $active[] = ['png' => $pngPath, 'label' => $info['label']];
+                $active[] = ['png' => $pngPath, 'label' => $this->label($info['labelKey'])];
             }
         }
 
@@ -409,21 +460,21 @@ class PDFService
 
     private function renderSection3(\TCPDF $pdf, array $s): void
     {
-        $this->labelValue($pdf, $this->label('type', 'Type'), $s['substance_or_mixture'] ?? 'Mixture');
+        $this->labelValue($pdf, $this->label('type'), $s['substance_or_mixture'] ?? $this->label('mixture'));
 
         if (!empty($s['components'])) {
             $pdf->Ln(2);
             $pdf->SetFont('helvetica', 'I', 8);
-            $pdf->MultiCell(0, 4, $this->label('hazardous_only_note', 'Only hazardous ingredients are listed. Non-hazardous components are omitted.'), 0, 'L');
+            $pdf->MultiCell(0, 4, $this->label('hazardous_only_note'), 0, 'L');
             $pdf->Ln(1);
 
             // Table header
             $pdf->SetFont('helvetica', 'B', 8);
             $pdf->SetFillColor(230, 230, 230);
             $w = [30, 95, 45];
-            $pdf->Cell($w[0], 5, $this->label('cas_number', 'CAS Number'), 1, 0, 'C', true);
-            $pdf->Cell($w[1], 5, $this->label('chemical_name', 'Chemical Name'), 1, 0, 'C', true);
-            $pdf->Cell($w[2], 5, $this->label('concentration', 'Concentration'), 1, 1, 'C', true);
+            $pdf->Cell($w[0], 5, $this->label('cas_number'), 1, 0, 'C', true);
+            $pdf->Cell($w[1], 5, $this->label('chemical_name'), 1, 0, 'C', true);
+            $pdf->Cell($w[2], 5, $this->label('concentration'), 1, 1, 'C', true);
             $pdf->SetFont('helvetica', '', 8);
 
             foreach ($s['components'] as $comp) {
@@ -433,15 +484,15 @@ class PDFService
             }
         } else {
             $pdf->SetFont('helvetica', 'I', 8);
-            $pdf->MultiCell(0, 4, $this->label('no_hazardous_note', 'No hazardous ingredients above disclosure thresholds.'), 0, 'L');
+            $pdf->MultiCell(0, 4, $this->label('no_hazardous_note'), 0, 'L');
         }
 
         // Trade secret / concentration withheld statement
-        $tradeNote = $s['trade_secret_note']
-            ?? 'The exact percentage of composition has been withheld as a trade secret in accordance with 29 CFR 1910.1200(i).';
-        $pdf->Ln(2);
-        $pdf->SetFont('helvetica', 'I', 8);
-        $pdf->MultiCell(0, 4, $tradeNote, 0, 'L');
+        if (!empty($s['trade_secret_note'])) {
+            $pdf->Ln(2);
+            $pdf->SetFont('helvetica', 'I', 8);
+            $pdf->MultiCell(0, 4, $s['trade_secret_note'], 0, 'L');
+        }
     }
 
     private function renderSection8(\TCPDF $pdf, array $s): void
@@ -450,13 +501,13 @@ class PDFService
             $pdf->SetFont('helvetica', 'B', 7);
             $pdf->SetFillColor(230, 230, 230);
             $w = [22, 42, 22, 20, 17, 15, 37];
-            $pdf->Cell($w[0], 5, 'CAS', 1, 0, 'C', true);
-            $pdf->Cell($w[1], 5, 'Chemical', 1, 0, 'C', true);
-            $pdf->Cell($w[2], 5, 'Type', 1, 0, 'C', true);
-            $pdf->Cell($w[3], 5, 'Value', 1, 0, 'C', true);
-            $pdf->Cell($w[4], 5, 'Units', 1, 0, 'C', true);
-            $pdf->Cell($w[5], 5, 'Conc%', 1, 0, 'C', true);
-            $pdf->Cell($w[6], 5, 'Notes', 1, 1, 'C', true);
+            $pdf->Cell($w[0], 5, $this->label('el_cas'), 1, 0, 'C', true);
+            $pdf->Cell($w[1], 5, $this->label('el_chemical'), 1, 0, 'C', true);
+            $pdf->Cell($w[2], 5, $this->label('el_type'), 1, 0, 'C', true);
+            $pdf->Cell($w[3], 5, $this->label('el_value'), 1, 0, 'C', true);
+            $pdf->Cell($w[4], 5, $this->label('el_units'), 1, 0, 'C', true);
+            $pdf->Cell($w[5], 5, $this->label('el_conc_pct'), 1, 0, 'C', true);
+            $pdf->Cell($w[6], 5, $this->label('el_notes'), 1, 1, 'C', true);
             $pdf->SetFont('helvetica', '', 7);
 
             foreach ($s['exposure_limits'] as $el) {
@@ -471,42 +522,42 @@ class PDFService
             $pdf->Ln(2);
         }
 
-        $this->labelValue($pdf, $this->label('engineering_controls', 'Engineering Controls'), $s['engineering'] ?? '');
-        $this->labelValue($pdf, $this->label('respiratory_protection', 'Respiratory Protection'), $s['respiratory'] ?? '');
-        $this->labelValue($pdf, $this->label('hand_protection', 'Hand Protection'), $s['hand_protection'] ?? '');
-        $this->labelValue($pdf, $this->label('eye_protection', 'Eye Protection'), $s['eye_protection'] ?? '');
-        $this->labelValue($pdf, $this->label('skin_protection', 'Skin Protection'), $s['skin_protection'] ?? '');
+        $this->labelValue($pdf, $this->label('engineering_controls'), $s['engineering'] ?? '');
+        $this->labelValue($pdf, $this->label('respiratory_protection'), $s['respiratory'] ?? '');
+        $this->labelValue($pdf, $this->label('hand_protection'), $s['hand_protection'] ?? '');
+        $this->labelValue($pdf, $this->label('eye_protection'), $s['eye_protection'] ?? '');
+        $this->labelValue($pdf, $this->label('skin_protection'), $s['skin_protection'] ?? '');
     }
 
     private function renderSection9(\TCPDF $pdf, array $s): void
     {
         $props = [
-            'Appearance'        => $s['appearance'] ?? '',
-            'Odor'              => $s['odor'] ?? '',
-            'Boiling Point'     => $s['boiling_point'] ?? '',
-            'Flash Point'       => $s['flash_point'] ?? '',
-            'Solubility'        => $s['solubility'] ?? '',
-            'Specific Gravity'  => $s['specific_gravity'] ?? '',
-            'VOC (lb/gal)'      => $s['voc_lb_per_gal'] ?? '',
-            'VOC less W&E (lb/gal)' => $s['voc_less_water_exempt'] ?? '',
-            'VOC (wt%)'         => $s['voc_wt_pct'] ?? '',
-            'Solids (wt%)'      => $s['solids_wt_pct'] ?? '',
-            'Solids (vol%)'     => $s['solids_vol_pct'] ?? '',
+            'appearance'        => $s['appearance'] ?? '',
+            'odor'              => $s['odor'] ?? '',
+            'boiling_point'     => $s['boiling_point'] ?? '',
+            'flash_point'       => $s['flash_point'] ?? '',
+            'solubility'        => $s['solubility'] ?? '',
+            'specific_gravity'  => $s['specific_gravity'] ?? '',
+            'voc_lb_gal'        => $s['voc_lb_per_gal'] ?? '',
+            'voc_less_we'       => $s['voc_less_water_exempt'] ?? '',
+            'voc_wt_pct'        => $s['voc_wt_pct'] ?? '',
+            'solids_wt_pct'     => $s['solids_wt_pct'] ?? '',
+            'solids_vol_pct'    => $s['solids_vol_pct'] ?? '',
         ];
 
-        foreach ($props as $label => $value) {
-            $this->labelValue($pdf, $label, (string) $value);
+        foreach ($props as $labelKey => $value) {
+            $this->labelValue($pdf, $this->label($labelKey), (string) $value);
         }
     }
 
     private function renderSection11(\TCPDF $pdf, array $s): void
     {
-        $this->labelValue($pdf, 'Acute Toxicity', $s['acute_toxicity'] ?? '');
-        $this->labelValue($pdf, 'Chronic Effects', $s['chronic_effects'] ?? '');
+        $this->labelValue($pdf, $this->label('acute_toxicity'), $s['acute_toxicity'] ?? '');
+        $this->labelValue($pdf, $this->label('chronic_effects'), $s['chronic_effects'] ?? '');
 
         // Carcinogenicity
         $pdf->SetFont('helvetica', 'B', 9);
-        $pdf->Cell(0, 5, 'Carcinogenicity:', 0, 1);
+        $pdf->Cell(0, 5, $this->label('carcinogenicity') . ':', 0, 1);
         $pdf->SetFont('helvetica', '', 9);
         $carcinogenText = $s['carcinogenicity'] ?? '';
         if ($carcinogenText !== '') {
@@ -518,7 +569,7 @@ class PDFService
         if (!empty($componentTox)) {
             $pdf->Ln(2);
             $pdf->SetFont('helvetica', 'B', 9);
-            $pdf->Cell(0, 5, 'Component Toxicological Data:', 0, 1);
+            $pdf->Cell(0, 5, $this->label('component_tox_data') . ':', 0, 1);
 
             foreach ($componentTox as $comp) {
                 $pdf->SetFont('helvetica', 'B', 8);
@@ -563,22 +614,22 @@ class PDFService
 
     private function renderSection14(\TCPDF $pdf, array $s): void
     {
-        $this->labelValue($pdf, 'UN Number', $s['un_number'] ?? '');
-        $this->labelValue($pdf, 'Proper Shipping Name', $s['proper_shipping_name'] ?? '');
-        $this->labelValue($pdf, 'Hazard Class', $s['hazard_class'] ?? '');
-        $this->labelValue($pdf, 'Packing Group', $s['packing_group'] ?? '');
+        $this->labelValue($pdf, $this->label('un_number'), $s['un_number'] ?? '');
+        $this->labelValue($pdf, $this->label('proper_shipping_name'), $s['proper_shipping_name'] ?? '');
+        $this->labelValue($pdf, $this->label('transport_hazard_class'), $s['hazard_class'] ?? '');
+        $this->labelValue($pdf, $this->label('packing_group'), $s['packing_group'] ?? '');
     }
 
     private function renderSection15(\TCPDF $pdf, array $s): void
     {
-        $this->labelValue($pdf, 'OSHA Status', $s['osha_status'] ?? '');
-        $this->labelValue($pdf, 'TSCA Status', $s['tsca_status'] ?? '');
+        $this->labelValue($pdf, $this->label('osha_status'), $s['osha_status'] ?? '');
+        $this->labelValue($pdf, $this->label('tsca_status'), $s['tsca_status'] ?? '');
 
         // SARA 313 data
         $sara = $s['sara_313'] ?? [];
         if (!empty($sara['listed_chemicals'] ?? [])) {
             $pdf->SetFont('helvetica', 'B', 9);
-            $pdf->Cell(0, 5, 'SARA 313 / TRI Reporting:', 0, 1);
+            $pdf->Cell(0, 5, $this->label('sara_313_title') . ':', 0, 1);
             $pdf->SetFont('helvetica', '', 8);
             foreach ($sara['listed_chemicals'] as $chem) {
                 $text = ($chem['chemical_name'] ?? '') . ' (CAS ' . ($chem['cas_number'] ?? '') . ') — '
@@ -593,15 +644,15 @@ class PDFService
         $hap = $s['hap'] ?? [];
         if (!empty($hap['has_haps'])) {
             $pdf->SetFont('helvetica', 'B', 9);
-            $pdf->Cell(0, 5, 'Clean Air Act Section 112(b) — Hazardous Air Pollutants (HAPs):', 0, 1);
+            $pdf->Cell(0, 5, $this->label('hap_title') . ':', 0, 1);
             $pdf->SetFont('helvetica', '', 8);
 
             // Table header
             $pdf->SetFont('helvetica', 'B', 7);
             $pdf->SetFillColor(230, 230, 230);
             $wHap = [100, 40];
-            $pdf->Cell($wHap[0], 5, 'Triggering HAP Chemical', 1, 0, 'C', true);
-            $pdf->Cell($wHap[1], 5, 'Wt% in Formula', 1, 1, 'C', true);
+            $pdf->Cell($wHap[0], 5, $this->label('hap_triggering'), 1, 0, 'C', true);
+            $pdf->Cell($wHap[1], 5, $this->label('hap_wt_pct'), 1, 1, 'C', true);
             $pdf->SetFont('helvetica', '', 7);
 
             foreach ($hap['hap_chemicals'] as $chem) {
@@ -612,13 +663,13 @@ class PDFService
             }
 
             $pdf->SetFont('helvetica', 'B', 8);
-            $pdf->Cell($wHap[0], 5, 'Total HAP Content:', 1, 0, 'R');
+            $pdf->Cell($wHap[0], 5, $this->label('hap_total') . ':', 1, 0, 'R');
             $pdf->Cell($wHap[1], 5, number_format((float) ($hap['total_hap_pct'] ?? 0), 2) . '%', 1, 1, 'C');
             $pdf->SetFont('helvetica', '', 8);
             $pdf->Ln(2);
         } elseif (isset($hap['has_haps'])) {
             $pdf->SetFont('helvetica', '', 8);
-            $pdf->MultiCell(0, 4, 'Hazardous Air Pollutants (HAPs): This product does not contain any EPA HAPs listed under Clean Air Act Section 112(b).', 0, 'L');
+            $pdf->MultiCell(0, 4, $this->label('hap_none'), 0, 'L');
             $pdf->Ln(2);
         }
 
@@ -626,7 +677,7 @@ class PDFService
         $prop65 = $s['prop65'] ?? [];
         if (!empty($prop65['requires_warning'])) {
             $pdf->SetFont('helvetica', 'B', 9);
-            $pdf->Cell(0, 5, 'California Proposition 65:', 0, 1);
+            $pdf->Cell(0, 5, $this->label('prop65_title') . ':', 0, 1);
             $pdf->SetFont('helvetica', '', 8);
 
             // Warning pictogram + warning text
@@ -647,15 +698,15 @@ class PDFService
             $pdf->Ln(1);
         } else {
             $pdf->SetFont('helvetica', 'B', 9);
-            $pdf->Cell(0, 5, 'California Proposition 65:', 0, 1);
+            $pdf->Cell(0, 5, $this->label('prop65_title') . ':', 0, 1);
             $pdf->SetFont('helvetica', '', 8);
-            $pdf->MultiCell(0, 4, 'This product is not known to contain any chemicals listed under California Proposition 65.', 0, 'L');
+            $pdf->MultiCell(0, 4, $this->label('prop65_none'), 0, 'L');
             $pdf->Ln(1);
         }
 
         // State regulations override text
         if (!empty($s['state_regs']) && empty($prop65['requires_warning'])) {
-            $this->labelValue($pdf, 'State Regulations', $s['state_regs']);
+            $this->labelValue($pdf, $this->label('state_regulations'), $s['state_regs']);
         }
 
         // Note
@@ -668,18 +719,21 @@ class PDFService
     private function renderGenericSection(\TCPDF $pdf, array $section): void
     {
         foreach ($section as $key => $value) {
-            if ($key === 'title') {
+            if ($key === 'title' || $key === 'has_other_hazards' || $key === 'uv_acrylate_note') {
                 continue;
             }
             if (is_string($value) && $value !== '') {
-                $label = ucwords(str_replace('_', ' ', $key));
+                $labelKey = self::FIELD_LABEL_MAP[$key] ?? null;
+                $label = $labelKey !== null
+                    ? $this->label($labelKey)
+                    : ucwords(str_replace('_', ' ', $key));
                 $this->labelValue($pdf, $label, $value);
             }
         }
     }
 
     /**
-     * Get a translated label, falling back to the provided default.
+     * Get a translated label, falling back to the key itself.
      */
     private function label(string $key, string $default = ''): string
     {
@@ -729,7 +783,7 @@ class PDFService
         $pdf->SetFont('helvetica', 'B', 10);
         $pdf->SetFillColor(0, 51, 102);
         $pdf->SetTextColor(255, 255, 255);
-        $pdf->Cell(0, 7, $this->label('disclaimer', 'DISCLAIMER'), 0, 1, 'L', true);
+        $pdf->Cell(0, 7, $this->label('disclaimer'), 0, 1, 'L', true);
         $pdf->SetTextColor(0, 0, 0);
         $pdf->Ln(2);
 

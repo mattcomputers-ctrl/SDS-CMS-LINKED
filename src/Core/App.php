@@ -243,6 +243,11 @@ class App
             $r->post('/export/start',               'ExportController@startExport');
             $r->get('/export/progress/{token}',     'ExportController@exportProgress');
             $r->get('/export/download/{filename}',  'ExportController@downloadExport');
+
+            // Bulk SDS Publish
+            $r->get('/bulk-publish',                    'BulkPublishController@page');
+            $r->post('/bulk-publish/start',             'BulkPublishController@start');
+            $r->get('/bulk-publish/progress/{token}',   'BulkPublishController@progress');
         });
 
         // ── Dispatch ─────────────────────────────────────────────────

@@ -7,20 +7,21 @@ namespace SDS\Controllers;
 use SDS\Core\App;
 use SDS\Core\CSRF;
 use SDS\Core\Database;
-use SDS\Services\SDSGenerator;
-use SDS\Services\PDFService;
 use SDS\Services\AuditService;
 
 /**
  * BulkPublishController — Publish new SDS versions for all finished goods (admin only).
  *
- * Generates SDS data and PDFs for every active finished good that has a formula,
- * across all supported languages, with progress tracking.
+ * Spawns parallel PHP CLI worker processes (one per CPU core) to generate
+ * SDS data and PDFs across all supported languages with progress tracking.
  */
 class BulkPublishController
 {
-    /** Directory for progress files, relative to project root */
+    /** Directory for progress/batch files, relative to project root */
     private const PROGRESS_DIR = '/storage/exports';
+
+    /** Number of parallel worker processes */
+    private const WORKER_COUNT = 4;
 
     /**
      * GET /admin/bulk-publish — Show the bulk publish page.
@@ -54,7 +55,7 @@ class BulkPublishController
     }
 
     /**
-     * POST /admin/bulk-publish/start — Begin bulk publish, returns JSON with progress token.
+     * POST /admin/bulk-publish/start — Begin bulk publish with parallel workers.
      */
     public function start(): void
     {
@@ -80,144 +81,83 @@ class BulkPublishController
             return;
         }
 
-        $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
-
         // Create progress directory
-        $progressDir = App::basePath() . self::PROGRESS_DIR;
+        $basePath    = App::basePath();
+        $progressDir = $basePath . self::PROGRESS_DIR;
         if (!is_dir($progressDir)) {
             mkdir($progressDir, 0755, true);
         }
 
-        // Create progress file
-        $token = bin2hex(random_bytes(8));
-        $progressFile = $progressDir . '/publish_progress_' . $token . '.json';
+        $token       = bin2hex(random_bytes(8));
+        $totalItems  = count($finishedGoods);
+        $workerCount = min(self::WORKER_COUNT, $totalItems);
+        $userId      = current_user_id();
 
-        $totalItems = count($finishedGoods);
-        $this->writeProgress($progressFile, 0, $totalItems, 'Starting bulk publish...');
+        // Write the master progress file (used by progress endpoint)
+        $masterFile = $progressDir . '/publish_progress_' . $token . '.json';
+        file_put_contents($masterFile, json_encode([
+            'current' => 0, 'total' => $totalItems, 'percent' => 0,
+            'message' => 'Starting bulk publish...', 'complete' => false,
+            'error' => false, 'workers' => $workerCount,
+        ]), LOCK_EX);
 
-        // Flush JSON response immediately so the browser can start polling
+        // Split FGs into batches and write batch files
+        $batches = array_chunk($finishedGoods, (int) ceil($totalItems / $workerCount));
+        $workerProgressFiles = [];
+        $batchFiles = [];
+
+        for ($w = 0; $w < count($batches); $w++) {
+            $batchFile    = $progressDir . '/publish_batch_' . $token . '_' . $w . '.json';
+            $workerFile   = $progressDir . '/publish_worker_' . $token . '_' . $w . '.json';
+
+            file_put_contents($batchFile, json_encode($batches[$w]));
+            file_put_contents($workerFile, json_encode([
+                'total' => count($batches[$w]), 'processed' => 0,
+                'published' => 0, 'failed' => 0, 'errors' => [], 'complete' => false,
+            ]), LOCK_EX);
+
+            $batchFiles[] = $batchFile;
+            $workerProgressFiles[] = $workerFile;
+        }
+
+        // Write manifest so progress endpoint knows the worker files
+        $manifestFile = $progressDir . '/publish_manifest_' . $token . '.json';
+        file_put_contents($manifestFile, json_encode([
+            'total'          => $totalItems,
+            'worker_files'   => $workerProgressFiles,
+            'master_file'    => $masterFile,
+        ]), LOCK_EX);
+
+        // Flush JSON response to browser
         $this->jsonResponse([
             'token' => $token,
             'total' => $totalItems,
         ]);
 
-        // Close the connection so the browser gets the response
         if (function_exists('fastcgi_finish_request')) {
             fastcgi_finish_request();
         }
 
-        // Now process in the background
-        $generator  = new SDSGenerator();
-        $pdfService = new PDFService();
-        $now        = date('Y-m-d H:i:s');
-        $today      = date('Y-m-d');
-        $userId     = current_user_id();
+        // Spawn parallel worker processes
+        $workerScript = $basePath . '/scripts/publish-worker.php';
+        $phpBin       = PHP_BINARY;
+        $processes     = [];
 
-        $published = 0;
-        $skipped   = 0;
-        $failed    = 0;
-        $errors    = [];
-
-        foreach ($finishedGoods as $i => $fg) {
-            $fgId   = (int) $fg['id'];
-            $code   = $fg['product_code'];
-
-            try {
-                // Compute language-independent data once per finished good
-                $baseData = $generator->computeBase($fgId);
-
-                // Generate language-specific SDS data and PDFs
-                $generated = [];
-                foreach ($languages as $lang) {
-                    $sdsData      = $generator->generateFromBase($baseData, $lang);
-                    $pdfPath      = $pdfService->generate($sdsData);
-                    $relativePath = str_replace(App::basePath() . '/', '', $pdfPath);
-
-                    $generated[] = [
-                        'language'     => $lang,
-                        'sdsData'      => $sdsData,
-                        'relativePath' => $relativePath,
-                    ];
-                }
-
-                // Get next version number
-                $lastVersion = $db->fetch(
-                    "SELECT MAX(version) AS max_ver FROM sds_versions WHERE finished_good_id = ?",
-                    [$fgId]
-                );
-                $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
-
-                // Insert version records
-                foreach ($generated as $item) {
-                    $versionId = $db->insert('sds_versions', [
-                        'finished_good_id' => $fgId,
-                        'language'         => $item['language'],
-                        'version'          => $nextVersion,
-                        'status'           => 'published',
-                        'effective_date'   => $today,
-                        'published_by'     => $userId,
-                        'published_at'     => $now,
-                        'snapshot_json'    => json_encode($item['sdsData'], JSON_UNESCAPED_UNICODE),
-                        'pdf_path'         => $item['relativePath'],
-                        'change_summary'   => 'Bulk publish',
-                        'created_by'       => $userId,
-                    ]);
-
-                    // Store generation trace
-                    $traceData = array_merge(
-                        $item['sdsData']['hazard_result']['trace'] ?? [],
-                        $item['sdsData']['voc_result']['trace'] ?? []
-                    );
-                    $db->insert('sds_generation_trace', [
-                        'sds_version_id' => $versionId,
-                        'trace_json'     => json_encode($traceData, JSON_UNESCAPED_UNICODE),
-                    ]);
-                }
-
-                AuditService::log('sds_version', (string) $fgId, 'bulk_publish', [
-                    'finished_good_id' => $fgId,
-                    'product_code'     => $code,
-                    'version'          => $nextVersion,
-                    'languages'        => count($languages),
-                ]);
-
-                $published++;
-            } catch (\Throwable $e) {
-                $failed++;
-                $errors[] = $code . ': ' . $e->getMessage();
-            }
-
-            $this->writeProgress($progressFile, $i + 1, $totalItems,
-                'Published: ' . $code . ' (' . ($i + 1) . '/' . $totalItems . ')');
+        for ($w = 0; $w < count($batches); $w++) {
+            $cmd = sprintf(
+                '%s %s %s %s %s > /dev/null 2>&1 &',
+                escapeshellarg($phpBin),
+                escapeshellarg($workerScript),
+                escapeshellarg($batchFiles[$w]),
+                escapeshellarg($workerProgressFiles[$w]),
+                escapeshellarg((string) $userId)
+            );
+            exec($cmd);
         }
-
-        // Write final progress
-        $summary = $published . ' published';
-        if ($failed > 0) {
-            $summary .= ', ' . $failed . ' failed';
-        }
-
-        $finalData = [
-            'current'   => $totalItems,
-            'total'     => $totalItems,
-            'percent'   => 100,
-            'message'   => 'Bulk publish complete! ' . $summary . '.',
-            'complete'  => true,
-            'error'     => false,
-            'published' => $published,
-            'failed'    => $failed,
-            'errors'    => $errors,
-        ];
-        file_put_contents($progressFile, json_encode($finalData), LOCK_EX);
-
-        AuditService::log('sds_bulk_publish', '0', 'complete', [
-            'published' => $published,
-            'failed'    => $failed,
-        ]);
     }
 
     /**
-     * GET /admin/bulk-publish/progress/{token} — Return current progress as JSON.
+     * GET /admin/bulk-publish/progress/{token} — Aggregate worker progress.
      */
     public function progress(string $token): void
     {
@@ -226,40 +166,107 @@ class BulkPublishController
             return;
         }
 
-        $token = preg_replace('/[^a-f0-9]/', '', $token);
-        $progressFile = App::basePath() . self::PROGRESS_DIR . '/publish_progress_' . $token . '.json';
+        $token       = preg_replace('/[^a-f0-9]/', '', $token);
+        $progressDir = App::basePath() . self::PROGRESS_DIR;
+        $manifestFile = $progressDir . '/publish_manifest_' . $token . '.json';
 
-        if (!file_exists($progressFile)) {
+        if (!file_exists($manifestFile)) {
+            // Fall back to master file for initial poll before manifest is written
+            $masterFile = $progressDir . '/publish_progress_' . $token . '.json';
+            if (file_exists($masterFile)) {
+                $data = json_decode(file_get_contents($masterFile), true);
+                $this->jsonResponse($data ?: ['error' => 'Invalid progress data.']);
+                return;
+            }
             $this->jsonResponse(['error' => 'Progress not found.'], 404);
             return;
         }
 
-        $data = json_decode(file_get_contents($progressFile), true);
-
-        // Clean up progress file if complete
-        if (!empty($data['complete'])) {
-            @unlink($progressFile);
+        $manifest = json_decode(file_get_contents($manifestFile), true);
+        if (!$manifest) {
+            $this->jsonResponse(['error' => 'Invalid manifest.']);
+            return;
         }
 
-        $this->jsonResponse($data ?: ['error' => 'Invalid progress data.']);
+        $totalItems    = (int) $manifest['total'];
+        $totalProcessed = 0;
+        $totalPublished = 0;
+        $totalFailed    = 0;
+        $allErrors      = [];
+        $allComplete    = true;
+        $workerFiles    = $manifest['worker_files'] ?? [];
+
+        foreach ($workerFiles as $workerFile) {
+            if (!file_exists($workerFile)) {
+                $allComplete = false;
+                continue;
+            }
+            $wData = json_decode(file_get_contents($workerFile), true);
+            if (!$wData) {
+                $allComplete = false;
+                continue;
+            }
+
+            $totalProcessed += (int) ($wData['processed'] ?? 0);
+            $totalPublished += (int) ($wData['published'] ?? 0);
+            $totalFailed    += (int) ($wData['failed'] ?? 0);
+            $allErrors       = array_merge($allErrors, $wData['errors'] ?? []);
+
+            if (empty($wData['complete'])) {
+                $allComplete = false;
+            }
+        }
+
+        $percent = $totalItems > 0 ? round(($totalProcessed / $totalItems) * 100, 1) : 0;
+
+        if ($allComplete) {
+            $summary = $totalPublished . ' published';
+            if ($totalFailed > 0) {
+                $summary .= ', ' . $totalFailed . ' failed';
+            }
+
+            $response = [
+                'current'   => $totalItems,
+                'total'     => $totalItems,
+                'percent'   => 100,
+                'message'   => 'Bulk publish complete! ' . $summary . '.',
+                'complete'  => true,
+                'error'     => false,
+                'published' => $totalPublished,
+                'failed'    => $totalFailed,
+                'errors'    => $allErrors,
+            ];
+
+            // Clean up all worker/manifest/master files
+            foreach ($workerFiles as $wf) {
+                @unlink($wf);
+            }
+            @unlink($manifestFile);
+            @unlink($manifest['master_file'] ?? '');
+
+            AuditService::log('sds_bulk_publish', '0', 'complete', [
+                'published' => $totalPublished,
+                'failed'    => $totalFailed,
+            ]);
+
+            $this->jsonResponse($response);
+            return;
+        }
+
+        $this->jsonResponse([
+            'current'  => $totalProcessed,
+            'total'    => $totalItems,
+            'percent'  => $percent,
+            'message'  => 'Publishing... ' . $totalProcessed . '/' . $totalItems
+                . ' (' . count($workerFiles) . ' workers)',
+            'complete' => false,
+            'error'    => false,
+        ]);
     }
 
     /* ------------------------------------------------------------------
      *  Helpers
      * ----------------------------------------------------------------*/
-
-    private function writeProgress(string $file, int $current, int $total, string $message): void
-    {
-        $data = [
-            'current'  => $current,
-            'total'    => $total,
-            'percent'  => $total > 0 ? round(($current / $total) * 100, 1) : 0,
-            'message'  => $message,
-            'complete' => false,
-            'error'    => false,
-        ];
-        file_put_contents($file, json_encode($data), LOCK_EX);
-    }
 
     private function jsonResponse(array $data, int $status = 200): void
     {

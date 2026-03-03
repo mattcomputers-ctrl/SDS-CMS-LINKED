@@ -1,0 +1,156 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Bulk Publish Worker — processes a batch of finished goods in parallel.
+ *
+ * Usage:
+ *   php scripts/publish-worker.php <batch-file> <progress-file> <user-id>
+ *
+ * The batch file is a JSON array of {id, product_code} objects.
+ * The progress file is updated after each finished good is processed.
+ * On completion, the progress file contains final counts.
+ */
+
+declare(strict_types=1);
+
+$basePath = dirname(__DIR__);
+require_once $basePath . '/vendor/autoload.php';
+
+// Bootstrap app (DB, config, session — but no routing/dispatch)
+new \SDS\Core\App();
+
+use SDS\Core\App;
+use SDS\Core\Database;
+use SDS\Services\SDSGenerator;
+use SDS\Services\PDFService;
+use SDS\Services\AuditService;
+
+// ── Parse arguments ──────────────────────────────────────────────────
+if ($argc < 4) {
+    fwrite(STDERR, "Usage: php publish-worker.php <batch-file> <progress-file> <user-id>\n");
+    exit(1);
+}
+
+$batchFile    = $argv[1];
+$progressFile = $argv[2];
+$userId       = (int) $argv[3];
+
+if (!file_exists($batchFile)) {
+    fwrite(STDERR, "Batch file not found: {$batchFile}\n");
+    exit(1);
+}
+
+$finishedGoods = json_decode(file_get_contents($batchFile), true);
+if (!is_array($finishedGoods) || empty($finishedGoods)) {
+    // Empty batch — write complete immediately
+    writeWorkerProgress($progressFile, 0, 0, 0, 0, [], true);
+    exit(0);
+}
+
+// ── Process batch ────────────────────────────────────────────────────
+$languages  = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
+$generator  = new SDSGenerator();
+$pdfService = new PDFService();
+$db         = Database::getInstance();
+$now        = date('Y-m-d H:i:s');
+$today      = date('Y-m-d');
+
+$total     = count($finishedGoods);
+$published = 0;
+$failed    = 0;
+$errors    = [];
+
+writeWorkerProgress($progressFile, $total, 0, 0, 0, [], false);
+
+foreach ($finishedGoods as $i => $fg) {
+    $fgId = (int) $fg['id'];
+    $code = $fg['product_code'];
+
+    try {
+        // Compute language-independent data once
+        $baseData = $generator->computeBase($fgId);
+
+        // Generate language-specific SDS data and PDFs
+        $generated = [];
+        foreach ($languages as $lang) {
+            $sdsData      = $generator->generateFromBase($baseData, $lang);
+            $pdfPath      = $pdfService->generate($sdsData);
+            $relativePath = str_replace(App::basePath() . '/', '', $pdfPath);
+
+            $generated[] = [
+                'language'     => $lang,
+                'sdsData'      => $sdsData,
+                'relativePath' => $relativePath,
+            ];
+        }
+
+        // Get next version number
+        $lastVersion = $db->fetch(
+            "SELECT MAX(version) AS max_ver FROM sds_versions WHERE finished_good_id = ?",
+            [$fgId]
+        );
+        $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
+
+        // Insert version records
+        foreach ($generated as $item) {
+            $versionId = $db->insert('sds_versions', [
+                'finished_good_id' => $fgId,
+                'language'         => $item['language'],
+                'version'          => $nextVersion,
+                'status'           => 'published',
+                'effective_date'   => $today,
+                'published_by'     => $userId,
+                'published_at'     => $now,
+                'snapshot_json'    => json_encode($item['sdsData'], JSON_UNESCAPED_UNICODE),
+                'pdf_path'         => $item['relativePath'],
+                'change_summary'   => 'Bulk publish',
+                'created_by'       => $userId,
+            ]);
+
+            $traceData = array_merge(
+                $item['sdsData']['hazard_result']['trace'] ?? [],
+                $item['sdsData']['voc_result']['trace'] ?? []
+            );
+            $db->insert('sds_generation_trace', [
+                'sds_version_id' => $versionId,
+                'trace_json'     => json_encode($traceData, JSON_UNESCAPED_UNICODE),
+            ]);
+        }
+
+        AuditService::log('sds_version', (string) $fgId, 'bulk_publish', [
+            'finished_good_id' => $fgId,
+            'product_code'     => $code,
+            'version'          => $nextVersion,
+            'languages'        => count($languages),
+        ]);
+
+        $published++;
+    } catch (\Throwable $e) {
+        $failed++;
+        $errors[] = $code . ': ' . $e->getMessage();
+    }
+
+    writeWorkerProgress($progressFile, $total, $i + 1, $published, $failed, $errors, false);
+}
+
+// Write final progress
+writeWorkerProgress($progressFile, $total, $total, $published, $failed, $errors, true);
+
+// Clean up batch file
+@unlink($batchFile);
+
+exit(0);
+
+// ── Helper ───────────────────────────────────────────────────────────
+function writeWorkerProgress(string $file, int $total, int $processed, int $published, int $failed, array $errors, bool $complete): void
+{
+    $data = [
+        'total'     => $total,
+        'processed' => $processed,
+        'published' => $published,
+        'failed'    => $failed,
+        'errors'    => $errors,
+        'complete'  => $complete,
+    ];
+    file_put_contents($file, json_encode($data), LOCK_EX);
+}

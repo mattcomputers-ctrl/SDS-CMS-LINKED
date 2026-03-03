@@ -78,7 +78,7 @@ return [
 
     'sds' => [
         'default_language'       => 'en',
-        'supported_languages'    => ['en', 'es', 'fr'],
+        'supported_languages'    => ['en', 'es', 'fr', 'de'],
         'block_publish_missing'  => true,    // Block if federal hazard data missing
         'missing_threshold_pct'  => 1.0,     // Block if constituent >= this % lacks data
         'voc_calc_mode'          => 'method24_standard',

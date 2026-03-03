@@ -28,7 +28,7 @@ class SDSController
              LEFT JOIN users u ON u.id = sv.published_by
              LEFT JOIN users uc ON uc.id = sv.created_by
              WHERE sv.finished_good_id = ? AND sv.is_deleted = 0
-             ORDER BY sv.language ASC, sv.version DESC",
+             ORDER BY sv.version DESC, sv.language ASC",
             [(int) $finished_good_id]
         );
 
@@ -201,7 +201,7 @@ class SDSController
         }
 
         $changeSummary = trim($_POST['change_summary'] ?? '');
-        $languages = \SDS\Core\App::config('sds.supported_languages', ['en', 'es', 'fr']);
+        $languages = \SDS\Core\App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
 
         $db = Database::getInstance();
 
@@ -235,18 +235,19 @@ class SDSController
             }
 
             // All generated successfully — insert version records
+            // Use a single version number across all languages
+            $lastVersion = $db->fetch(
+                "SELECT MAX(version) AS max_ver FROM sds_versions
+                 WHERE finished_good_id = ?",
+                [(int) $finished_good_id]
+            );
+            $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
+
             $publishedVersions = [];
             $now = date('Y-m-d H:i:s');
 
             foreach ($generated as $item) {
                 $lang = $item['language'];
-
-                $lastVersion = $db->fetch(
-                    "SELECT MAX(version) AS max_ver FROM sds_versions
-                     WHERE finished_good_id = ? AND language = ?",
-                    [(int) $finished_good_id, $lang]
-                );
-                $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
 
                 $versionId = $db->insert('sds_versions', [
                     'finished_good_id' => (int) $finished_good_id,
@@ -278,10 +279,10 @@ class SDSController
                     'version'          => $nextVersion,
                 ]);
 
-                $publishedVersions[] = strtoupper($lang) . " v{$nextVersion}";
+                $publishedVersions[] = strtoupper($lang);
             }
 
-            $_SESSION['_flash']['success'] = 'SDS published successfully: ' . implode(', ', $publishedVersions);
+            $_SESSION['_flash']['success'] = 'SDS v' . $nextVersion . ' published successfully: ' . implode(', ', $publishedVersions);
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = 'Publish failed: ' . $e->getMessage();
         }

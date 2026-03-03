@@ -155,7 +155,7 @@ class FinishedGood
      * Each result includes the latest published SDS info per language.
      *
      * @return array  Rows with: product_code, description, family,
-     *                latest_version, latest_date, has_en, has_es, has_fr
+     *                latest_version, latest_date, has_en, has_es, has_fr, has_de
      */
     public static function search(string $term, int $limit = 50): array
     {
@@ -179,6 +179,8 @@ class FinishedGood
                    sv_es.published_at AS latest_date_es,
                    sv_fr.version AS latest_version_fr,
                    sv_fr.published_at AS latest_date_fr,
+                   sv_de.version AS latest_version_de,
+                   sv_de.published_at AS latest_date_de,
                    CASE
                        WHEN fg.product_code = ? THEN 3
                        WHEN fg.product_code LIKE ? THEN 2
@@ -227,6 +229,20 @@ class FinishedGood
                          AND sv3.status = 'published'
                          AND sv3.is_deleted = 0
             ) sv_fr ON sv_fr.finished_good_id = fg.id
+            LEFT JOIN (
+                SELECT sv4.finished_good_id, sv4.version, sv4.published_at
+                FROM sds_versions sv4
+                INNER JOIN (
+                    SELECT finished_good_id, MAX(version) AS max_ver
+                    FROM sds_versions
+                    WHERE status = 'published' AND language = 'de' AND is_deleted = 0
+                    GROUP BY finished_good_id
+                ) sv4_max ON sv4.finished_good_id = sv4_max.finished_good_id
+                         AND sv4.version = sv4_max.max_ver
+                         AND sv4.language = 'de'
+                         AND sv4.status = 'published'
+                         AND sv4.is_deleted = 0
+            ) sv_de ON sv_de.finished_good_id = fg.id
             WHERE fg.product_code = ?
                OR fg.product_code LIKE ?
                OR MATCH(fg.description) AGAINST(? IN BOOLEAN MODE)
@@ -244,6 +260,7 @@ class FinishedGood
             $row['has_en'] = $row['latest_version_en'] !== null;
             $row['has_es'] = $row['latest_version_es'] !== null;
             $row['has_fr'] = $row['latest_version_fr'] !== null;
+            $row['has_de'] = $row['latest_version_de'] !== null;
             $row['latest_version'] = $row['latest_version_en'];
             $row['latest_date']    = $row['latest_date_en'];
             unset($row['relevance']);

@@ -465,7 +465,7 @@ return [
 
     'sds' => [
         'default_language'       => 'en',
-        'supported_languages'    => ['en', 'es', 'fr'],
+        'supported_languages'    => ['en', 'es', 'fr', 'de'],
         'block_publish_missing'  => true,
         'missing_threshold_pct'  => 1.0,
         'voc_calc_mode'          => 'method24_standard',

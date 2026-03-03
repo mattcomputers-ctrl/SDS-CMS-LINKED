@@ -27,6 +27,7 @@
                         <th>EN</th>
                         <th>ES</th>
                         <th>FR</th>
+                        <th>DE</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -40,6 +41,7 @@
                         <td><?= $r['has_en'] ? '<span class="badge badge-success">PDF</span>' : '—' ?></td>
                         <td><?= $r['has_es'] ? '<span class="badge badge-success">PDF</span>' : '—' ?></td>
                         <td><?= $r['has_fr'] ? '<span class="badge badge-success">PDF</span>' : '—' ?></td>
+                        <td><?= $r['has_de'] ? '<span class="badge badge-success">PDF</span>' : '—' ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>

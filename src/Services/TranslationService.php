@@ -12,7 +12,7 @@ use SDS\Core\App;
  * Loads translation files from templates/translations/{lang}.php and
  * provides key-based lookups with placeholder substitution.
  *
- * Supported languages: en, es, fr (configurable).
+ * Supported languages: en, es, fr, de (configurable).
  */
 class TranslationService
 {
@@ -27,7 +27,7 @@ class TranslationService
 
     public function __construct(string $language = 'en')
     {
-        $supported = App::config('sds.supported_languages', ['en', 'es', 'fr']);
+        $supported = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
         $this->language = in_array($language, $supported, true) ? $language : $this->fallback;
     }
 

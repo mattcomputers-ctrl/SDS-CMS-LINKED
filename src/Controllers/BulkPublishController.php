@@ -54,9 +54,9 @@ class BulkPublishController
     /**
      * Determine worker count for bulk publishing.
      *
-     * Workers are I/O-bound (DB + TCPDF + disk), so we default to 4× CPU
-     * cores to keep all workers busy while others wait on I/O.  Override
-     * via config sds.publish_workers (set > 0 for a fixed count).
+     * Workers are I/O-bound (DB + TCPDF + disk), so we use a minimum of 8
+     * workers regardless of detected CPU cores, scaling up to 4× cores on
+     * larger machines.  Override via config sds.publish_workers (set > 0).
      */
     private static function getWorkerCount(int $totalItems): int
     {
@@ -66,8 +66,11 @@ class BulkPublishController
             return min($configured, $totalItems);
         }
 
-        // Auto: 4× CPU cores (I/O-bound workload)
-        return min(self::getCpuCount() * 4, $totalItems);
+        // Auto: 4× CPU cores with a floor of 8 (I/O-bound workload benefits
+        // from many concurrent workers even on single-core machines)
+        $workers = max(8, self::getCpuCount() * 4);
+
+        return min($workers, $totalItems);
     }
 
     /**

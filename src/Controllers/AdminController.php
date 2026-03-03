@@ -1057,8 +1057,8 @@ class AdminController
         $basePath = \SDS\Core\App::basePath();
 
         // Total Drive (/ filesystem)
-        $totalBytes = @disk_total_space('/') ?: 0;
-        $freeBytes  = @disk_free_space('/') ?: 0;
+        $totalBytes = (int) (@disk_total_space('/') ?: 0);
+        $freeBytes  = (int) (@disk_free_space('/') ?: 0);
         $usedBytes  = $totalBytes - $freeBytes;
 
         $categories = [];

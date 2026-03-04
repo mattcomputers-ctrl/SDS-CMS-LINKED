@@ -87,7 +87,7 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
 
         <!-- Physical Properties -->
         <h3>Physical Properties</h3>
-        <div class="form-grid-2col">
+        <div class="form-grid-3col">
             <div class="form-group">
                 <label for="voc_wt">VOC wt%</label>
                 <div class="input-with-check">
@@ -96,7 +96,7 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                     <label class="inline-check">
                         <input type="checkbox" name="voc_less_than_one" value="1" id="vocLessThanOne"
                                <?= !empty($item['voc_less_than_one']) ? 'checked' : '' ?>>
-                        &lt;1%
+                        &lt;1% VOC wt%
                     </label>
                 </div>
             </div>
@@ -133,7 +133,7 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                     <label class="inline-check">
                         <input type="checkbox" name="flash_point_greater_than" value="1"
                                <?= !empty($item['flash_point_greater_than']) ? 'checked' : '' ?>>
-                        Greater than (&gt;)
+                        Flash Point Greater than (&gt;)
                     </label>
                 </div>
             </div>

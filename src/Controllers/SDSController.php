@@ -206,13 +206,15 @@ class SDSController
         $db = Database::getInstance();
 
         try {
-            $generator  = new SDSGenerator();
-            $pdfService = new PDFService();
+            $generator = new SDSGenerator();
 
-            // Pre-generate all language data and PDFs before committing records
-            $generated = [];
+            // Compute language-independent base data once
+            $baseData = $generator->computeBase((int) $finished_good_id);
+
+            // Generate language-specific SDS data (fast — mostly translation)
+            $langData = [];
             foreach ($languages as $lang) {
-                $sdsData = $generator->generate((int) $finished_good_id, $lang);
+                $sdsData = $generator->generateFromBase($baseData, $lang);
 
                 // Enforce missing-data threshold once (hazard data is language-independent)
                 if ($lang === $languages[0]) {
@@ -224,12 +226,24 @@ class SDSController
                     }
                 }
 
-                $pdfPath      = $pdfService->generate($sdsData);
-                $relativePath = str_replace(\SDS\Core\App::basePath() . '/', '', $pdfPath);
+                $langData[$lang] = $sdsData;
+            }
 
+            // Generate PDFs in parallel (one process per language)
+            $pdfResults = $this->generatePdfsInParallel($langData);
+
+            // Build results array
+            $generated = [];
+            foreach ($languages as $lang) {
+                if (!$pdfResults[$lang]['ok']) {
+                    throw new \RuntimeException(
+                        'PDF generation failed for ' . strtoupper($lang) . ': ' . $pdfResults[$lang]['error']
+                    );
+                }
+                $relativePath = str_replace(\SDS\Core\App::basePath() . '/', '', $pdfResults[$lang]['pdf_path']);
                 $generated[] = [
                     'language'     => $lang,
-                    'sdsData'      => $sdsData,
+                    'sdsData'      => $langData[$lang],
                     'relativePath' => $relativePath,
                 ];
             }
@@ -288,6 +302,90 @@ class SDSController
         }
 
         redirect('/sds/' . $finished_good_id);
+    }
+
+    /**
+     * Spawn parallel child processes to render PDFs via TCPDF.
+     *
+     * Each language's SDS data is serialized to a temp file, a worker
+     * process generates the PDF, and writes the result path back.
+     *
+     * @param  array<string,array> $langData  Language code => SDS data array
+     * @return array<string,array>            Language code => ['ok' => bool, 'pdf_path' => string] or ['ok' => false, 'error' => string]
+     */
+    private function generatePdfsInParallel(array $langData): array
+    {
+        $basePath     = \SDS\Core\App::basePath();
+        $workerScript = $basePath . '/scripts/pdf-worker.php';
+        $tmpDir       = $basePath . '/storage/temp';
+        if (!is_dir($tmpDir)) {
+            mkdir($tmpDir, 0755, true);
+        }
+
+        $phpBin    = PHP_BINARY;
+        $processes = [];
+        $tempFiles = [];
+
+        // Launch one worker per language
+        foreach ($langData as $lang => $sdsData) {
+            $inputFile  = $tmpDir . '/pdf_input_' . $lang . '_' . bin2hex(random_bytes(4)) . '.json';
+            $resultFile = $tmpDir . '/pdf_result_' . $lang . '_' . bin2hex(random_bytes(4)) . '.json';
+
+            file_put_contents($inputFile, json_encode($sdsData, JSON_UNESCAPED_UNICODE));
+
+            $cmd = sprintf(
+                '%s %s %s %s',
+                escapeshellarg($phpBin),
+                escapeshellarg($workerScript),
+                escapeshellarg($inputFile),
+                escapeshellarg($resultFile)
+            );
+
+            $proc = proc_open($cmd, [
+                0 => ['pipe', 'r'],
+                1 => ['pipe', 'w'],
+                2 => ['pipe', 'w'],
+            ], $pipes);
+
+            // Close stdin immediately
+            fclose($pipes[0]);
+
+            $processes[$lang] = [
+                'proc'       => $proc,
+                'pipes'      => $pipes,
+                'resultFile' => $resultFile,
+            ];
+            $tempFiles[] = $inputFile;
+            $tempFiles[] = $resultFile;
+        }
+
+        // Wait for all workers and collect results
+        $results = [];
+        foreach ($processes as $lang => $info) {
+            $stderr = stream_get_contents($info['pipes'][2]);
+            fclose($info['pipes'][1]);
+            fclose($info['pipes'][2]);
+            $exitCode = proc_close($info['proc']);
+
+            if (file_exists($info['resultFile'])) {
+                $result = json_decode(file_get_contents($info['resultFile']), true);
+                if (is_array($result)) {
+                    $results[$lang] = $result;
+                } else {
+                    $results[$lang] = ['ok' => false, 'error' => 'Invalid result from PDF worker'];
+                }
+            } else {
+                $errMsg = trim($stderr) ?: 'PDF worker exited with code ' . $exitCode;
+                $results[$lang] = ['ok' => false, 'error' => $errMsg];
+            }
+        }
+
+        // Clean up temp files
+        foreach ($tempFiles as $f) {
+            @unlink($f);
+        }
+
+        return $results;
     }
 
     public function download(string $id): void

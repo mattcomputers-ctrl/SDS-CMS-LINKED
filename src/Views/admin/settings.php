@@ -4,19 +4,6 @@
     <form method="POST" action="/admin/settings" enctype="multipart/form-data">
         <?= csrf_field() ?>
 
-        <h2>Server / Network</h2>
-        <p class="text-muted mb-1">The URL or IP address used to access this system. Change this if the server IP changes or you set up a domain name.</p>
-
-        <div class="form-grid-2col">
-            <div class="form-group full-width">
-                <label>Server URL / IP Address</label>
-                <input type="text" name="app__server_url"
-                       value="<?= e($settings['app.server_url'] ?? \SDS\Core\App::config('app.url', 'http://' . ($_SERVER['SERVER_ADDR'] ?? 'localhost'))) ?>"
-                       placeholder="http://192.168.1.100 or https://sds.yourcompany.com">
-                <small class="text-muted">Include http:// or https:// prefix. Example: http://192.168.1.100</small>
-            </div>
-        </div>
-
         <h2>Manufacturer Information</h2>
         <p class="text-muted mb-1">This information appears in Section 1 of every SDS and on the PDF header.</p>
 

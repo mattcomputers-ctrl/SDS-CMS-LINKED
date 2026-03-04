@@ -22,7 +22,7 @@
             <?php if (!empty($constituents)): ?>
                 <?php foreach ($constituents as $i => $c): ?>
                 <tr class="constituent-row">
-                    <td><input type="text" name="cas_number[<?= $i ?>]" value="<?= e($c['cas_number']) ?>" placeholder="67-56-1" class="input-sm"></td>
+                    <td><input type="text" name="cas_number[<?= $i ?>]" value="<?= e($c['cas_number']) ?>" placeholder="67-56-1" class="input-xs"></td>
                     <td><input type="text" name="chemical_name[<?= $i ?>]" value="<?= e($c['chemical_name']) ?>" class="input-sm"></td>
                     <td><input type="number" name="pct_min[<?= $i ?>]" value="<?= e((string) ($c['pct_min'] ?? '')) ?>" step="0.0001" class="input-xs"></td>
                     <td><input type="number" name="pct_max[<?= $i ?>]" value="<?= e((string) ($c['pct_max'] ?? '')) ?>" step="0.0001" class="input-xs"></td>
@@ -33,7 +33,7 @@
                 <?php endforeach; ?>
             <?php else: ?>
                 <tr class="constituent-row">
-                    <td><input type="text" name="cas_number[0]" placeholder="67-56-1" class="input-sm"></td>
+                    <td><input type="text" name="cas_number[0]" placeholder="67-56-1" class="input-xs"></td>
                     <td><input type="text" name="chemical_name[0]" class="input-sm"></td>
                     <td><input type="number" name="pct_min[0]" step="0.0001" class="input-xs"></td>
                     <td><input type="number" name="pct_max[0]" step="0.0001" class="input-xs"></td>
@@ -59,7 +59,7 @@ document.getElementById('addRow').addEventListener('click', function() {
     var idx = rows.length;
     var tr = document.createElement('tr');
     tr.className = 'constituent-row';
-    tr.innerHTML = '<td><input type="text" name="cas_number[' + idx + ']" placeholder="67-56-1" class="input-sm"></td>' +
+    tr.innerHTML = '<td><input type="text" name="cas_number[' + idx + ']" placeholder="67-56-1" class="input-xs"></td>' +
         '<td><input type="text" name="chemical_name[' + idx + ']" class="input-sm"></td>' +
         '<td><input type="number" name="pct_min[' + idx + ']" step="0.0001" class="input-xs"></td>' +
         '<td><input type="number" name="pct_max[' + idx + ']" step="0.0001" class="input-xs"></td>' +

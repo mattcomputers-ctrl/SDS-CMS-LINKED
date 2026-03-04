@@ -5,6 +5,57 @@
 (function() {
     'use strict';
 
+    // ── Mobile navbar toggle ──────────────────────────────
+    var navToggle = document.getElementById('navToggle');
+    var navCollapse = document.getElementById('navCollapse');
+    if (navToggle && navCollapse) {
+        navToggle.addEventListener('click', function() {
+            navToggle.classList.toggle('active');
+            navCollapse.classList.toggle('open');
+        });
+
+        // Mobile dropdown toggle (tap instead of hover)
+        var dropdowns = navCollapse.querySelectorAll('.dropdown > a');
+        dropdowns.forEach(function(link) {
+            link.addEventListener('click', function(e) {
+                if (window.innerWidth <= 900) {
+                    e.preventDefault();
+                    link.parentElement.classList.toggle('open');
+                }
+            });
+        });
+
+        // Close menu when clicking a nav link (not dropdown toggles)
+        navCollapse.querySelectorAll('.navbar-menu a').forEach(function(link) {
+            if (!link.parentElement.classList.contains('dropdown')) {
+                link.addEventListener('click', function() {
+                    if (window.innerWidth <= 900) {
+                        navToggle.classList.remove('active');
+                        navCollapse.classList.remove('open');
+                    }
+                });
+            }
+        });
+        navCollapse.querySelectorAll('.dropdown-menu a').forEach(function(link) {
+            link.addEventListener('click', function() {
+                if (window.innerWidth <= 900) {
+                    navToggle.classList.remove('active');
+                    navCollapse.classList.remove('open');
+                }
+            });
+        });
+    }
+
+    // ── Wrap tables for horizontal scrolling on mobile ────
+    document.querySelectorAll('.table').forEach(function(table) {
+        if (table.parentElement.classList.contains('table-responsive')) return;
+        // Skip tables already inside compact containers (e.g. nested in cards with little data)
+        var wrapper = document.createElement('div');
+        wrapper.className = 'table-responsive';
+        table.parentNode.insertBefore(wrapper, table);
+        wrapper.appendChild(table);
+    });
+
     // Auto-dismiss alerts after 5 seconds
     document.querySelectorAll('.alert').forEach(function(alert) {
         setTimeout(function() {

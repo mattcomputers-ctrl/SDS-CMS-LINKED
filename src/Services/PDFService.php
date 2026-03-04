@@ -759,7 +759,7 @@ class PDFService
             $pdf->SetFont('helvetica', '', 9);
             $pdf->MultiCell(0, 5, $value, 0, 'L');
         } else {
-            $pdf->Cell($defaultWidth, 5, $labelText, 0, 0, 'L');
+            $pdf->Cell($defaultWidth, 5, $labelText, 0, 0, 'L', false, '', 0, false, 'T', 'T');
             $pdf->SetFont('helvetica', '', 9);
             $pdf->MultiCell(0, 5, $value, 0, 'L');
         }

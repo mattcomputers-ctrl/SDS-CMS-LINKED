@@ -183,7 +183,7 @@ return [
         'flash_point'           => 'Flash Point',
         'solubility'            => 'Solubility',
         'specific_gravity'      => 'Specific Gravity',
-        'voc_lb_gal'            => 'VOC (lb/gal) per EPA Method 24',
+        'voc_lb_gal'            => 'VOC (lb/gal) (EPA Method 24)',
         'voc_less_we'           => 'VOC less W&E (lb/gal)',
         'voc_wt_pct'            => 'VOC (wt%)',
         'solids_wt_pct'         => 'Solids (wt%)',

@@ -12,7 +12,7 @@
             <tr><td>Exempt VOC (wt%)</td><td><?= number_format((float) $voc['total_exempt_voc_wt_pct'], 2) ?>%</td></tr>
             <tr><td>Water (wt%)</td><td><?= number_format((float) $voc['total_water_wt_pct'], 2) ?>%</td></tr>
             <tr><td>Mixture SG</td><td><?= number_format((float) $voc['mixture_sg'], 4) ?></td></tr>
-            <tr><td>VOC (lb/gal) per EPA Method 24</td><td><strong><?= number_format((float) $voc['voc_lb_per_gal'], 2) ?></strong></td></tr>
+            <tr><td>VOC (lb/gal) (EPA Method 24)</td><td><strong><?= number_format((float) $voc['voc_lb_per_gal'], 2) ?></strong></td></tr>
             <tr><td>VOC less W&E (lb/gal)</td><td><strong><?= number_format((float) $voc['voc_lb_per_gal_less_water_exempt'], 2) ?></strong></td></tr>
             <tr><td>Solids (wt%)</td><td><?= number_format((float) $voc['solids_wt_pct'], 1) ?>%</td></tr>
             <tr><td>Solids (vol%)</td><td><?= $voc['solids_vol_pct'] !== null ? number_format((float) $voc['solids_vol_pct'], 1) . '%' : 'N/A' ?></td></tr>

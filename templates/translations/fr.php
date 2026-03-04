@@ -180,7 +180,7 @@ return [
         'flash_point'           => 'Point d\'Éclair',
         'solubility'            => 'Solubilité',
         'specific_gravity'      => 'Densité Relative',
-        'voc_lb_gal'            => 'COV (lb/gal)',
+        'voc_lb_gal'            => 'COV (lb/gal) selon EPA Method 24',
         'voc_less_we'           => 'COV moins E&E (lb/gal)',
         'voc_wt_pct'            => 'COV (% en poids)',
         'solids_wt_pct'         => 'Solides (% en poids)',

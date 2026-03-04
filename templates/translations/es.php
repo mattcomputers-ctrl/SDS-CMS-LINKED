@@ -180,7 +180,7 @@ return [
         'flash_point'           => 'Punto de Inflamación',
         'solubility'            => 'Solubilidad',
         'specific_gravity'      => 'Gravedad Específica',
-        'voc_lb_gal'            => 'COV (lb/gal)',
+        'voc_lb_gal'            => 'COV (lb/gal) según EPA Method 24',
         'voc_less_we'           => 'COV menos A&E (lb/gal)',
         'voc_wt_pct'            => 'COV (% en peso)',
         'solids_wt_pct'         => 'Sólidos (% en peso)',

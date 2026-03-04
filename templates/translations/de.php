@@ -180,7 +180,7 @@ return [
         'flash_point'           => 'Flammpunkt',
         'solubility'            => 'Löslichkeit',
         'specific_gravity'      => 'Relative Dichte',
-        'voc_lb_gal'            => 'VOC (lb/gal)',
+        'voc_lb_gal'            => 'VOC (lb/gal) gemäß EPA Method 24',
         'voc_less_we'           => 'VOC ohne W&E (lb/gal)',
         'voc_wt_pct'            => 'VOC (Gew.-%)',
         'solids_wt_pct'         => 'Feststoffe (Gew.-%)',

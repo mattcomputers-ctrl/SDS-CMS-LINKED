@@ -1,13 +1,13 @@
 #!/usr/bin/env php
 <?php
 /**
- * Bulk Publish Worker — processes a batch of finished goods in parallel.
+ * Bulk Publish Worker — processes a batch of (finished-good, language) items.
  *
  * Usage:
  *   php scripts/publish-worker.php <batch-file> <progress-file> <user-id>
  *
- * The batch file is a JSON array of {id, product_code} objects.
- * The progress file is updated after each finished good is processed.
+ * The batch file is a JSON array of {id, product_code, language, version} objects.
+ * The progress file is updated after each item is processed.
  * On completion, the progress file contains final counts.
  */
 
@@ -40,94 +40,82 @@ if (!file_exists($batchFile)) {
     exit(1);
 }
 
-$finishedGoods = json_decode(file_get_contents($batchFile), true);
-if (!is_array($finishedGoods) || empty($finishedGoods)) {
+$workItems = json_decode(file_get_contents($batchFile), true);
+if (!is_array($workItems) || empty($workItems)) {
     // Empty batch — write complete immediately
     writeWorkerProgress($progressFile, 0, 0, 0, 0, [], true);
     exit(0);
 }
 
 // ── Process batch ────────────────────────────────────────────────────
-$languages  = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
 $generator  = new SDSGenerator();
 $pdfService = new PDFService();
 $db         = Database::getInstance();
 $now        = date('Y-m-d H:i:s');
 $today      = date('Y-m-d');
 
-$total     = count($finishedGoods);
+$total     = count($workItems);
 $published = 0;
 $failed    = 0;
 $errors    = [];
 
+// Cache computeBase() results — multiple languages for the same FG may
+// land in the same worker batch, no need to recompute.
+$baseDataCache = [];
+
 writeWorkerProgress($progressFile, $total, 0, 0, 0, [], false);
 
-foreach ($finishedGoods as $i => $fg) {
-    $fgId = (int) $fg['id'];
-    $code = $fg['product_code'];
+foreach ($workItems as $i => $item) {
+    $fgId    = (int) $item['id'];
+    $code    = $item['product_code'];
+    $lang    = $item['language'];
+    $version = (int) $item['version'];
 
     try {
-        // Compute language-independent data once
-        $baseData = $generator->computeBase($fgId);
-
-        // Generate language-specific SDS data and PDFs
-        $generated = [];
-        foreach ($languages as $lang) {
-            $sdsData      = $generator->generateFromBase($baseData, $lang);
-            $pdfPath      = $pdfService->generate($sdsData);
-            $relativePath = str_replace(App::basePath() . '/', '', $pdfPath);
-
-            $generated[] = [
-                'language'     => $lang,
-                'sdsData'      => $sdsData,
-                'relativePath' => $relativePath,
-            ];
+        // Compute language-independent data once per FG
+        if (!isset($baseDataCache[$fgId])) {
+            $baseDataCache[$fgId] = $generator->computeBase($fgId);
         }
 
-        // Get next version number
-        $lastVersion = $db->fetch(
-            "SELECT MAX(version) AS max_ver FROM sds_versions WHERE finished_good_id = ?",
-            [$fgId]
+        $sdsData      = $generator->generateFromBase($baseDataCache[$fgId], $lang);
+        $pdfPath      = $pdfService->generate($sdsData);
+        $relativePath = str_replace(App::basePath() . '/', '', $pdfPath);
+
+        // Insert version record
+        $versionId = $db->insert('sds_versions', [
+            'finished_good_id' => $fgId,
+            'language'         => $lang,
+            'version'          => $version,
+            'status'           => 'published',
+            'effective_date'   => $today,
+            'published_by'     => $userId,
+            'published_at'     => $now,
+            'snapshot_json'    => json_encode($sdsData, JSON_UNESCAPED_UNICODE),
+            'pdf_path'         => $relativePath,
+            'change_summary'   => 'Bulk publish',
+            'created_by'       => $userId,
+        ]);
+
+        $traceData = array_merge(
+            $sdsData['hazard_result']['trace'] ?? [],
+            $sdsData['voc_result']['trace'] ?? []
         );
-        $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
-
-        // Insert version records
-        foreach ($generated as $item) {
-            $versionId = $db->insert('sds_versions', [
-                'finished_good_id' => $fgId,
-                'language'         => $item['language'],
-                'version'          => $nextVersion,
-                'status'           => 'published',
-                'effective_date'   => $today,
-                'published_by'     => $userId,
-                'published_at'     => $now,
-                'snapshot_json'    => json_encode($item['sdsData'], JSON_UNESCAPED_UNICODE),
-                'pdf_path'         => $item['relativePath'],
-                'change_summary'   => 'Bulk publish',
-                'created_by'       => $userId,
-            ]);
-
-            $traceData = array_merge(
-                $item['sdsData']['hazard_result']['trace'] ?? [],
-                $item['sdsData']['voc_result']['trace'] ?? []
-            );
-            $db->insert('sds_generation_trace', [
-                'sds_version_id' => $versionId,
-                'trace_json'     => json_encode($traceData, JSON_UNESCAPED_UNICODE),
-            ]);
-        }
+        $db->insert('sds_generation_trace', [
+            'sds_version_id' => $versionId,
+            'trace_json'     => json_encode($traceData, JSON_UNESCAPED_UNICODE),
+        ]);
 
         AuditService::log('sds_version', (string) $fgId, 'bulk_publish', [
             'finished_good_id' => $fgId,
             'product_code'     => $code,
-            'version'          => $nextVersion,
-            'languages'        => count($languages),
+            'language'         => $lang,
+            'version'          => $version,
         ]);
 
         $published++;
     } catch (\Throwable $e) {
         $failed++;
-        $errors[] = $code . ': ' . $e->getMessage();
+        $errors[] = $code . ' [' . $lang . ']: ' . $e->getMessage();
     }
 
     writeWorkerProgress($progressFile, $total, $i + 1, $published, $failed, $errors, false);

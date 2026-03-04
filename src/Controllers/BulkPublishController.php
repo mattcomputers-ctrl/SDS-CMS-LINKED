@@ -109,6 +109,9 @@ class BulkPublishController
 
     /**
      * POST /admin/bulk-publish/start — Begin bulk publish with parallel workers.
+     *
+     * Work is split by (finished-good, language) pairs so that each PDF can
+     * be generated in its own worker, maximising parallelism.
      */
     public function start(): void
     {
@@ -141,8 +144,30 @@ class BulkPublishController
             mkdir($progressDir, 0755, true);
         }
 
+        $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
+
+        // Build (FG, language) work items with pre-computed version numbers
+        // so concurrent workers don't race on version selection.
+        $workItems = [];
+        foreach ($finishedGoods as $fg) {
+            $lastVersion = $db->fetch(
+                "SELECT MAX(version) AS max_ver FROM sds_versions WHERE finished_good_id = ?",
+                [$fg['id']]
+            );
+            $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
+
+            foreach ($languages as $lang) {
+                $workItems[] = [
+                    'id'           => $fg['id'],
+                    'product_code' => $fg['product_code'],
+                    'language'     => $lang,
+                    'version'      => $nextVersion,
+                ];
+            }
+        }
+
         $token       = bin2hex(random_bytes(8));
-        $totalItems  = count($finishedGoods);
+        $totalItems  = count($workItems);
         $workerCount = self::getWorkerCount($totalItems);
         $userId      = current_user_id();
 
@@ -154,8 +179,8 @@ class BulkPublishController
             'complete' => false, 'error' => false, 'workers' => $workerCount,
         ]), LOCK_EX);
 
-        // Split FGs into batches and write batch files
-        $batches = array_chunk($finishedGoods, (int) ceil($totalItems / $workerCount));
+        // Split work items into batches and write batch files
+        $batches = array_chunk($workItems, (int) ceil($totalItems / $workerCount));
         $workerProgressFiles = [];
         $batchFiles = [];
 
@@ -194,7 +219,6 @@ class BulkPublishController
         // Spawn parallel worker processes
         $workerScript = $basePath . '/scripts/publish-worker.php';
         $phpBin       = PHP_BINARY;
-        $processes     = [];
 
         for ($w = 0; $w < count($batches); $w++) {
             $cmd = sprintf(
@@ -273,7 +297,7 @@ class BulkPublishController
         $percent = $totalItems > 0 ? round(($totalProcessed / $totalItems) * 100, 1) : 0;
 
         if ($allComplete) {
-            $summary = $totalPublished . ' published';
+            $summary = $totalPublished . ' PDFs published';
             if ($totalFailed > 0) {
                 $summary .= ', ' . $totalFailed . ' failed';
             }

@@ -124,7 +124,7 @@
                     barEl.style.background = '#28a745';
                     pctEl.textContent = '100%';
 
-                    completeMsgEl.textContent = ' ' + (data.published || 0) + ' products published'
+                    completeMsgEl.textContent = ' ' + (data.published || 0) + ' PDFs published'
                         + (data.failed > 0 ? ', ' + data.failed + ' failed' : '') + '.';
                     completeEl.style.display = 'block';
 

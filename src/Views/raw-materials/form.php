@@ -90,13 +90,15 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
         <div class="form-grid-2col">
             <div class="form-group">
                 <label for="voc_wt">VOC wt%</label>
-                <input type="number" id="voc_wt" name="voc_wt" step="0.0001"
-                       value="<?= e(old('voc_wt', $item['voc_wt'] ?? '')) ?>">
-                <label style="font-weight: normal; margin-top: 0.25rem;">
-                    <input type="checkbox" name="voc_less_than_one" value="1" id="vocLessThanOne"
-                           <?= !empty($item['voc_less_than_one']) ? 'checked' : '' ?>>
-                    &lt;1%
-                </label>
+                <div class="input-with-check">
+                    <input type="number" id="voc_wt" name="voc_wt" step="0.0001"
+                           value="<?= e(old('voc_wt', $item['voc_wt'] ?? '')) ?>">
+                    <label class="inline-check">
+                        <input type="checkbox" name="voc_less_than_one" value="1" id="vocLessThanOne"
+                               <?= !empty($item['voc_less_than_one']) ? 'checked' : '' ?>>
+                        &lt;1%
+                    </label>
+                </div>
             </div>
             <div class="form-group">
                 <label for="exempt_voc_wt">Exempt VOC wt%</label>
@@ -125,13 +127,15 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
             </div>
             <div class="form-group">
                 <label for="flash_point_c">Flash Point (&deg;C)</label>
-                <input type="number" id="flash_point_c" name="flash_point_c" step="0.1"
-                       value="<?= e(old('flash_point_c', $item['flash_point_c'] ?? '')) ?>">
-                <label style="font-weight: normal; margin-top: 0.25rem;">
-                    <input type="checkbox" name="flash_point_greater_than" value="1"
-                           <?= !empty($item['flash_point_greater_than']) ? 'checked' : '' ?>>
-                    Greater than (&gt;)
-                </label>
+                <div class="input-with-check">
+                    <input type="number" id="flash_point_c" name="flash_point_c" step="0.1"
+                           value="<?= e(old('flash_point_c', $item['flash_point_c'] ?? '')) ?>">
+                    <label class="inline-check">
+                        <input type="checkbox" name="flash_point_greater_than" value="1"
+                               <?= !empty($item['flash_point_greater_than']) ? 'checked' : '' ?>>
+                        Greater than (&gt;)
+                    </label>
+                </div>
             </div>
             <div class="form-group">
                 <label for="physical_state">Physical State</label>

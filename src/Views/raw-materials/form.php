@@ -178,7 +178,7 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
         <table class="table" id="constituentsTable">
             <thead>
                 <tr>
-                    <th style="width:100px">CAS Number</th>
+                    <th>CAS Number</th>
                     <th>Chemical Name</th>
                     <th>% Min</th>
                     <th>% Max</th>

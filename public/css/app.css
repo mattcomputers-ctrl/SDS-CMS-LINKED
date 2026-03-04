@@ -187,6 +187,7 @@ h1, h2, h3 { font-weight: 600; margin-bottom: 0.5rem; }
 .form-actions { display: flex; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e0e0e0; }
 .input-sm { max-width: 200px; }
 .input-xs { max-width: 100px; }
+.cas-input { width: 100px; }
 .input-md { max-width: 300px; }
 .input-with-check { display: flex; align-items: center; gap: 0.5rem; }
 .input-with-check input[type="number"] { flex: 1; }

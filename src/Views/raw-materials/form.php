@@ -254,8 +254,8 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
         <h3>California Proposition 65</h3>
         <p class="text-muted">If this raw material contains a Prop 65 listed chemical that isn't detected automatically via CAS number lookup, you can manually flag it here.</p>
 
-        <div class="form-group" style="margin-bottom: 0.5rem;">
-            <label style="font-weight: normal;">
+        <div style="margin-bottom: 0.5rem;">
+            <label class="inline-check" style="font-size: 0.9rem;">
                 <input type="checkbox" name="is_prop65" value="1" id="prop65Checkbox"
                     <?= !empty($item['is_prop65']) ? 'checked' : '' ?>>
                 This raw material contains a California Prop 65 listed chemical

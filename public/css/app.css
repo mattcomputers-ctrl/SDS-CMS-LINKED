@@ -170,8 +170,8 @@ h1, h2, h3 { font-weight: 600; margin-bottom: 0.5rem; }
 .input-md { max-width: 300px; }
 .input-with-check { display: flex; align-items: center; gap: 0.5rem; }
 .input-with-check input[type="number"] { flex: 1; }
-.input-with-check .inline-check { display: flex; align-items: center; gap: 0.25rem; white-space: nowrap; font-weight: normal; font-size: 0.85rem; color: #555; margin: 0; }
-.input-with-check .inline-check input[type="checkbox"] { width: auto; margin: 0; }
+.inline-check { display: flex; align-items: center; gap: 0.25rem; white-space: nowrap; font-weight: normal; font-size: 0.85rem; color: #555; margin: 0; }
+.inline-check input[type="checkbox"] { width: auto; margin: 0; }
 .inline-form { display: inline-flex; gap: 0.5rem; align-items: center; }
 
 /* ---- Toolbar ---- */

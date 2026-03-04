@@ -216,18 +216,24 @@ class BulkPublishController
             fastcgi_finish_request();
         }
 
-        // Spawn parallel worker processes
+        // Spawn parallel worker processes (stderr → log file for debugging)
         $workerScript = $basePath . '/scripts/publish-worker.php';
         $phpBin       = PHP_BINARY;
+        $logDir       = $basePath . '/storage/logs';
+        if (!is_dir($logDir)) {
+            mkdir($logDir, 0755, true);
+        }
 
         for ($w = 0; $w < count($batches); $w++) {
+            $logFile = $logDir . '/publish_worker_' . $token . '_' . $w . '.log';
             $cmd = sprintf(
-                '%s %s %s %s %s > /dev/null 2>&1 &',
+                '%s %s %s %s %s > %s 2>&1 &',
                 escapeshellarg($phpBin),
                 escapeshellarg($workerScript),
                 escapeshellarg($batchFiles[$w]),
                 escapeshellarg($workerProgressFiles[$w]),
-                escapeshellarg((string) $userId)
+                escapeshellarg((string) $userId),
+                escapeshellarg($logFile)
             );
             exec($cmd);
         }

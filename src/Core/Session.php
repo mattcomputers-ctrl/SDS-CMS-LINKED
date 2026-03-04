@@ -20,6 +20,12 @@ class Session
      */
     public function start(array $config = []): void
     {
+        // CLI processes (e.g. publish workers) have no cookie mechanism;
+        // skip session initialisation entirely to avoid errors.
+        if (PHP_SAPI === 'cli') {
+            return;
+        }
+
         if ($this->started || session_status() === PHP_SESSION_ACTIVE) {
             $this->started = true;
             return;

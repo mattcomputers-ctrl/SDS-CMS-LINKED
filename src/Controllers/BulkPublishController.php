@@ -227,7 +227,7 @@ class BulkPublishController
 
         // Spawn parallel worker processes (stderr → log file for debugging)
         $workerScript = $basePath . '/scripts/publish-worker.php';
-        $phpBin       = PHP_BINARY;
+        $phpBin       = php_cli_binary();
 
         for ($w = 0; $w < count($batches); $w++) {
             $cmd = sprintf(

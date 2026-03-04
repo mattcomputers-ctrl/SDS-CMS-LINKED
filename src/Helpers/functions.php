@@ -306,3 +306,40 @@ function current_user_id(): ?int
     $user = $_SESSION['_user'] ?? null;
     return $user !== null ? (int) ($user['id'] ?? 0) ?: null : null;
 }
+
+/**
+ * Resolve the PHP CLI binary path.
+ *
+ * PHP_BINARY points to php-fpm (or may be empty) when running under
+ * FPM/CGI, so we probe common CLI paths and fall back to `which php`.
+ */
+function php_cli_binary(): string
+{
+    // If already running under CLI, PHP_BINARY is correct
+    if (PHP_SAPI === 'cli' && PHP_BINARY !== '' && is_executable(PHP_BINARY)) {
+        return PHP_BINARY;
+    }
+
+    // Common CLI binary locations
+    $candidates = [
+        '/usr/bin/php',
+        '/usr/local/bin/php',
+        '/usr/bin/php' . PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION,
+        '/usr/local/bin/php' . PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION,
+    ];
+
+    foreach ($candidates as $path) {
+        if (is_executable($path)) {
+            return $path;
+        }
+    }
+
+    // Last resort: ask the shell
+    $which = trim((string) @shell_exec('which php 2>/dev/null'));
+    if ($which !== '' && is_executable($which)) {
+        return $which;
+    }
+
+    // Absolute fallback
+    return '/usr/bin/php';
+}

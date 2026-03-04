@@ -322,7 +322,7 @@ class SDSController
             mkdir($tmpDir, 0755, true);
         }
 
-        $phpBin    = PHP_BINARY;
+        $phpBin    = php_cli_binary();
         $processes = [];
         $tempFiles = [];
 

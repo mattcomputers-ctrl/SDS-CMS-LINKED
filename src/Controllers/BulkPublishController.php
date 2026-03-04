@@ -198,11 +198,20 @@ class BulkPublishController
             $workerProgressFiles[] = $workerFile;
         }
 
-        // Write manifest so progress endpoint knows the worker files
+        // Write manifest so progress endpoint knows the worker + log files
         $manifestFile = $progressDir . '/publish_manifest_' . $token . '.json';
+        $logDir       = $basePath . '/storage/logs';
+        if (!is_dir($logDir)) {
+            mkdir($logDir, 0755, true);
+        }
+        $logFiles = [];
+        for ($w = 0; $w < count($batches); $w++) {
+            $logFiles[] = $logDir . '/publish_worker_' . $token . '_' . $w . '.log';
+        }
         file_put_contents($manifestFile, json_encode([
             'total'          => $totalItems,
             'worker_files'   => $workerProgressFiles,
+            'log_files'      => $logFiles,
             'master_file'    => $masterFile,
         ]), LOCK_EX);
 
@@ -219,13 +228,8 @@ class BulkPublishController
         // Spawn parallel worker processes (stderr → log file for debugging)
         $workerScript = $basePath . '/scripts/publish-worker.php';
         $phpBin       = PHP_BINARY;
-        $logDir       = $basePath . '/storage/logs';
-        if (!is_dir($logDir)) {
-            mkdir($logDir, 0755, true);
-        }
 
         for ($w = 0; $w < count($batches); $w++) {
-            $logFile = $logDir . '/publish_worker_' . $token . '_' . $w . '.log';
             $cmd = sprintf(
                 '%s %s %s %s %s > %s 2>&1 &',
                 escapeshellarg($phpBin),
@@ -233,11 +237,14 @@ class BulkPublishController
                 escapeshellarg($batchFiles[$w]),
                 escapeshellarg($workerProgressFiles[$w]),
                 escapeshellarg((string) $userId),
-                escapeshellarg($logFile)
+                escapeshellarg($logFiles[$w])
             );
             exec($cmd);
         }
     }
+
+    /** Seconds without progress before we declare workers crashed. */
+    private const STALL_TIMEOUT = 60;
 
     /**
      * GET /admin/bulk-publish/progress/{token} — Aggregate worker progress.
@@ -271,17 +278,26 @@ class BulkPublishController
             return;
         }
 
-        $totalItems    = (int) $manifest['total'];
+        $totalItems     = (int) $manifest['total'];
         $totalProcessed = 0;
         $totalPublished = 0;
         $totalFailed    = 0;
         $allErrors      = [];
         $allComplete    = true;
         $workerFiles    = $manifest['worker_files'] ?? [];
+        $logFiles       = $manifest['log_files'] ?? [];
+        $stalledWorkers = 0;
+        $now            = time();
 
-        foreach ($workerFiles as $workerFile) {
+        foreach ($workerFiles as $idx => $workerFile) {
             if (!file_exists($workerFile)) {
                 $allComplete = false;
+                // Worker never wrote progress — check if its log exists (crashed on startup)
+                if (isset($logFiles[$idx]) && file_exists($logFiles[$idx])
+                    && filesize($logFiles[$idx]) > 0
+                    && $now - filemtime($logFiles[$idx]) > self::STALL_TIMEOUT) {
+                    $stalledWorkers++;
+                }
                 continue;
             }
             $wData = json_decode(file_get_contents($workerFile), true);
@@ -297,39 +313,66 @@ class BulkPublishController
 
             if (empty($wData['complete'])) {
                 $allComplete = false;
+                // Detect stalled worker: progress file not updated recently
+                if ($now - filemtime($workerFile) > self::STALL_TIMEOUT) {
+                    $stalledWorkers++;
+                }
             }
         }
 
         $percent = $totalItems > 0 ? round(($totalProcessed / $totalItems) * 100, 1) : 0;
 
-        if ($allComplete) {
+        // Workers crashed — treat as finished with errors
+        $crashed = !$allComplete && $stalledWorkers > 0
+            && $stalledWorkers >= count(array_filter($workerFiles, function ($f) {
+                if (!file_exists($f)) return true;
+                $d = json_decode(file_get_contents($f), true);
+                return !$d || empty($d['complete']);
+            }));
+
+        if ($allComplete || $crashed) {
+            // Collect worker log output for display
+            $workerLogs = self::collectWorkerLogs($logFiles);
+
             $summary = $totalPublished . ' PDFs published';
             if ($totalFailed > 0) {
                 $summary .= ', ' . $totalFailed . ' failed';
             }
+            if ($crashed) {
+                $summary .= ' (' . $stalledWorkers . ' worker(s) crashed)';
+            }
 
             $response = [
-                'current'   => $totalItems,
-                'total'     => $totalItems,
-                'percent'   => 100,
-                'message'   => 'Bulk publish complete! ' . $summary . '.',
-                'complete'  => true,
-                'error'     => false,
-                'published' => $totalPublished,
-                'failed'    => $totalFailed,
-                'errors'    => $allErrors,
+                'current'     => $allComplete ? $totalItems : $totalProcessed,
+                'total'       => $totalItems,
+                'percent'     => $allComplete ? 100 : $percent,
+                'message'     => ($crashed ? 'Bulk publish stopped — ' : 'Bulk publish complete! ') . $summary . '.',
+                'complete'    => true,
+                'error'       => $crashed,
+                'published'   => $totalPublished,
+                'failed'      => $totalFailed,
+                'errors'      => $allErrors,
+                'worker_logs' => $workerLogs,
             ];
 
-            // Clean up all worker/manifest/master files
+            // Clean up progress/manifest files (keep logs when there were problems)
             foreach ($workerFiles as $wf) {
                 @unlink($wf);
             }
             @unlink($manifestFile);
             @unlink($manifest['master_file'] ?? '');
 
-            AuditService::log('sds_bulk_publish', '0', 'complete', [
+            // Clean up log files only if everything succeeded
+            if (!$crashed && $totalFailed === 0) {
+                foreach ($logFiles as $lf) {
+                    @unlink($lf);
+                }
+            }
+
+            AuditService::log('sds_bulk_publish', '0', $crashed ? 'crashed' : 'complete', [
                 'published' => $totalPublished,
                 'failed'    => $totalFailed,
+                'crashed'   => $stalledWorkers,
             ]);
 
             $this->jsonResponse($response);
@@ -345,6 +388,28 @@ class BulkPublishController
             'complete' => false,
             'error'    => false,
         ]);
+    }
+
+    /**
+     * Read non-empty worker log files and return their contents keyed by worker index.
+     */
+    private static function collectWorkerLogs(array $logFiles): array
+    {
+        $logs = [];
+        foreach ($logFiles as $idx => $logFile) {
+            if (!file_exists($logFile)) {
+                continue;
+            }
+            $content = file_get_contents($logFile);
+            if ($content !== false && trim($content) !== '') {
+                // Cap per-worker log at 4 KB to keep the JSON response reasonable
+                if (strlen($content) > 4096) {
+                    $content = '...(truncated)...' . "\n" . substr($content, -4096);
+                }
+                $logs['Worker ' . $idx] = $content;
+            }
+        }
+        return $logs;
     }
 
     /* ------------------------------------------------------------------

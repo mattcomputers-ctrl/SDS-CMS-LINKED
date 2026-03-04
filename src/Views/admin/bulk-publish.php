@@ -33,14 +33,20 @@
 
         <!-- Complete area (hidden until done) -->
         <div id="publish-complete" style="display: none; margin-top: 1.5rem;">
-            <div class="alert alert-success">
-                <strong>Bulk Publish Complete!</strong>
+            <div id="complete-alert" class="alert alert-success">
+                <strong id="complete-heading">Bulk Publish Complete!</strong>
                 <span id="complete-message"></span>
             </div>
             <div id="publish-errors" style="display: none; margin-top: 0.5rem;">
                 <div class="alert alert-danger">
-                    <strong>Some products failed:</strong>
+                    <strong>Some items failed:</strong>
                     <ul id="error-list" style="margin: 0.5rem 0 0 0; padding-left: 1.5rem;"></ul>
+                </div>
+            </div>
+            <div id="publish-logs" style="display: none; margin-top: 0.5rem;">
+                <div class="alert alert-danger" style="padding-bottom: 0;">
+                    <strong>Worker Logs</strong>
+                    <div id="log-entries" style="margin-top: 0.5rem;"></div>
                 </div>
             </div>
         </div>
@@ -59,18 +65,22 @@
 (function() {
     'use strict';
 
-    var form       = document.getElementById('publish-form');
-    var btn        = document.getElementById('start-btn');
-    var progressEl = document.getElementById('publish-progress');
-    var barEl      = document.getElementById('progress-bar');
-    var pctEl      = document.getElementById('progress-pct');
-    var msgEl      = document.getElementById('progress-message');
-    var completeEl = document.getElementById('publish-complete');
-    var completeMsgEl = document.getElementById('complete-message');
-    var errorsEl   = document.getElementById('publish-errors');
-    var errorListEl = document.getElementById('error-list');
-    var errorEl    = document.getElementById('publish-error');
-    var errorMsgEl = document.getElementById('error-message');
+    var form           = document.getElementById('publish-form');
+    var btn            = document.getElementById('start-btn');
+    var progressEl     = document.getElementById('publish-progress');
+    var barEl          = document.getElementById('progress-bar');
+    var pctEl          = document.getElementById('progress-pct');
+    var msgEl          = document.getElementById('progress-message');
+    var completeEl     = document.getElementById('publish-complete');
+    var completeAlert  = document.getElementById('complete-alert');
+    var completeHeading = document.getElementById('complete-heading');
+    var completeMsgEl  = document.getElementById('complete-message');
+    var errorsEl       = document.getElementById('publish-errors');
+    var errorListEl    = document.getElementById('error-list');
+    var logsEl         = document.getElementById('publish-logs');
+    var logEntriesEl   = document.getElementById('log-entries');
+    var errorEl        = document.getElementById('publish-error');
+    var errorMsgEl     = document.getElementById('error-message');
 
     if (!form) return;
 
@@ -82,6 +92,7 @@
         completeEl.style.display = 'none';
         errorEl.style.display    = 'none';
         errorsEl.style.display   = 'none';
+        logsEl.style.display     = 'none';
 
         var formData = new FormData(form);
 
@@ -120,10 +131,15 @@
 
                 if (data.complete) {
                     clearInterval(interval);
-                    barEl.style.width = '100%';
-                    barEl.style.background = '#28a745';
-                    pctEl.textContent = '100%';
 
+                    var hasProblem = data.error || (data.failed > 0);
+
+                    barEl.style.width = '100%';
+                    barEl.style.background = hasProblem ? '#dc3545' : '#28a745';
+                    pctEl.textContent = data.percent + '%';
+
+                    completeHeading.textContent = data.error ? 'Bulk Publish Failed' : 'Bulk Publish Complete!';
+                    completeAlert.className = 'alert ' + (hasProblem ? 'alert-danger' : 'alert-success');
                     completeMsgEl.textContent = ' ' + (data.published || 0) + ' PDFs published'
                         + (data.failed > 0 ? ', ' + data.failed + ' failed' : '') + '.';
                     completeEl.style.display = 'block';
@@ -137,6 +153,23 @@
                             errorListEl.appendChild(li);
                         });
                         errorsEl.style.display = 'block';
+                    }
+
+                    // Show worker logs if any
+                    if (data.worker_logs && Object.keys(data.worker_logs).length > 0) {
+                        logEntriesEl.innerHTML = '';
+                        Object.keys(data.worker_logs).forEach(function(label) {
+                            var h = document.createElement('strong');
+                            h.textContent = label;
+                            h.style.display = 'block';
+                            h.style.marginTop = '0.5rem';
+                            var pre = document.createElement('pre');
+                            pre.textContent = data.worker_logs[label];
+                            pre.style.cssText = 'background:#1e1e1e;color:#f1f1f1;padding:0.75rem;border-radius:4px;font-size:0.8rem;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all;';
+                            logEntriesEl.appendChild(h);
+                            logEntriesEl.appendChild(pre);
+                        });
+                        logsEl.style.display = 'block';
                     }
 
                     btn.disabled = false;

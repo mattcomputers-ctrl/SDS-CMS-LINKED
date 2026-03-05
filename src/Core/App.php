@@ -151,6 +151,14 @@ class App
         $router->get('/raw-materials/{id}/constituents',     'RawMaterialController@constituents');
         $router->post('/raw-materials/{id}/constituents',    'RawMaterialController@saveConstituents');
 
+        // ── HAP / VOC Reporting ─────────────────────────────────────────
+        $router->get('/reports',                 'ReportController@index');
+        $router->post('/reports/upload-items',   'ReportController@uploadItemNames');
+        $router->post('/reports/upload-shipping', 'ReportController@uploadShippingDetail');
+        $router->post('/reports/generate',       'ReportController@generate');
+        $router->post('/reports/clear',          'ReportController@clear');
+        $router->get('/reports/customers',       'ReportController@customers');
+
         // ── SDS Book (plant lookup) ────────────────────────────────────
         $router->get('/sds-book',                         'SDSBookController@index');
         $router->post('/sds-book/delete-supplier/{id}',   'SDSBookController@deleteSupplierSds');

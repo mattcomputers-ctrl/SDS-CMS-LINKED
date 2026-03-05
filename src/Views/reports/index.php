@@ -4,9 +4,9 @@
     <!-- Upload Item Names -->
     <div class="card">
         <h2 class="card-title">1. Upload Item Names (CSV)</h2>
-        <p class="text-muted" style="margin-bottom: 0.75rem;">CSV must contain <strong>Item Code</strong> and <strong>Description</strong> columns.</p>
+        <p class="text-muted" style="margin-bottom: 0.75rem;">CSV must contain <strong>Item Name</strong> and <strong>Description</strong> columns.</p>
         <?php if ($hasItemNames): ?>
-            <div class="alert alert-success"><?= (int) $itemNameCount ?> item(s) loaded.</div>
+            <div class="alert alert-success"><?= (int) $itemNameCount ?> item name(s) loaded.</div>
         <?php endif; ?>
         <form method="POST" action="/reports/upload-items" enctype="multipart/form-data">
             <?= csrf_field() ?>

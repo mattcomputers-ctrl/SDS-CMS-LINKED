@@ -74,15 +74,15 @@ class ReportController
 
         // Normalize headers
         $headers = array_map(fn($h) => strtolower(trim($h)), array_keys($rows[0]));
-        $itemCodeCol = $this->findColumn($headers, ['item code', 'itemcode', 'item_code', 'code']);
+        $itemCodeCol = $this->findColumn($headers, ['item name', 'itemname', 'item_name', 'item code', 'itemcode', 'item_code', 'code']);
         $descCol     = $this->findColumn($headers, ['description', 'desc']);
 
         if ($itemCodeCol === null) {
-            $_SESSION['_flash']['error'] = 'Could not find an "Item Code" column in the uploaded file.';
+            $_SESSION['_flash']['error'] = 'Could not find an "Item Name" or "Item Code" column in the uploaded file.';
             redirect('/reports');
         }
 
-        // Store as item_code => description map
+        // Store as item_name => description map
         $itemNames = [];
         $originalHeaders = array_keys($rows[0]);
         foreach ($rows as $row) {
@@ -95,12 +95,12 @@ class ReportController
         }
 
         if (empty($itemNames)) {
-            $_SESSION['_flash']['error'] = 'No valid item codes found in the uploaded file.';
+            $_SESSION['_flash']['error'] = 'No valid item names found in the uploaded file.';
             redirect('/reports');
         }
 
         $_SESSION[self::SESSION_KEY]['item_names'] = $itemNames;
-        $_SESSION['_flash']['success'] = count($itemNames) . ' item(s) loaded successfully.';
+        $_SESSION['_flash']['success'] = count($itemNames) . ' item name(s) loaded successfully.';
         redirect('/reports');
     }
 
@@ -312,7 +312,7 @@ class ReportController
         // Column headers
         fputcsv($output, [
             'Date Shipped',
-            'Item Code',
+            'Item Name',
             'Description',
             'Qty Shipped (lbs)',
             'VOC by wt%',

@@ -135,12 +135,16 @@ class ReportController
         // Normalize headers and find required columns
         $headers = array_map(fn($h) => strtolower(trim($h)), array_keys($rows[0]));
 
+        // Prefer "Item Name" (has pack extension) over "Item Code" (no pack extension)
+        $itemNameCol = $this->findColumn($headers, ['item name', 'itemname', 'item_name'])
+                    ?? $this->findColumn($headers, ['item code', 'itemcode', 'item_code']);
+
         $colMap = [
             'bill_to'      => $this->findColumn($headers, ['bill to', 'billto', 'bill_to']),
             'ship_to'      => $this->findColumn($headers, ['ship to', 'shipto', 'ship_to']),
             'ship_to_name' => $this->findColumn($headers, ['ship to name', 'shiptoname', 'ship_to_name']),
             'date_shipped' => $this->findColumn($headers, ['date shipped', 'dateshipped', 'date_shipped', 'ship date', 'shipdate']),
-            'item_name'    => $this->findColumn($headers, ['item name', 'itemname', 'item_name', 'item code', 'itemcode', 'item_code']),
+            'item_name'    => $itemNameCol,
             'qty_shipped'  => $this->findColumn($headers, ['qty shipped', 'qtyshipped', 'qty_shipped', 'quantity shipped', 'quantity']),
         ];
 

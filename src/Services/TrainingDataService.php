@@ -234,18 +234,13 @@ class TrainingDataService
         $db = Database::getInstance();
         $goods = $db->fetchAll("SELECT product_code, description FROM finished_goods ORDER BY product_code");
 
+        $aliasMap = self::buildAliasMap($goods);
+
         $output = fopen('php://temp', 'r+');
         fputcsv($output, ['Item Name', 'Description']);
 
-        foreach ($goods as $fg) {
-            // Each product gets 2-3 pack sizes as separate item names
-            $packSizes = self::pickRandom(self::PACK_EXTENSIONS, mt_rand(2, 3));
-            foreach ($packSizes as $pack) {
-                fputcsv($output, [
-                    $fg['product_code'] . '-' . $pack,
-                    $fg['description'],
-                ]);
-            }
+        foreach ($aliasMap as $itemName => $description) {
+            fputcsv($output, [$itemName, $description]);
         }
 
         rewind($output);
@@ -263,19 +258,21 @@ class TrainingDataService
     public static function generateShippingCsv(): string
     {
         $db = Database::getInstance();
-        $goods = $db->fetchAll("SELECT product_code FROM finished_goods ORDER BY product_code");
+        $goods = $db->fetchAll("SELECT product_code, description FROM finished_goods ORDER BY product_code");
+
+        $output = fopen('php://temp', 'r+');
+        fputcsv($output, ['Bill To', 'Ship To', 'Ship To Name', 'Date Shipped', 'Item Name', 'Qty Shipped']);
 
         if (empty($goods)) {
-            $output = fopen('php://temp', 'r+');
-            fputcsv($output, ['Bill To', 'Ship To', 'Ship To Name', 'Date Shipped', 'Item Name', 'Qty Shipped']);
             rewind($output);
             $csv = stream_get_contents($output);
             fclose($output);
             return $csv;
         }
 
-        $output = fopen('php://temp', 'r+');
-        fputcsv($output, ['Bill To', 'Ship To', 'Ship To Name', 'Date Shipped', 'Item Name', 'Qty Shipped']);
+        // Build the same alias map so every shipped item has a corresponding alias
+        $aliasMap = self::buildAliasMap($goods);
+        $itemNames = array_keys($aliasMap);
 
         // Generate ~1500 shipping records across the last 12 months
         $now = time();
@@ -283,8 +280,7 @@ class TrainingDataService
 
         for ($i = 0; $i < 1500; $i++) {
             $custIdx = mt_rand(0, count(self::CUSTOMERS) - 1);
-            $fg = $goods[mt_rand(0, count($goods) - 1)];
-            $pack = self::PACK_EXTENSIONS[mt_rand(0, count(self::PACK_EXTENSIONS) - 1)];
+            $itemName = $itemNames[mt_rand(0, count($itemNames) - 1)];
             $shipDate = date('m/d/Y', mt_rand($yearAgo, $now));
             $qty = self::randomQty();
 
@@ -293,7 +289,7 @@ class TrainingDataService
                 self::CUSTOMER_CODES[$custIdx],
                 self::CUSTOMERS[$custIdx],
                 $shipDate,
-                $fg['product_code'] . '-' . $pack,
+                $itemName,
                 $qty,
             ]);
         }
@@ -832,6 +828,62 @@ class TrainingDataService
         }
 
         return $lines;
+    }
+
+    /* ------------------------------------------------------------------
+     *  Alias map (shared by alias CSV and shipping CSV)
+     * ----------------------------------------------------------------*/
+
+    /**
+     * Build a deterministic map of item names to descriptions.
+     *
+     * Uses crc32 of the product code as a seed so the same product always
+     * receives the same pack extensions, regardless of call order.
+     *
+     * @param  array<array{product_code: string, description: string}> $goods
+     * @return array<string, string>  item_name => description
+     */
+    private static function buildAliasMap(array $goods): array
+    {
+        $map = [];
+
+        foreach ($goods as $fg) {
+            // Deterministic seed per product code
+            $seed = crc32($fg['product_code']);
+            mt_srand($seed);
+
+            $packCount = mt_rand(2, 3);
+            $packs = self::pickRandomSeeded(self::PACK_EXTENSIONS, $packCount);
+
+            foreach ($packs as $pack) {
+                $map[$fg['product_code'] . '-' . $pack] = $fg['description'];
+            }
+        }
+
+        // Restore non-deterministic seeding
+        mt_srand();
+
+        return $map;
+    }
+
+    /**
+     * Pick $count unique random elements using the current mt_rand seed.
+     */
+    private static function pickRandomSeeded(array $array, int $count): array
+    {
+        if ($count >= count($array)) {
+            return $array;
+        }
+
+        // Fisher-Yates partial shuffle using current seed
+        $copy = array_values($array);
+        $n = count($copy);
+        for ($i = 0; $i < $count; $i++) {
+            $j = mt_rand($i, $n - 1);
+            [$copy[$i], $copy[$j]] = [$copy[$j], $copy[$i]];
+        }
+
+        return array_slice($copy, 0, $count);
     }
 
     /* ------------------------------------------------------------------

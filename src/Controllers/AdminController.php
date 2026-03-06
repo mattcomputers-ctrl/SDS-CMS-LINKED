@@ -10,6 +10,7 @@ use SDS\Models\User;
 use SDS\Services\AuditService;
 use SDS\Services\BackupService;
 use SDS\Services\NetworkService;
+use SDS\Services\TrainingDataService;
 use SDS\Services\FederalData\Connectors\PubChemConnector;
 use SDS\Services\FederalData\Connectors\NIOSHConnector;
 
@@ -1114,6 +1115,83 @@ class AdminController
             }
         }
         return $size;
+    }
+
+    /* ------------------------------------------------------------------
+     *  Training Data
+     * ----------------------------------------------------------------*/
+
+    public function trainingData(): void
+    {
+        $this->requireAdmin();
+
+        $db = Database::getInstance();
+        $rmCount = (int) ($db->fetch("SELECT COUNT(*) AS cnt FROM raw_materials")['cnt'] ?? 0);
+        $fgCount = (int) ($db->fetch("SELECT COUNT(*) AS cnt FROM finished_goods")['cnt'] ?? 0);
+
+        view('admin/training-data', [
+            'pageTitle'      => 'Training Data',
+            'rawMaterialCount' => $rmCount,
+            'finishedGoodCount' => $fgCount,
+        ]);
+    }
+
+    public function generateTrainingData(): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+
+        $db = Database::getInstance();
+
+        // Prevent generating if data already exists
+        $rmCount = (int) ($db->fetch("SELECT COUNT(*) AS cnt FROM raw_materials")['cnt'] ?? 0);
+        $fgCount = (int) ($db->fetch("SELECT COUNT(*) AS cnt FROM finished_goods")['cnt'] ?? 0);
+
+        if ($rmCount > 0 || $fgCount > 0) {
+            $_SESSION['_flash']['error'] = 'Training data cannot be generated while raw materials or finished goods exist. Use Purge Data first to clear existing data.';
+            redirect('/admin/training-data');
+            return;
+        }
+
+        try {
+            $result = TrainingDataService::generate(current_user_id());
+            AuditService::log('system', 'training_data', 'generate', $result);
+
+            $_SESSION['_flash']['success'] = sprintf(
+                'Training data created: %d raw materials, %d finished goods, %d formulas.',
+                $result['raw_materials'],
+                $result['finished_goods'],
+                $result['formulas']
+            );
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error'] = 'Training data generation failed: ' . $e->getMessage();
+        }
+
+        redirect('/admin/training-data');
+    }
+
+    public function downloadTrainingCsv(string $type): void
+    {
+        $this->requireAdmin();
+
+        if ($type === 'alias') {
+            $csv = TrainingDataService::generateAliasCsv();
+            $filename = 'training_item_aliases.csv';
+        } elseif ($type === 'shipping') {
+            $csv = TrainingDataService::generateShippingCsv();
+            $filename = 'training_shipping_detail.csv';
+        } else {
+            $_SESSION['_flash']['error'] = 'Invalid CSV type.';
+            redirect('/admin/training-data');
+            return;
+        }
+
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Content-Length: ' . strlen($csv));
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+        echo $csv;
+        exit;
     }
 
     /* ------------------------------------------------------------------

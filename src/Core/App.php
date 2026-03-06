@@ -247,6 +247,11 @@ class App
             $r->get('/network-settings',  'AdminController@networkSettings');
             $r->post('/network-settings', 'AdminController@saveNetworkSettings');
 
+            // Training Data
+            $r->get('/training-data',                'AdminController@trainingData');
+            $r->post('/training-data/generate',      'AdminController@generateTrainingData');
+            $r->get('/training-data/download/{type}', 'AdminController@downloadTrainingCsv');
+
             // Purge Data
             $r->get('/purge-data',  'AdminController@purgeData');
             $r->post('/purge-data', 'AdminController@executePurgeData');

@@ -43,6 +43,7 @@
                             <li><a href="/admin/export">Bulk SDS Export</a></li>
                             <li><a href="/admin/storage">Storage</a></li>
                             <li><a href="/admin/network-settings">Network Settings</a></li>
+                            <li><a href="/admin/training-data">Training Data</a></li>
                             <li><a href="/admin/purge-data" style="color: #dc3545;">Purge Data</a></li>
                         </ul>
                     </li>

@@ -1167,8 +1167,10 @@ class AdminController
 
             // Tables to truncate — user-created content only.
             // Preserved: settings, users, schema_migrations, pictograms (files),
-            // and all seed/regulatory reference data (sara313_list, exempt_voc_list,
-            // hap_list, prop65_list, carcinogen_list).
+            // seed/regulatory data (sara313_list, exempt_voc_list, hap_list,
+            // prop65_list, carcinogen_list), and hazard/exposure reference data
+            // (hazard_source_records, hazard_classifications, exposure_limits,
+            // dot_transport_info, cas_master).
             $tables = [
                 'sds_generation_trace',
                 'text_overrides',
@@ -1179,11 +1181,6 @@ class AdminController
                 'raw_material_constituents',
                 'raw_materials',
                 'finished_goods',
-                'hazard_classifications',
-                'exposure_limits',
-                'hazard_source_records',
-                'dot_transport_info',
-                'cas_master',
                 'competent_person_determinations',
                 'dataset_refresh_log',
                 'audit_log',

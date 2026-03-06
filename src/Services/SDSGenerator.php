@@ -77,6 +77,14 @@ class SDSGenerator
         // non-powder material, do not apply the carcinogen classification.
         $this->applyCarbonBlackLogic($hazardResult, $calcResult);
 
+        // Run carcinogen analysis (IARC/NTP/OSHA) — must run before translation
+        // so carcinogen findings can be merged into Section 2 hazard data
+        $carcinogenResult = CarcinogenService::analyse($calcResult['composition']);
+
+        // Merge carcinogen registry findings into hazard result so Section 2
+        // reflects carcinogenicity when federal GHS data is missing
+        $this->applyCarcinogenFindings($hazardResult, $carcinogenResult);
+
         // Translate GHS data (H/P statements, signal word, pictograms) for target language
         $hazardResult = GHSStatements::translateHazardResult($hazardResult, $language);
 
@@ -90,9 +98,6 @@ class SDSGenerator
 
         // Run Prop 65 analysis (CAS-level + manual raw material flags)
         $prop65Result = Prop65Service::analyse($calcResult['composition'], $manualProp65);
-
-        // Run carcinogen analysis (IARC/NTP/OSHA)
-        $carcinogenResult = CarcinogenService::analyse($calcResult['composition']);
 
         // Run HAP analysis (Clean Air Act Section 112(b) + manual entries)
         $hapResult = HAPService::analyse($calcResult['composition'], $manualHaps);
@@ -195,6 +200,10 @@ class SDSGenerator
 
         $this->applyCarbonBlackLogic($hazardResult, $calcResult);
 
+        // Run carcinogen analysis before merging into hazard result
+        $carcinogenResult = CarcinogenService::analyse($calcResult['composition']);
+        $this->applyCarcinogenFindings($hazardResult, $carcinogenResult);
+
         $saraResult = SARA313Service::analyse($calcResult['composition']);
 
         $formulaLines = $calcResult['formula']['lines'] ?? [];
@@ -202,7 +211,6 @@ class SDSGenerator
         $manualHaps   = $this->getManualHaps($formulaLines);
 
         $prop65Result     = Prop65Service::analyse($calcResult['composition'], $manualProp65);
-        $carcinogenResult = CarcinogenService::analyse($calcResult['composition']);
         $hapResult        = HAPService::analyse($calcResult['composition'], $manualHaps);
 
         $dotInfo = $this->getDOTInfo($calcResult['composition']);
@@ -999,6 +1007,161 @@ class SDSGenerator
                     fn($p) => $p !== 'GHS08'
                 ));
             }
+        }
+    }
+
+    /**
+     * Merge carcinogen registry findings (IARC/NTP/OSHA) into the hazard result.
+     *
+     * When HazardEngine finds no GHS hazard data for a CAS number but
+     * CarcinogenService identifies it as a listed carcinogen, this method
+     * derives the appropriate GHS carcinogenicity classification and adds
+     * it to Section 2.
+     *
+     * Mapping:
+     *   IARC Group 1, NTP Known, OSHA Listed → Carcinogenicity Cat 1A → H350, Danger
+     *   IARC Group 2A                        → Carcinogenicity Cat 1B → H350, Danger
+     *   IARC Group 2B, NTP RAHC              → Carcinogenicity Cat 2  → H351, Warning
+     */
+    private function applyCarcinogenFindings(array &$hazardResult, array $carcinogenResult): void
+    {
+        if (empty($carcinogenResult['findings'])) {
+            return;
+        }
+
+        // CAS numbers that already have hazard data (from HazardEngine or CPD)
+        $existingCas = [];
+        foreach ($hazardResult['hazard_classes'] as $hc) {
+            if (!empty($hc['cas'])) {
+                $existingCas[$hc['cas']] = true;
+            }
+        }
+
+        // Carbon Black is handled by applyCarbonBlackLogic — skip here
+        $existingCas['1333-86-4'] = true;
+
+        $existingHCodes = array_map(fn($s) => $s['code'] ?? '', $hazardResult['h_statements']);
+        $existingPCodes = array_map(fn($s) => $s['code'] ?? '', $hazardResult['p_statements']);
+
+        foreach ($carcinogenResult['findings'] as $finding) {
+            $cas  = $finding['cas_number'];
+            $conc = (float) ($finding['concentration_pct'] ?? 0);
+            $name = $finding['chemical_name'] ?? '';
+
+            // Skip if below GHS carcinogenicity cutoff (0.1%)
+            if ($conc < 0.1) {
+                continue;
+            }
+
+            // Skip if this CAS already has hazard classes from HazardEngine/CPD
+            if (isset($existingCas[$cas])) {
+                continue;
+            }
+
+            // Determine GHS category from the strongest agency classification
+            $category = null;
+            $hCode    = null;
+            $signal   = null;
+
+            foreach ($finding['agencies'] as $a) {
+                $agency = strtoupper($a['agency'] ?? '');
+                $class  = strtoupper($a['classification'] ?? '');
+
+                if ($agency === 'IARC') {
+                    if (str_contains($class, 'GROUP 1') && !str_contains($class, '2')) {
+                        // IARC Group 1 → Cat 1A (strongest)
+                        $category = 'Cat 1A';
+                        $hCode = 'H350';
+                        $signal = 'Danger';
+                        break; // Can't get stronger
+                    } elseif (str_contains($class, '2A')) {
+                        $category = $category !== 'Cat 1A' ? 'Cat 1B' : $category;
+                        $hCode = $hCode ?? 'H350';
+                        $signal = $signal ?? 'Danger';
+                    } elseif (str_contains($class, '2B')) {
+                        $category = $category ?? 'Cat 2';
+                        $hCode = $hCode ?? 'H351';
+                        $signal = $signal ?? 'Warning';
+                    }
+                } elseif ($agency === 'NTP') {
+                    if (str_contains($class, 'KNOWN')) {
+                        $category = $category !== 'Cat 1A' ? 'Cat 1A' : $category;
+                        $hCode = in_array($hCode, ['H350', null]) ? 'H350' : $hCode;
+                        $signal = $signal === 'Danger' ? 'Danger' : 'Danger';
+                    } elseif (str_contains($class, 'RAHC') || str_contains($class, 'REASONABLY')) {
+                        $category = $category ?? 'Cat 2';
+                        $hCode = $hCode ?? 'H351';
+                        $signal = $signal ?? 'Warning';
+                    }
+                } elseif ($agency === 'OSHA') {
+                    if (str_contains($class, 'LISTED') || str_contains($class, 'REGULATED')) {
+                        $category = $category !== 'Cat 1A' ? 'Cat 1A' : $category;
+                        $hCode = in_array($hCode, ['H350', null]) ? 'H350' : $hCode;
+                        $signal = $signal === 'Danger' ? 'Danger' : 'Danger';
+                    }
+                }
+            }
+
+            if ($category === null) {
+                continue;
+            }
+
+            // Add hazard class
+            $hazardResult['hazard_classes'][] = [
+                'class'             => 'Carcinogenicity',
+                'category'          => $category,
+                'cas'               => $cas,
+                'chemical'          => $name,
+                'concentration_pct' => $conc,
+                'cutoff_pct'        => 0.1,
+                'source'            => 'Carcinogen registry',
+            ];
+
+            // Add H-statement if not already present
+            if (!in_array($hCode, $existingHCodes)) {
+                $hazardResult['h_statements'][] = [
+                    'code' => $hCode,
+                    'text' => GHSStatements::hText($hCode),
+                ];
+                $existingHCodes[] = $hCode;
+            }
+
+            // Add GHS08 pictogram if not already present
+            if (!in_array('GHS08', $hazardResult['pictograms'])) {
+                $hazardResult['pictograms'][] = 'GHS08';
+            }
+
+            // Upgrade signal word if needed
+            $curPri = ['Danger' => 2, 'Warning' => 1][$hazardResult['signal_word'] ?? ''] ?? 0;
+            $newPri = ['Danger' => 2, 'Warning' => 1][$signal] ?? 0;
+            if ($newPri > $curPri) {
+                $hazardResult['signal_word'] = $signal;
+            }
+
+            // Mark CAS as hazardous
+            if (!in_array($cas, $hazardResult['hazardous_cas'])) {
+                $hazardResult['hazardous_cas'][] = $cas;
+            }
+
+            // Add carcinogenicity P-statements if not present
+            $carcinPCodes = ['P201', 'P202', 'P281', 'P308+P313', 'P405', 'P501'];
+            foreach ($carcinPCodes as $pCode) {
+                if (!in_array($pCode, $existingPCodes)) {
+                    $hazardResult['p_statements'][] = [
+                        'code' => $pCode,
+                        'text' => GHSStatements::pText($pCode),
+                    ];
+                    $existingPCodes[] = $pCode;
+                }
+            }
+        }
+
+        // Re-derive PPE if we added hazard data
+        if (!empty($hazardResult['h_statements']) || !empty($hazardResult['p_statements'])) {
+            $hazardResult['ppe_recommendations'] = HazardEngine::derivePPE(
+                $hazardResult['h_statements'],
+                $hazardResult['p_statements']
+            );
         }
     }
 

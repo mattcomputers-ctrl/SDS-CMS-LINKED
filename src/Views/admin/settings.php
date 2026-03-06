@@ -96,6 +96,13 @@
             <textarea name="sds__legal_disclaimer" rows="6" style="font-size: 0.9rem;"><?= e($settings['sds.legal_disclaimer'] ?? '') ?></textarea>
         </div>
 
+        <h2>Report Disclaimer</h2>
+        <p class="text-muted mb-1">This statement will appear at the bottom of HAP/VOC shipping report PDFs. Leave blank to omit the disclaimer from reports.</p>
+
+        <div class="form-group">
+            <textarea name="sds__report_disclaimer" rows="4" style="font-size: 0.9rem;"><?= e($settings['sds.report_disclaimer'] ?? '') ?></textarea>
+        </div>
+
         <h2>Data Refresh</h2>
         <div class="form-grid-2col">
             <div class="form-group"><label>Federal Refresh Interval (hours)</label><input type="number" name="cron__federal_refresh_hours" value="<?= e($settings['cron.federal_refresh_hours'] ?? '168') ?>"></div>

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace SDS\Controllers;
 
 use SDS\Core\CSRF;
+use SDS\Core\Database;
 use SDS\Models\FinishedGood;
 use SDS\Services\FormulaCalcService;
 use SDS\Services\HAPService;
@@ -291,8 +292,12 @@ class ReportController
             return; // redirected with flash error
         }
 
+        $db = Database::getInstance();
+        $row = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'sds.report_disclaimer'");
+        $disclaimer = $row['value'] ?? '';
+
         $pdfService = new ReportPDFService();
-        $pdfContent = $pdfService->generate($reportData);
+        $pdfContent = $pdfService->generate($reportData, $disclaimer);
 
         $customerValue = $reportData['customer_value'];
         $filename = 'HAP_VOC_Report_' . preg_replace('/[^a-zA-Z0-9]/', '_', $customerValue) . '_' . date('Ymd') . '.pdf';

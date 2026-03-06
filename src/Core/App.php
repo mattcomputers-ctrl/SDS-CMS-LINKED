@@ -247,6 +247,10 @@ class App
             $r->get('/network-settings',  'AdminController@networkSettings');
             $r->post('/network-settings', 'AdminController@saveNetworkSettings');
 
+            // Purge Data
+            $r->get('/purge-data',  'AdminController@purgeData');
+            $r->post('/purge-data', 'AdminController@executePurgeData');
+
             // Bulk SDS Export
             $r->get('/export',                      'ExportController@exportPage');
             $r->post('/export/start',               'ExportController@startExport');

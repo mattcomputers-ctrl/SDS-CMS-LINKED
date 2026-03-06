@@ -1117,6 +1117,132 @@ class AdminController
     }
 
     /* ------------------------------------------------------------------
+     *  Purge Data
+     * ----------------------------------------------------------------*/
+
+    public function purgeData(): void
+    {
+        $this->requireAdmin();
+
+        view('admin/purge-data', [
+            'pageTitle' => 'Purge All Data',
+        ]);
+    }
+
+    public function executePurgeData(): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+
+        // 1. Verify the confirmation keyword is exactly "DELETE"
+        $confirmation = $_POST['confirm_delete'] ?? '';
+        if ($confirmation !== 'DELETE') {
+            $_SESSION['_flash']['error'] = 'You must type DELETE (in all caps) to confirm the data purge.';
+            redirect('/admin/purge-data');
+            return;
+        }
+
+        // 2. Re-authenticate admin credentials
+        $username = trim($_POST['admin_username'] ?? '');
+        $password = $_POST['admin_password'] ?? '';
+
+        if ($username === '' || $password === '') {
+            $_SESSION['_flash']['error'] = 'Admin username and password are required.';
+            redirect('/admin/purge-data');
+            return;
+        }
+
+        $admin = User::authenticate($username, $password);
+        if ($admin === false || ($admin['role'] ?? '') !== 'admin') {
+            $_SESSION['_flash']['error'] = 'Invalid admin credentials. The purge was NOT executed.';
+            redirect('/admin/purge-data');
+            return;
+        }
+
+        // 3. Execute the purge
+        $db = Database::getInstance();
+
+        try {
+            $db->query("SET FOREIGN_KEY_CHECKS = 0");
+
+            // Tables to truncate — everything except settings, users,
+            // schema_migrations, and pictograms (which are files, not DB rows)
+            $tables = [
+                'sds_generation_trace',
+                'text_overrides',
+                'sds_versions',
+                'formula_lines',
+                'formulas',
+                'raw_material_sds',
+                'raw_material_constituents',
+                'raw_materials',
+                'finished_goods',
+                'hazard_classifications',
+                'exposure_limits',
+                'hazard_source_records',
+                'dot_transport_info',
+                'cas_master',
+                'competent_person_determinations',
+                'dataset_refresh_log',
+                'audit_log',
+                'sara313_list',
+                'exempt_voc_list',
+                'hap_list',
+                'backups',
+            ];
+
+            foreach ($tables as $table) {
+                $db->query("TRUNCATE TABLE `{$table}`");
+            }
+
+            $db->query("SET FOREIGN_KEY_CHECKS = 1");
+
+            // 4. Remove uploaded files (supplier SDS, generated PDFs) but NOT pictograms
+            $basePath = \SDS\Core\App::basePath();
+            $dirsToClean = [
+                $basePath . '/public/uploads/supplier-sds',
+                $basePath . '/public/generated-pdfs',
+            ];
+            foreach ($dirsToClean as $dir) {
+                if (is_dir($dir)) {
+                    $this->removeDirectoryContents($dir);
+                }
+            }
+
+            // 5. Log the purge (new audit_log entry after truncation)
+            AuditService::log('system', 'purge', 'purge_all_data', [
+                'executed_by' => $username,
+                'tables_purged' => $tables,
+            ]);
+
+            $_SESSION['_flash']['success'] = 'All data has been purged. Settings, users, and pictograms were preserved.';
+        } catch (\Throwable $e) {
+            $db->query("SET FOREIGN_KEY_CHECKS = 1");
+            $_SESSION['_flash']['error'] = 'Purge failed: ' . $e->getMessage();
+        }
+
+        redirect('/admin/purge-data');
+    }
+
+    /**
+     * Remove all files and subdirectories within a directory, but keep the directory itself.
+     */
+    private function removeDirectoryContents(string $dir): void
+    {
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($iterator as $item) {
+            if ($item->isDir()) {
+                @rmdir($item->getPathname());
+            } else {
+                @unlink($item->getPathname());
+            }
+        }
+    }
+
+    /* ------------------------------------------------------------------
      *  Network Settings
      * ----------------------------------------------------------------*/
 

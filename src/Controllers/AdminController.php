@@ -1165,8 +1165,10 @@ class AdminController
         try {
             $db->query("SET FOREIGN_KEY_CHECKS = 0");
 
-            // Tables to truncate — everything except settings, users,
-            // schema_migrations, and pictograms (which are files, not DB rows)
+            // Tables to truncate — user-created content only.
+            // Preserved: settings, users, schema_migrations, pictograms (files),
+            // and all seed/regulatory reference data (sara313_list, exempt_voc_list,
+            // hap_list, prop65_list, carcinogen_list).
             $tables = [
                 'sds_generation_trace',
                 'text_overrides',
@@ -1185,9 +1187,6 @@ class AdminController
                 'competent_person_determinations',
                 'dataset_refresh_log',
                 'audit_log',
-                'sara313_list',
-                'exempt_voc_list',
-                'hap_list',
                 'backups',
             ];
 
@@ -1215,7 +1214,7 @@ class AdminController
                 'tables_purged' => $tables,
             ]);
 
-            $_SESSION['_flash']['success'] = 'All data has been purged. Settings, users, and pictograms were preserved.';
+            $_SESSION['_flash']['success'] = 'All data has been purged. Settings, users, pictograms, and regulatory seed data were preserved.';
         } catch (\Throwable $e) {
             $db->query("SET FOREIGN_KEY_CHECKS = 1");
             $_SESSION['_flash']['error'] = 'Purge failed: ' . $e->getMessage();

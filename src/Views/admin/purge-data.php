@@ -13,7 +13,6 @@
             <li>All SDS versions and generated PDFs</li>
             <li>All hazard data, exposure limits, and CAS master records</li>
             <li>All competent person determinations</li>
-            <li>All regulatory lists (SARA 313, HAP, Exempt VOC)</li>
             <li>All uploaded supplier SDS files</li>
             <li>All backups, audit logs, and refresh logs</li>
         </ul>
@@ -25,6 +24,7 @@
             <li>System settings (company info, logos, configuration)</li>
             <li>User accounts</li>
             <li>Pictogram images</li>
+            <li>Regulatory seed data (SARA 313, Exempt VOC, HAP, Prop 65, Carcinogen lists)</li>
         </ul>
     </div>
 
@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         var msg = 'FINAL WARNING\n\n'
             + 'You are about to permanently delete ALL data from the system.\n'
-            + 'Settings, users, and pictograms will be preserved.\n\n'
+            + 'Settings, users, pictograms, and regulatory seed data will be preserved.\n\n'
             + 'This action CANNOT be undone.\n\n'
             + 'Are you absolutely sure you want to proceed?';
 

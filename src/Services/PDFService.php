@@ -253,6 +253,16 @@ class PDFService
 
     private function renderSection2(\TCPDF $pdf, array $s): void
     {
+        // Section 2 can be very tall (signal word, pictograms, hazard
+        // classes, H/P statements, PPE).  If less than ~30 mm remain on
+        // the current page the content would split awkwardly — start a
+        // fresh page instead.
+        $pageH   = $pdf->getPageHeight();
+        $bMargin = $pdf->getBreakMargin();
+        if (($pageH - $bMargin - $pdf->GetY()) < 30) {
+            $pdf->AddPage();
+        }
+
         // Signal word
         if (!empty($s['signal_word'])) {
             $pdf->SetFont('helvetica', 'B', 14);
@@ -352,11 +362,24 @@ class PDFService
      */
     private function renderPictogramRow(\TCPDF $pdf, array $pictogramCodes): void
     {
+        $pictoSize = 14; // mm
+        $colWidth  = 22; // mm per column
+        $neededHeight = $pictoSize + 5 + 4; // image + label + padding
+
+        // Ensure enough space on the current page for the pictogram row;
+        // Image() with absolute coords bypasses auto page break, so images
+        // placed near the bottom of a page would be clipped or land in the
+        // footer area while subsequent text jumps to the next page.
+        $pageH   = $pdf->getPageHeight();
+        $bMargin = $pdf->getBreakMargin();
+        $availableY = $pageH - $bMargin - $pdf->GetY();
+        if ($availableY < $neededHeight) {
+            $pdf->AddPage();
+        }
+
         $pdf->SetFont('helvetica', 'B', 9);
         $pdf->Cell(0, 5, $this->label('pictograms') . ':', 0, 1, 'L');
 
-        $pictoSize = 14; // mm
-        $colWidth  = 22; // mm per column
         $startX    = $pdf->GetX();
         $startY    = $pdf->GetY();
 
@@ -431,6 +454,16 @@ class PDFService
 
         if (empty($active)) {
             return;
+        }
+
+        // Ensure enough space for PPE images + labels before rendering;
+        // Image() with absolute coords bypasses auto page break.
+        $neededHeight = $pictoSize + 5 + 4;
+        $pageH   = $pdf->getPageHeight();
+        $bMargin = $pdf->getBreakMargin();
+        $availableY = $pageH - $bMargin - $pdf->GetY();
+        if ($availableY < $neededHeight) {
+            $pdf->AddPage();
         }
 
         $startX = $pdf->GetX();
@@ -606,6 +639,13 @@ class PDFService
             $pdf->Ln(2);
             $pngPath = PictogramHelper::getPngPath('GHS08');
             if ($pngPath !== '') {
+                // Ensure enough space for the image; Image() with absolute
+                // coords bypasses auto page break.
+                $pageH   = $pdf->getPageHeight();
+                $bMargin = $pdf->getBreakMargin();
+                if (($pageH - $bMargin - $pdf->GetY()) < 15) {
+                    $pdf->AddPage();
+                }
                 $pdf->Image($pngPath, $pdf->GetX(), $pdf->GetY(), 12, 12, 'PNG');
                 $pdf->Ln(13);
             }
@@ -682,6 +722,12 @@ class PDFService
 
             // Warning pictogram + warning text
             $prop65Png = PictogramHelper::getPngPath('PROP65');
+            // Ensure enough space for the pictogram + warning text
+            $pageH   = $pdf->getPageHeight();
+            $bMargin = $pdf->getBreakMargin();
+            if (($pageH - $bMargin - $pdf->GetY()) < 15) {
+                $pdf->AddPage();
+            }
             $imgStartY = $pdf->GetY();
             if ($prop65Png !== '') {
                 $pdf->Image($prop65Png, $pdf->GetX(), $imgStartY, 10, 10, 'PNG');

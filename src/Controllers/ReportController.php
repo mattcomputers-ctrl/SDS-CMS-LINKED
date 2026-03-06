@@ -8,6 +8,8 @@ use SDS\Core\CSRF;
 use SDS\Models\FinishedGood;
 use SDS\Services\FormulaCalcService;
 use SDS\Services\HAPService;
+use SDS\Services\SARA313Service;
+use SDS\Services\ReportPDFService;
 
 /**
  * ReportController — HAP/VOC reporting from uploaded shipping data.
@@ -179,13 +181,137 @@ class ReportController
     }
 
     /* ------------------------------------------------------------------
-     *  Generate Report
+     *  Generate Report (CSV)
      * ----------------------------------------------------------------*/
 
     public function generate(): void
     {
         CSRF::validateRequest();
 
+        $reportData = $this->buildReportData();
+        if ($reportData === null) {
+            return; // redirected with flash error
+        }
+
+        $customerValue = $reportData['customer_value'];
+        $dateFrom      = $reportData['date_from'];
+        $dateTo        = $reportData['date_to'];
+        $reportLines   = $reportData['lines'];
+        $totalVocLbs   = $reportData['total_voc_lbs'];
+        $totalHapLbs   = $reportData['total_hap_lbs'];
+        $hapBreakdown  = $reportData['hap_breakdown'];
+        $saraBreakdown = $reportData['sara_breakdown'];
+
+        // Output CSV
+        $filename = 'HAP_VOC_Report_' . preg_replace('/[^a-zA-Z0-9]/', '_', $customerValue) . '_' . date('Ymd') . '.csv';
+
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+
+        $output = fopen('php://output', 'w');
+
+        // Report header info
+        fputcsv($output, ['HAP / VOC Shipping Report']);
+        fputcsv($output, ['Customer:', $customerValue]);
+        fputcsv($output, ['Date Range:', $dateFrom . ' to ' . $dateTo]);
+        fputcsv($output, ['Generated:', date('m/d/Y H:i')]);
+        fputcsv($output, []);
+
+        // Column headers
+        fputcsv($output, [
+            'Date Shipped',
+            'Item Name',
+            'Description',
+            'Qty Shipped (lbs)',
+            'VOC by wt%',
+            'HAP by wt%',
+            'lbs of VOC',
+            'lbs of HAP',
+        ]);
+
+        // Data rows
+        foreach ($reportLines as $line) {
+            fputcsv($output, [
+                $line['date_shipped'],
+                $line['item_code'],
+                $line['description'],
+                $line['qty_shipped'],
+                $line['voc_wt_pct'] !== null ? round($line['voc_wt_pct'], 4) : 'N/A',
+                $line['hap_wt_pct'] !== null ? round($line['hap_wt_pct'], 4) : 'N/A',
+                $line['voc_lbs'] !== null ? round($line['voc_lbs'], 4) : 'N/A',
+                $line['hap_lbs'] !== null ? round($line['hap_lbs'], 4) : 'N/A',
+            ]);
+        }
+
+        // Totals
+        fputcsv($output, []);
+        fputcsv($output, ['', '', '', 'TOTALS', '', '', round($totalVocLbs, 4), round($totalHapLbs, 4)]);
+
+        // HAPs Breakdown
+        fputcsv($output, []);
+        fputcsv($output, []);
+        fputcsv($output, ['HAPs Breakdown']);
+        fputcsv($output, ['CAS Number', 'Chemical Name', 'Total lbs']);
+        if (empty($hapBreakdown)) {
+            fputcsv($output, ['No HAPs found in shipped products for this period.']);
+        } else {
+            foreach ($hapBreakdown as $cas => $entry) {
+                fputcsv($output, [$cas, $entry['name'], round($entry['lbs'], 4)]);
+            }
+        }
+
+        // SARA 313 Breakdown
+        fputcsv($output, []);
+        fputcsv($output, []);
+        fputcsv($output, ['SARA 313 Breakdown']);
+        fputcsv($output, ['CAS Number', 'Chemical Name', 'Total lbs']);
+        if (empty($saraBreakdown)) {
+            fputcsv($output, ['No SARA 313 reportable chemicals found in shipped products for this period.']);
+        } else {
+            foreach ($saraBreakdown as $cas => $entry) {
+                fputcsv($output, [$cas, $entry['name'], round($entry['lbs'], 4)]);
+            }
+        }
+
+        fclose($output);
+        exit;
+    }
+
+    /* ------------------------------------------------------------------
+     *  Generate Report (PDF)
+     * ----------------------------------------------------------------*/
+
+    public function generatePdf(): void
+    {
+        CSRF::validateRequest();
+
+        $reportData = $this->buildReportData();
+        if ($reportData === null) {
+            return; // redirected with flash error
+        }
+
+        $pdfService = new ReportPDFService();
+        $pdfContent = $pdfService->generate($reportData);
+
+        $customerValue = $reportData['customer_value'];
+        $filename = 'HAP_VOC_Report_' . preg_replace('/[^a-zA-Z0-9]/', '_', $customerValue) . '_' . date('Ymd') . '.pdf';
+
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Content-Length: ' . strlen($pdfContent));
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+
+        echo $pdfContent;
+        exit;
+    }
+
+    /* ------------------------------------------------------------------
+     *  Build report data (shared between CSV and PDF)
+     * ----------------------------------------------------------------*/
+
+    private function buildReportData(): ?array
+    {
         $data = $_SESSION[self::SESSION_KEY] ?? [];
 
         if (empty($data['shipping_detail'])) {
@@ -253,6 +379,10 @@ class ReportController
         // Cache calculations by product code (strip pack extension)
         $calcCache = [];
 
+        // Aggregate HAP and SARA 313 breakdowns: CAS => ['name' => ..., 'lbs' => ...]
+        $hapBreakdown  = [];
+        $saraBreakdown = [];
+
         foreach ($filtered as $row) {
             $itemCode    = $row['item_name'];
             $description = $itemNames[$itemCode] ?? '';
@@ -283,6 +413,28 @@ class ReportController
 
                 $totalVocLbs += $vocLbs;
                 $totalHapLbs += $hapLbs;
+
+                // Aggregate individual HAP chemicals
+                foreach ($calcData['hap_chemicals'] as $hap) {
+                    $cas  = $hap['cas_number'];
+                    $name = $hap['chemical_name'];
+                    $lbs  = $qtyShipped * ((float) $hap['concentration_pct'] / 100.0);
+                    if (!isset($hapBreakdown[$cas])) {
+                        $hapBreakdown[$cas] = ['name' => $name, 'lbs' => 0.0];
+                    }
+                    $hapBreakdown[$cas]['lbs'] += $lbs;
+                }
+
+                // Aggregate individual SARA 313 reportable chemicals
+                foreach ($calcData['sara_reportable'] as $sara) {
+                    $cas  = $sara['cas_number'];
+                    $name = $sara['chemical_name'];
+                    $lbs  = $qtyShipped * ((float) $sara['concentration_pct'] / 100.0);
+                    if (!isset($saraBreakdown[$cas])) {
+                        $saraBreakdown[$cas] = ['name' => $name, 'lbs' => 0.0];
+                    }
+                    $saraBreakdown[$cas]['lbs'] += $lbs;
+                }
             }
 
             $reportLines[] = [
@@ -297,54 +449,21 @@ class ReportController
             ];
         }
 
-        // Output CSV
-        $filename = 'HAP_VOC_Report_' . preg_replace('/[^a-zA-Z0-9]/', '_', $customerValue) . '_' . date('Ymd') . '.csv';
+        // Sort breakdowns by lbs descending
+        uasort($hapBreakdown, fn($a, $b) => $b['lbs'] <=> $a['lbs']);
+        uasort($saraBreakdown, fn($a, $b) => $b['lbs'] <=> $a['lbs']);
 
-        header('Content-Type: text/csv; charset=UTF-8');
-        header('Content-Disposition: attachment; filename="' . $filename . '"');
-        header('Cache-Control: no-cache, no-store, must-revalidate');
-
-        $output = fopen('php://output', 'w');
-
-        // Report header info
-        fputcsv($output, ['HAP / VOC Shipping Report']);
-        fputcsv($output, ['Customer:', $customerValue]);
-        fputcsv($output, ['Date Range:', $dateFrom . ' to ' . $dateTo]);
-        fputcsv($output, ['Generated:', date('m/d/Y H:i')]);
-        fputcsv($output, []);
-
-        // Column headers
-        fputcsv($output, [
-            'Date Shipped',
-            'Item Name',
-            'Description',
-            'Qty Shipped (lbs)',
-            'VOC by wt%',
-            'HAP by wt%',
-            'lbs of VOC',
-            'lbs of HAP',
-        ]);
-
-        // Data rows
-        foreach ($reportLines as $line) {
-            fputcsv($output, [
-                $line['date_shipped'],
-                $line['item_code'],
-                $line['description'],
-                $line['qty_shipped'],
-                $line['voc_wt_pct'] !== null ? round($line['voc_wt_pct'], 4) : 'N/A',
-                $line['hap_wt_pct'] !== null ? round($line['hap_wt_pct'], 4) : 'N/A',
-                $line['voc_lbs'] !== null ? round($line['voc_lbs'], 4) : 'N/A',
-                $line['hap_lbs'] !== null ? round($line['hap_lbs'], 4) : 'N/A',
-            ]);
-        }
-
-        // Totals
-        fputcsv($output, []);
-        fputcsv($output, ['', '', '', 'TOTALS', '', '', round($totalVocLbs, 4), round($totalHapLbs, 4)]);
-
-        fclose($output);
-        exit;
+        return [
+            'customer_value' => $customerValue,
+            'customer_field' => $customerField,
+            'date_from'      => $dateFrom,
+            'date_to'        => $dateTo,
+            'lines'          => $reportLines,
+            'total_voc_lbs'  => $totalVocLbs,
+            'total_hap_lbs'  => $totalHapLbs,
+            'hap_breakdown'  => $hapBreakdown,
+            'sara_breakdown' => $saraBreakdown,
+        ];
     }
 
     /* ------------------------------------------------------------------
@@ -463,7 +582,8 @@ class ReportController
     }
 
     /**
-     * Get VOC wt% and HAP wt% for a finished good product code.
+     * Get VOC wt%, HAP wt%, HAP chemical details, and SARA 313 details
+     * for a finished good product code.
      *
      * Returns null if the product is not found or has no formula.
      */
@@ -486,9 +606,14 @@ class ReportController
         $hapResult = HAPService::analyse($calcResult['composition']);
         $hapWtPct  = (float) ($hapResult['total_hap_pct'] ?? 0);
 
+        // SARA 313 analysis
+        $saraResult = SARA313Service::analyse($calcResult['composition']);
+
         return [
-            'voc_wt_pct' => $vocWtPct,
-            'hap_wt_pct' => $hapWtPct,
+            'voc_wt_pct'      => $vocWtPct,
+            'hap_wt_pct'      => $hapWtPct,
+            'hap_chemicals'   => $hapResult['hap_chemicals'] ?? [],
+            'sara_reportable' => $saraResult['reportable'] ?? [],
         ];
     }
 }

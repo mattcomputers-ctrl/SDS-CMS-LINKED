@@ -38,8 +38,8 @@
 <!-- Generate Report -->
 <div class="card" style="margin-bottom: 1rem;">
     <h2 class="card-title">3. Generate HAP / VOC Report</h2>
-    <form method="POST" action="/reports/generate" id="reportForm">
-        <?= csrf_field() ?>
+    <form id="reportForm">
+        <input type="hidden" name="_csrf_token" value="<?= e(\SDS\Core\CSRF::token()) ?>">
         <div class="grid-2col">
             <div class="form-group">
                 <label for="customer_field">Customer Identifier</label>
@@ -69,7 +69,10 @@
                 <input type="date" name="date_to" id="date_to" class="form-control" required>
             </div>
         </div>
-        <button type="submit" class="btn btn-primary" style="margin-top: 0.5rem;">Generate Report (CSV)</button>
+        <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+            <button type="submit" class="btn btn-primary" formaction="/reports/generate" formmethod="POST">Download CSV</button>
+            <button type="submit" class="btn btn-primary" formaction="/reports/generate-pdf" formmethod="POST">Download PDF</button>
+        </div>
     </form>
 </div>
 <?php endif; ?>

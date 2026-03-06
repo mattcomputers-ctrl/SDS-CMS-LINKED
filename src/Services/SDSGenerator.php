@@ -985,6 +985,20 @@ class SDSGenerator
                     && stripos($hc['class'] ?? '', 'Carcinogen') !== false
                 )
             ));
+
+            // Remove GHS08 pictogram if no remaining H-codes warrant it.
+            // GHS08 applies to: respiratory sensitization, germ cell mutagenicity,
+            // carcinogenicity, reproductive toxicity, STOT, aspiration hazard.
+            $ghs08Codes = ['H334','H340','H341','H350','H351','H360','H361','H362',
+                           'H370','H371','H372','H373','H304','H305'];
+            $remainingHCodes = array_map(fn($s) => $s['code'] ?? '', $hazardResult['h_statements']);
+            $stillNeedsGHS08 = !empty(array_intersect($ghs08Codes, $remainingHCodes));
+            if (!$stillNeedsGHS08) {
+                $hazardResult['pictograms'] = array_values(array_filter(
+                    $hazardResult['pictograms'],
+                    fn($p) => $p !== 'GHS08'
+                ));
+            }
         }
     }
 

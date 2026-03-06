@@ -455,6 +455,7 @@ class AdminController
         $this->requireAdmin();
         $db = Database::getInstance();
 
+        // Existing determinations
         $items = $db->fetchAll(
             "SELECT cpd.*, u.display_name AS created_by_name, ua.display_name AS approved_by_name
              FROM competent_person_determinations cpd
@@ -463,18 +464,60 @@ class AdminController
              ORDER BY cpd.created_at DESC"
         );
 
+        // All distinct CAS numbers from raw material constituents that are
+        // used in at least one active formula, excluding non-hazardous and
+        // trade-secret entries.
+        $needsDetermination = $db->fetchAll(
+            "SELECT rmc.cas_number,
+                    rmc.chemical_name,
+                    COUNT(DISTINCT rm.id) AS raw_material_count,
+                    GROUP_CONCAT(DISTINCT rm.internal_code ORDER BY rm.internal_code SEPARATOR ', ') AS raw_material_codes
+             FROM raw_material_constituents rmc
+             JOIN raw_materials rm ON rm.id = rmc.raw_material_id
+             JOIN formula_lines fl ON fl.raw_material_id = rm.id
+             JOIN formulas f ON f.id = fl.formula_id AND f.is_current = 1
+             WHERE rmc.cas_number != ''
+               AND rmc.is_trade_secret = 0
+               AND rmc.is_non_hazardous = 0
+               AND NOT EXISTS (
+                   SELECT 1 FROM hazard_classifications hc
+                   JOIN hazard_source_records hsr ON hsr.id = hc.hazard_source_record_id
+                   WHERE hc.cas_number = rmc.cas_number AND hsr.is_current = 1
+               )
+               AND NOT EXISTS (
+                   SELECT 1 FROM exposure_limits el
+                   JOIN hazard_source_records hsr ON hsr.id = el.hazard_source_record_id
+                   WHERE el.cas_number = rmc.cas_number AND hsr.is_current = 1
+               )
+               AND NOT EXISTS (
+                   SELECT 1 FROM competent_person_determinations cpd
+                   WHERE cpd.cas_number = rmc.cas_number AND cpd.is_active = 1
+               )
+             GROUP BY rmc.cas_number, rmc.chemical_name
+             ORDER BY raw_material_count DESC, rmc.chemical_name ASC"
+        );
+
         view('admin/determinations', [
-            'pageTitle' => 'CAS Number Determinations',
-            'items'     => $items,
+            'pageTitle'          => 'CAS Number Determinations',
+            'items'              => $items,
+            'needsDetermination' => $needsDetermination,
         ]);
     }
 
     public function createDetermination(): void
     {
         $this->requireAdmin();
+
+        // Pre-fill CAS number if passed via query string (from the needs-determination list)
+        $prefillCas = trim($_GET['cas'] ?? '');
+        $item = null;
+        if ($prefillCas !== '') {
+            $item = ['cas_number' => $prefillCas];
+        }
+
         view('admin/determination-form', [
             'pageTitle' => 'New CAS Number Determination',
-            'item'      => null,
+            'item'      => $item,
             'mode'      => 'create',
         ]);
     }

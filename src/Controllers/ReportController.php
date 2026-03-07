@@ -336,13 +336,24 @@ class ReportController
             redirect('/reports');
         }
 
+        $dateFromTs = strtotime($dateFrom);
+        $dateToTs   = strtotime($dateTo);
+
+        if ($dateFromTs === false || $dateToTs === false) {
+            $_SESSION['_flash']['error'] = 'Invalid date format.';
+            redirect('/reports');
+        }
+
+        // Make end date inclusive (end of day)
+        $dateToTs = strtotime($dateTo . ' 23:59:59');
+
         // Filter shipping data
         $filtered = [];
         foreach ($data['shipping_detail'] as $row) {
             $rowCustomer = trim((string) ($row[$customerField] ?? ''));
-            $rowDate     = $row['date_shipped'] ?? '';
+            $rowDate     = strtotime($row['date_shipped'] ?? '');
 
-            if ($rowCustomer === $customerValue && $rowDate >= $dateFrom && $rowDate <= $dateTo) {
+            if ($rowCustomer === $customerValue && $rowDate !== false && $rowDate >= $dateFromTs && $rowDate <= $dateToTs) {
                 $filtered[] = $row;
             }
         }

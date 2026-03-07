@@ -72,6 +72,7 @@
         <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
             <button type="submit" class="btn btn-primary" formaction="/reports/generate" formmethod="POST">Download CSV</button>
             <button type="submit" class="btn btn-primary" formaction="/reports/generate-pdf" formmethod="POST">Download PDF</button>
+            <button type="submit" class="btn btn-outline" formaction="/reports/export-sds" formmethod="POST">Export SDS (ZIP)</button>
         </div>
     </form>
 </div>

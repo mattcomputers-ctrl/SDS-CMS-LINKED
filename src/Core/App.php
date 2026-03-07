@@ -160,6 +160,7 @@ class App
         $router->post('/reports/upload-shipping', 'ReportController@uploadShippingDetail');
         $router->post('/reports/generate',       'ReportController@generate');
         $router->post('/reports/generate-pdf',   'ReportController@generatePdf');
+        $router->post('/reports/export-sds',     'ReportController@exportShippedSds');
         $router->post('/reports/clear',          'ReportController@clear');
         $router->get('/reports/customers',       'ReportController@customers');
 

@@ -312,6 +312,144 @@ class ReportController
     }
 
     /* ------------------------------------------------------------------
+     *  Export SDS PDFs for shipped items as ZIP
+     * ----------------------------------------------------------------*/
+
+    public function exportShippedSds(): void
+    {
+        CSRF::validateRequest();
+
+        $data = $_SESSION[self::SESSION_KEY] ?? [];
+
+        if (empty($data['shipping_detail'])) {
+            $_SESSION['_flash']['error'] = 'Please upload shipping detail data first.';
+            redirect('/reports');
+        }
+
+        $customerField = $_POST['customer_field'] ?? 'ship_to_name';
+        $customerValue = trim($_POST['customer_value'] ?? '');
+        $dateFrom      = trim($_POST['date_from'] ?? '');
+        $dateTo        = trim($_POST['date_to'] ?? '');
+
+        if ($customerValue === '' || $dateFrom === '' || $dateTo === '') {
+            $_SESSION['_flash']['error'] = 'Customer, date from, and date to are required.';
+            redirect('/reports');
+        }
+
+        // Filter shipping data
+        $filtered = [];
+        foreach ($data['shipping_detail'] as $row) {
+            $rowCustomer = trim((string) ($row[$customerField] ?? ''));
+            $rowDate     = $row['date_shipped'] ?? '';
+
+            if ($rowCustomer === $customerValue && $rowDate >= $dateFrom && $rowDate <= $dateTo) {
+                $filtered[] = $row;
+            }
+        }
+
+        if (empty($filtered)) {
+            $_SESSION['_flash']['error'] = 'No shipping records match the selected criteria.';
+            redirect('/reports');
+        }
+
+        // Collect unique product codes
+        $productCodes = [];
+        foreach ($filtered as $row) {
+            $code = $this->stripPackExtension($row['item_name']);
+            $productCodes[$code] = true;
+        }
+
+        $db = Database::getInstance();
+        $basePath = \SDS\Core\App::basePath();
+
+        // Find the latest published SDS PDF for each product code
+        $tempZip = tempnam(sys_get_temp_dir(), 'sds_shipped_') . '.zip';
+        $zip = new \ZipArchive();
+
+        if ($zip->open($tempZip, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+            $_SESSION['_flash']['error'] = 'Failed to create ZIP archive.';
+            redirect('/reports');
+        }
+
+        $addedFiles = 0;
+        $seen = [];
+
+        foreach (array_keys($productCodes) as $productCode) {
+            $fg = FinishedGood::findByProductCode($productCode);
+            if ($fg === null) {
+                continue;
+            }
+
+            // Get latest published SDS version(s) for this finished good
+            $versions = $db->fetchAll(
+                "SELECT sv.id, sv.version, sv.language, sv.pdf_path
+                 FROM sds_versions sv
+                 WHERE sv.finished_good_id = ?
+                   AND sv.status = 'published'
+                   AND sv.is_deleted = 0
+                   AND sv.pdf_path IS NOT NULL
+                   AND sv.pdf_path != ''
+                 ORDER BY sv.version DESC, sv.language ASC",
+                [(int) $fg['id']]
+            );
+
+            if (empty($versions)) {
+                continue;
+            }
+
+            // Add the most recent version per language
+            $addedLangs = [];
+            foreach ($versions as $v) {
+                $lang = strtolower($v['language']);
+                if (isset($addedLangs[$lang])) {
+                    continue;
+                }
+                $addedLangs[$lang] = true;
+
+                $pdfFullPath = $basePath . '/' . ltrim($v['pdf_path'], '/');
+                if (!file_exists($pdfFullPath)) {
+                    continue;
+                }
+
+                $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $productCode);
+                $zipName  = $safeCode . '_SDS';
+                if ($lang !== 'en') {
+                    $zipName .= '_' . strtoupper($lang);
+                }
+                $zipName .= '.pdf';
+
+                if (isset($seen[$zipName])) {
+                    continue;
+                }
+                $seen[$zipName] = true;
+
+                $zip->addFile($pdfFullPath, $zipName);
+                $addedFiles++;
+            }
+        }
+
+        $zip->close();
+
+        if ($addedFiles === 0) {
+            @unlink($tempZip);
+            $_SESSION['_flash']['warning'] = 'No published SDS PDFs found for the shipped items.';
+            redirect('/reports');
+        }
+
+        $safeCustomer = preg_replace('/[^a-zA-Z0-9]/', '_', $customerValue);
+        $exportName = 'SDS_Export_' . $safeCustomer . '_' . date('Ymd') . '.zip';
+
+        header('Content-Type: application/zip');
+        header('Content-Disposition: attachment; filename="' . $exportName . '"');
+        header('Content-Length: ' . filesize($tempZip));
+        header('Cache-Control: no-cache, must-revalidate');
+
+        readfile($tempZip);
+        @unlink($tempZip);
+        exit;
+    }
+
+    /* ------------------------------------------------------------------
      *  Build report data (shared between CSV and PDF)
      * ----------------------------------------------------------------*/
 

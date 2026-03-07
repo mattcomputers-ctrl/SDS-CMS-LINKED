@@ -250,6 +250,28 @@ else
     print_success "German language already configured."
 fi
 
+# Add publish_workers if not already present
+print_step "Checking publish_workers configuration..."
+HAS_PW=$(php -r "\$c = require '$INSTALL_DIR/config/config.php'; echo isset(\$c['sds']['publish_workers']) ? 'yes' : 'no';" 2>/dev/null)
+
+if [ "$HAS_PW" = "no" ]; then
+    print_step "Adding publish_workers setting to sds config..."
+    php -r "
+        \$file = '$INSTALL_DIR/config/config.php';
+        \$content = file_get_contents(\$file);
+        // Add publish_workers after voc_calc_mode line
+        \$content = preg_replace(
+            \"/('voc_calc_mode'\s*=>\s*'[^']*'),/\",
+            '\${1},' . \"\\n\" . \"        'publish_workers'        => 0,\",
+            \$content
+        );
+        file_put_contents(\$file, \$content);
+    " 2>/dev/null
+    print_success "publish_workers setting added to config."
+else
+    print_success "publish_workers already configured."
+fi
+
 # ============================================================
 # Step 5: Update PHP Dependencies
 # ============================================================

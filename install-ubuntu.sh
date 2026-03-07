@@ -16,7 +16,8 @@
 #   4. Configure Apache virtual host
 #   5. Set up the application with your settings
 #   6. Create your admin account
-#   7. Apply firewall rules (if UFW is available)
+#   7. Install cron jobs (data refresh, housekeeping)
+#   8. Apply firewall rules (if UFW is available)
 # ============================================================
 
 set -e
@@ -469,6 +470,7 @@ return [
         'block_publish_missing'  => true,
         'missing_threshold_pct'  => 1.0,
         'voc_calc_mode'          => 'method24_standard',
+        'publish_workers'        => 0,
     ],
 
     'cron' => [
@@ -629,9 +631,33 @@ systemctl restart apache2
 print_success "Apache configured and restarted."
 
 # ============================================================
-# Step 9: Firewall (UFW)
+# Step 9: Set up cron jobs
 # ============================================================
-print_header "Step 9: Firewall Configuration"
+print_header "Step 9: Setting Up Cron Jobs"
+
+print_step "Installing crontab for www-data..."
+
+# Build cron entries
+CRON_ENTRIES="# SDS System — Automated maintenance tasks
+# Federal data refresh (weekly, Sunday 2:00 AM)
+0 2 * * 0 cd $INSTALL_DIR && /usr/bin/php cron/refresh-federal.php >> storage/logs/cron-federal.log 2>&1
+# SARA 313 data refresh (weekly, Sunday 2:30 AM)
+30 2 * * 0 cd $INSTALL_DIR && /usr/bin/php cron/refresh-sara.php >> storage/logs/cron-sara.log 2>&1
+# Housekeeping: purge old logs, temp files (daily, 4:00 AM)
+0 4 * * * cd $INSTALL_DIR && /usr/bin/php cron/housekeeping.php >> storage/logs/cron-housekeeping.log 2>&1"
+
+# Merge with any existing www-data crontab
+( crontab -u www-data -l 2>/dev/null | grep -v 'SDS System' | grep -v 'refresh-federal' | grep -v 'refresh-sara' | grep -v 'housekeeping'; echo "$CRON_ENTRIES" ) | crontab -u www-data - 2>/dev/null
+
+print_success "Cron jobs installed for www-data."
+print_info "  Weekly:  Federal data refresh  (Sun 2:00 AM)"
+print_info "  Weekly:  SARA 313 refresh      (Sun 2:30 AM)"
+print_info "  Daily:   Housekeeping           (4:00 AM)"
+
+# ============================================================
+# Step 10: Firewall (UFW)
+# ============================================================
+print_header "Step 10: Firewall Configuration"
 
 if command -v ufw &> /dev/null; then
     print_step "Configuring UFW firewall..."
@@ -652,7 +678,7 @@ fi
 # ============================================================
 # Step 10: Final checks
 # ============================================================
-print_header "Step 10: Final Verification"
+print_header "Step 11: Final Verification"
 
 ERRORS=0
 

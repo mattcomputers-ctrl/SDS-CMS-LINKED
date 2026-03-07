@@ -16,6 +16,7 @@
 #   5. Configure Apache virtual host
 #   6. Set up the application with your settings
 #   7. Create your admin account
+#   8. Install cron jobs (data refresh, housekeeping)
 # ============================================================
 
 set -e
@@ -198,7 +199,7 @@ cd "$INSTALL_DIR"
 
 # Install PHP dependencies
 print_step "Installing PHP dependencies (Composer)..."
-composer install --no-dev --optimize-autoloader --quiet 2>/dev/null
+COMPOSER_ALLOW_SUPERUSER=1 composer install --no-dev --optimize-autoloader --quiet 2>/dev/null
 
 # Create required directories
 print_step "Creating required directories..."
@@ -307,6 +308,7 @@ return [
         'block_publish_missing'  => true,
         'missing_threshold_pct'  => 1.0,
         'voc_calc_mode'          => 'method24_standard',
+        'publish_workers'        => 0,
     ],
 
     'cron' => [
@@ -458,7 +460,82 @@ systemctl restart apache2
 print_success "Apache configured and restarted."
 
 # ============================================================
-# Step 9: Final checks
+# Step 9: Set up cron jobs
+# ============================================================
+print_header "Step 9: Setting Up Cron Jobs"
+
+print_step "Installing crontab for www-data..."
+
+# Build cron entries
+CRON_ENTRIES="# SDS System — Automated maintenance tasks
+# Federal data refresh (weekly, Sunday 2:00 AM)
+0 2 * * 0 cd $INSTALL_DIR && /usr/bin/php cron/refresh-federal.php >> storage/logs/cron-federal.log 2>&1
+# SARA 313 data refresh (weekly, Sunday 2:30 AM)
+30 2 * * 0 cd $INSTALL_DIR && /usr/bin/php cron/refresh-sara.php >> storage/logs/cron-sara.log 2>&1
+# Housekeeping: purge old logs, temp files (daily, 4:00 AM)
+0 4 * * * cd $INSTALL_DIR && /usr/bin/php cron/housekeeping.php >> storage/logs/cron-housekeeping.log 2>&1"
+
+# Merge with any existing www-data crontab
+( crontab -u www-data -l 2>/dev/null | grep -v 'SDS System' | grep -v 'refresh-federal' | grep -v 'refresh-sara' | grep -v 'housekeeping'; echo "$CRON_ENTRIES" ) | crontab -u www-data - 2>/dev/null
+
+print_success "Cron jobs installed for www-data."
+print_info "  Weekly:  Federal data refresh  (Sun 2:00 AM)"
+print_info "  Weekly:  SARA 313 refresh      (Sun 2:30 AM)"
+print_info "  Daily:   Housekeeping           (4:00 AM)"
+
+# ============================================================
+# Step 10: Final Verification
+# ============================================================
+print_header "Step 10: Final Verification"
+
+ERRORS=0
+
+# Check Apache is running
+if systemctl is-active --quiet apache2; then
+    print_success "Apache is running."
+else
+    print_error "Apache is NOT running."
+    ERRORS=$((ERRORS + 1))
+fi
+
+# Check MariaDB/MySQL is running
+if systemctl is-active --quiet mariadb 2>/dev/null || systemctl is-active --quiet mysql 2>/dev/null; then
+    print_success "Database server is running."
+else
+    print_error "Database server is NOT running."
+    ERRORS=$((ERRORS + 1))
+fi
+
+# Check PHP works
+if php -r "echo 'OK';" 2>/dev/null | grep -q "OK"; then
+    print_success "PHP is working."
+else
+    print_error "PHP is NOT working correctly."
+    ERRORS=$((ERRORS + 1))
+fi
+
+# Check database connection
+if mysql -u root -p"$MYSQL_ROOT_PASS" -e "SELECT 1 FROM \`$DB_NAME\`.users LIMIT 1" > /dev/null 2>&1; then
+    print_success "Database connection verified."
+else
+    print_error "Cannot connect to database."
+    ERRORS=$((ERRORS + 1))
+fi
+
+# Check file permissions
+if [ -w "$INSTALL_DIR/storage" ] && [ -w "$INSTALL_DIR/public/uploads" ]; then
+    print_success "File permissions look correct."
+else
+    print_warn "File permissions may need adjustment."
+fi
+
+if [ "$ERRORS" -gt 0 ]; then
+    echo ""
+    print_warn "$ERRORS issue(s) detected. Please check the errors above."
+fi
+
+# ============================================================
+# Done!
 # ============================================================
 print_header "Installation Complete!"
 

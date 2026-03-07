@@ -35,6 +35,10 @@
 
             <button type="submit" class="btn btn-primary btn-block">Sign In</button>
         </form>
+
+        <div style="text-align: center; margin-top: 1.5rem;">
+            <a href="/rm-sds-book" class="btn btn-outline">RM SDS Book</a>
+        </div>
     </div>
 </body>
 </html>

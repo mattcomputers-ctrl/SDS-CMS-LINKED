@@ -46,6 +46,37 @@ class SDSBookController
     }
 
     /**
+     * Public RM SDS Book — accessible without login.
+     * Shows only RM Code with a View SDS button.
+     */
+    public function publicIndex(): void
+    {
+        $search  = trim($_GET['q'] ?? '');
+        $page    = max(1, (int) ($_GET['page'] ?? 1));
+        $perPage = 25;
+        $offset  = ($page - 1) * $perPage;
+
+        $db = Database::getInstance();
+        $results = $this->searchSupplierSDS($db, $search);
+
+        // Sort by RM code
+        usort($results, fn($a, $b) => strcasecmp($a['product_name'], $b['product_name']));
+
+        $total   = count($results);
+        $pages   = (int) ceil($total / $perPage);
+        $results = array_slice($results, $offset, $perPage);
+
+        view('sds-book/public', [
+            'pageTitle' => 'RM SDS Book',
+            'results'   => $results,
+            'search'    => $search,
+            'total'     => $total,
+            'page'      => $page,
+            'pages'     => $pages,
+        ]);
+    }
+
+    /**
      * Admin-only: soft-delete a supplier SDS entry (remove the file reference).
      */
     public function deleteSupplierSds(string $id): void

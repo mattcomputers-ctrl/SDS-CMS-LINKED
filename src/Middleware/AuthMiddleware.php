@@ -27,6 +27,8 @@ class AuthMiddleware
         '/images',
         '/fonts',
         '/favicon.ico',
+        '/rm-sds-book',
+        '/raw-materials',  // needed for /raw-materials/{id}/sds (supplier SDS view)
     ];
 
     /**

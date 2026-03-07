@@ -377,9 +377,10 @@ class ReportController
 
         // Build report lines
         $calcService = new FormulaCalcService();
-        $reportLines = [];
-        $totalVocLbs = 0.0;
-        $totalHapLbs = 0.0;
+        $reportLines    = [];
+        $totalVocLbs    = 0.0;
+        $totalHapLbs    = 0.0;
+        $totalShippedLbs = 0.0;
 
         // Cache calculations by product code (strip pack extension)
         $calcCache = [];
@@ -442,6 +443,8 @@ class ReportController
                 }
             }
 
+            $totalShippedLbs += $qtyShipped;
+
             $reportLines[] = [
                 'date_shipped' => $row['date_shipped'],
                 'item_code'    => $itemCode,
@@ -463,9 +466,10 @@ class ReportController
             'customer_field' => $customerField,
             'date_from'      => $dateFrom,
             'date_to'        => $dateTo,
-            'lines'          => $reportLines,
-            'total_voc_lbs'  => $totalVocLbs,
-            'total_hap_lbs'  => $totalHapLbs,
+            'lines'            => $reportLines,
+            'total_shipped_lbs' => $totalShippedLbs,
+            'total_voc_lbs'    => $totalVocLbs,
+            'total_hap_lbs'    => $totalHapLbs,
             'hap_breakdown'  => $hapBreakdown,
             'sara_breakdown' => $saraBreakdown,
         ];

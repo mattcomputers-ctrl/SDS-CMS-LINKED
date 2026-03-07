@@ -130,6 +130,9 @@ class App
         $router->post('/login', 'AuthController@login');
         $router->get('/logout', 'AuthController@logout');
 
+        // ── Public RM SDS Book (no login required) ─────────────────
+        $router->get('/rm-sds-book', 'SDSBookController@publicIndex');
+
         // ── Dashboard ────────────────────────────────────────────────
         $router->get('/', 'DashboardController@index');
 

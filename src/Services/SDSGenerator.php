@@ -684,7 +684,6 @@ class SDSGenerator
             'title'          => $this->t->get('section16.title'),
             'revision_date'  => date('m/d/Y'),
             'revision_note'  => $overrides[16]['revision_note'] ?? '',
-            'disclaimer'     => $this->t->get('section16.disclaimer'),
             'abbreviations'  => $this->t->get('section16.abbreviations'),
             'voc_assumptions' => $calcResult['voc']['assumptions'] ?? [],
         ];

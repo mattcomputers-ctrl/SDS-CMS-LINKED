@@ -46,8 +46,8 @@ class ReportPDFService
 
         $pdf->SetCreator('SDS System');
         $pdf->SetAuthor(App::config('company.name', 'SDS System'));
-        $pdf->SetTitle('HAP / VOC Shipping Report');
-        $pdf->SetSubject('HAP / VOC Shipping Report — ' . $reportData['customer_value']);
+        $pdf->SetTitle('Regulatory Report');
+        $pdf->SetSubject('Regulatory Report — ' . $reportData['customer_value']);
 
         $pdf->setPrintHeader(false);
         $pdf->setPrintFooter(true);
@@ -65,6 +65,7 @@ class ReportPDFService
         $this->renderHAPBreakdown($pdf, $reportData['hap_breakdown']);
         $this->renderSARABreakdown($pdf, $reportData['sara_breakdown']);
         $this->renderFooterNote($pdf);
+        $this->renderGeneratedTimestamp($pdf);
 
         return $pdf->Output('', 'S');
     }
@@ -91,7 +92,7 @@ class ReportPDFService
         $pdf->SetFont('helvetica', 'B', 16);
         $pdf->SetFillColor(...self::COLOR_NAVY);
         $pdf->SetTextColor(255, 255, 255);
-        $pdf->Cell(0, 10, 'HAP / VOC Shipping Report', 0, 1, 'C', true);
+        $pdf->Cell(0, 10, 'Regulatory Report', 0, 1, 'C', true);
         $pdf->SetTextColor(0, 0, 0);
         $pdf->Ln(4);
 
@@ -108,11 +109,6 @@ class ReportPDFService
         $pdf->Cell($labelW, 6, 'Date Range:', 0, 0);
         $pdf->SetFont('helvetica', '', 10);
         $pdf->Cell(0, 6, $data['date_from'] . '  to  ' . $data['date_to'], 0, 1);
-
-        $pdf->SetFont('helvetica', 'B', 10);
-        $pdf->Cell($labelW, 6, 'Generated:', 0, 0);
-        $pdf->SetFont('helvetica', '', 10);
-        $pdf->Cell(0, 6, date('m/d/Y h:i A'), 0, 1);
 
         $pdf->Ln(4);
 
@@ -184,8 +180,10 @@ class ReportPDFService
         $pdf->SetFont('helvetica', 'B', 8);
         $pdf->SetFillColor(...self::COLOR_NAVY);
         $pdf->SetTextColor(255, 255, 255);
-        $preW = $w[0] + $w[1] + $w[2] + $w[3] + $w[4] + $w[5];
+        $preW = $w[0] + $w[1] + $w[2];
         $pdf->Cell($preW, 6, 'TOTALS', 1, 0, 'R', true);
+        $pdf->Cell($w[3], 6, number_format($data['total_shipped_lbs'] ?? 0, 2), 1, 0, 'R', true);
+        $pdf->Cell($w[4] + $w[5], 6, '', 1, 0, 'C', true);
         $pdf->Cell($w[6], 6, number_format($data['total_voc_lbs'], 2), 1, 0, 'R', true);
         $pdf->Cell($w[7], 6, number_format($data['total_hap_lbs'], 2), 1, 0, 'R', true);
         $pdf->Ln();
@@ -365,6 +363,15 @@ class ReportPDFService
         $pdf->SetFont('helvetica', 'I', 7);
         $pdf->SetTextColor(100, 100, 100);
         $pdf->MultiCell(0, 4, $this->disclaimer, 0, 'L');
+        $pdf->SetTextColor(0, 0, 0);
+    }
+
+    private function renderGeneratedTimestamp(\TCPDF $pdf): void
+    {
+        $pdf->Ln(6);
+        $pdf->SetFont('helvetica', 'I', 8);
+        $pdf->SetTextColor(100, 100, 100);
+        $pdf->Cell(0, 5, 'Generated: ' . date('m/d/Y h:i A'), 0, 1, 'R');
         $pdf->SetTextColor(0, 0, 0);
     }
 

@@ -633,23 +633,8 @@ class PDFService
             }
         }
 
-        // GHS health hazard pictogram for carcinogen/mutagen/repro tox
-        $carcinogenResult = $s['carcinogen_result'] ?? [];
-        if (!empty($carcinogenResult['has_carcinogens'])) {
-            $pdf->Ln(2);
-            $pngPath = PictogramHelper::getPngPath('GHS08');
-            if ($pngPath !== '') {
-                // Ensure enough space for the image; Image() with absolute
-                // coords bypasses auto page break.
-                $pageH   = $pdf->getPageHeight();
-                $bMargin = $pdf->getBreakMargin();
-                if (($pageH - $bMargin - $pdf->GetY()) < 15) {
-                    $pdf->AddPage();
-                }
-                $pdf->Image($pngPath, $pdf->GetX(), $pdf->GetY(), 12, 12, 'PNG');
-                $pdf->Ln(13);
-            }
-        }
+        // Pictograms are intentionally NOT shown in Section 11;
+        // they appear in Section 2 (Hazard Identification) only.
     }
 
     private function renderSection14(\TCPDF $pdf, array $s): void

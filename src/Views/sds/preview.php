@@ -266,18 +266,7 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                 <?php endforeach; ?>
             <?php endif; ?>
 
-            <?php
-                $carcinogenResult = $section['carcinogen_result'] ?? [];
-                if (!empty($carcinogenResult['has_carcinogens'])):
-            ?>
-                <div style="margin-top: 0.5rem;">
-                    <?php $ghs08Src = \SDS\Services\PictogramHelper::getWebPath('GHS08'); ?>
-                    <?php if ($ghs08Src): ?>
-                    <img src="<?= e($ghs08Src) ?>" alt="GHS08 - <?= e($l('health_hazard')) ?>" style="width: 40px; height: 40px; vertical-align: middle;">
-                    <?php endif; ?>
-                    <span style="color: #d9534f; font-weight: bold;"><?= e($l('health_hazard')) ?></span>
-                </div>
-            <?php endif; ?>
+            <?php /* Pictograms are intentionally NOT shown in Section 11; they appear in Section 2 only. */ ?>
 
         <?php elseif ($num === 14): // ── Transport Information ── ?>
             <p><strong><?= e($l('un_number')) ?>:</strong> <?= e($section['un_number'] ?? '') ?></p>

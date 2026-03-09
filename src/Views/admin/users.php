@@ -21,15 +21,15 @@
             <td>
                 <?php
                 $userGroups = \SDS\Services\PermissionService::getUserGroups((int) $item['id']);
-                if ($userGroups):
+                if ($userGroups) {
                     $g = $userGroups[0];
                     echo e($g['name']);
                     if ((int) $g['is_admin']) {
                         echo ' <span class="badge badge-admin">Admin</span>';
                     }
-                else:
+                } else {
                     echo '<span class="text-muted">—</span>';
-                endif;
+                }
                 ?>
             </td>
             <td><?= (int) $item['is_active'] ? 'Yes' : 'No' ?></td>

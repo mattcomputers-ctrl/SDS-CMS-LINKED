@@ -373,6 +373,44 @@ else
     print_info "group_permissions table not found yet — will be created by migrations."
 fi
 
+# -- Ensure Administrators permission group exists and admin users are assigned --
+# Prior versions created admin users with role='admin' but never assigned them
+# to a permission group, causing 403 Forbidden on all routes.
+print_step "Ensuring Administrators permission group exists..."
+if $MYSQL_CMD $MYSQL_AUTH -N -e \
+    "SELECT 1 FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = '$DB_NAME'
+       AND TABLE_NAME   = 'permission_groups'" "$DB_NAME" 2>/dev/null | grep -q 1; then
+
+    $MYSQL_CMD $MYSQL_AUTH "$DB_NAME" << 'ADMINGRPEOF'
+-- Create Administrators group if it doesn't exist
+INSERT INTO permission_groups (name, description, is_admin)
+VALUES ('Administrators', 'Full access to all areas including user management', 1)
+ON DUPLICATE KEY UPDATE is_admin = 1;
+
+-- Assign any active users with NO group membership to the Administrators group.
+-- This catches admin accounts created by older install scripts that didn't
+-- set up permission group membership.
+INSERT INTO user_group_members (user_id, group_id)
+SELECT u.id, pg.id
+FROM users u
+CROSS JOIN permission_groups pg
+WHERE pg.name = 'Administrators'
+  AND u.is_active = 1
+  AND NOT EXISTS (
+    SELECT 1 FROM user_group_members ugm WHERE ugm.user_id = u.id
+  );
+ADMINGRPEOF
+
+    ORPHANED=$($MYSQL_CMD $MYSQL_AUTH -N -e \
+        "SELECT COUNT(*) FROM user_group_members ugm
+         JOIN permission_groups pg ON pg.id = ugm.group_id
+         WHERE pg.name = 'Administrators'" "$DB_NAME" 2>/dev/null || echo "0")
+    print_success "Administrators group verified ($ORPHANED member(s))."
+else
+    print_info "permission_groups table not found — will be created by migrations."
+fi
+
 # ============================================================
 # Step 8: Refresh seed data
 # ============================================================

@@ -360,6 +360,36 @@ done
 
 print_success "Database migrations complete."
 
+# -- Schema fixes --------------------------------------------------
+# group_permissions.access_level must be ENUM('none','read','full').
+# If the table was created before migration 010 defined the correct
+# ENUM, the column may have a different type causing "Data truncated"
+# errors when creating permission groups.
+print_step "Checking group_permissions.access_level column type..."
+if mysql -u root -p"$MYSQL_ROOT_PASS" -N -e \
+    "SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = '$DB_NAME'
+       AND TABLE_NAME   = 'group_permissions'
+       AND COLUMN_NAME  = 'access_level'" "$DB_NAME" 2>/dev/null | grep -q 1; then
+
+    CURRENT_TYPE=$(mysql -u root -p"$MYSQL_ROOT_PASS" -N -e \
+        "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = '$DB_NAME'
+           AND TABLE_NAME   = 'group_permissions'
+           AND COLUMN_NAME  = 'access_level'" "$DB_NAME" 2>/dev/null)
+
+    if [ "$CURRENT_TYPE" != "enum('none','read','full')" ]; then
+        print_step "  Fixing access_level column (was: $CURRENT_TYPE)..."
+        mysql -u root -p"$MYSQL_ROOT_PASS" "$DB_NAME" -e \
+            "ALTER TABLE group_permissions MODIFY COLUMN access_level ENUM('none','read','full') NOT NULL DEFAULT 'none'"
+        print_success "  access_level column corrected."
+    else
+        print_success "group_permissions.access_level is correct."
+    fi
+else
+    print_info "group_permissions table not found yet — will be created by migrations."
+fi
+
 # Create admin user
 print_step "Creating admin user..."
 ADMIN_HASH=$(php -r "echo password_hash('$ADMIN_PASS', PASSWORD_ARGON2ID);")

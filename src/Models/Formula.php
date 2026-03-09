@@ -286,6 +286,68 @@ class Formula
     }
 
     /* ------------------------------------------------------------------
+     *  Mass Replacement
+     * ----------------------------------------------------------------*/
+
+    /**
+     * Replace one raw material with another across all current formulas.
+     *
+     * For each current formula that contains the old raw material, a new
+     * formula version is created with the old RM swapped for the new RM
+     * (keeping the same percentage and sort order). All other lines are
+     * copied unchanged.
+     *
+     * @param int      $oldRmId  The raw material ID to replace.
+     * @param int      $newRmId  The replacement raw material ID.
+     * @param int|null $userId   The user performing the replacement.
+     * @return int     Number of formulas updated.
+     */
+    public static function massReplaceRawMaterial(int $oldRmId, int $newRmId, ?int $userId): int
+    {
+        $db = Database::getInstance();
+
+        // Find all current formulas that contain the old raw material
+        $formulas = $db->fetchAll(
+            "SELECT DISTINCT f.id AS formula_id, f.finished_good_id
+             FROM formulas f
+             JOIN formula_lines fl ON fl.formula_id = f.id
+             WHERE f.is_current = 1 AND fl.raw_material_id = ?",
+            [$oldRmId]
+        );
+
+        $count = 0;
+
+        foreach ($formulas as $formula) {
+            // Get current formula lines
+            $lines = self::getLines((int) $formula['formula_id']);
+
+            // Build new lines with the replacement
+            $newLines = [];
+            foreach ($lines as $line) {
+                $newLines[] = [
+                    'raw_material_id' => ((int) $line['raw_material_id'] === $oldRmId)
+                        ? $newRmId
+                        : (int) $line['raw_material_id'],
+                    'pct'        => (float) $line['pct'],
+                    'sort_order' => (int) $line['sort_order'],
+                ];
+            }
+
+            // Create a new formula version with the swapped material
+            self::create(
+                (int) $formula['finished_good_id'],
+                $newLines,
+                sprintf('Mass replacement: RM #%d replaced with RM #%d', $oldRmId, $newRmId),
+                $userId
+            );
+
+            $count++;
+        }
+
+        return $count;
+    }
+
+    /* ------------------------------------------------------------------
      *  Validation
      * ----------------------------------------------------------------*/
 

@@ -112,6 +112,83 @@ class FormulaController
         redirect('/formulas/' . $finished_good_id);
     }
 
+    public function massReplace(): void
+    {
+        if (!is_editor()) {
+            $_SESSION['_flash']['error'] = 'You do not have permission to perform mass replacements.';
+            redirect('/raw-materials');
+        }
+
+        // Get all raw materials for the dropdowns
+        $rawMaterials = RawMaterial::all(['per_page' => 999, 'sort' => 'internal_code', 'dir' => 'asc']);
+
+        view('formulas/mass-replace', [
+            'pageTitle'    => 'RM Mass Replacement',
+            'rawMaterials' => $rawMaterials,
+        ]);
+    }
+
+    public function massReplaceSubmit(): void
+    {
+        if (!is_editor()) {
+            redirect('/raw-materials');
+        }
+
+        CSRF::validateRequest();
+
+        $oldRmId = (int) ($_POST['old_raw_material_id'] ?? 0);
+        $newRmId = (int) ($_POST['new_raw_material_id'] ?? 0);
+
+        if ($oldRmId <= 0 || $newRmId <= 0) {
+            $_SESSION['_flash']['error'] = 'Please select both an old and a new raw material.';
+            redirect('/formulas/mass-replace');
+        }
+
+        if ($oldRmId === $newRmId) {
+            $_SESSION['_flash']['error'] = 'Old and new raw materials must be different.';
+            redirect('/formulas/mass-replace');
+        }
+
+        // Verify both RMs exist
+        $oldRm = RawMaterial::findById($oldRmId);
+        $newRm = RawMaterial::findById($newRmId);
+
+        if (!$oldRm || !$newRm) {
+            $_SESSION['_flash']['error'] = 'One or both raw materials not found.';
+            redirect('/formulas/mass-replace');
+        }
+
+        try {
+            $count = Formula::massReplaceRawMaterial($oldRmId, $newRmId, current_user_id());
+
+            AuditService::log('formula', 0, 'mass_replace', [
+                'old_raw_material_id'   => $oldRmId,
+                'old_internal_code'     => $oldRm['internal_code'],
+                'new_raw_material_id'   => $newRmId,
+                'new_internal_code'     => $newRm['internal_code'],
+                'formulas_updated'      => $count,
+            ]);
+
+            if ($count > 0) {
+                $_SESSION['_flash']['success'] = sprintf(
+                    'Mass replacement complete: replaced "%s" with "%s" in %d formula(s). New versions were created for each.',
+                    $oldRm['internal_code'],
+                    $newRm['internal_code'],
+                    $count
+                );
+            } else {
+                $_SESSION['_flash']['warning'] = sprintf(
+                    'No current formulas contain "%s". Nothing was changed.',
+                    $oldRm['internal_code']
+                );
+            }
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error'] = 'Mass replacement failed: ' . $e->getMessage();
+        }
+
+        redirect('/formulas/mass-replace');
+    }
+
     public function calculate(string $finished_good_id): void
     {
         $fg = FinishedGood::findById((int) $finished_good_id);

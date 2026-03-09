@@ -8,6 +8,7 @@
     </form>
     <?php if (is_editor()): ?>
         <a href="/raw-materials/create" class="btn btn-primary">+ Add Raw Material</a>
+        <a href="/formulas/mass-replace" class="btn btn-outline">RM Mass Replacement</a>
     <?php endif; ?>
 </div>
 

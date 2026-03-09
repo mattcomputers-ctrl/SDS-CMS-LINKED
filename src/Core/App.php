@@ -178,6 +178,8 @@ class App
         $router->post('/finished-goods/{id}',      'FinishedGoodController@update');
 
         // ── Formulas ─────────────────────────────────────────────────
+        $router->get('/formulas/mass-replace',                 'FormulaController@massReplace');
+        $router->post('/formulas/mass-replace',                'FormulaController@massReplaceSubmit');
         $router->get('/formulas/{finished_good_id}',           'FormulaController@index');
         $router->get('/formulas/{finished_good_id}/edit',      'FormulaController@edit');
         $router->post('/formulas/{finished_good_id}',          'FormulaController@update');

@@ -24,15 +24,38 @@ class AdminController
     private function requireAdmin(): void
     {
         if (!can_manage_users()) {
-            http_response_code(403);
-            $viewFile = dirname(__DIR__) . '/Views/errors/403.php';
-            if (file_exists($viewFile)) {
-                include $viewFile;
-            } else {
-                echo '<h1>403 — Forbidden</h1>';
-            }
-            exit;
+            $this->sendForbidden();
         }
+    }
+
+    /**
+     * Require a specific permission level on a page key.
+     * Defaults to 'read' (any access). Pass 'full' for write operations.
+     */
+    private function requirePageAccess(string $pageKey, string $minLevel = 'read'): void
+    {
+        $userId = current_user_id();
+        if ($minLevel === 'full') {
+            if (!PermissionService::canEdit($userId, $pageKey)) {
+                $this->sendForbidden();
+            }
+        } else {
+            if (!PermissionService::canRead($userId, $pageKey)) {
+                $this->sendForbidden();
+            }
+        }
+    }
+
+    private function sendForbidden(): never
+    {
+        http_response_code(403);
+        $viewFile = dirname(__DIR__) . '/Views/errors/403.php';
+        if (file_exists($viewFile)) {
+            include $viewFile;
+        } else {
+            echo '<h1>403 — Forbidden</h1>';
+        }
+        exit;
     }
 
     /* ------------------------------------------------------------------
@@ -491,7 +514,7 @@ class AdminController
 
     public function exemptVocs(): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('exempt_vocs');
         $db = Database::getInstance();
 
         $items = $db->fetchAll("SELECT * FROM exempt_voc_list ORDER BY cas_number");
@@ -504,7 +527,7 @@ class AdminController
 
     public function createExemptVoc(): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('exempt_vocs', 'full');
         view('admin/exempt-voc-form', [
             'pageTitle' => 'Add Exempt VOC',
             'item'      => null,
@@ -514,7 +537,7 @@ class AdminController
 
     public function storeExemptVoc(): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('exempt_vocs', 'full');
         CSRF::validateRequest();
 
         $db = Database::getInstance();
@@ -523,14 +546,14 @@ class AdminController
         if ($cas === '' || !preg_match('/^\d{1,7}-\d{2}-\d$/', $cas)) {
             $_SESSION['_flash']['error'] = 'A valid CAS number is required.';
             $_SESSION['_flash']['_old_input'] = $_POST;
-            redirect('/admin/exempt-vocs/create');
+            redirect('/exempt-vocs/create');
             return;
         }
 
         $existing = $db->fetch("SELECT id FROM exempt_voc_list WHERE cas_number = ?", [$cas]);
         if ($existing) {
             $_SESSION['_flash']['error'] = "CAS {$cas} is already in the exempt list.";
-            redirect('/admin/exempt-vocs');
+            redirect('/exempt-vocs');
             return;
         }
 
@@ -543,17 +566,17 @@ class AdminController
 
         AuditService::log('exempt_voc', $cas, 'create');
         $_SESSION['_flash']['success'] = "Exempt VOC {$cas} added.";
-        redirect('/admin/exempt-vocs');
+        redirect('/exempt-vocs');
     }
 
     public function editExemptVoc(string $id): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('exempt_vocs', 'full');
         $db = Database::getInstance();
         $item = $db->fetch("SELECT * FROM exempt_voc_list WHERE id = ?", [(int) $id]);
         if (!$item) {
             $_SESSION['_flash']['error'] = 'Exempt VOC not found.';
-            redirect('/admin/exempt-vocs');
+            redirect('/exempt-vocs');
             return;
         }
 
@@ -566,7 +589,7 @@ class AdminController
 
     public function updateExemptVoc(string $id): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('exempt_vocs', 'full');
         CSRF::validateRequest();
         $db = Database::getInstance();
 
@@ -578,12 +601,12 @@ class AdminController
 
         AuditService::log('exempt_voc', $id, 'update');
         $_SESSION['_flash']['success'] = 'Exempt VOC updated.';
-        redirect('/admin/exempt-vocs');
+        redirect('/exempt-vocs');
     }
 
     public function deleteExemptVoc(string $id): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('exempt_vocs', 'full');
         CSRF::validateRequest();
         $db = Database::getInstance();
 
@@ -592,7 +615,7 @@ class AdminController
 
         AuditService::log('exempt_voc', $item['cas_number'] ?? $id, 'delete');
         $_SESSION['_flash']['success'] = 'Exempt VOC removed.';
-        redirect('/admin/exempt-vocs');
+        redirect('/exempt-vocs');
     }
 
     /* ------------------------------------------------------------------
@@ -601,7 +624,7 @@ class AdminController
 
     public function determinations(): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('cas_determinations');
         $db = Database::getInstance();
 
         // Existing determinations
@@ -655,7 +678,7 @@ class AdminController
 
     public function createDetermination(): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('cas_determinations', 'full');
 
         // Pre-fill CAS number if passed via query string (from the needs-determination list)
         $prefillCas = trim($_GET['cas'] ?? '');
@@ -673,7 +696,7 @@ class AdminController
 
     public function storeDetermination(): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('cas_determinations', 'full');
         CSRF::validateRequest();
         $db = Database::getInstance();
 
@@ -683,7 +706,7 @@ class AdminController
         if ($cas === '' || $rationale === '') {
             $_SESSION['_flash']['error'] = 'CAS number and rationale are required.';
             $_SESSION['_flash']['_old_input'] = $_POST;
-            redirect('/admin/determinations/create');
+            redirect('/determinations/create');
             return;
         }
 
@@ -700,12 +723,12 @@ class AdminController
 
         AuditService::log('competent_determination', $id, 'create', ['cas' => $cas]);
         $_SESSION['_flash']['success'] = "Determination created for CAS {$cas}.";
-        redirect('/admin/determinations');
+        redirect('/determinations');
     }
 
     public function editDetermination(string $id): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('cas_determinations', 'full');
         $db = Database::getInstance();
 
         $item = $db->fetch(
@@ -717,7 +740,7 @@ class AdminController
         );
         if (!$item) {
             $_SESSION['_flash']['error'] = 'Determination not found.';
-            redirect('/admin/determinations');
+            redirect('/determinations');
             return;
         }
         $item['determination'] = json_decode($item['determination_json'] ?? '{}', true);
@@ -731,7 +754,7 @@ class AdminController
 
     public function updateDetermination(string $id): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('cas_determinations', 'full');
         CSRF::validateRequest();
         $db = Database::getInstance();
 
@@ -746,7 +769,7 @@ class AdminController
 
         AuditService::log('competent_determination', $id, 'update');
         $_SESSION['_flash']['success'] = 'Determination updated.';
-        redirect('/admin/determinations');
+        redirect('/determinations');
     }
 
     /**

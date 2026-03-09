@@ -194,6 +194,32 @@ class App
         $router->get('/sds/version/{id}/download',          'SDSController@download');
         $router->get('/sds/version/{id}/trace',             'SDSController@trace');
 
+        // ── CAS Determinations (permission-gated) ────────────────────
+        $router->get('/determinations',              'AdminController@determinations');
+        $router->get('/determinations/create',       'AdminController@createDetermination');
+        $router->post('/determinations',             'AdminController@storeDetermination');
+        $router->get('/determinations/{id}/edit',    'AdminController@editDetermination');
+        $router->post('/determinations/{id}',        'AdminController@updateDetermination');
+
+        // ── Exempt VOC Library (permission-gated) ───────────────────
+        $router->get('/exempt-vocs',              'AdminController@exemptVocs');
+        $router->get('/exempt-vocs/create',       'AdminController@createExemptVoc');
+        $router->post('/exempt-vocs',             'AdminController@storeExemptVoc');
+        $router->get('/exempt-vocs/{id}/edit',    'AdminController@editExemptVoc');
+        $router->post('/exempt-vocs/{id}',        'AdminController@updateExemptVoc');
+        $router->post('/exempt-vocs/{id}/delete', 'AdminController@deleteExemptVoc');
+
+        // ── Bulk SDS Publish (permission-gated) ─────────────────────
+        $router->get('/bulk-publish',                    'BulkPublishController@page');
+        $router->post('/bulk-publish/start',             'BulkPublishController@start');
+        $router->get('/bulk-publish/progress/{token}',   'BulkPublishController@progress');
+
+        // ── Bulk SDS Export (permission-gated) ──────────────────────
+        $router->get('/bulk-export',                      'ExportController@exportPage');
+        $router->post('/bulk-export/start',               'ExportController@startExport');
+        $router->get('/bulk-export/progress/{token}',     'ExportController@exportProgress');
+        $router->get('/bulk-export/download/{filename}',  'ExportController@downloadExport');
+
         // ── Admin routes (grouped under /admin) ──────────────────────
         $router->group('/admin', function (Router $r) {
             // Users
@@ -214,21 +240,6 @@ class App
             // Settings
             $r->get('/settings',  'AdminController@settings');
             $r->post('/settings', 'AdminController@saveSettings');
-
-            // Exempt VOC library
-            $r->get('/exempt-vocs',              'AdminController@exemptVocs');
-            $r->get('/exempt-vocs/create',       'AdminController@createExemptVoc');
-            $r->post('/exempt-vocs',             'AdminController@storeExemptVoc');
-            $r->get('/exempt-vocs/{id}/edit',    'AdminController@editExemptVoc');
-            $r->post('/exempt-vocs/{id}',        'AdminController@updateExemptVoc');
-            $r->post('/exempt-vocs/{id}/delete', 'AdminController@deleteExemptVoc');
-
-            // CAS number determinations
-            $r->get('/determinations',              'AdminController@determinations');
-            $r->get('/determinations/create',       'AdminController@createDetermination');
-            $r->post('/determinations',             'AdminController@storeDetermination');
-            $r->get('/determinations/{id}/edit',    'AdminController@editDetermination');
-            $r->post('/determinations/{id}',        'AdminController@updateDetermination');
 
             // Federal data
             $r->get('/federal-data',          'AdminController@federalData');
@@ -269,17 +280,6 @@ class App
             // Purge Data
             $r->get('/purge-data',  'AdminController@purgeData');
             $r->post('/purge-data', 'AdminController@executePurgeData');
-
-            // Bulk SDS Export
-            $r->get('/export',                      'ExportController@exportPage');
-            $r->post('/export/start',               'ExportController@startExport');
-            $r->get('/export/progress/{token}',     'ExportController@exportProgress');
-            $r->get('/export/download/{filename}',  'ExportController@downloadExport');
-
-            // Bulk SDS Publish
-            $r->get('/bulk-publish',                    'BulkPublishController@page');
-            $r->post('/bulk-publish/start',             'BulkPublishController@start');
-            $r->get('/bulk-publish/progress/{token}',   'BulkPublishController@progress');
         });
 
         // ── Dispatch ─────────────────────────────────────────────────

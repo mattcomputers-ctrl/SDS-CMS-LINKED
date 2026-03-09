@@ -29,8 +29,8 @@ class ExportController
      */
     public function exportAllFgSds(): void
     {
-        if (!is_admin()) {
-            $_SESSION['_flash']['error'] = 'Only administrators can export SDS files.';
+        if (!can_read('bulk_export')) {
+            $_SESSION['_flash']['error'] = 'You do not have permission to export SDS files.';
             redirect('/sds-book');
         }
 
@@ -120,7 +120,7 @@ class ExportController
      */
     public function exportPage(): void
     {
-        if (!is_admin()) {
+        if (!can_read('bulk_export')) {
             http_response_code(403);
             include dirname(__DIR__) . '/Views/errors/403.php';
             exit;
@@ -171,7 +171,7 @@ class ExportController
      */
     public function startExport(): void
     {
-        if (!is_admin()) {
+        if (!can_edit('bulk_export')) {
             $this->jsonResponse(['error' => 'Forbidden'], 403);
             return;
         }
@@ -297,7 +297,7 @@ class ExportController
      */
     public function exportProgress(string $token): void
     {
-        if (!is_admin()) {
+        if (!can_read('bulk_export')) {
             $this->jsonResponse(['error' => 'Forbidden'], 403);
             return;
         }
@@ -319,9 +319,9 @@ class ExportController
      */
     public function downloadExport(string $filename): void
     {
-        if (!is_admin()) {
-            $_SESSION['_flash']['error'] = 'Only administrators can download exports.';
-            redirect('/admin/export');
+        if (!can_read('bulk_export')) {
+            $_SESSION['_flash']['error'] = 'You do not have permission to download exports.';
+            redirect('/bulk-export');
             return;
         }
 
@@ -329,7 +329,7 @@ class ExportController
         $filename = basename($filename);
         if (!preg_match('/^SDS_Export_[\w-]+\.zip$/', $filename)) {
             $_SESSION['_flash']['error'] = 'Invalid export file.';
-            redirect('/admin/export');
+            redirect('/bulk-export');
             return;
         }
 
@@ -337,7 +337,7 @@ class ExportController
 
         if (!file_exists($filePath)) {
             $_SESSION['_flash']['error'] = 'Export file not found or has expired.';
-            redirect('/admin/export');
+            redirect('/bulk-export');
             return;
         }
 

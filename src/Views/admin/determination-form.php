@@ -23,10 +23,10 @@ $selectedPCodes = array_filter($selectedPCodes);
 $exposureLimits = json_decode($det['exposure_limits'] ?? ($old['exposure_limits_json'] ?? '[]'), true) ?: [];
 ?>
 
-<p><a href="/admin/determinations">&larr; Back to CAS Determinations</a></p>
+<p><a href="/determinations">&larr; Back to CAS Determinations</a></p>
 
 <div class="card">
-    <form method="POST" action="<?= $mode === 'create' ? '/admin/determinations' : '/admin/determinations/' . (int)$item['id'] ?>" id="determination-form">
+    <form method="POST" action="<?= $mode === 'create' ? '/determinations' : '/determinations/' . (int)$item['id'] ?>" id="determination-form">
         <?= csrf_field() ?>
 
         <h2><?= $mode === 'create' ? 'New CAS Number Determination' : 'Edit CAS Determination' ?></h2>

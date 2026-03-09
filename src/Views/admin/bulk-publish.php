@@ -96,7 +96,7 @@
 
         var formData = new FormData(form);
 
-        fetch('/admin/bulk-publish/start', {
+        fetch('/bulk-publish/start', {
             method: 'POST',
             body: formData
         })
@@ -115,7 +115,7 @@
 
     function pollProgress(token) {
         var interval = setInterval(function() {
-            fetch('/admin/bulk-publish/progress/' + token)
+            fetch('/bulk-publish/progress/' + token)
             .then(function(res) { return res.json(); })
             .then(function(data) {
                 if (data.error && !data.total) {

@@ -2,7 +2,7 @@
 
 <div class="d-flex justify-between align-center mb-1">
     <h2>CAS Number Determinations</h2>
-    <a href="/admin/determinations/create" class="btn btn-primary">+ New CAS Determination</a>
+    <a href="/determinations/create" class="btn btn-primary">+ New CAS Determination</a>
 </div>
 
 <p class="text-muted">When federal hazard data is missing for a CAS number, define the hazard determination here. Select hazard statements, H/P codes, and exposure limits. These are clearly marked as non-federal in Section 16.</p>
@@ -52,7 +52,7 @@
                         <?php endif; ?>
                     </td>
                     <td>
-                        <a href="/admin/determinations/create?cas=<?= urlencode($nd['cas_number']) ?>" class="btn btn-sm btn-primary">Create</a>
+                        <a href="/determinations/create?cas=<?= urlencode($nd['cas_number']) ?>" class="btn btn-sm btn-primary">Create</a>
                     </td>
                 </tr>
             <?php endforeach; ?>
@@ -89,7 +89,7 @@
                 <td><?= e($item['created_by_name'] ?? '—') ?></td>
                 <td><?= e($item['approved_by_name'] ?? '—') ?></td>
                 <td><?= e(date('m/d/Y', strtotime($item['created_at']))) ?></td>
-                <td><a href="/admin/determinations/<?= (int)$item['id'] ?>/edit" class="btn btn-sm">Edit</a></td>
+                <td><a href="/determinations/<?= (int)$item['id'] ?>/edit" class="btn btn-sm">Edit</a></td>
             </tr>
         <?php endforeach; ?>
         </tbody>

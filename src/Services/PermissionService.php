@@ -31,8 +31,12 @@ class PermissionService
         'rm_sds_book'      => 'RM SDS Book',
         'reports'          => 'Reports',
         'formulas'         => 'Formulas',
-        'sds'              => 'SDS Generation',
-        'rm_mass_replace'  => 'RM Mass Replacement',
+        'sds'                => 'SDS Generation',
+        'rm_mass_replace'    => 'RM Mass Replacement',
+        'cas_determinations' => 'CAS Determinations',
+        'bulk_publish'       => 'Bulk SDS Publish',
+        'bulk_export'        => 'Bulk SDS Export',
+        'exempt_vocs'        => 'Exempt VOC Library',
     ];
 
     /**

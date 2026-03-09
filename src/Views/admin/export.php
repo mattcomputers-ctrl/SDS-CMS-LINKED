@@ -20,7 +20,7 @@
                 — created <?= e($existingExport['created']) ?>
                 — expires in <?= e($existingExport['expires_in']) ?>
                 <br>
-                <a href="/admin/export/download/<?= e($existingExport['filename']) ?>" class="btn btn-sm btn-primary" style="margin-top: 0.5rem;">Download Previous Export</a>
+                <a href="/bulk-export/download/<?= e($existingExport['filename']) ?>" class="btn btn-sm btn-primary" style="margin-top: 0.5rem;">Download Previous Export</a>
             </div>
         <?php endif; ?>
 
@@ -91,7 +91,7 @@
 
         var formData = new FormData(form);
 
-        fetch('/admin/export/start', {
+        fetch('/bulk-export/start', {
             method: 'POST',
             body: formData
         })
@@ -110,7 +110,7 @@
 
     function pollProgress(token) {
         var interval = setInterval(function() {
-            fetch('/admin/export/progress/' + token)
+            fetch('/bulk-export/progress/' + token)
             .then(function(res) { return res.json(); })
             .then(function(data) {
                 if (data.error && !data.total) {
@@ -132,7 +132,7 @@
 
                     if (data.downloadFile) {
                         completeMsgEl.textContent = data.message;
-                        downloadLink.href = '/admin/export/download/' + data.downloadFile;
+                        downloadLink.href = '/bulk-export/download/' + data.downloadFile;
                         completeSizeEl.textContent = data.fileSize ? '(' + data.fileSize + ')' : '';
                         completeEl.style.display = 'block';
 

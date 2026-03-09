@@ -56,6 +56,10 @@ class AuthMiddleware
      */
     private const URI_TO_PAGE_KEY = [
         '/formulas/mass-replace' => 'rm_mass_replace',
+        '/determinations'        => 'cas_determinations',
+        '/exempt-vocs'           => 'exempt_vocs',
+        '/bulk-publish'          => 'bulk_publish',
+        '/bulk-export'           => 'bulk_export',
         '/raw-materials'         => 'raw_materials',
         '/finished-goods'        => 'finished_goods',
         '/lookup'                => 'fg_sds_lookup',

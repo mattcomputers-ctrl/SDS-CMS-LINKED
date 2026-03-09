@@ -2,7 +2,7 @@
 
 <div class="d-flex justify-between align-center mb-1">
     <h2>Exempt VOC Library</h2>
-    <a href="/admin/exempt-vocs/create" class="btn btn-primary">+ Add Exempt VOC</a>
+    <a href="/exempt-vocs/create" class="btn btn-primary">+ Add Exempt VOC</a>
 </div>
 
 <p class="text-muted">CAS numbers listed here are automatically treated as exempt VOC in all VOC calculations.</p>
@@ -28,8 +28,8 @@
             <td><?= e($item['regulation_ref'] ?? '') ?></td>
             <td><?= e($item['notes'] ?? '') ?></td>
             <td>
-                <a href="/admin/exempt-vocs/<?= (int)$item['id'] ?>/edit" class="btn btn-sm">Edit</a>
-                <form method="POST" action="/admin/exempt-vocs/<?= (int)$item['id'] ?>/delete" style="display:inline;">
+                <a href="/exempt-vocs/<?= (int)$item['id'] ?>/edit" class="btn btn-sm">Edit</a>
+                <form method="POST" action="/exempt-vocs/<?= (int)$item['id'] ?>/delete" style="display:inline;">
                     <?= csrf_field() ?>
                     <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Remove this exempt VOC?')">Delete</button>
                 </form>

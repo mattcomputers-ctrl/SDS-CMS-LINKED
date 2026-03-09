@@ -1,9 +1,9 @@
 <?php include dirname(__DIR__) . '/layouts/main.php'; ?>
 
-<p><a href="/admin/exempt-vocs">&larr; Back to Exempt VOC Library</a></p>
+<p><a href="/exempt-vocs">&larr; Back to Exempt VOC Library</a></p>
 
 <div class="card">
-    <form method="POST" action="<?= $mode === 'create' ? '/admin/exempt-vocs' : '/admin/exempt-vocs/' . (int)$item['id'] ?>">
+    <form method="POST" action="<?= $mode === 'create' ? '/exempt-vocs' : '/exempt-vocs/' . (int)$item['id'] ?>">
         <?= csrf_field() ?>
 
         <div class="form-grid-2col">

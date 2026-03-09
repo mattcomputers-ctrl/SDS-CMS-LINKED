@@ -81,7 +81,7 @@ class BulkPublishController
      */
     public function page(): void
     {
-        if (!is_admin()) {
+        if (!can_read('bulk_publish')) {
             http_response_code(403);
             include dirname(__DIR__) . '/Views/errors/403.php';
             exit;
@@ -115,7 +115,7 @@ class BulkPublishController
      */
     public function start(): void
     {
-        if (!is_admin()) {
+        if (!can_edit('bulk_publish')) {
             $this->jsonResponse(['error' => 'Forbidden'], 403);
             return;
         }
@@ -251,7 +251,7 @@ class BulkPublishController
      */
     public function progress(string $token): void
     {
-        if (!is_admin()) {
+        if (!can_edit('bulk_publish')) {
             $this->jsonResponse(['error' => 'Forbidden'], 403);
             return;
         }

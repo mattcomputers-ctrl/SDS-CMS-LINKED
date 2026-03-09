@@ -238,16 +238,16 @@ class ReportController
                 $line['item_code'],
                 $line['description'],
                 $line['qty_shipped'],
-                $line['voc_wt_pct'] !== null ? round($line['voc_wt_pct'], 4) : 'N/A',
-                $line['hap_wt_pct'] !== null ? round($line['hap_wt_pct'], 4) : 'N/A',
-                $line['voc_lbs'] !== null ? round($line['voc_lbs'], 4) : 'N/A',
-                $line['hap_lbs'] !== null ? round($line['hap_lbs'], 4) : 'N/A',
+                $line['voc_wt_pct'] !== null ? number_format($line['voc_wt_pct'], 2) : 'N/A',
+                $line['hap_wt_pct'] !== null ? number_format($line['hap_wt_pct'], 2) : 'N/A',
+                $line['voc_lbs'] !== null ? number_format($line['voc_lbs'], 2) : 'N/A',
+                $line['hap_lbs'] !== null ? number_format($line['hap_lbs'], 2) : 'N/A',
             ]);
         }
 
         // Totals
         fputcsv($output, []);
-        fputcsv($output, ['', '', '', 'TOTALS', '', '', round($totalVocLbs, 4), round($totalHapLbs, 4)]);
+        fputcsv($output, ['', '', '', 'TOTALS', '', '', number_format($totalVocLbs, 2), number_format($totalHapLbs, 2)]);
 
         // HAPs Breakdown
         fputcsv($output, []);
@@ -258,7 +258,7 @@ class ReportController
             fputcsv($output, ['No HAPs found in shipped products for this period.']);
         } else {
             foreach ($hapBreakdown as $cas => $entry) {
-                fputcsv($output, [$cas, $entry['name'], round($entry['lbs'], 4)]);
+                fputcsv($output, [$cas, $entry['name'], number_format($entry['lbs'], 2)]);
             }
         }
 
@@ -271,7 +271,7 @@ class ReportController
             fputcsv($output, ['No SARA 313 reportable chemicals found in shipped products for this period.']);
         } else {
             foreach ($saraBreakdown as $cas => $entry) {
-                fputcsv($output, [$cas, $entry['name'], round($entry['lbs'], 4)]);
+                fputcsv($output, [$cas, $entry['name'], number_format($entry['lbs'], 2)]);
             }
         }
 
@@ -330,6 +330,13 @@ class ReportController
         $customerValue = trim($_POST['customer_value'] ?? '');
         $dateFrom      = trim($_POST['date_from'] ?? '');
         $dateTo        = trim($_POST['date_to'] ?? '');
+        $exportLang    = trim($_POST['export_language'] ?? 'all');
+
+        // Validate language filter
+        $allowedLangs = ['all', 'en', 'es', 'fr', 'de'];
+        if (!in_array($exportLang, $allowedLangs, true)) {
+            $exportLang = 'all';
+        }
 
         if ($customerValue === '' || $dateFrom === '' || $dateTo === '') {
             $_SESSION['_flash']['error'] = 'Customer, date from, and date to are required.';
@@ -412,6 +419,12 @@ class ReportController
             $addedLangs = [];
             foreach ($versions as $v) {
                 $lang = strtolower($v['language']);
+
+                // Filter by selected language if not "all"
+                if ($exportLang !== 'all' && $lang !== $exportLang) {
+                    continue;
+                }
+
                 if (isset($addedLangs[$lang])) {
                     continue;
                 }
@@ -443,12 +456,14 @@ class ReportController
 
         if ($addedFiles === 0) {
             @unlink($tempZip);
-            $_SESSION['_flash']['warning'] = 'No published SDS PDFs found for the shipped items.';
+            $langLabel = $exportLang === 'all' ? '' : ' (' . strtoupper($exportLang) . ')';
+            $_SESSION['_flash']['warning'] = 'No published SDS PDFs' . $langLabel . ' found for the shipped items.';
             redirect('/reports');
         }
 
         $safeCustomer = preg_replace('/[^a-zA-Z0-9]/', '_', $customerValue);
-        $exportName = 'SDS_Export_' . $safeCustomer . '_' . date('Ymd') . '.zip';
+        $langSuffix = $exportLang !== 'all' ? '_' . strtoupper($exportLang) : '';
+        $exportName = 'SDS_Export_' . $safeCustomer . $langSuffix . '_' . date('Ymd') . '.zip';
 
         header('Content-Type: application/zip');
         header('Content-Disposition: attachment; filename="' . $exportName . '"');
@@ -559,32 +574,33 @@ class ReportController
             $calcData = $calcCache[$productCode];
 
             if ($calcData !== null) {
-                $vocWtPct = $calcData['voc_wt_pct'];
-                $hapWtPct = $calcData['hap_wt_pct'];
+                $vocWtPct = round($calcData['voc_wt_pct'], 2);
+                $hapWtPct = round($calcData['hap_wt_pct'], 2);
 
-                // lbs of VOC = qty_shipped * (voc_wt_pct / 100)
-                $vocLbs = $qtyShipped * ($vocWtPct / 100.0);
-                $hapLbs = $qtyShipped * ($hapWtPct / 100.0);
+                // lbs of VOC = qty_shipped * (voc_wt_pct / 100), rounded to 2 decimals
+                $vocLbs = round($qtyShipped * ($calcData['voc_wt_pct'] / 100.0), 2);
+                $hapLbs = round($qtyShipped * ($calcData['hap_wt_pct'] / 100.0), 2);
 
+                // Totals are summed from the rounded per-line values
                 $totalVocLbs += $vocLbs;
                 $totalHapLbs += $hapLbs;
 
-                // Aggregate individual HAP chemicals
+                // Aggregate individual HAP chemicals (round each line contribution)
                 foreach ($calcData['hap_chemicals'] as $hap) {
                     $cas  = $hap['cas_number'];
                     $name = $hap['chemical_name'];
-                    $lbs  = $qtyShipped * ((float) $hap['concentration_pct'] / 100.0);
+                    $lbs  = round($qtyShipped * ((float) $hap['concentration_pct'] / 100.0), 2);
                     if (!isset($hapBreakdown[$cas])) {
                         $hapBreakdown[$cas] = ['name' => $name, 'lbs' => 0.0];
                     }
                     $hapBreakdown[$cas]['lbs'] += $lbs;
                 }
 
-                // Aggregate individual SARA 313 reportable chemicals
+                // Aggregate individual SARA 313 reportable chemicals (round each line contribution)
                 foreach ($calcData['sara_reportable'] as $sara) {
                     $cas  = $sara['cas_number'];
                     $name = $sara['chemical_name'];
-                    $lbs  = $qtyShipped * ((float) $sara['concentration_pct'] / 100.0);
+                    $lbs  = round($qtyShipped * ((float) $sara['concentration_pct'] / 100.0), 2);
                     if (!isset($saraBreakdown[$cas])) {
                         $saraBreakdown[$cas] = ['name' => $name, 'lbs' => 0.0];
                     }

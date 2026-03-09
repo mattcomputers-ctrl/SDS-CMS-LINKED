@@ -69,10 +69,21 @@
                 <input type="date" name="date_to" id="date_to" class="form-control" required>
             </div>
         </div>
-        <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+        <input type="hidden" name="export_language" id="export_language" value="all">
+        <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap; align-items: center;">
             <button type="submit" class="btn btn-primary" formaction="/reports/generate" formmethod="POST">Download CSV</button>
             <button type="submit" class="btn btn-primary" formaction="/reports/generate-pdf" formmethod="POST">Download PDF</button>
-            <button type="submit" class="btn btn-outline" formaction="/reports/export-sds" formmethod="POST">Export SDS (ZIP)</button>
+            <div style="position: relative; display: inline-block;">
+                <button type="button" class="btn btn-outline" id="exportSdsBtn">Export SDS (ZIP) &#9662;</button>
+                <div id="exportSdsMenu" style="display: none; position: absolute; bottom: 100%; left: 0; margin-bottom: 4px; background: #fff; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 100; min-width: 200px;">
+                    <a href="#" class="export-sds-option" data-lang="en" style="display: block; padding: 0.5rem 1rem; text-decoration: none; color: #333; white-space: nowrap;">English Only</a>
+                    <a href="#" class="export-sds-option" data-lang="es" style="display: block; padding: 0.5rem 1rem; text-decoration: none; color: #333; white-space: nowrap;">Spanish Only</a>
+                    <a href="#" class="export-sds-option" data-lang="fr" style="display: block; padding: 0.5rem 1rem; text-decoration: none; color: #333; white-space: nowrap;">French Only</a>
+                    <a href="#" class="export-sds-option" data-lang="de" style="display: block; padding: 0.5rem 1rem; text-decoration: none; color: #333; white-space: nowrap;">German Only</a>
+                    <div style="border-top: 1px solid #eee;"></div>
+                    <a href="#" class="export-sds-option" data-lang="all" style="display: block; padding: 0.5rem 1rem; text-decoration: none; color: #333; font-weight: bold; white-space: nowrap;">All Languages</a>
+                </div>
+            </div>
         </div>
     </form>
 </div>
@@ -111,6 +122,45 @@ document.addEventListener('DOMContentLoaded', function() {
                         customerSelect.appendChild(opt);
                     });
                 });
+        });
+    }
+
+    // Export SDS dropdown
+    var exportBtn = document.getElementById('exportSdsBtn');
+    var exportMenu = document.getElementById('exportSdsMenu');
+    var exportForm = document.getElementById('reportForm');
+    var exportLangInput = document.getElementById('export_language');
+
+    if (exportBtn && exportMenu) {
+        exportBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            exportMenu.style.display = exportMenu.style.display === 'none' ? 'block' : 'none';
+        });
+
+        // Close menu when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!exportBtn.contains(e.target) && !exportMenu.contains(e.target)) {
+                exportMenu.style.display = 'none';
+            }
+        });
+
+        // Handle menu option clicks
+        var options = exportMenu.querySelectorAll('.export-sds-option');
+        options.forEach(function(opt) {
+            opt.addEventListener('mouseenter', function() {
+                this.style.backgroundColor = '#f0f0f0';
+            });
+            opt.addEventListener('mouseleave', function() {
+                this.style.backgroundColor = '';
+            });
+            opt.addEventListener('click', function(e) {
+                e.preventDefault();
+                exportMenu.style.display = 'none';
+                exportLangInput.value = this.getAttribute('data-lang');
+                exportForm.action = '/reports/export-sds';
+                exportForm.method = 'POST';
+                exportForm.submit();
+            });
         });
     }
 });

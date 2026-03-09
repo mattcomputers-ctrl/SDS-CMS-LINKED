@@ -240,11 +240,12 @@ class ReportPDFService
                 $pdf->SetFont('helvetica', '', 8);
             }
 
+            $roundedLbs = round($entry['lbs'], 2);
             $pdf->Cell($w[0], 5, $cas, 1, 0, 'C', $fill);
             $pdf->Cell($w[1], 5, $this->truncate($entry['name'], 72), 1, 0, 'L', $fill);
-            $pdf->Cell($w[2], 5, number_format($entry['lbs'], 4), 1, 0, 'R', $fill);
+            $pdf->Cell($w[2], 5, number_format($roundedLbs, 2), 1, 0, 'R', $fill);
             $pdf->Ln();
-            $totalLbs += $entry['lbs'];
+            $totalLbs += $roundedLbs;
             $rowIdx++;
         }
 
@@ -253,7 +254,7 @@ class ReportPDFService
         $pdf->SetFillColor(...self::COLOR_NAVY);
         $pdf->SetTextColor(255, 255, 255);
         $pdf->Cell($w[0] + $w[1], 6, 'TOTAL HAPs', 1, 0, 'R', true);
-        $pdf->Cell($w[2], 6, number_format($totalLbs, 4), 1, 0, 'R', true);
+        $pdf->Cell($w[2], 6, number_format($totalLbs, 2), 1, 0, 'R', true);
         $pdf->Ln();
         $pdf->SetTextColor(0, 0, 0);
 
@@ -308,11 +309,12 @@ class ReportPDFService
                 $pdf->SetFont('helvetica', '', 8);
             }
 
+            $roundedLbs = round($entry['lbs'], 2);
             $pdf->Cell($w[0], 5, $cas, 1, 0, 'C', $fill);
             $pdf->Cell($w[1], 5, $this->truncate($entry['name'], 72), 1, 0, 'L', $fill);
-            $pdf->Cell($w[2], 5, number_format($entry['lbs'], 4), 1, 0, 'R', $fill);
+            $pdf->Cell($w[2], 5, number_format($roundedLbs, 2), 1, 0, 'R', $fill);
             $pdf->Ln();
-            $totalLbs += $entry['lbs'];
+            $totalLbs += $roundedLbs;
             $rowIdx++;
         }
 
@@ -321,7 +323,7 @@ class ReportPDFService
         $pdf->SetFillColor(...self::COLOR_NAVY);
         $pdf->SetTextColor(255, 255, 255);
         $pdf->Cell($w[0] + $w[1], 6, 'TOTAL SARA 313', 1, 0, 'R', true);
-        $pdf->Cell($w[2], 6, number_format($totalLbs, 4), 1, 0, 'R', true);
+        $pdf->Cell($w[2], 6, number_format($totalLbs, 2), 1, 0, 'R', true);
         $pdf->Ln();
         $pdf->SetTextColor(0, 0, 0);
 

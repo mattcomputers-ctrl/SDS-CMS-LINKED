@@ -26,7 +26,7 @@
                 <th>Current SDS</th>
                 <th>Date</th>
                 <th>History</th>
-                <th>Actions</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
@@ -45,14 +45,6 @@
                 </td>
                 <td style="white-space: nowrap;">
                     <a href="<?= e($r['view_url']) ?>" target="_blank" class="btn btn-sm btn-primary">View PDF</a>
-                    <a href="<?= e($r['edit_url']) ?>" class="btn btn-sm btn-outline">Edit</a>
-                    <?php if (is_admin()): ?>
-                        <form method="POST" action="/sds-book/delete-supplier/<?= (int) $r['id'] ?>" class="inline-form"
-                              onsubmit="return confirm('Clear the current SDS for this raw material? Historical SDS files are preserved.')">
-                            <?= csrf_field() ?>
-                            <button type="submit" class="btn btn-sm btn-danger">Clear</button>
-                        </form>
-                    <?php endif; ?>
                 </td>
             </tr>
         <?php endforeach; ?>

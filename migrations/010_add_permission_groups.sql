@@ -21,13 +21,13 @@ CREATE TABLE IF NOT EXISTS `permission_groups` (
 -- -----------------------------------------------------------
 -- Group Permissions — per-page access level for each group
 -- page_key matches a route/section identifier
--- access_level: none, read, read_edit, read_edit_delete
+-- access_level: none, read, full
 -- -----------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `group_permissions` (
     `id`           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `group_id`     INT UNSIGNED NOT NULL,
     `page_key`     VARCHAR(100) NOT NULL COMMENT 'e.g. dashboard, raw_materials, finished_goods',
-    `access_level` ENUM('none','read','read_edit','read_edit_delete') NOT NULL DEFAULT 'none',
+    `access_level` ENUM('none','read','full') NOT NULL DEFAULT 'none',
     UNIQUE INDEX `idx_gp_group_page` (`group_id`, `page_key`),
     CONSTRAINT `fk_gp_group` FOREIGN KEY (`group_id`) REFERENCES `permission_groups`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -10,10 +10,9 @@ use SDS\Core\Database;
  * PermissionService — Group-based, per-page permission checks.
  *
  * Access levels (ordered):
- *   none             — cannot see or access the page
- *   read             — view only
- *   read_edit        — view and modify
- *   read_edit_delete — view, modify, and delete
+ *   none — cannot see or access the page
+ *   read — view only
+ *   full — full access (view, edit, delete)
  *
  * The admin user (role='admin') always has full access.
  * Users in an admin group (is_admin=1) also have full access.
@@ -40,16 +39,15 @@ class PermissionService
      * Access level labels for display.
      */
     public const ACCESS_LEVELS = [
-        'none'             => 'No Access',
-        'read'             => 'Read Only',
-        'read_edit'        => 'Read & Edit',
-        'read_edit_delete' => 'Read, Edit & Delete',
+        'none' => 'None',
+        'read' => 'Read Only',
+        'full' => 'Full Access',
     ];
 
     /**
      * Get the effective access level for a user on a given page.
      * Returns the highest access level across all the user's groups.
-     * Admin users always get 'read_edit_delete'.
+     * Admin users always get 'full'.
      */
     public static function getAccess(?int $userId, string $pageKey): string
     {
@@ -60,7 +58,7 @@ class PermissionService
         // Admin role always has full access
         $user = $_SESSION['_user'] ?? null;
         if ($user && ($user['role'] ?? '') === 'admin') {
-            return 'read_edit_delete';
+            return 'full';
         }
 
         try {
@@ -75,7 +73,7 @@ class PermissionService
                 [$userId]
             );
             if ($adminGroup) {
-                return 'read_edit_delete';
+                return 'full';
             }
 
             // Check if user has ANY group memberships
@@ -95,7 +93,7 @@ class PermissionService
                  FROM user_group_members ugm
                  JOIN group_permissions gp ON gp.group_id = ugm.group_id
                  WHERE ugm.user_id = ? AND gp.page_key = ?
-                 ORDER BY FIELD(gp.access_level, 'none', 'read', 'read_edit', 'read_edit_delete') DESC
+                 ORDER BY FIELD(gp.access_level, 'none', 'read', 'full') DESC
                  LIMIT 1",
                 [$userId, $pageKey]
             );
@@ -118,8 +116,8 @@ class PermissionService
         }
         $role = $user['role'] ?? '';
         return match ($role) {
-            'admin'  => 'read_edit_delete',
-            'editor' => 'read_edit',
+            'admin'  => 'full',
+            'editor' => 'full',
             'readonly' => 'read',
             default  => 'none',
         };
@@ -130,23 +128,23 @@ class PermissionService
      */
     public static function canRead(?int $userId, string $pageKey): bool
     {
-        return in_array(self::getAccess($userId, $pageKey), ['read', 'read_edit', 'read_edit_delete'], true);
+        return in_array(self::getAccess($userId, $pageKey), ['read', 'full'], true);
     }
 
     /**
-     * Check if user can edit on a page.
+     * Check if user has full access on a page (edit, delete, etc.).
      */
     public static function canEdit(?int $userId, string $pageKey): bool
     {
-        return in_array(self::getAccess($userId, $pageKey), ['read_edit', 'read_edit_delete'], true);
+        return self::getAccess($userId, $pageKey) === 'full';
     }
 
     /**
-     * Check if user can delete on a page.
+     * Check if user has full access on a page.
      */
     public static function canDelete(?int $userId, string $pageKey): bool
     {
-        return self::getAccess($userId, $pageKey) === 'read_edit_delete';
+        return self::getAccess($userId, $pageKey) === 'full';
     }
 
     /**
@@ -306,7 +304,7 @@ class PermissionService
         $db->delete('group_permissions', 'group_id = ?', [$groupId]);
 
         // Insert new
-        $validLevels = ['none', 'read', 'read_edit', 'read_edit_delete'];
+        $validLevels = ['none', 'read', 'full'];
         foreach ($permissions as $pageKey => $level) {
             if (!array_key_exists($pageKey, self::PAGE_KEYS)) {
                 continue;

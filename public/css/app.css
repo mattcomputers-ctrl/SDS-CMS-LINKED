@@ -427,6 +427,73 @@ h1, h2, h3 { font-weight: 600; margin-bottom: 0.5rem; }
     .hazard-checkbox-row { flex-wrap: wrap; gap: 0.3rem; }
 }
 
+/* ---- Searchable Select ---- */
+.ss-wrapper {
+    position: relative;
+    width: 100%;
+}
+.ss-input {
+    width: 100%;
+    padding: 0.4rem 2rem 0.4rem 0.6rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    background: #fff;
+    cursor: pointer;
+}
+.ss-input::placeholder { color: #333; opacity: 1; }
+.ss-wrapper.ss-active .ss-input {
+    border-color: #003366;
+    box-shadow: 0 0 0 2px rgba(0,51,102,0.15);
+    cursor: text;
+}
+.ss-wrapper.ss-active .ss-input::placeholder { color: #aaa; }
+.ss-clear {
+    position: absolute;
+    right: 0.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 1.1rem;
+    color: #999;
+    cursor: pointer;
+    display: none;
+    line-height: 1;
+    z-index: 2;
+}
+.ss-clear:hover { color: #dc3545; }
+.ss-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    max-height: 240px;
+    overflow-y: auto;
+    z-index: 200;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+}
+.ss-option {
+    padding: 0.35rem 0.6rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    border-bottom: 1px solid #f5f5f5;
+}
+.ss-option:last-child { border-bottom: none; }
+.ss-option:hover, .ss-option.ss-hover { background: #e8f0fe; }
+.ss-option.ss-selected { background: #d6e4f0; font-weight: 600; }
+.ss-option strong { color: #003366; }
+.ss-empty {
+    padding: 0.5rem 0.6rem;
+    color: #888;
+    font-size: 0.85rem;
+    font-style: italic;
+}
+
 /* ---- Extra small (≤ 400px) ---- */
 @media (max-width: 400px) {
     .container { padding: 0.5rem 0.75rem; }

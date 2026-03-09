@@ -87,7 +87,7 @@ $lines  = $formula ? ($formula['lines'] ?? []) : [];
                 <tr class="formula-line">
                     <td><?= $i + 1 ?></td>
                     <td>
-                        <select name="raw_material_id[<?= $i ?>]">
+                        <select name="raw_material_id[<?= $i ?>]" class="searchable-select">
                             <option value="">— Select —</option>
                             <?php foreach ($rawMaterials as $rm): ?>
                                 <option value="<?= (int) $rm['id'] ?>" <?= ((int) ($line['raw_material_id'] ?? 0)) === (int) $rm['id'] ? 'selected' : '' ?>>
@@ -157,7 +157,7 @@ document.getElementById('addLine').addEventListener('click', function() {
         options += '<option value="' + rm.id + '">' + rm.label.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</option>';
     });
     tr.innerHTML = '<td>' + (idx + 1) + '</td>' +
-        '<td><select name="raw_material_id[' + idx + ']">' + options + '</select></td>' +
+        '<td><select name="raw_material_id[' + idx + ']" class="searchable-select">' + options + '</select></td>' +
         '<td><input type="number" name="pct[' + idx + ']" step="0.0001" min="0" max="100" class="input-sm formula-pct"></td>' +
         '<td><button type="button" class="btn btn-sm btn-danger remove-line">X</button></td>';
     tbody.appendChild(tr);

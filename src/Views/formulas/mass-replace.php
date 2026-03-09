@@ -14,7 +14,7 @@
 
         <div class="form-group" style="margin-bottom: 1.25rem;">
             <label for="old_raw_material_id"><strong>Old Raw Material</strong> (to be replaced)</label>
-            <select name="old_raw_material_id" id="old_raw_material_id" required style="width: 100%;">
+            <select name="old_raw_material_id" id="old_raw_material_id" required style="width: 100%;" class="searchable-select">
                 <option value="">-- Select Old Raw Material --</option>
                 <?php foreach ($rawMaterials as $rm): ?>
                     <option value="<?= (int) $rm['id'] ?>">
@@ -26,7 +26,7 @@
 
         <div class="form-group" style="margin-bottom: 1.25rem;">
             <label for="new_raw_material_id"><strong>New Raw Material</strong> (replacement)</label>
-            <select name="new_raw_material_id" id="new_raw_material_id" required style="width: 100%;">
+            <select name="new_raw_material_id" id="new_raw_material_id" required style="width: 100%;" class="searchable-select">
                 <option value="">-- Select New Raw Material --</option>
                 <?php foreach ($rawMaterials as $rm): ?>
                     <option value="<?= (int) $rm['id'] ?>">

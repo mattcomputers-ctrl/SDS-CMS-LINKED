@@ -76,7 +76,13 @@
             </ul>
             <div class="navbar-user">
                 <span class="navbar-user-name"><?= e($_SESSION['_user']['display_name'] ?: $_SESSION['_user']['username']) ?></span>
-                <span class="badge badge-<?= $_SESSION['_user']['role'] ?>"><?= e(str_replace('_', ' ', $_SESSION['_user']['role'])) ?></span>
+                <?php
+                $navUserGroups = \SDS\Services\PermissionService::getUserGroups((int) $_SESSION['_user']['id']);
+                if (!empty($navUserGroups)):
+                    $navGroup = $navUserGroups[0];
+                ?>
+                <span class="badge badge-<?= (int) $navGroup['is_admin'] ? 'admin' : 'editor' ?>"><?= e($navGroup['name']) ?></span>
+                <?php endif; ?>
                 <a href="/logout" class="btn btn-sm btn-logout">Logout</a>
             </div>
         </div>

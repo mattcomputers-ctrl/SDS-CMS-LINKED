@@ -3,13 +3,6 @@
 <div class="toolbar">
     <form method="GET" action="/admin/users" class="search-form">
         <input type="text" name="search" value="<?= e($filters['search']) ?>" placeholder="Search users...">
-        <select name="role">
-            <option value="">All Roles</option>
-            <option value="admin" <?= ($filters['role'] === 'admin') ? 'selected' : '' ?>>Admin</option>
-            <option value="editor" <?= ($filters['role'] === 'editor') ? 'selected' : '' ?>>Editor</option>
-            <option value="readonly" <?= ($filters['role'] === 'readonly') ? 'selected' : '' ?>>Read-Only</option>
-            <option value="sds_book_only" <?= ($filters['role'] === 'sds_book_only') ? 'selected' : '' ?>>SDS Book Only</option>
-        </select>
         <button type="submit" class="btn btn-sm">Filter</button>
     </form>
     <a href="/admin/users/create" class="btn btn-primary">+ Add User</a>
@@ -17,7 +10,7 @@
 
 <table class="table">
     <thead>
-        <tr><th>Username</th><th>Display Name</th><th>Email</th><th>Role</th><th>Groups</th><th>Active</th><th>Last Login</th><th>Actions</th></tr>
+        <tr><th>Username</th><th>Display Name</th><th>Email</th><th>Permission Group</th><th>Active</th><th>Last Login</th><th>Actions</th></tr>
     </thead>
     <tbody>
     <?php foreach ($items as $item): ?>
@@ -25,12 +18,15 @@
             <td><strong><?= e($item['username']) ?></strong></td>
             <td><?= e($item['display_name']) ?></td>
             <td><?= $item['email'] ? e($item['email']) : '<span class="text-muted">—</span>' ?></td>
-            <td><span class="badge badge-<?= $item['role'] ?>"><?= e($item['role']) ?></span></td>
             <td>
                 <?php
                 $userGroups = \SDS\Services\PermissionService::getUserGroups((int) $item['id']);
                 if ($userGroups):
-                    echo implode(', ', array_map(fn($g) => e($g['name']), $userGroups));
+                    $g = $userGroups[0];
+                    echo e($g['name']);
+                    if ((int) $g['is_admin']) {
+                        echo ' <span class="badge badge-admin">Admin</span>';
+                    }
                 else:
                     echo '<span class="text-muted">—</span>';
                 endif;

@@ -14,8 +14,7 @@ use SDS\Core\Database;
  *   read — view only
  *   full — full access (view, edit, delete)
  *
- * The admin user (role='admin') always has full access.
- * Users in an admin group (is_admin=1) also have full access.
+ * Users in an admin group (is_admin=1) have full access to everything.
  */
 class PermissionService
 {
@@ -51,18 +50,12 @@ class PermissionService
     /**
      * Get the effective access level for a user on a given page.
      * Returns the highest access level across all the user's groups.
-     * Admin users always get 'full'.
+     * Users in an admin group always get 'full'.
      */
     public static function getAccess(?int $userId, string $pageKey): string
     {
         if ($userId === null) {
             return 'none';
-        }
-
-        // Admin role always has full access
-        $user = $_SESSION['_user'] ?? null;
-        if ($user && ($user['role'] ?? '') === 'admin') {
-            return 'full';
         }
 
         try {
@@ -86,9 +79,9 @@ class PermissionService
                 [$userId]
             );
 
-            // If user has no group memberships, fall back to legacy role-based access
+            // If user has no group memberships, no access
             if (!$hasMembership) {
-                return self::legacyRoleAccess($user);
+                return 'none';
             }
 
             // Get the highest permission across all user's groups for this page
@@ -104,27 +97,8 @@ class PermissionService
 
             return $row['access_level'] ?? 'none';
         } catch (\Throwable $e) {
-            // Tables may not exist yet — fall back to legacy role-based access
-            return self::legacyRoleAccess($user);
-        }
-    }
-
-    /**
-     * Legacy fallback: derive access from the old role column.
-     * Used when user has no group memberships or tables don't exist.
-     */
-    private static function legacyRoleAccess(?array $user): string
-    {
-        if (!$user) {
             return 'none';
         }
-        $role = $user['role'] ?? '';
-        return match ($role) {
-            'admin'  => 'full',
-            'editor' => 'full',
-            'readonly' => 'read',
-            default  => 'none',
-        };
     }
 
     /**
@@ -165,7 +139,7 @@ class PermissionService
     }
 
     /**
-     * Check if the current user can manage users/groups (admin only).
+     * Check if the current user can manage users/groups (admin group only).
      */
     public static function canManageUsersAndGroups(): bool
     {
@@ -174,13 +148,7 @@ class PermissionService
             return false;
         }
 
-        // Admin role always can
-        if (($user['role'] ?? '') === 'admin') {
-            return true;
-        }
-
         try {
-            // Users in an admin group can
             $db = Database::getInstance();
             $row = $db->fetch(
                 "SELECT 1 FROM user_group_members ugm
@@ -192,7 +160,6 @@ class PermissionService
 
             return $row !== null;
         } catch (\Throwable $e) {
-            // Tables don't exist yet — only role-based admin
             return false;
         }
     }

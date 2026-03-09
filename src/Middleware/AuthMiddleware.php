@@ -10,8 +10,8 @@ use SDS\Services\PermissionService;
  * Public paths (login page, logout, static assets) are excluded from
  * the check so they remain accessible without a session.
  *
- * Users with the 'sds_book_only' role are restricted to the SDS Book
- * and their own logout route.
+ * Users whose permission group only grants SDS Book access are
+ * restricted to the SDS Book and their own logout route.
  *
  * Group-based permissions are enforced for authenticated users:
  * pages the user has 'none' access to will return 403.
@@ -97,7 +97,7 @@ class AuthMiddleware
             redirect('/sds-book');
         }
 
-        // Admin routes — require admin role or admin group
+        // Admin routes — require admin permission group
         if (str_starts_with($uri, '/admin')) {
             if (!can_manage_users()) {
                 $this->sendForbidden();

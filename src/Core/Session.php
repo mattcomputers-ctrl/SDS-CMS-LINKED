@@ -160,7 +160,7 @@ class Session
     /**
      * Store the authenticated user in the session.
      *
-     * @param array $user  Should contain at least: id, username, role
+     * @param array $user  Should contain at least: id, username
      */
     public function setUser(array $user): void
     {

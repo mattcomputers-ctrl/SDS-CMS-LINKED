@@ -8,14 +8,14 @@
         <a href="/sds/<?= (int) $finishedGood['id'] ?>/preview?lang=es" class="btn btn-outline">Preview (ES)</a>
         <a href="/sds/<?= (int) $finishedGood['id'] ?>/preview?lang=fr" class="btn btn-outline">Preview (FR)</a>
         <a href="/sds/<?= (int) $finishedGood['id'] ?>/preview?lang=de" class="btn btn-outline">Preview (DE)</a>
-        <?php if (is_editor()): ?>
+        <?php if (can_edit('sds')): ?>
             | <a href="/sds/<?= (int) $finishedGood['id'] ?>/edit" class="btn btn-outline">Edit (EN)</a>
             <a href="/sds/<?= (int) $finishedGood['id'] ?>/edit?lang=es" class="btn btn-outline">Edit (ES)</a>
             <a href="/sds/<?= (int) $finishedGood['id'] ?>/edit?lang=fr" class="btn btn-outline">Edit (FR)</a>
             <a href="/sds/<?= (int) $finishedGood['id'] ?>/edit?lang=de" class="btn btn-outline">Edit (DE)</a>
         <?php endif; ?>
     </div>
-    <?php if (is_editor()): ?>
+    <?php if (can_edit('sds')): ?>
     <form method="POST" action="/sds/<?= (int) $finishedGood['id'] ?>/publish" class="inline-form">
         <?= csrf_field() ?>
         <input type="text" name="change_summary" placeholder="Change summary (optional)" class="input-md">

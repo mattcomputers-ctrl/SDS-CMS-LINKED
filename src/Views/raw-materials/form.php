@@ -332,7 +332,7 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
     </form>
 </div>
 
-<?php if ($isEdit && is_admin()): ?>
+<?php if ($isEdit && can_manage_users()): ?>
 <div class="card card-danger">
     <h3>Danger Zone</h3>
     <form method="POST" action="/raw-materials/<?= (int) $item['id'] ?>/delete" onsubmit="return confirm('Delete this raw material? This cannot be undone.');">

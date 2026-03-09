@@ -67,7 +67,7 @@ class SDSController
 
     public function edit(string $finished_good_id): void
     {
-        if (!is_editor()) {
+        if (!can_edit('sds')) {
             $_SESSION['_flash']['error'] = 'Permission denied.';
             redirect('/sds/' . $finished_good_id);
         }
@@ -113,7 +113,7 @@ class SDSController
 
     public function saveEdits(string $finished_good_id): void
     {
-        if (!is_editor()) {
+        if (!can_edit('sds')) {
             $_SESSION['_flash']['error'] = 'Permission denied.';
             redirect('/sds/' . $finished_good_id);
         }
@@ -187,7 +187,7 @@ class SDSController
 
     public function publish(string $finished_good_id): void
     {
-        if (!is_editor()) {
+        if (!can_edit('sds')) {
             $_SESSION['_flash']['error'] = 'Permission denied.';
             redirect('/sds/' . $finished_good_id);
         }

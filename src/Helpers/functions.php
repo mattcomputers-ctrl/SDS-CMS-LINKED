@@ -256,47 +256,8 @@ function sanitize_filename(string $name): string
 }
 
 /* ------------------------------------------------------------------
- *  Role / auth convenience functions
+ *  Auth convenience functions (permission-group based)
  * ----------------------------------------------------------------*/
-
-/**
- * Is the current session user an admin?
- */
-function is_admin(): bool
-{
-    $user = $_SESSION['_user'] ?? null;
-    return $user !== null && ($user['role'] ?? '') === 'admin';
-}
-
-/**
- * Is the current session user an editor (or higher)?
- */
-function is_editor(): bool
-{
-    $user = $_SESSION['_user'] ?? null;
-    if ($user === null) {
-        return false;
-    }
-    return in_array($user['role'] ?? '', ['admin', 'editor'], true);
-}
-
-/**
- * Is the current session user read-only?
- */
-function is_readonly(): bool
-{
-    $user = $_SESSION['_user'] ?? null;
-    return $user !== null && ($user['role'] ?? '') === 'readonly';
-}
-
-/**
- * Is the current session user restricted to SDS Book only?
- */
-function is_sds_book_only(): bool
-{
-    $user = $_SESSION['_user'] ?? null;
-    return $user !== null && ($user['role'] ?? '') === 'sds_book_only';
-}
 
 /**
  * Return the current user's ID, or null if not logged in.
@@ -305,6 +266,28 @@ function current_user_id(): ?int
 {
     $user = $_SESSION['_user'] ?? null;
     return $user !== null ? (int) ($user['id'] ?? 0) ?: null : null;
+}
+
+/**
+ * Is the current session user in an admin permission group?
+ */
+function is_admin(): bool
+{
+    return can_manage_users();
+}
+
+/**
+ * Is the current user restricted to only the SDS Book?
+ * Returns true if the user can read the SDS book but cannot read the dashboard.
+ */
+function is_sds_book_only(): bool
+{
+    $userId = current_user_id();
+    if ($userId === null) {
+        return false;
+    }
+    return \SDS\Services\PermissionService::canRead($userId, 'rm_sds_book')
+        && !\SDS\Services\PermissionService::canRead($userId, 'dashboard');
 }
 
 /* ------------------------------------------------------------------

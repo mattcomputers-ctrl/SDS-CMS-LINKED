@@ -40,7 +40,7 @@ class FinishedGoodController
 
     public function create(): void
     {
-        if (!is_editor()) {
+        if (!can_edit('finished_goods')) {
             $_SESSION['_flash']['error'] = 'You do not have permission to create finished goods.';
             redirect('/finished-goods');
         }
@@ -60,7 +60,7 @@ class FinishedGoodController
 
     public function store(): void
     {
-        if (!is_editor()) {
+        if (!can_edit('finished_goods')) {
             redirect('/finished-goods');
         }
 
@@ -109,7 +109,7 @@ class FinishedGoodController
 
     public function update(string $id): void
     {
-        if (!is_editor()) {
+        if (!can_edit('finished_goods')) {
             redirect('/finished-goods');
         }
 

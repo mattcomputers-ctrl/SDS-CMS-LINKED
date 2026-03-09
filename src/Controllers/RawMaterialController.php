@@ -35,7 +35,7 @@ class RawMaterialController
 
     public function create(): void
     {
-        if (!is_editor()) {
+        if (!can_edit('raw_materials')) {
             $_SESSION['_flash']['error'] = 'You do not have permission to create raw materials.';
             redirect('/raw-materials');
         }
@@ -52,7 +52,7 @@ class RawMaterialController
 
     public function store(): void
     {
-        if (!is_editor()) {
+        if (!can_edit('raw_materials')) {
             redirect('/raw-materials');
         }
 
@@ -125,7 +125,7 @@ class RawMaterialController
 
     public function update(string $id): void
     {
-        if (!is_editor()) {
+        if (!can_edit('raw_materials')) {
             redirect('/raw-materials');
         }
 
@@ -182,7 +182,7 @@ class RawMaterialController
 
     public function delete(string $id): void
     {
-        if (!is_admin()) {
+        if (!can_manage_users()) {
             $_SESSION['_flash']['error'] = 'Only administrators can delete raw materials.';
             redirect('/raw-materials');
         }
@@ -268,7 +268,7 @@ class RawMaterialController
      */
     public function saveConstituents(string $id): void
     {
-        if (!is_editor()) {
+        if (!can_edit('raw_materials')) {
             redirect('/raw-materials');
         }
 

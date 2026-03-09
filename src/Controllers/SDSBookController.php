@@ -81,7 +81,7 @@ class SDSBookController
      */
     public function deleteSupplierSds(string $id): void
     {
-        if (!is_admin()) {
+        if (!can_manage_users()) {
             $_SESSION['_flash']['error'] = 'Only administrators can remove SDS entries.';
             redirect('/sds-book');
         }
@@ -108,7 +108,7 @@ class SDSBookController
      */
     public function deleteFgSds(string $id): void
     {
-        if (!is_admin()) {
+        if (!can_manage_users()) {
             $_SESSION['_flash']['error'] = 'Only administrators can remove SDS entries.';
             redirect('/sds-book');
         }

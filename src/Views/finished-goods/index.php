@@ -11,7 +11,7 @@
         </select>
         <button type="submit" class="btn btn-sm">Search</button>
     </form>
-    <?php if (is_editor()): ?>
+    <?php if (can_edit('finished_goods')): ?>
         <a href="/finished-goods/create" class="btn btn-primary">+ Add Product</a>
     <?php endif; ?>
 </div>

@@ -7,9 +7,9 @@ namespace SDS\Models;
 use SDS\Core\Database;
 
 /**
- * User Model — authentication, role management, CRUD.
+ * User Model — authentication, CRUD.
  *
- * Passwords are hashed with Argon2id. Roles: admin, editor, readonly.
+ * Passwords are hashed with Argon2id.
  */
 class User
 {
@@ -27,7 +27,7 @@ class User
     {
         $db = Database::getInstance();
         $row = $db->fetch(
-            "SELECT id, username, email, display_name, role, is_active,
+            "SELECT id, username, email, display_name, is_active,
                     created_at, updated_at, last_login
              FROM users WHERE id = ?",
             [$id]
@@ -42,7 +42,7 @@ class User
     {
         $db = Database::getInstance();
         return $db->fetch(
-            "SELECT id, username, email, password_hash, display_name, role,
+            "SELECT id, username, email, password_hash, display_name,
                     is_active, created_at, updated_at, last_login
              FROM users WHERE username = ?",
             [$username]
@@ -56,7 +56,7 @@ class User
     {
         $db = Database::getInstance();
         return $db->fetch(
-            "SELECT id, username, email, display_name, role, is_active,
+            "SELECT id, username, email, display_name, is_active,
                     created_at, updated_at, last_login
              FROM users WHERE email = ?",
             [$email]
@@ -71,7 +71,6 @@ class User
      * Return a paginated list of users.
      *
      * Supported $filters keys:
-     *   - role       (string)  filter by role
      *   - is_active  (int)     0 or 1
      *   - search     (string)  partial match on username, email, display_name
      *   - page       (int)     page number, default 1
@@ -88,10 +87,6 @@ class User
         $where   = [];
         $params  = [];
 
-        if (!empty($filters['role'])) {
-            $where[]  = 'role = ?';
-            $params[] = $filters['role'];
-        }
         if (isset($filters['is_active'])) {
             $where[]  = 'is_active = ?';
             $params[] = (int) $filters['is_active'];
@@ -106,7 +101,7 @@ class User
 
         $whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
-        $allowedSorts = ['id', 'username', 'email', 'display_name', 'role', 'created_at', 'last_login'];
+        $allowedSorts = ['id', 'username', 'email', 'display_name', 'created_at', 'last_login'];
         $sort = in_array($filters['sort'] ?? '', $allowedSorts, true)
             ? $filters['sort']
             : 'username';
@@ -116,7 +111,7 @@ class User
         $perPage = max(1, min(100, (int) ($filters['per_page'] ?? 25)));
         $offset  = ($page - 1) * $perPage;
 
-        $sql = "SELECT id, username, email, display_name, role, is_active,
+        $sql = "SELECT id, username, email, display_name, is_active,
                        created_at, updated_at, last_login
                 FROM users
                 {$whereSQL}
@@ -136,10 +131,6 @@ class User
         $where  = [];
         $params = [];
 
-        if (!empty($filters['role'])) {
-            $where[]  = 'role = ?';
-            $params[] = $filters['role'];
-        }
         if (isset($filters['is_active'])) {
             $where[]  = 'is_active = ?';
             $params[] = (int) $filters['is_active'];
@@ -165,8 +156,8 @@ class User
     /**
      * Create a new user.
      *
-     * Required keys in $data: username, email, password.
-     * Optional: display_name, role, is_active.
+     * Required keys in $data: username, password.
+     * Optional: email, display_name, is_active.
      *
      * @return int  New user ID.
      * @throws \InvalidArgumentException on validation failure.
@@ -201,15 +192,11 @@ class User
             throw new \RuntimeException('A user with that username' . ($email ? ' or email' : '') . ' already exists.');
         }
 
-        $allowedRoles = ['admin', 'editor', 'readonly', 'sds_book_only'];
-        $role = in_array($data['role'] ?? '', $allowedRoles, true) ? $data['role'] : 'readonly';
-
         $insertData = [
             'username'      => $username,
             'email'         => $email !== '' ? $email : null,
             'password_hash' => password_hash($password, PASSWORD_ARGON2ID),
             'display_name'  => trim($data['display_name'] ?? ''),
-            'role'          => $role,
             'is_active'     => isset($data['is_active']) ? (int) $data['is_active'] : 1,
         ];
 
@@ -263,13 +250,6 @@ class User
             $updateData['display_name'] = trim($data['display_name']);
         }
 
-        if (isset($data['role'])) {
-            $allowedRoles = ['admin', 'editor', 'readonly', 'sds_book_only'];
-            if (in_array($data['role'], $allowedRoles, true)) {
-                $updateData['role'] = $data['role'];
-            }
-        }
-
         if (isset($data['is_active'])) {
             $updateData['is_active'] = (int) $data['is_active'];
         }
@@ -303,7 +283,7 @@ class User
         $db = Database::getInstance();
 
         $user = $db->fetch(
-            "SELECT id, username, email, password_hash, display_name, role, is_active,
+            "SELECT id, username, email, password_hash, display_name, is_active,
                     created_at, updated_at, last_login
              FROM users WHERE username = ?",
             [$username]

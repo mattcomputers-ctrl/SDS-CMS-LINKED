@@ -32,7 +32,7 @@ class FormulaController
 
     public function edit(string $finished_good_id): void
     {
-        if (!is_editor()) {
+        if (!can_edit('formulas')) {
             redirect('/formulas/' . $finished_good_id);
         }
 
@@ -57,7 +57,7 @@ class FormulaController
 
     public function update(string $finished_good_id): void
     {
-        if (!is_editor()) {
+        if (!can_edit('formulas')) {
             redirect('/formulas/' . $finished_good_id);
         }
 

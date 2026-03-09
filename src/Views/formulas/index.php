@@ -5,7 +5,7 @@
 <?php if ($formula === null): ?>
     <div class="card">
         <p class="text-muted">No formula defined yet for this product.</p>
-        <?php if (is_editor()): ?>
+        <?php if (can_edit('formulas')): ?>
             <a href="/formulas/<?= (int) $finishedGood['id'] ?>/edit" class="btn btn-primary">Create Formula</a>
         <?php endif; ?>
     </div>
@@ -47,7 +47,7 @@
         <?php endif; ?>
 
         <div class="form-actions">
-            <?php if (is_editor()): ?>
+            <?php if (can_edit('formulas')): ?>
                 <a href="/formulas/<?= (int) $finishedGood['id'] ?>/edit" class="btn btn-primary">Edit Formula</a>
             <?php endif; ?>
             <a href="/formulas/<?= (int) $finishedGood['id'] ?>/calculate" class="btn btn-outline">Run Calculations</a>

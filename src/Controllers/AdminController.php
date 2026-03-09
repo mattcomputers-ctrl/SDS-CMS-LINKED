@@ -68,7 +68,6 @@ class AdminController
 
         $filters = [
             'search'   => $_GET['search'] ?? '',
-            'role'     => $_GET['role'] ?? '',
             'page'     => (int) ($_GET['page'] ?? 1),
             'per_page' => 25,
         ];
@@ -96,7 +95,7 @@ class AdminController
             'item'         => null,
             'mode'         => 'create',
             'allGroups'    => $allGroups,
-            'userGroupIds' => [],
+            'userGroupId'  => null,
         ]);
     }
 
@@ -108,10 +107,10 @@ class AdminController
         try {
             $id = User::create($_POST);
 
-            // Save group memberships
-            $groupIds = $_POST['group_ids'] ?? [];
-            if (is_array($groupIds)) {
-                PermissionService::setUserGroups($id, $groupIds);
+            // Save permission group assignment
+            $groupId = $_POST['group_id'] ?? '';
+            if ($groupId !== '') {
+                PermissionService::setUserGroups($id, [(int) $groupId]);
             }
 
             AuditService::log('user', $id, 'create', ['username' => $_POST['username'] ?? '']);
@@ -136,14 +135,14 @@ class AdminController
 
         $allGroups = PermissionService::allGroups();
         $userGroups = PermissionService::getUserGroups((int) $id);
-        $userGroupIds = array_column($userGroups, 'id');
+        $userGroupId = !empty($userGroups) ? (int) $userGroups[0]['id'] : null;
 
         view('admin/user-form', [
             'pageTitle'    => 'Edit User: ' . $item['username'],
             'item'         => $item,
             'mode'         => 'edit',
             'allGroups'    => $allGroups,
-            'userGroupIds' => $userGroupIds,
+            'userGroupId'  => $userGroupId,
         ]);
     }
 
@@ -155,10 +154,10 @@ class AdminController
         try {
             User::updateUser((int) $id, $_POST);
 
-            // Save group memberships
-            $groupIds = $_POST['group_ids'] ?? [];
-            if (is_array($groupIds)) {
-                PermissionService::setUserGroups((int) $id, $groupIds);
+            // Save permission group assignment
+            $groupId = $_POST['group_id'] ?? '';
+            if ($groupId !== '') {
+                PermissionService::setUserGroups((int) $id, [(int) $groupId]);
             }
 
             AuditService::log('user', $id, 'update');
@@ -1446,7 +1445,22 @@ class AdminController
         }
 
         $admin = User::authenticate($username, $password);
-        if ($admin === false || ($admin['role'] ?? '') !== 'admin') {
+        if ($admin === false) {
+            $_SESSION['_flash']['error'] = 'Invalid admin credentials. The purge was NOT executed.';
+            redirect('/admin/purge-data');
+            return;
+        }
+
+        // Verify the authenticated user is in an admin permission group
+        $adminGroups = PermissionService::getUserGroups((int) $admin['id']);
+        $isAdminUser = false;
+        foreach ($adminGroups as $g) {
+            if ((int) $g['is_admin']) {
+                $isAdminUser = true;
+                break;
+            }
+        }
+        if (!$isAdminUser) {
             $_SESSION['_flash']['error'] = 'Invalid admin credentials. The purge was NOT executed.';
             redirect('/admin/purge-data');
             return;

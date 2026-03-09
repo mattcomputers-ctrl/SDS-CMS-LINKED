@@ -19,7 +19,7 @@
     <div class="stat-card">
         <div class="stat-value"><?= (int) $stats['users'] ?></div>
         <div class="stat-label">Active Users</div>
-        <?php if (is_admin()): ?><a href="/admin/users" class="stat-link">Manage</a><?php endif; ?>
+        <?php if (can_manage_users()): ?><a href="/admin/users" class="stat-link">Manage</a><?php endif; ?>
     </div>
 </div>
 

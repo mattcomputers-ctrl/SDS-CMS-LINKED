@@ -30,15 +30,74 @@ try {
     $editorHash = password_hash('SDS-Editor-2024!', PASSWORD_ARGON2ID);
     $readonlyHash = password_hash('SDS-Viewer-2024!', PASSWORD_ARGON2ID);
 
+    $pdo->exec("DELETE FROM user_group_members WHERE user_id IN (SELECT id FROM users WHERE username IN ('admin','editor','viewer'))");
     $pdo->exec("DELETE FROM users WHERE username IN ('admin','editor','viewer')");
 
-    $stmt = $pdo->prepare("INSERT INTO users (username, email, password_hash, display_name, role, is_active)
-                           VALUES (?, ?, ?, ?, ?, 1)");
-    $stmt->execute(['admin', 'admin@accucolorinks.com', $adminHash, 'System Administrator', 'admin']);
+    $stmt = $pdo->prepare("INSERT INTO users (username, email, password_hash, display_name, is_active)
+                           VALUES (?, ?, ?, ?, 1)");
+    $stmt->execute(['admin', 'admin@accucolorinks.com', $adminHash, 'System Administrator']);
     $adminId = $pdo->lastInsertId();
-    $stmt->execute(['editor', 'editor@accucolorinks.com', $editorHash, 'SDS Editor', 'editor']);
-    $stmt->execute(['viewer', 'viewer@accucolorinks.com', $readonlyHash, 'SDS Viewer', 'readonly']);
+    $stmt->execute(['editor', 'editor@accucolorinks.com', $editorHash, 'SDS Editor']);
+    $editorId = $pdo->lastInsertId();
+    $stmt->execute(['viewer', 'viewer@accucolorinks.com', $readonlyHash, 'SDS Viewer']);
+    $viewerId = $pdo->lastInsertId();
     echo "  Created users: admin, editor, viewer\n";
+
+    // -------------------------------------------------------
+    // 1b. Permission Groups & Membership
+    // -------------------------------------------------------
+
+    // Create Administrators group (is_admin = 1 → full access to everything)
+    $pdo->exec("INSERT INTO permission_groups (name, description, is_admin)
+                VALUES ('Administrators', 'Full access to all areas including user management', 1)
+                ON DUPLICATE KEY UPDATE is_admin = 1");
+    $adminGroupId = $pdo->query("SELECT id FROM permission_groups WHERE name = 'Administrators'")->fetchColumn();
+
+    // Create Editors group with full access to content pages
+    $pdo->exec("INSERT INTO permission_groups (name, description, is_admin)
+                VALUES ('Editors', 'Can view and edit all content areas', 0)
+                ON DUPLICATE KEY UPDATE id = id");
+    $editorGroupId = $pdo->query("SELECT id FROM permission_groups WHERE name = 'Editors'")->fetchColumn();
+
+    // Create Viewers group with read-only access
+    $pdo->exec("INSERT INTO permission_groups (name, description, is_admin)
+                VALUES ('Viewers', 'Read-only access to content areas', 0)
+                ON DUPLICATE KEY UPDATE id = id");
+    $viewerGroupId = $pdo->query("SELECT id FROM permission_groups WHERE name = 'Viewers'")->fetchColumn();
+
+    // Set Editor group permissions (full access to content, no admin)
+    $editorPages = [
+        'dashboard' => 'full', 'raw_materials' => 'full', 'finished_goods' => 'full',
+        'fg_sds_lookup' => 'full', 'rm_sds_book' => 'full', 'reports' => 'full',
+        'formulas' => 'full', 'sds' => 'full', 'rm_mass_replace' => 'full',
+        'cas_determinations' => 'full', 'bulk_publish' => 'full', 'bulk_export' => 'full',
+        'exempt_vocs' => 'full',
+    ];
+    $gpStmt = $pdo->prepare("INSERT INTO group_permissions (group_id, page_key, access_level)
+                              VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE access_level = VALUES(access_level)");
+    foreach ($editorPages as $page => $level) {
+        $gpStmt->execute([$editorGroupId, $page, $level]);
+    }
+
+    // Set Viewer group permissions (read-only access)
+    $viewerPages = [
+        'dashboard' => 'read', 'raw_materials' => 'read', 'finished_goods' => 'read',
+        'fg_sds_lookup' => 'read', 'rm_sds_book' => 'read', 'reports' => 'read',
+        'formulas' => 'read', 'sds' => 'read', 'rm_mass_replace' => 'none',
+        'cas_determinations' => 'read', 'bulk_publish' => 'none', 'bulk_export' => 'read',
+        'exempt_vocs' => 'read',
+    ];
+    foreach ($viewerPages as $page => $level) {
+        $gpStmt->execute([$viewerGroupId, $page, $level]);
+    }
+
+    // Assign users to groups
+    $ugStmt = $pdo->prepare("INSERT INTO user_group_members (user_id, group_id) VALUES (?, ?)
+                              ON DUPLICATE KEY UPDATE group_id = VALUES(group_id)");
+    $ugStmt->execute([$adminId, $adminGroupId]);
+    $ugStmt->execute([$editorId, $editorGroupId]);
+    $ugStmt->execute([$viewerId, $viewerGroupId]);
+    echo "  Created permission groups and assigned users\n";
 
     // -------------------------------------------------------
     // 2. Sample Raw Materials

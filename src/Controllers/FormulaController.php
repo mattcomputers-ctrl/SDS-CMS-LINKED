@@ -114,9 +114,9 @@ class FormulaController
 
     public function massReplace(): void
     {
-        if (!is_editor()) {
+        if (!can_edit('rm_mass_replace')) {
             $_SESSION['_flash']['error'] = 'You do not have permission to perform mass replacements.';
-            redirect('/raw-materials');
+            redirect('/');
         }
 
         // Get all raw materials for the dropdowns
@@ -130,8 +130,8 @@ class FormulaController
 
     public function massReplaceSubmit(): void
     {
-        if (!is_editor()) {
-            redirect('/raw-materials');
+        if (!can_edit('rm_mass_replace')) {
+            redirect('/');
         }
 
         CSRF::validateRequest();

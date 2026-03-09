@@ -17,7 +17,7 @@
 
 <table class="table">
     <thead>
-        <tr><th>Username</th><th>Display Name</th><th>Email</th><th>Role</th><th>Active</th><th>Last Login</th><th>Actions</th></tr>
+        <tr><th>Username</th><th>Display Name</th><th>Email</th><th>Role</th><th>Groups</th><th>Active</th><th>Last Login</th><th>Actions</th></tr>
     </thead>
     <tbody>
     <?php foreach ($items as $item): ?>
@@ -26,6 +26,16 @@
             <td><?= e($item['display_name']) ?></td>
             <td><?= $item['email'] ? e($item['email']) : '<span class="text-muted">—</span>' ?></td>
             <td><span class="badge badge-<?= $item['role'] ?>"><?= e($item['role']) ?></span></td>
+            <td>
+                <?php
+                $userGroups = \SDS\Services\PermissionService::getUserGroups((int) $item['id']);
+                if ($userGroups):
+                    echo implode(', ', array_map(fn($g) => e($g['name']), $userGroups));
+                else:
+                    echo '<span class="text-muted">—</span>';
+                endif;
+                ?>
+            </td>
             <td><?= (int) $item['is_active'] ? 'Yes' : 'No' ?></td>
             <td><?= $item['last_login'] ? format_date($item['last_login'], 'm/d/Y H:i') : 'Never' ?></td>
             <td><a href="/admin/users/<?= (int) $item['id'] ?>/edit" class="btn btn-sm">Edit</a></td>

@@ -307,6 +307,42 @@ function current_user_id(): ?int
     return $user !== null ? (int) ($user['id'] ?? 0) ?: null : null;
 }
 
+/* ------------------------------------------------------------------
+ *  Permission helpers (group-based)
+ * ----------------------------------------------------------------*/
+
+/**
+ * Can the current user read (view) a given page?
+ */
+function can_read(string $pageKey): bool
+{
+    return \SDS\Services\PermissionService::canRead(current_user_id(), $pageKey);
+}
+
+/**
+ * Can the current user edit on a given page?
+ */
+function can_edit(string $pageKey): bool
+{
+    return \SDS\Services\PermissionService::canEdit(current_user_id(), $pageKey);
+}
+
+/**
+ * Can the current user delete on a given page?
+ */
+function can_delete(string $pageKey): bool
+{
+    return \SDS\Services\PermissionService::canDelete(current_user_id(), $pageKey);
+}
+
+/**
+ * Can the current user manage users and groups?
+ */
+function can_manage_users(): bool
+{
+    return \SDS\Services\PermissionService::canManageUsersAndGroups();
+}
+
 /**
  * Resolve the PHP CLI binary path.
  *

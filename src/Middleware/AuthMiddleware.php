@@ -2,6 +2,8 @@
 
 namespace SDS\Middleware;
 
+use SDS\Services\PermissionService;
+
 /**
  * AuthMiddleware — Redirects unauthenticated users to /login.
  *
@@ -10,6 +12,9 @@ namespace SDS\Middleware;
  *
  * Users with the 'sds_book_only' role are restricted to the SDS Book
  * and their own logout route.
+ *
+ * Group-based permissions are enforced for authenticated users:
+ * pages the user has 'none' access to will return 403.
  */
 class AuthMiddleware
 {
@@ -44,6 +49,23 @@ class AuthMiddleware
     ];
 
     /**
+     * Map URI prefixes to page keys for permission checks.
+     * Order matters — more specific prefixes should come first.
+     *
+     * @var array<string, string>
+     */
+    private const URI_TO_PAGE_KEY = [
+        '/formulas/mass-replace' => 'rm_mass_replace',
+        '/raw-materials'         => 'raw_materials',
+        '/finished-goods'        => 'finished_goods',
+        '/lookup'                => 'fg_sds_lookup',
+        '/sds-book'              => 'rm_sds_book',
+        '/reports'               => 'reports',
+        '/formulas'              => 'formulas',
+        '/sds'                   => 'sds',
+    ];
+
+    /**
      * Run the authentication guard.
      *
      * @param callable $next  The next handler/middleware in the pipeline
@@ -69,6 +91,24 @@ class AuthMiddleware
         // SDS Book Only restriction
         if (is_sds_book_only() && !$this->isSdsBookPath($uri)) {
             redirect('/sds-book');
+        }
+
+        // Admin routes — require admin role or admin group
+        if (str_starts_with($uri, '/admin')) {
+            if (!can_manage_users()) {
+                $this->sendForbidden();
+                return;
+            }
+        }
+
+        // Group-based permission check for mapped pages
+        $pageKey = $this->resolvePageKey($uri);
+        if ($pageKey !== null) {
+            $userId = current_user_id();
+            if (!PermissionService::canRead($userId, $pageKey)) {
+                $this->sendForbidden();
+                return;
+            }
         }
 
         // User is authenticated — proceed
@@ -101,5 +141,42 @@ class AuthMiddleware
         }
 
         return false;
+    }
+
+    /**
+     * Resolve a URI to a page key for permission checking.
+     */
+    private function resolvePageKey(string $uri): ?string
+    {
+        foreach (self::URI_TO_PAGE_KEY as $prefix => $pageKey) {
+            if ($uri === $prefix || str_starts_with($uri, $prefix . '/') || str_starts_with($uri, $prefix . '?')) {
+                return $pageKey;
+            }
+        }
+
+        // Dashboard is the root
+        if ($uri === '/') {
+            return 'dashboard';
+        }
+
+        return null;
+    }
+
+    /**
+     * Render a 403 Forbidden page and halt.
+     */
+    private function sendForbidden(): void
+    {
+        http_response_code(403);
+
+        $viewFile = dirname(__DIR__) . '/Views/errors/403.php';
+        if (file_exists($viewFile)) {
+            include $viewFile;
+        } else {
+            echo '<h1>403 — Forbidden</h1>';
+            echo '<p>You do not have permission to access this resource.</p>';
+        }
+
+        exit;
     }
 }

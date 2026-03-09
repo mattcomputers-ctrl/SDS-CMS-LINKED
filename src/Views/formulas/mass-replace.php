@@ -1,6 +1,6 @@
 <?php include dirname(__DIR__) . '/layouts/main.php'; ?>
 
-<p><a href="/raw-materials">&larr; Back to Raw Materials</a></p>
+<p><a href="/">&larr; Back to Dashboard</a></p>
 
 <div class="card" style="max-width: 700px;">
     <p class="text-muted">
@@ -43,7 +43,7 @@
 
         <div class="form-actions">
             <button type="submit" class="btn btn-primary" id="submit-btn" disabled>Submit Replacement</button>
-            <a href="/raw-materials" class="btn btn-outline" style="margin-left: 0.5rem;">Cancel</a>
+            <a href="/" class="btn btn-outline" style="margin-left: 0.5rem;">Cancel</a>
         </div>
     </form>
 </div>

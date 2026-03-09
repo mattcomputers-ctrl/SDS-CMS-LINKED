@@ -6,9 +6,8 @@
         <button type="submit" class="btn btn-sm">Search</button>
         <?php if ($filters['search']): ?><a href="/raw-materials" class="btn btn-sm btn-outline">Clear</a><?php endif; ?>
     </form>
-    <?php if (is_editor()): ?>
+    <?php if (can_edit('raw_materials')): ?>
         <a href="/raw-materials/create" class="btn btn-primary">+ Add Raw Material</a>
-        <a href="/formulas/mass-replace" class="btn btn-outline">RM Mass Replacement</a>
     <?php endif; ?>
 </div>
 

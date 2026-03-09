@@ -20,17 +20,33 @@
                 <?php if (is_sds_book_only()): ?>
                     <li><a href="/sds-book" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/sds-book') ? 'active' : '' ?>">Raw Material SDS Book</a></li>
                 <?php else: ?>
+                    <?php if (can_read('dashboard')): ?>
                     <li><a href="/" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/' ? 'active' : '' ?>">Dashboard</a></li>
+                    <?php endif; ?>
+                    <?php if (can_read('raw_materials')): ?>
                     <li><a href="/raw-materials" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/raw-materials') ? 'active' : '' ?>">Raw Materials</a></li>
+                    <?php endif; ?>
+                    <?php if (can_read('finished_goods')): ?>
                     <li><a href="/finished-goods" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/finished-goods') ? 'active' : '' ?>">Finished Goods</a></li>
+                    <?php endif; ?>
+                    <?php if (can_read('fg_sds_lookup')): ?>
                     <li><a href="/lookup" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/lookup') ? 'active' : '' ?>">FG SDS Lookup</a></li>
+                    <?php endif; ?>
+                    <?php if (can_read('rm_sds_book')): ?>
                     <li><a href="/sds-book" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/sds-book') ? 'active' : '' ?>">RM SDS Book</a></li>
+                    <?php endif; ?>
+                    <?php if (can_read('reports')): ?>
                     <li><a href="/reports" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/reports') ? 'active' : '' ?>">Reports</a></li>
-                    <?php if (is_admin()): ?>
+                    <?php endif; ?>
+                    <?php if (can_edit('rm_mass_replace')): ?>
+                    <li><a href="/formulas/mass-replace" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/formulas/mass-replace') ? 'active' : '' ?>">RM Mass Replacement</a></li>
+                    <?php endif; ?>
+                    <?php if (can_manage_users()): ?>
                     <li class="dropdown">
                         <a href="/admin/users" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/admin') ? 'active' : '' ?>">Admin</a>
                         <ul class="dropdown-menu">
                             <li><a href="/admin/users">Users</a></li>
+                            <li><a href="/admin/groups">Permission Groups</a></li>
                             <li><a href="/admin/settings">Settings</a></li>
                             <li><a href="/admin/exempt-vocs">Exempt VOC Library</a></li>
                             <li><a href="/admin/determinations">CAS Determinations</a></li>

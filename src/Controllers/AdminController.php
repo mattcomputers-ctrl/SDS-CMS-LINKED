@@ -10,6 +10,7 @@ use SDS\Models\User;
 use SDS\Services\AuditService;
 use SDS\Services\BackupService;
 use SDS\Services\NetworkService;
+use SDS\Services\PermissionService;
 use SDS\Services\TrainingDataService;
 use SDS\Services\FederalData\Connectors\PubChemConnector;
 use SDS\Services\FederalData\Connectors\NIOSHConnector;
@@ -22,7 +23,7 @@ class AdminController
 
     private function requireAdmin(): void
     {
-        if (!is_admin()) {
+        if (!can_manage_users()) {
             http_response_code(403);
             $viewFile = dirname(__DIR__) . '/Views/errors/403.php';
             if (file_exists($viewFile)) {
@@ -65,10 +66,14 @@ class AdminController
     {
         $this->requireAdmin();
 
+        $allGroups = PermissionService::allGroups();
+
         view('admin/user-form', [
-            'pageTitle' => 'Create User',
-            'item'      => null,
-            'mode'      => 'create',
+            'pageTitle'    => 'Create User',
+            'item'         => null,
+            'mode'         => 'create',
+            'allGroups'    => $allGroups,
+            'userGroupIds' => [],
         ]);
     }
 
@@ -79,6 +84,13 @@ class AdminController
 
         try {
             $id = User::create($_POST);
+
+            // Save group memberships
+            $groupIds = $_POST['group_ids'] ?? [];
+            if (is_array($groupIds)) {
+                PermissionService::setUserGroups($id, $groupIds);
+            }
+
             AuditService::log('user', $id, 'create', ['username' => $_POST['username'] ?? '']);
             $_SESSION['_flash']['success'] = 'User created successfully.';
             redirect('/admin/users');
@@ -99,10 +111,16 @@ class AdminController
             redirect('/admin/users');
         }
 
+        $allGroups = PermissionService::allGroups();
+        $userGroups = PermissionService::getUserGroups((int) $id);
+        $userGroupIds = array_column($userGroups, 'id');
+
         view('admin/user-form', [
-            'pageTitle' => 'Edit User: ' . $item['username'],
-            'item'      => $item,
-            'mode'      => 'edit',
+            'pageTitle'    => 'Edit User: ' . $item['username'],
+            'item'         => $item,
+            'mode'         => 'edit',
+            'allGroups'    => $allGroups,
+            'userGroupIds' => $userGroupIds,
         ]);
     }
 
@@ -113,6 +131,13 @@ class AdminController
 
         try {
             User::updateUser((int) $id, $_POST);
+
+            // Save group memberships
+            $groupIds = $_POST['group_ids'] ?? [];
+            if (is_array($groupIds)) {
+                PermissionService::setUserGroups((int) $id, $groupIds);
+            }
+
             AuditService::log('user', $id, 'update');
             $_SESSION['_flash']['success'] = 'User updated.';
         } catch (\Throwable $e) {
@@ -120,6 +145,130 @@ class AdminController
         }
 
         redirect('/admin/users/' . $id . '/edit');
+    }
+
+    /* ------------------------------------------------------------------
+     *  Permission Groups
+     * ----------------------------------------------------------------*/
+
+    public function groups(): void
+    {
+        $this->requireAdmin();
+
+        $groups = PermissionService::allGroups();
+
+        view('admin/groups', [
+            'pageTitle' => 'Permission Groups',
+            'groups'    => $groups,
+        ]);
+    }
+
+    public function createGroup(): void
+    {
+        $this->requireAdmin();
+
+        view('admin/group-form', [
+            'pageTitle' => 'Create Permission Group',
+            'group'     => null,
+            'mode'      => 'create',
+            'pageKeys'  => PermissionService::PAGE_KEYS,
+            'accessLevels' => PermissionService::ACCESS_LEVELS,
+        ]);
+    }
+
+    public function storeGroup(): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+
+        $name        = trim($_POST['name'] ?? '');
+        $description = trim($_POST['description'] ?? '');
+        $isAdmin     = !empty($_POST['is_admin']);
+        $permissions = $_POST['permissions'] ?? [];
+
+        if ($name === '') {
+            $_SESSION['_flash']['error'] = 'Group name is required.';
+            $_SESSION['_flash']['_old_input'] = $_POST;
+            redirect('/admin/groups/create');
+        }
+
+        try {
+            $id = PermissionService::createGroup($name, $description, $isAdmin, $permissions);
+            AuditService::log('permission_group', $id, 'create', ['name' => $name]);
+            $_SESSION['_flash']['success'] = 'Permission group created.';
+            redirect('/admin/groups');
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error'] = $e->getMessage();
+            $_SESSION['_flash']['_old_input'] = $_POST;
+            redirect('/admin/groups/create');
+        }
+    }
+
+    public function editGroup(string $id): void
+    {
+        $this->requireAdmin();
+
+        $group = PermissionService::findGroup((int) $id);
+        if ($group === null) {
+            $_SESSION['_flash']['error'] = 'Group not found.';
+            redirect('/admin/groups');
+        }
+
+        view('admin/group-form', [
+            'pageTitle'    => 'Edit Group: ' . $group['name'],
+            'group'        => $group,
+            'mode'         => 'edit',
+            'pageKeys'     => PermissionService::PAGE_KEYS,
+            'accessLevels' => PermissionService::ACCESS_LEVELS,
+        ]);
+    }
+
+    public function updateGroup(string $id): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+
+        $name        = trim($_POST['name'] ?? '');
+        $description = trim($_POST['description'] ?? '');
+        $isAdmin     = !empty($_POST['is_admin']);
+        $permissions = $_POST['permissions'] ?? [];
+
+        if ($name === '') {
+            $_SESSION['_flash']['error'] = 'Group name is required.';
+            redirect('/admin/groups/' . $id . '/edit');
+        }
+
+        try {
+            PermissionService::updateGroup((int) $id, $name, $description, $isAdmin, $permissions);
+            AuditService::log('permission_group', $id, 'update', ['name' => $name]);
+            $_SESSION['_flash']['success'] = 'Permission group updated.';
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error'] = $e->getMessage();
+        }
+
+        redirect('/admin/groups/' . $id . '/edit');
+    }
+
+    public function deleteGroup(string $id): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+
+        $group = PermissionService::findGroup((int) $id);
+        if ($group === null) {
+            $_SESSION['_flash']['error'] = 'Group not found.';
+            redirect('/admin/groups');
+        }
+
+        try {
+            PermissionService::deleteGroup((int) $id);
+            AuditService::log('permission_group', $id, 'delete', ['name' => $group['name']]);
+            $_SESSION['_flash']['success'] = 'Permission group deleted.';
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error'] = $e->getMessage();
+        }
+
+        redirect('/admin/groups');
     }
 
     /* ------------------------------------------------------------------

@@ -203,6 +203,14 @@ class App
             $r->get('/users/{id}/edit',  'AdminController@editUser');
             $r->post('/users/{id}',      'AdminController@updateUser');
 
+            // Permission Groups
+            $r->get('/groups',              'AdminController@groups');
+            $r->get('/groups/create',       'AdminController@createGroup');
+            $r->post('/groups',             'AdminController@storeGroup');
+            $r->get('/groups/{id}/edit',    'AdminController@editGroup');
+            $r->post('/groups/{id}',        'AdminController@updateGroup');
+            $r->post('/groups/{id}/delete', 'AdminController@deleteGroup');
+
             // Settings
             $r->get('/settings',  'AdminController@settings');
             $r->post('/settings', 'AdminController@saveSettings');

@@ -140,6 +140,22 @@ class HazardEngine
             if (empty($hazardData)) {
                 $cpdResult = $this->applyCASDetermination($db, $cas, $name, $conc);
                 if ($cpdResult !== null) {
+                    // Only mark as hazardous if the determination actually has
+                    // hazard classifications; a CPD with nothing checked should
+                    // not cause the CAS to appear in Section 3.
+                    $hasHazards = !empty($cpdResult['hazard_classes'])
+                               || !empty($cpdResult['h_statements']);
+                    if (!$hasHazards) {
+                        $this->traceStep('cpd_no_hazards', "CAS {$cas} has determination but no hazard classifications", [
+                            'cas' => $cas,
+                        ]);
+                        // Still merge exposure limits even if not hazardous
+                        foreach ($cpdResult['exposure_limits'] as $el) {
+                            $exposureLimits[] = $el;
+                        }
+                        continue;
+                    }
+
                     $hazardousCas[$cas] = true;
                     // Merge determination data
                     foreach ($cpdResult['h_statements'] as $code => $stmt) {

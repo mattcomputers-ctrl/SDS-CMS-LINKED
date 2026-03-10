@@ -27,16 +27,17 @@
 <div class="tab-panel" id="tab-needs">
     <?php if (empty($needsDetermination)): ?>
         <div style="text-align: center; padding: 2rem; color: #28a745;">
-            <strong>All CAS numbers in active formulas have federal data or determinations.</strong>
+            <strong>All CAS numbers have federal data or determinations.</strong>
         </div>
     <?php else: ?>
-        <p class="text-muted" style="margin-bottom: 0.5rem;">These CAS numbers appear in raw materials used by active formulas but have no federal hazard data or active determination. Click <strong>Create</strong> to enter a determination.</p>
+        <p class="text-muted" style="margin-bottom: 0.5rem;">These CAS numbers appear in raw materials but have no federal hazard data or active determination. Click <strong>Create</strong> to enter a determination.</p>
         <table class="table">
             <thead>
                 <tr>
                     <th>CAS Number</th>
                     <th>Chemical Name</th>
-                    <th>Used In</th>
+                    <th>Raw Materials</th>
+                    <th>In Formula</th>
                     <th style="width: 100px;">Action</th>
                 </tr>
             </thead>
@@ -49,6 +50,13 @@
                         <span title="<?= e($nd['raw_material_codes']) ?>"><?= e($nd['raw_material_codes']) ?></span>
                         <?php if ((int)$nd['raw_material_count'] > 1): ?>
                             <small class="text-muted">(<?= (int)$nd['raw_material_count'] ?> materials)</small>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <?php if ((int)$nd['in_formula']): ?>
+                            <span style="color: #28a745; font-weight: bold;">Yes</span>
+                        <?php else: ?>
+                            <span class="text-muted">No</span>
                         <?php endif; ?>
                     </td>
                     <td>

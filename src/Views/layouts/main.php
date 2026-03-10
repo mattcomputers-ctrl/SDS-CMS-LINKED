@@ -35,6 +35,9 @@
                     <?php if (can_read('rm_sds_book')): ?>
                     <li><a href="/sds-book" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/sds-book') ? 'active' : '' ?>">RM SDS Book</a></li>
                     <?php endif; ?>
+                    <?php if (can_read('aliases')): ?>
+                    <li><a href="/aliases" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/aliases') ? 'active' : '' ?>">Aliases</a></li>
+                    <?php endif; ?>
                     <?php if (can_read('reports')): ?>
                     <li><a href="/reports" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/reports') ? 'active' : '' ?>">Reports</a></li>
                     <?php endif; ?>

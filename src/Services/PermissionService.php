@@ -29,6 +29,7 @@ class PermissionService
         'fg_sds_lookup'    => 'FG SDS Lookup',
         'rm_sds_book'      => 'RM SDS Book',
         'reports'          => 'Reports',
+        'aliases'          => 'Product Aliases',
         'formulas'         => 'Formulas',
         'sds'                => 'SDS Generation',
         'rm_mass_replace'    => 'RM Mass Replacement',

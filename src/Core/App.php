@@ -164,6 +164,12 @@ class App
         $router->post('/reports/clear',          'ReportController@clear');
         $router->get('/reports/customers',       'ReportController@customers');
 
+        // ── Product Aliases ──────────────────────────────────────────────
+        $router->get('/aliases',                 'AliasController@index');
+        $router->post('/aliases/upload',         'AliasController@upload');
+        $router->post('/aliases/{id}/delete',    'AliasController@delete');
+        $router->post('/aliases/delete-all',     'AliasController@deleteAll');
+
         // ── SDS Book (plant lookup) ────────────────────────────────────
         $router->get('/sds-book',                         'SDSBookController@index');
         $router->post('/sds-book/delete-supplier/{id}',   'SDSBookController@deleteSupplierSds');

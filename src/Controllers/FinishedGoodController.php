@@ -49,9 +49,12 @@ class FinishedGoodController
         $rawMaterials = RawMaterial::all(['per_page' => 999, 'sort' => 'internal_code', 'dir' => 'asc']);
         $finishedGoods = FinishedGood::all(['per_page' => 999, 'sort' => 'product_code', 'dir' => 'asc']);
 
+        // Pre-fill with default recommended use / restrictions from settings
+        $defaults = $this->loadDefaultUseSettings();
+
         view('finished-goods/form', [
             'pageTitle'     => 'Add Finished Good',
-            'item'          => null,
+            'item'          => $defaults,
             'mode'          => 'create',
             'families'      => $families,
             'rawMaterials'  => $rawMaterials,
@@ -203,6 +206,21 @@ class FinishedGoodController
             'finished_good_id' => $fgId,
             'line_count'       => count($lines),
         ]);
+    }
+
+    /**
+     * Load default recommended use / restrictions from settings for new finished goods.
+     */
+    private function loadDefaultUseSettings(): array
+    {
+        $db  = \SDS\Core\Database::getInstance();
+        $recRow = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'sds.default_recommended_use'");
+        $resRow = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'sds.default_restrictions_on_use'");
+
+        return [
+            'recommended_use'     => $recRow['value'] ?? '',
+            'restrictions_on_use' => $resRow['value'] ?? '',
+        ];
     }
 
     /**

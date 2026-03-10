@@ -642,11 +642,14 @@ class AdminController
             "SELECT rmc.cas_number,
                     rmc.chemical_name,
                     COUNT(DISTINCT rm.id) AS raw_material_count,
-                    GROUP_CONCAT(DISTINCT rm.internal_code ORDER BY rm.internal_code SEPARATOR ', ') AS raw_material_codes
+                    GROUP_CONCAT(DISTINCT rm.internal_code ORDER BY rm.internal_code SEPARATOR ', ') AS raw_material_codes,
+                    MAX(CASE WHEN EXISTS (
+                        SELECT 1 FROM formula_lines fl
+                        JOIN formulas f ON f.id = fl.formula_id AND f.is_current = 1
+                        WHERE fl.raw_material_id = rm.id
+                    ) THEN 1 ELSE 0 END) AS in_formula
              FROM raw_material_constituents rmc
              JOIN raw_materials rm ON rm.id = rmc.raw_material_id
-             JOIN formula_lines fl ON fl.raw_material_id = rm.id
-             JOIN formulas f ON f.id = fl.formula_id AND f.is_current = 1
              WHERE rmc.cas_number != ''
                AND rmc.is_trade_secret = 0
                AND rmc.is_non_hazardous = 0

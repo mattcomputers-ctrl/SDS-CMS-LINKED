@@ -11,13 +11,17 @@ use SDS\Services\FormulaCalcService;
 use SDS\Services\HAPService;
 use SDS\Services\SARA313Service;
 use SDS\Services\ReportPDFService;
+use SDS\Services\PDFService;
 
 /**
  * ReportController — HAP/VOC reporting from uploaded shipping data.
  *
- * All uploaded data is stored in the PHP session and is never persisted
+ * Shipping data is stored in the PHP session and is never persisted
  * to the database or filesystem.  Data is automatically cleared on
  * logout or when the user clicks "Clear Data".
+ *
+ * Aliases are loaded from the persistent `aliases` table for
+ * description lookups and SDS export naming.
  */
 class ReportController
 {
@@ -31,80 +35,33 @@ class ReportController
     {
         $data = $_SESSION[self::SESSION_KEY] ?? [];
 
-        $hasItemNames    = !empty($data['item_names']);
         $hasShippingData = !empty($data['shipping_detail']);
 
         // Build unique customer lists for dropdown
         $customers = $this->getCustomerList($data['shipping_detail'] ?? []);
 
+        // Count aliases from the database
+        $db = Database::getInstance();
+        $aliasRow = $db->fetch("SELECT COUNT(*) AS cnt FROM aliases");
+        $aliasCount = (int) ($aliasRow['cnt'] ?? 0);
+
         view('reports/index', [
             'pageTitle'       => 'HAP / VOC Reporting',
-            'hasItemNames'    => $hasItemNames,
             'hasShippingData' => $hasShippingData,
-            'itemNameCount'   => count($data['item_names'] ?? []),
             'shippingCount'   => count($data['shipping_detail'] ?? []),
+            'aliasCount'      => $aliasCount,
             'customers'       => $customers,
         ]);
     }
 
     /* ------------------------------------------------------------------
-     *  Upload: Item Names CSV
+     *  Upload Item Names — redirect to aliases page
      * ----------------------------------------------------------------*/
 
     public function uploadItemNames(): void
     {
-        CSRF::validateRequest();
-
-        if (!isset($_FILES['item_names_file']) || $_FILES['item_names_file']['error'] !== UPLOAD_ERR_OK) {
-            $_SESSION['_flash']['error'] = 'Please select a valid CSV file to upload.';
-            redirect('/reports');
-        }
-
-        $file = $_FILES['item_names_file'];
-        $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-
-        if (!in_array($ext, ['csv', 'txt'], true)) {
-            $_SESSION['_flash']['error'] = 'Only CSV files are supported. Please export a CSV from your ERP system.';
-            redirect('/reports');
-        }
-
-        $rows = $this->parseCsv($file['tmp_name']);
-
-        if (empty($rows)) {
-            $_SESSION['_flash']['error'] = 'The uploaded file is empty or could not be parsed.';
-            redirect('/reports');
-        }
-
-        // Normalize headers
-        $headers = array_map(fn($h) => strtolower(trim($h)), array_keys($rows[0]));
-        $itemCodeCol = $this->findColumn($headers, ['item name', 'itemname', 'item_name', 'item code', 'itemcode', 'item_code', 'code']);
-        $descCol     = $this->findColumn($headers, ['description', 'desc']);
-
-        if ($itemCodeCol === null) {
-            $_SESSION['_flash']['error'] = 'Could not find an "Item Name" or "Item Code" column in the uploaded file.';
-            redirect('/reports');
-        }
-
-        // Store as item_name => description map
-        $itemNames = [];
-        $originalHeaders = array_keys($rows[0]);
-        foreach ($rows as $row) {
-            $vals = array_values($row);
-            $code = trim((string) ($vals[$itemCodeCol] ?? ''));
-            $desc = $descCol !== null ? trim((string) ($vals[$descCol] ?? '')) : '';
-            if ($code !== '') {
-                $itemNames[$code] = $desc;
-            }
-        }
-
-        if (empty($itemNames)) {
-            $_SESSION['_flash']['error'] = 'No valid item names found in the uploaded file.';
-            redirect('/reports');
-        }
-
-        $_SESSION[self::SESSION_KEY]['item_names'] = $itemNames;
-        $_SESSION['_flash']['success'] = count($itemNames) . ' item name(s) loaded successfully.';
-        redirect('/reports');
+        $_SESSION['_flash']['info'] = 'Item name uploads have been moved to the Aliases page.';
+        redirect('/aliases');
     }
 
     /* ------------------------------------------------------------------
@@ -313,6 +270,12 @@ class ReportController
 
     /* ------------------------------------------------------------------
      *  Export SDS PDFs for shipped items as ZIP
+     *
+     *  Uses aliases: for each shipped item, find aliases where the
+     *  internal_code_base matches the item name (without pack extension).
+     *  An SDS is exported for each matching alias, named with the alias
+     *  customer code. Missing items (no finished good) are listed in a
+     *  CSV file included in the ZIP.
      * ----------------------------------------------------------------*/
 
     public function exportShippedSds(): void
@@ -370,7 +333,7 @@ class ReportController
             redirect('/reports');
         }
 
-        // Collect unique product codes
+        // Collect unique product codes (item_name without pack extension)
         $productCodes = [];
         foreach ($filtered as $row) {
             $code = $this->stripPackExtension($row['item_name']);
@@ -380,7 +343,14 @@ class ReportController
         $db = Database::getInstance();
         $basePath = \SDS\Core\App::basePath();
 
-        // Find the latest published SDS PDF for each product code
+        // Load all aliases indexed by internal_code_base
+        $allAliases = $db->fetchAll("SELECT * FROM aliases ORDER BY customer_code");
+        $aliasesByBase = [];
+        foreach ($allAliases as $alias) {
+            $aliasesByBase[$alias['internal_code_base']][] = $alias;
+        }
+
+        // Create ZIP
         $tempZip = tempnam(sys_get_temp_dir(), 'sds_shipped_') . '.zip';
         $zip = new \ZipArchive();
 
@@ -391,10 +361,13 @@ class ReportController
 
         $addedFiles = 0;
         $seen = [];
+        $missingItems = []; // Items not found in the SDS system
+        $tempPdfs = [];     // Temp alias PDFs to clean up after ZIP close
 
         foreach (array_keys($productCodes) as $productCode) {
             $fg = FinishedGood::findByProductCode($productCode);
             if ($fg === null) {
+                $missingItems[$productCode] = true;
                 continue;
             }
 
@@ -412,53 +385,129 @@ class ReportController
             );
 
             if (empty($versions)) {
+                $missingItems[$productCode] = true;
                 continue;
             }
 
-            // Add the most recent version per language
-            $addedLangs = [];
-            foreach ($versions as $v) {
-                $lang = strtolower($v['language']);
+            // Check if there are aliases for this product code
+            $aliases = $aliasesByBase[$productCode] ?? [];
 
-                // Filter by selected language if not "all"
-                if ($exportLang !== 'all' && $lang !== $exportLang) {
-                    continue;
+            if (!empty($aliases)) {
+                // Export an SDS for each alias with modified product identifier
+                foreach ($aliases as $alias) {
+                    $addedLangs = [];
+                    foreach ($versions as $v) {
+                        $lang = strtolower($v['language']);
+
+                        if ($exportLang !== 'all' && $lang !== $exportLang) {
+                            continue;
+                        }
+
+                        if (isset($addedLangs[$lang])) {
+                            continue;
+                        }
+                        $addedLangs[$lang] = true;
+
+                        // Name the file with the alias customer code
+                        $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $alias['customer_code']);
+                        $zipName  = $safeCode . '_SDS';
+                        if ($lang !== 'en') {
+                            $zipName .= '_' . strtoupper($lang);
+                        }
+                        $zipName .= '.pdf';
+
+                        if (isset($seen[$zipName])) {
+                            continue;
+                        }
+                        $seen[$zipName] = true;
+
+                        // Generate a new PDF with the alias product identifier
+                        $aliasPdf = $this->generateAliasPdf($v, $alias, $basePath);
+                        if ($aliasPdf !== null) {
+                            $zip->addFile($aliasPdf, $zipName);
+                            $tempPdfs[] = $aliasPdf;
+                            $addedFiles++;
+                        }
+                    }
                 }
+            } else {
+                // No aliases — export with the internal product code
+                $addedLangs = [];
+                foreach ($versions as $v) {
+                    $lang = strtolower($v['language']);
 
-                if (isset($addedLangs[$lang])) {
-                    continue;
+                    if ($exportLang !== 'all' && $lang !== $exportLang) {
+                        continue;
+                    }
+
+                    if (isset($addedLangs[$lang])) {
+                        continue;
+                    }
+                    $addedLangs[$lang] = true;
+
+                    $pdfFullPath = $basePath . '/' . ltrim($v['pdf_path'], '/');
+                    if (!file_exists($pdfFullPath)) {
+                        continue;
+                    }
+
+                    $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $productCode);
+                    $zipName  = $safeCode . '_SDS';
+                    if ($lang !== 'en') {
+                        $zipName .= '_' . strtoupper($lang);
+                    }
+                    $zipName .= '.pdf';
+
+                    if (isset($seen[$zipName])) {
+                        continue;
+                    }
+                    $seen[$zipName] = true;
+
+                    $zip->addFile($pdfFullPath, $zipName);
+                    $addedFiles++;
                 }
-                $addedLangs[$lang] = true;
-
-                $pdfFullPath = $basePath . '/' . ltrim($v['pdf_path'], '/');
-                if (!file_exists($pdfFullPath)) {
-                    continue;
-                }
-
-                $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $productCode);
-                $zipName  = $safeCode . '_SDS';
-                if ($lang !== 'en') {
-                    $zipName .= '_' . strtoupper($lang);
-                }
-                $zipName .= '.pdf';
-
-                if (isset($seen[$zipName])) {
-                    continue;
-                }
-                $seen[$zipName] = true;
-
-                $zip->addFile($pdfFullPath, $zipName);
-                $addedFiles++;
             }
+        }
+
+        // Add missing items CSV to the ZIP if there are any
+        if (!empty($missingItems)) {
+            $missingCsv = "Product Code,Status\n";
+            foreach (array_keys($missingItems) as $code) {
+                $missingCsv .= '"' . str_replace('"', '""', $code) . '","Not found in SDS system - needs to be entered"' . "\n";
+            }
+            $zip->addFromString('_MISSING_ITEMS.csv', $missingCsv);
         }
 
         $zip->close();
 
-        if ($addedFiles === 0) {
+        // Clean up temporary alias PDFs (must happen after ZIP close writes them)
+        $cleanupTempPdfs = function () use ($tempPdfs) {
+            foreach ($tempPdfs as $tmpPdf) {
+                @unlink($tmpPdf);
+            }
+        };
+
+        if ($addedFiles === 0 && empty($missingItems)) {
+            $cleanupTempPdfs();
             @unlink($tempZip);
             $langLabel = $exportLang === 'all' ? '' : ' (' . strtoupper($exportLang) . ')';
             $_SESSION['_flash']['warning'] = 'No published SDS PDFs' . $langLabel . ' found for the shipped items.';
             redirect('/reports');
+        }
+
+        if ($addedFiles === 0 && !empty($missingItems)) {
+            // Only missing items, still export the ZIP with the CSV
+            $safeCustomer = preg_replace('/[^a-zA-Z0-9]/', '_', $customerValue);
+            $exportName = 'SDS_Export_' . $safeCustomer . '_' . date('Ymd') . '.zip';
+
+            header('Content-Type: application/zip');
+            header('Content-Disposition: attachment; filename="' . $exportName . '"');
+            header('Content-Length: ' . filesize($tempZip));
+            header('Cache-Control: no-cache, must-revalidate');
+
+            readfile($tempZip);
+            $cleanupTempPdfs();
+            @unlink($tempZip);
+            exit;
         }
 
         $safeCustomer = preg_replace('/[^a-zA-Z0-9]/', '_', $customerValue);
@@ -471,6 +520,7 @@ class ReportController
         header('Cache-Control: no-cache, must-revalidate');
 
         readfile($tempZip);
+        $cleanupTempPdfs();
         @unlink($tempZip);
         exit;
     }
@@ -513,7 +563,20 @@ class ReportController
         // Make end date inclusive (end of day)
         $dateToTs = strtotime($dateTo . ' 23:59:59');
 
-        $itemNames    = $data['item_names'] ?? [];
+        // Load aliases from database for description lookup
+        $db = Database::getInstance();
+        $aliasRows = $db->fetchAll("SELECT customer_code, description, internal_code FROM aliases");
+        $aliasDescriptions = [];
+        foreach ($aliasRows as $aliasRow) {
+            // Index by internal_code (with pack extension) for exact match
+            $aliasDescriptions[$aliasRow['internal_code']] = $aliasRow['description'];
+            // Also index by customer_code
+            $aliasDescriptions[$aliasRow['customer_code']] = $aliasRow['description'];
+        }
+
+        // Also use session item_names as fallback (for backwards compatibility)
+        $sessionItemNames = $data['item_names'] ?? [];
+
         $shippingData = $data['shipping_detail'] ?? [];
 
         // Filter shipping records
@@ -555,7 +618,8 @@ class ReportController
 
         foreach ($filtered as $row) {
             $itemCode    = $row['item_name'];
-            $description = $itemNames[$itemCode] ?? '';
+            // Look up description: try aliases first, then session item names
+            $description = $aliasDescriptions[$itemCode] ?? ($sessionItemNames[$itemCode] ?? '');
             $qtyShipped  = $row['qty_shipped'];
 
             // Strip pack extension to get the finished good product code
@@ -734,6 +798,79 @@ class ReportController
         }
         sort($customers);
         return $customers;
+    }
+
+    /**
+     * Generate a PDF with alias-specific product identifier.
+     *
+     * Loads the SDS snapshot from the published version, modifies the
+     * product identifier in Section 1 and the meta product_code, then
+     * generates a new PDF via PDFService.
+     *
+     * @return string|null  Path to temp PDF file, or null on failure.
+     */
+    private function generateAliasPdf(array $sdsVersion, array $alias, string $basePath): ?string
+    {
+        try {
+            $snapshot = $sdsVersion['snapshot_json'] ?? null;
+            if ($snapshot === null) {
+                // Snapshot not loaded — try to fetch it
+                $db = Database::getInstance();
+                $row = $db->fetch(
+                    "SELECT snapshot_json FROM sds_versions WHERE id = ?",
+                    [(int) $sdsVersion['id']]
+                );
+                $snapshot = $row['snapshot_json'] ?? null;
+            }
+
+            if ($snapshot === null) {
+                // No snapshot available — fall back to existing PDF with rename
+                $pdfFullPath = $basePath . '/' . ltrim($sdsVersion['pdf_path'], '/');
+                if (file_exists($pdfFullPath)) {
+                    // Copy to temp file so it can be added to ZIP
+                    $tmp = tempnam(sys_get_temp_dir(), 'alias_sds_') . '.pdf';
+                    copy($pdfFullPath, $tmp);
+                    return $tmp;
+                }
+                return null;
+            }
+
+            $sdsData = json_decode($snapshot, true);
+            if (!is_array($sdsData)) {
+                return null;
+            }
+
+            // Modify product identifier to use alias data
+            $aliasCode = $alias['customer_code'];
+            $aliasDesc = $alias['description'] ?? '';
+            $productIdentifier = $aliasCode;
+            if ($aliasDesc !== '') {
+                $productIdentifier .= ' — ' . $aliasDesc;
+            }
+
+            $sdsData['sections'][1]['product_identifier'] = $productIdentifier;
+            $sdsData['meta']['product_code'] = $aliasCode;
+
+            // Generate PDF to a temp directory
+            $tmpDir = $basePath . '/storage/temp';
+            if (!is_dir($tmpDir)) {
+                mkdir($tmpDir, 0755, true);
+            }
+
+            $pdfService = new PDFService();
+            $pdfPath = $pdfService->generate($sdsData, $tmpDir);
+
+            return $pdfPath;
+        } catch (\Throwable $e) {
+            // On failure, fall back to existing PDF
+            $pdfFullPath = $basePath . '/' . ltrim($sdsVersion['pdf_path'] ?? '', '/');
+            if (file_exists($pdfFullPath)) {
+                $tmp = tempnam(sys_get_temp_dir(), 'alias_sds_') . '.pdf';
+                copy($pdfFullPath, $tmp);
+                return $tmp;
+            }
+            return null;
+        }
     }
 
     /**

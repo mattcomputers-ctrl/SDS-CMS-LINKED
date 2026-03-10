@@ -1,20 +1,15 @@
 <?php include dirname(__DIR__) . '/layouts/main.php'; ?>
 
 <div class="grid-2col" style="margin-bottom: 1rem;">
-    <!-- Upload Item Names -->
+    <!-- Aliases Info -->
     <div class="card">
-        <h2 class="card-title">1. Upload Item Names (CSV)</h2>
-        <p class="text-muted" style="margin-bottom: 0.75rem;">CSV must contain <strong>Item Name</strong> and <strong>Description</strong> columns.</p>
-        <?php if ($hasItemNames): ?>
-            <div class="alert alert-success"><?= (int) $itemNameCount ?> item name(s) loaded.</div>
+        <h2 class="card-title">1. Product Aliases</h2>
+        <p class="text-muted" style="margin-bottom: 0.75rem;">Aliases link customer-facing codes to internal product codes. Manage aliases on the <a href="/aliases">Aliases page</a>.</p>
+        <?php if ($aliasCount > 0): ?>
+            <div class="alert alert-success"><?= (int) $aliasCount ?> alias(es) stored in the system.</div>
+        <?php else: ?>
+            <div class="alert" style="background: #fff3cd; color: #856404; border: 1px solid #ffc107; padding: 0.5rem; border-radius: 4px;">No aliases uploaded yet. <a href="/aliases">Upload aliases</a> to enable SDS export by alias.</div>
         <?php endif; ?>
-        <form method="POST" action="/reports/upload-items" enctype="multipart/form-data">
-            <?= csrf_field() ?>
-            <div class="form-group">
-                <input type="file" name="item_names_file" accept=".csv,.txt" class="form-control" required>
-            </div>
-            <button type="submit" class="btn btn-primary" style="margin-top: 0.5rem;">Upload Item Names</button>
-        </form>
     </div>
 
     <!-- Upload Shipping Detail -->
@@ -38,6 +33,7 @@
 <!-- Generate Report -->
 <div class="card" style="margin-bottom: 1rem;">
     <h2 class="card-title">3. Generate HAP / VOC Report</h2>
+    <p class="text-muted" style="margin-bottom: 0.75rem;">SDS exports will use aliases to match item names. A list of missing items (not yet in the SDS system) will be included when applicable.</p>
     <form id="reportForm">
         <input type="hidden" name="_csrf_token" value="<?= e(\SDS\Core\CSRF::token()) ?>">
         <div class="grid-2col">

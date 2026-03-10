@@ -77,6 +77,19 @@
             </div>
         </div>
 
+        <h2>Default Product Use</h2>
+        <p class="text-muted mb-1">Set default values for Recommended Use and Restrictions on Use. These will pre-fill when creating new finished goods but can be overridden per product.</p>
+        <div class="form-grid-2col">
+            <div class="form-group full-width">
+                <label>Default Recommended Use</label>
+                <input type="text" name="sds__default_recommended_use" value="<?= e($settings['sds.default_recommended_use'] ?? '') ?>" placeholder="e.g. Industrial ink for offset printing">
+            </div>
+            <div class="form-group full-width">
+                <label>Default Restrictions on Use</label>
+                <input type="text" name="sds__default_restrictions_on_use" value="<?= e($settings['sds.default_restrictions_on_use'] ?? '') ?>" placeholder="e.g. Not for food contact or consumer use">
+            </div>
+        </div>
+
         <h2>Product Families</h2>
         <p class="text-muted mb-1">Enter one product family per line. These appear as dropdown options when creating/editing a finished good.</p>
         <div class="form-group">

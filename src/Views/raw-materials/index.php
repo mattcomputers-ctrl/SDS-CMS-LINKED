@@ -32,7 +32,7 @@
             <td><strong><a href="/raw-materials/<?= (int) $item['id'] ?>/edit"><?= e($item['internal_code']) ?></a></strong></td>
             <td><?= e($item['supplier']) ?></td>
             <td><?= e($item['supplier_product_name']) ?></td>
-            <td><?= $item['voc_wt'] !== null ? number_format((float) $item['voc_wt'], 2) : '<span class="text-muted">—</span>' ?></td>
+            <td><?php if (!empty($item['voc_less_than_one'])): ?>VOC &lt;1<?php elseif ($item['voc_wt'] !== null): ?><?= number_format((float) $item['voc_wt'], 2) ?><?php else: ?><span class="text-muted">—</span><?php endif; ?></td>
             <td><?= $item['specific_gravity'] !== null ? number_format((float) $item['specific_gravity'], 4) : '<span class="text-muted">—</span>' ?></td>
             <td><?= $item['flash_point_c'] !== null ? number_format((float) $item['flash_point_c'], 1) : '<span class="text-muted">—</span>' ?></td>
             <td>

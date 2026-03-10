@@ -7,10 +7,16 @@ namespace SDS\Models;
 use SDS\Core\Database;
 
 /**
- * Formula Model — versioned formulations linking finished goods to raw materials.
+ * Formula Model — versioned formulations linking finished goods to raw materials
+ * or other finished goods (sub-assemblies).
  *
  * Each finished good has one "current" formula. When a formula is updated,
  * a new version is created and the previous is marked is_current = 0.
+ *
+ * Formula lines can reference either a raw material (raw_material_id) or
+ * another finished good (finished_good_component_id). When a finished good
+ * is used as a component, its own current formula is recursively expanded
+ * to resolve the final CAS-level composition.
  *
  * The key business method is getExpandedComposition(), which resolves
  * every formula line through its raw material constituents to produce
@@ -79,17 +85,28 @@ class Formula
      * ----------------------------------------------------------------*/
 
     /**
-     * Get all lines for a formula, with raw material data joined in.
+     * Get all lines for a formula, with raw material or finished good data joined in.
+     *
+     * Each line will have either raw_material_id or finished_good_component_id set.
+     * A 'line_type' field is added: 'raw_material' or 'finished_good'.
      */
     public static function getLines(int $formulaId): array
     {
         $db = Database::getInstance();
         return $db->fetchAll(
-            "SELECT fl.id, fl.formula_id, fl.raw_material_id, fl.pct, fl.sort_order,
+            "SELECT fl.id, fl.formula_id, fl.raw_material_id, fl.finished_good_component_id,
+                    fl.pct, fl.sort_order,
                     rm.internal_code, rm.supplier, rm.supplier_product_name,
-                    rm.voc_wt, rm.exempt_voc_wt, rm.water_wt, rm.flash_point_c
+                    rm.voc_wt, rm.exempt_voc_wt, rm.water_wt, rm.flash_point_c,
+                    fg_comp.product_code AS component_product_code,
+                    fg_comp.description AS component_description,
+                    CASE
+                        WHEN fl.finished_good_component_id IS NOT NULL THEN 'finished_good'
+                        ELSE 'raw_material'
+                    END AS line_type
              FROM formula_lines fl
-             JOIN raw_materials rm ON rm.id = fl.raw_material_id
+             LEFT JOIN raw_materials rm ON rm.id = fl.raw_material_id
+             LEFT JOIN finished_goods fg_comp ON fg_comp.id = fl.finished_good_component_id
              WHERE fl.formula_id = ?
              ORDER BY fl.sort_order ASC, fl.id ASC",
             [$formulaId]
@@ -107,11 +124,11 @@ class Formula
      * unsets is_current on any previous formula for that finished good.
      *
      * @param int    $fgId    Finished good ID.
-     * @param array  $lines   Array of [raw_material_id, pct, sort_order].
+     * @param array  $lines   Array of [raw_material_id|finished_good_component_id, pct, sort_order].
      * @param string|null $notes
      * @param int|null    $userId
      * @return int   New formula ID.
-     * @throws \InvalidArgumentException if lines don't sum to 100%.
+     * @throws \InvalidArgumentException if lines don't sum to 100% or circular dependency detected.
      */
     public static function create(int $fgId, array $lines, ?string $notes, ?int $userId): int
     {
@@ -121,6 +138,17 @@ class Formula
         $validationError = self::validateTotalPercent($lines);
         if ($validationError !== null) {
             throw new \InvalidArgumentException($validationError);
+        }
+
+        // Check for circular dependencies
+        foreach ($lines as $line) {
+            $componentFgId = (int) ($line['finished_good_component_id'] ?? 0);
+            if ($componentFgId > 0) {
+                $circularError = self::detectCircularDependency($fgId, $componentFgId);
+                if ($circularError !== null) {
+                    throw new \InvalidArgumentException($circularError);
+                }
+            }
         }
 
         $db->beginTransaction();
@@ -149,12 +177,18 @@ class Formula
 
             // Insert lines
             foreach ($lines as $i => $line) {
-                $db->insert('formula_lines', [
-                    'formula_id'      => $formulaId,
-                    'raw_material_id' => (int) $line['raw_material_id'],
-                    'pct'             => (float) $line['pct'],
-                    'sort_order'      => (int) ($line['sort_order'] ?? $i + 1),
-                ]);
+                $rmId = (int) ($line['raw_material_id'] ?? 0);
+                $fgCompId = (int) ($line['finished_good_component_id'] ?? 0);
+
+                $lineData = [
+                    'formula_id'                => $formulaId,
+                    'raw_material_id'           => $rmId > 0 ? $rmId : null,
+                    'finished_good_component_id' => $fgCompId > 0 ? $fgCompId : null,
+                    'pct'                       => (float) $line['pct'],
+                    'sort_order'                => (int) ($line['sort_order'] ?? $i + 1),
+                ];
+
+                $db->insert('formula_lines', $lineData);
             }
 
             $db->commit();
@@ -167,38 +201,88 @@ class Formula
     }
 
     /* ------------------------------------------------------------------
+     *  Circular Dependency Detection
+     * ----------------------------------------------------------------*/
+
+    /**
+     * Detect if adding componentFgId as a component of parentFgId would create a cycle.
+     *
+     * Walks the dependency tree of componentFgId's current formula to see if
+     * parentFgId appears anywhere in the chain.
+     *
+     * @return string|null  Error message if circular, null if safe.
+     */
+    public static function detectCircularDependency(int $parentFgId, int $componentFgId, array $visited = []): ?string
+    {
+        // Direct self-reference
+        if ($parentFgId === $componentFgId) {
+            return 'A finished good cannot use itself as a component.';
+        }
+
+        // Check if we've already visited this node (cycle in sub-tree)
+        if (in_array($componentFgId, $visited, true)) {
+            return 'Circular dependency detected in finished good components.';
+        }
+
+        $visited[] = $componentFgId;
+
+        // Look at the component FG's current formula for any FG references
+        $db = Database::getInstance();
+        $subFormula = $db->fetch(
+            "SELECT id FROM formulas WHERE finished_good_id = ? AND is_current = 1 LIMIT 1",
+            [$componentFgId]
+        );
+
+        if (!$subFormula) {
+            return null; // No formula = no dependencies = safe
+        }
+
+        $fgComponents = $db->fetchAll(
+            "SELECT finished_good_component_id
+             FROM formula_lines
+             WHERE formula_id = ? AND finished_good_component_id IS NOT NULL",
+            [(int) $subFormula['id']]
+        );
+
+        foreach ($fgComponents as $comp) {
+            $subFgId = (int) $comp['finished_good_component_id'];
+            if ($subFgId === $parentFgId) {
+                return 'Circular dependency detected: this finished good is already used as a component in the target product\'s formula chain.';
+            }
+            $error = self::detectCircularDependency($parentFgId, $subFgId, $visited);
+            if ($error !== null) {
+                return $error;
+            }
+        }
+
+        return null;
+    }
+
+    /* ------------------------------------------------------------------
      *  Expanded Composition
      * ----------------------------------------------------------------*/
 
     /**
-     * Expand all raw material constituents into final CAS-level concentrations.
+     * Expand all formula lines into final CAS-level concentrations.
      *
-     * For each CAS number, the concentration is calculated as the sum across
-     * all formula lines of:
+     * For raw material lines, constituents are expanded directly.
+     * For finished good component lines, the component's current formula
+     * is recursively expanded and scaled by the line percentage.
      *
-     *   (formula_line.pct / 100) * constituent_pct
-     *
-     * where constituent_pct is pct_exact if set, otherwise the midpoint of
-     * pct_min and pct_max.
-     *
-     * @param int $formulaId
-     * @return array  Sorted by concentration_pct descending. Each element:
-     *   [
-     *     'cas_number'             => string,
-     *     'chemical_name'          => string,
-     *     'concentration_pct'      => float,
-     *     'is_trade_secret'        => bool,
-     *     'contributing_materials' => [
-     *       ['raw_material_id' => int, 'internal_code' => string, 'pct_in_rm' => float, 'pct_in_formula' => float],
-     *       ...
-     *     ],
-     *   ]
+     * @param int   $formulaId
+     * @param float $scaleFactor  Multiplier for recursive expansion (1.0 at top level).
+     * @param array $ancestorFgIds  Finished good IDs in the current expansion chain (cycle guard).
+     * @return array  Sorted by concentration_pct descending.
      */
-    public static function getExpandedComposition(int $formulaId): array
+    public static function getExpandedComposition(int $formulaId, float $scaleFactor = 1.0, array $ancestorFgIds = []): array
     {
         $db = Database::getInstance();
 
-        // Fetch all formula lines with their constituents in a single query
+        // Get the formula's finished_good_id for cycle detection
+        $formulaRow = $db->fetch("SELECT finished_good_id FROM formulas WHERE id = ?", [$formulaId]);
+        $thisFgId = $formulaRow ? (int) $formulaRow['finished_good_id'] : 0;
+
+        // --- Raw material lines: same as before ---
         $rows = $db->fetchAll(
             "SELECT fl.raw_material_id, fl.pct AS line_pct,
                     rm.internal_code,
@@ -209,7 +293,7 @@ class Formula
              FROM formula_lines fl
              JOIN raw_materials rm ON rm.id = fl.raw_material_id
              JOIN raw_material_constituents rmc ON rmc.raw_material_id = fl.raw_material_id
-             WHERE fl.formula_id = ?
+             WHERE fl.formula_id = ? AND fl.raw_material_id IS NOT NULL
              ORDER BY fl.sort_order, rmc.sort_order",
             [$formulaId]
         );
@@ -219,21 +303,8 @@ class Formula
         foreach ($rows as $row) {
             $cas = $row['cas_number'];
 
-            // Determine the constituent's percentage in the raw material
-            if ($row['pct_exact'] !== null) {
-                $constituentPct = (float) $row['pct_exact'];
-            } elseif ($row['pct_min'] !== null && $row['pct_max'] !== null) {
-                $constituentPct = ((float) $row['pct_min'] + (float) $row['pct_max']) / 2.0;
-            } elseif ($row['pct_min'] !== null) {
-                $constituentPct = (float) $row['pct_min'];
-            } elseif ($row['pct_max'] !== null) {
-                $constituentPct = (float) $row['pct_max'];
-            } else {
-                $constituentPct = 0.0;
-            }
-
-            // Contribution in the final product: (line_pct / 100) * constituent_pct
-            $contribution = ((float) $row['line_pct'] / 100.0) * $constituentPct;
+            $constituentPct = self::resolveConstituentPct($row);
+            $contribution = ($scaleFactor * (float) $row['line_pct'] / 100.0) * $constituentPct;
 
             if (!isset($casBuckets[$cas])) {
                 $casBuckets[$cas] = [
@@ -241,7 +312,7 @@ class Formula
                     'chemical_name'            => $row['chemical_name'],
                     'concentration_pct'        => 0.0,
                     'is_trade_secret'          => false,
-                    'is_non_hazardous'         => true, // assume non-hazardous until proven otherwise
+                    'is_non_hazardous'         => true,
                     'trade_secret_description' => null,
                     'contributing_materials'    => [],
                 ];
@@ -249,7 +320,6 @@ class Formula
 
             $casBuckets[$cas]['concentration_pct'] += $contribution;
 
-            // If any contributing constituent is trade secret, mark the CAS as trade secret
             if ((int) $row['is_trade_secret'] === 1) {
                 $casBuckets[$cas]['is_trade_secret'] = true;
                 if (!empty($row['trade_secret_description'])) {
@@ -257,7 +327,6 @@ class Formula
                 }
             }
 
-            // If any contributing constituent is NOT non-hazardous, mark CAS as hazardous
             if ((int) ($row['is_non_hazardous'] ?? 0) === 0) {
                 $casBuckets[$cas]['is_non_hazardous'] = false;
             }
@@ -268,6 +337,80 @@ class Formula
                 'pct_in_rm'       => $constituentPct,
                 'pct_in_formula'  => $contribution,
             ];
+        }
+
+        // --- Finished good component lines: recursive expansion ---
+        $fgLines = $db->fetchAll(
+            "SELECT fl.finished_good_component_id, fl.pct AS line_pct,
+                    fg.product_code AS component_product_code
+             FROM formula_lines fl
+             JOIN finished_goods fg ON fg.id = fl.finished_good_component_id
+             WHERE fl.formula_id = ? AND fl.finished_good_component_id IS NOT NULL",
+            [$formulaId]
+        );
+
+        foreach ($fgLines as $fgLine) {
+            $compFgId = (int) $fgLine['finished_good_component_id'];
+
+            // Cycle guard: skip if this FG is already in our ancestor chain
+            if (in_array($compFgId, $ancestorFgIds, true)) {
+                continue;
+            }
+
+            // Find the component's current formula
+            $compFormula = $db->fetch(
+                "SELECT id FROM formulas WHERE finished_good_id = ? AND is_current = 1 LIMIT 1",
+                [$compFgId]
+            );
+
+            if (!$compFormula) {
+                continue; // No formula defined for this component
+            }
+
+            // Recursively expand the component's formula
+            $subScale = $scaleFactor * (float) $fgLine['line_pct'] / 100.0;
+            $subAncestors = array_merge($ancestorFgIds, [$thisFgId]);
+            $subComposition = self::getExpandedComposition(
+                (int) $compFormula['id'],
+                $subScale,
+                $subAncestors
+            );
+
+            // Merge sub-composition into our buckets
+            foreach ($subComposition as $subEntry) {
+                $cas = $subEntry['cas_number'];
+
+                if (!isset($casBuckets[$cas])) {
+                    $casBuckets[$cas] = [
+                        'cas_number'               => $cas,
+                        'chemical_name'            => $subEntry['chemical_name'],
+                        'concentration_pct'        => 0.0,
+                        'is_trade_secret'          => false,
+                        'is_non_hazardous'         => true,
+                        'trade_secret_description' => null,
+                        'contributing_materials'    => [],
+                    ];
+                }
+
+                $casBuckets[$cas]['concentration_pct'] += $subEntry['concentration_pct'];
+
+                if ($subEntry['is_trade_secret']) {
+                    $casBuckets[$cas]['is_trade_secret'] = true;
+                    if (!empty($subEntry['trade_secret_description'])) {
+                        $casBuckets[$cas]['trade_secret_description'] = $subEntry['trade_secret_description'];
+                    }
+                }
+
+                if (!$subEntry['is_non_hazardous']) {
+                    $casBuckets[$cas]['is_non_hazardous'] = false;
+                }
+
+                // Tag contributing materials as coming through the FG component
+                foreach ($subEntry['contributing_materials'] as $contrib) {
+                    $contrib['via_finished_good'] = $fgLine['component_product_code'];
+                    $casBuckets[$cas]['contributing_materials'][] = $contrib;
+                }
+            }
         }
 
         // Round concentrations and sort by descending concentration
@@ -295,7 +438,7 @@ class Formula
      * For each current formula that contains the old raw material, a new
      * formula version is created with the old RM swapped for the new RM
      * (keeping the same percentage and sort order). All other lines are
-     * copied unchanged.
+     * copied unchanged (including any finished good component lines).
      *
      * @param int      $oldRmId  The raw material ID to replace.
      * @param int      $newRmId  The replacement raw material ID.
@@ -324,13 +467,20 @@ class Formula
             // Build new lines with the replacement
             $newLines = [];
             foreach ($lines as $line) {
-                $newLines[] = [
-                    'raw_material_id' => ((int) $line['raw_material_id'] === $oldRmId)
-                        ? $newRmId
-                        : (int) $line['raw_material_id'],
+                $newLine = [
                     'pct'        => (float) $line['pct'],
                     'sort_order' => (int) $line['sort_order'],
                 ];
+
+                if ($line['line_type'] === 'finished_good') {
+                    $newLine['finished_good_component_id'] = (int) $line['finished_good_component_id'];
+                } else {
+                    $newLine['raw_material_id'] = ((int) $line['raw_material_id'] === $oldRmId)
+                        ? $newRmId
+                        : (int) $line['raw_material_id'];
+                }
+
+                $newLines[] = $newLine;
             }
 
             // Create a new formula version with the swapped material
@@ -383,5 +533,29 @@ class Formula
         }
 
         return null;
+    }
+
+    /* ------------------------------------------------------------------
+     *  Helpers
+     * ----------------------------------------------------------------*/
+
+    /**
+     * Resolve the effective percentage of a constituent from its raw data.
+     */
+    private static function resolveConstituentPct(array $row): float
+    {
+        if ($row['pct_exact'] !== null) {
+            return (float) $row['pct_exact'];
+        }
+        if ($row['pct_min'] !== null && $row['pct_max'] !== null) {
+            return ((float) $row['pct_min'] + (float) $row['pct_max']) / 2.0;
+        }
+        if ($row['pct_min'] !== null) {
+            return (float) $row['pct_min'];
+        }
+        if ($row['pct_max'] !== null) {
+            return (float) $row['pct_max'];
+        }
+        return 0.0;
     }
 }

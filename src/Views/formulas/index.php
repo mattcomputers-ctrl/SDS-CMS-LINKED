@@ -18,18 +18,29 @@
 
         <table class="table">
             <thead>
-                <tr><th>#</th><th>Raw Material</th><th>Supplier / Product</th><th>Wt%</th></tr>
+                <tr><th>#</th><th>Component</th><th>Supplier / Product</th><th>Wt%</th></tr>
             </thead>
             <tbody>
             <?php
             $totalPct = 0;
             foreach ($formula['lines'] as $i => $line):
                 $totalPct += (float) $line['pct'];
+                $isFinishedGood = ($line['line_type'] ?? 'raw_material') === 'finished_good';
             ?>
                 <tr>
                     <td><?= $i + 1 ?></td>
-                    <td><a href="/raw-materials/<?= (int) $line['raw_material_id'] ?>/edit"><?= e($line['internal_code'] ?? 'RM-' . $line['raw_material_id']) ?></a></td>
-                    <td><?= e($line['supplier_product_name'] ?? '') ?></td>
+                    <?php if ($isFinishedGood): ?>
+                        <td>
+                            <a href="/formulas/<?= (int) $line['finished_good_component_id'] ?>">
+                                <?= e($line['component_product_code'] ?? 'FG-' . $line['finished_good_component_id']) ?>
+                            </a>
+                            <span class="badge badge-info">FG</span>
+                        </td>
+                        <td><?= e($line['component_description'] ?? '') ?></td>
+                    <?php else: ?>
+                        <td><a href="/raw-materials/<?= (int) $line['raw_material_id'] ?>/edit"><?= e($line['internal_code'] ?? 'RM-' . $line['raw_material_id']) ?></a></td>
+                        <td><?= e($line['supplier_product_name'] ?? '') ?></td>
+                    <?php endif; ?>
                     <td><?= number_format((float) $line['pct'], 2) ?>%</td>
                 </tr>
             <?php endforeach; ?>

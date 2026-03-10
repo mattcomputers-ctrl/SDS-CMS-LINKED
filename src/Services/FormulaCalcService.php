@@ -97,15 +97,61 @@ class FormulaCalcService
      * Enrich formula lines with full raw material data + constituents
      * for the VOC calculator.
      *
+     * Handles both raw material lines and finished good component lines.
+     * Finished good components are recursively expanded: their current
+     * formula's lines are enriched and scaled by the component's percentage.
+     *
      * When a raw material's constituents contain CAS numbers on the
      * admin-managed exempt VOC list, the exempt_voc_wt field is
      * auto-adjusted upward to account for that exempt content.
      */
-    private function enrichFormulaLines(array $lines, array &$warnings, array $exemptVocCasList = []): array
+    private function enrichFormulaLines(array $lines, array &$warnings, array $exemptVocCasList = [], array $ancestorFgIds = []): array
     {
         $enriched = [];
 
         foreach ($lines as $line) {
+            $lineType = $line['line_type'] ?? 'raw_material';
+
+            // --- Finished Good component line ---
+            if ($lineType === 'finished_good') {
+                $compFgId = (int) ($line['finished_good_component_id'] ?? 0);
+                if ($compFgId <= 0) {
+                    $warnings[] = "Finished good component line with no ID; skipped.";
+                    continue;
+                }
+
+                // Cycle guard
+                if (in_array($compFgId, $ancestorFgIds, true)) {
+                    $warnings[] = "Circular reference detected for finished good #{$compFgId}; skipped.";
+                    continue;
+                }
+
+                $compFormula = Formula::findCurrentByFinishedGood($compFgId);
+                if ($compFormula === null) {
+                    $warnings[] = "Finished good component #{$compFgId} has no current formula; skipped.";
+                    continue;
+                }
+
+                // Recursively enrich the sub-formula's lines
+                $subAncestors = array_merge($ancestorFgIds, [$compFgId]);
+                $subEnriched = $this->enrichFormulaLines(
+                    $compFormula['lines'],
+                    $warnings,
+                    $exemptVocCasList,
+                    $subAncestors
+                );
+
+                // Scale each sub-line by this component's percentage
+                $scaleFactor = (float) $line['pct'] / 100.0;
+                foreach ($subEnriched as $subLine) {
+                    $subLine['pct'] = $subLine['pct'] * $scaleFactor;
+                    $enriched[] = $subLine;
+                }
+
+                continue;
+            }
+
+            // --- Raw Material line ---
             $rmId = (int) $line['raw_material_id'];
             $rm   = RawMaterial::findById($rmId);
 

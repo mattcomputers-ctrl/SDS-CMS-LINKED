@@ -133,10 +133,8 @@ class HazardEngine
                 $exposureLimits[] = $entry;
             }
 
-            // Track CAS numbers that have any hazard data or exposure limits
-            if (!empty($hazardData) || !empty($limits)) {
-                $hazardousCas[$cas] = true;
-            }
+            // Note: CAS is only marked hazardous below when a GHS classification
+            // actually triggers (concentration >= cutoff) or a CPD applies.
 
             // Fall back to CAS number determination if no federal data
             if (empty($hazardData)) {
@@ -188,6 +186,9 @@ class HazardEngine
                 $cutoff = $this->getCutoff($className, $category);
 
                 if ($conc >= $cutoff) {
+                    // Mark CAS as hazardous only when a GHS category actually triggers
+                    $hazardousCas[$cas] = true;
+
                     $allHClasses[] = [
                         'class'    => $className,
                         'category' => $category,

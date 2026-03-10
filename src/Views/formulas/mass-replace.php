@@ -11,60 +11,52 @@
 
     <form method="POST" action="/formulas/mass-replace" id="massReplaceForm">
         <?= csrf_field() ?>
+        <input type="hidden" name="old_type" id="old_type" value="">
+        <input type="hidden" name="old_raw_material_id" id="old_raw_material_id" value="">
+        <input type="hidden" name="old_finished_good_id" id="old_finished_good_id" value="">
+        <input type="hidden" name="new_type" id="new_type" value="">
+        <input type="hidden" name="new_raw_material_id" id="new_raw_material_id" value="">
+        <input type="hidden" name="new_finished_good_id" id="new_finished_good_id" value="">
 
-        <!-- Old Component -->
-        <div class="form-group" style="margin-bottom: 0.75rem;">
-            <label><strong>Old Component Type</strong> (to be replaced)</label>
-            <select name="old_type" id="old_type" style="width: 100%;">
-                <option value="raw_material" selected>Raw Material</option>
-                <option value="finished_good">Finished Good</option>
+        <div class="form-group" style="margin-bottom: 1.25rem;">
+            <label for="old_component"><strong>Old Component</strong> (to be replaced)</label>
+            <select id="old_component" required style="width: 100%;" class="searchable-select">
+                <option value="">-- Select Component --</option>
+                <optgroup label="Raw Materials">
+                    <?php foreach ($rawMaterials as $rm): ?>
+                        <option value="rm_<?= (int) $rm['id'] ?>" data-type="raw_material" data-id="<?= (int) $rm['id'] ?>">
+                            <?= e($rm['internal_code']) ?> — <?= e($rm['supplier_product_name']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </optgroup>
+                <optgroup label="Finished Goods">
+                    <?php foreach ($finishedGoods as $fg): ?>
+                        <option value="fg_<?= (int) $fg['id'] ?>" data-type="finished_good" data-id="<?= (int) $fg['id'] ?>">
+                            <?= e($fg['product_code']) ?> — <?= e($fg['description']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </optgroup>
             </select>
         </div>
 
         <div class="form-group" style="margin-bottom: 1.25rem;">
-            <select name="old_raw_material_id" id="old_raw_material_id" style="width: 100%;" class="searchable-select old-component-select">
-                <option value="">-- Select Raw Material --</option>
-                <?php foreach ($rawMaterials as $rm): ?>
-                    <option value="<?= (int) $rm['id'] ?>">
-                        <?= e($rm['internal_code']) ?> — <?= e($rm['supplier_product_name']) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-            <select name="old_finished_good_id" id="old_finished_good_id" style="width: 100%; display: none;" disabled class="searchable-select old-component-select">
-                <option value="">-- Select Finished Good --</option>
-                <?php foreach ($finishedGoods as $fg): ?>
-                    <option value="<?= (int) $fg['id'] ?>">
-                        <?= e($fg['product_code']) ?> — <?= e($fg['description']) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-
-        <!-- New Component -->
-        <div class="form-group" style="margin-bottom: 0.75rem;">
-            <label><strong>New Component Type</strong> (replacement)</label>
-            <select name="new_type" id="new_type" style="width: 100%;">
-                <option value="raw_material" selected>Raw Material</option>
-                <option value="finished_good">Finished Good</option>
-            </select>
-        </div>
-
-        <div class="form-group" style="margin-bottom: 1.25rem;">
-            <select name="new_raw_material_id" id="new_raw_material_id" style="width: 100%;" class="searchable-select new-component-select">
-                <option value="">-- Select Raw Material --</option>
-                <?php foreach ($rawMaterials as $rm): ?>
-                    <option value="<?= (int) $rm['id'] ?>">
-                        <?= e($rm['internal_code']) ?> — <?= e($rm['supplier_product_name']) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-            <select name="new_finished_good_id" id="new_finished_good_id" style="width: 100%; display: none;" disabled class="searchable-select new-component-select">
-                <option value="">-- Select Finished Good --</option>
-                <?php foreach ($finishedGoods as $fg): ?>
-                    <option value="<?= (int) $fg['id'] ?>">
-                        <?= e($fg['product_code']) ?> — <?= e($fg['description']) ?>
-                    </option>
-                <?php endforeach; ?>
+            <label for="new_component"><strong>New Component</strong> (replacement)</label>
+            <select id="new_component" required style="width: 100%;" class="searchable-select">
+                <option value="">-- Select Component --</option>
+                <optgroup label="Raw Materials">
+                    <?php foreach ($rawMaterials as $rm): ?>
+                        <option value="rm_<?= (int) $rm['id'] ?>" data-type="raw_material" data-id="<?= (int) $rm['id'] ?>">
+                            <?= e($rm['internal_code']) ?> — <?= e($rm['supplier_product_name']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </optgroup>
+                <optgroup label="Finished Goods">
+                    <?php foreach ($finishedGoods as $fg): ?>
+                        <option value="fg_<?= (int) $fg['id'] ?>" data-type="finished_good" data-id="<?= (int) $fg['id'] ?>">
+                            <?= e($fg['product_code']) ?> — <?= e($fg['description']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </optgroup>
             </select>
         </div>
 
@@ -82,88 +74,66 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    var oldTypeSelect = document.getElementById('old_type');
-    var newTypeSelect = document.getElementById('new_type');
-    var oldRmSelect = document.getElementById('old_raw_material_id');
-    var oldFgSelect = document.getElementById('old_finished_good_id');
-    var newRmSelect = document.getElementById('new_raw_material_id');
-    var newFgSelect = document.getElementById('new_finished_good_id');
+    var oldSelect = document.getElementById('old_component');
+    var newSelect = document.getElementById('new_component');
     var submitBtn = document.getElementById('submit-btn');
     var previewArea = document.getElementById('preview-area');
     var previewText = document.getElementById('preview-text');
     var form = document.getElementById('massReplaceForm');
 
-    function toggleSelects(typeSelect, rmSelect, fgSelect) {
-        if (typeSelect.value === 'finished_good') {
-            rmSelect.style.display = 'none';
-            rmSelect.disabled = true;
-            rmSelect.value = '';
-            fgSelect.style.display = '';
-            fgSelect.disabled = false;
-        } else {
-            fgSelect.style.display = 'none';
-            fgSelect.disabled = true;
-            fgSelect.value = '';
-            rmSelect.style.display = '';
-            rmSelect.disabled = false;
-        }
-        updateState();
+    function getSelected(selectEl) {
+        var opt = selectEl.options[selectEl.selectedIndex];
+        if (!opt || !opt.value) return null;
+        return {
+            value: opt.value,
+            type: opt.getAttribute('data-type'),
+            id: opt.getAttribute('data-id'),
+            text: opt.text.trim()
+        };
     }
 
-    function getActiveSelect(typeSelect, rmSelect, fgSelect) {
-        return typeSelect.value === 'finished_good' ? fgSelect : rmSelect;
+    function syncHidden() {
+        var old = getSelected(oldSelect);
+        var nw = getSelected(newSelect);
+
+        // Reset hidden fields
+        document.getElementById('old_type').value = old ? old.type : '';
+        document.getElementById('old_raw_material_id').value = (old && old.type === 'raw_material') ? old.id : '';
+        document.getElementById('old_finished_good_id').value = (old && old.type === 'finished_good') ? old.id : '';
+        document.getElementById('new_type').value = nw ? nw.type : '';
+        document.getElementById('new_raw_material_id').value = (nw && nw.type === 'raw_material') ? nw.id : '';
+        document.getElementById('new_finished_good_id').value = (nw && nw.type === 'finished_good') ? nw.id : '';
     }
 
     function updateState() {
-        var oldActive = getActiveSelect(oldTypeSelect, oldRmSelect, oldFgSelect);
-        var newActive = getActiveSelect(newTypeSelect, newRmSelect, newFgSelect);
+        syncHidden();
 
-        var oldVal = oldActive.value;
-        var newVal = newActive.value;
-        var oldType = oldTypeSelect.value;
-        var newType = newTypeSelect.value;
-        var sameType = (oldType === newType);
-        var valid = oldVal !== '' && newVal !== '' && !(sameType && oldVal === newVal);
+        var old = getSelected(oldSelect);
+        var nw = getSelected(newSelect);
 
+        var valid = old && nw && old.value !== nw.value;
         submitBtn.disabled = !valid;
 
-        if (valid) {
-            var oldText = oldActive.options[oldActive.selectedIndex].text.trim();
-            var newText = newActive.options[newActive.selectedIndex].text.trim();
-            var oldTypeLabel = oldType === 'finished_good' ? 'FG' : 'RM';
-            var newTypeLabel = newType === 'finished_good' ? 'FG' : 'RM';
-            previewText.textContent = 'Replace ' + oldTypeLabel + ' "' + oldText + '" with ' + newTypeLabel + ' "' + newText + '" in all current formulas.';
-            previewArea.style.display = 'block';
-        } else if (sameType && oldVal !== '' && newVal !== '' && oldVal === newVal) {
+        if (old && nw && old.value === nw.value) {
             previewText.textContent = 'Old and new components must be different.';
+            previewArea.style.display = 'block';
+        } else if (valid) {
+            previewText.textContent = 'Replace "' + old.text + '" with "' + nw.text + '" in all current formulas.';
             previewArea.style.display = 'block';
         } else {
             previewArea.style.display = 'none';
         }
     }
 
-    oldTypeSelect.addEventListener('change', function () {
-        toggleSelects(oldTypeSelect, oldRmSelect, oldFgSelect);
-    });
-    newTypeSelect.addEventListener('change', function () {
-        toggleSelects(newTypeSelect, newRmSelect, newFgSelect);
-    });
-
-    oldRmSelect.addEventListener('change', updateState);
-    oldFgSelect.addEventListener('change', updateState);
-    newRmSelect.addEventListener('change', updateState);
-    newFgSelect.addEventListener('change', updateState);
+    oldSelect.addEventListener('change', updateState);
+    newSelect.addEventListener('change', updateState);
 
     form.addEventListener('submit', function (e) {
-        var oldActive = getActiveSelect(oldTypeSelect, oldRmSelect, oldFgSelect);
-        var newActive = getActiveSelect(newTypeSelect, newRmSelect, newFgSelect);
-        var oldText = oldActive.options[oldActive.selectedIndex].text.trim();
-        var newText = newActive.options[newActive.selectedIndex].text.trim();
-        var oldTypeLabel = oldTypeSelect.value === 'finished_good' ? 'Finished Good' : 'Raw Material';
-        var newTypeLabel = newTypeSelect.value === 'finished_good' ? 'Finished Good' : 'Raw Material';
+        var old = getSelected(oldSelect);
+        var nw = getSelected(newSelect);
         var msg = 'Are you sure you want to replace:\n\n'
-            + '  ' + oldTypeLabel + ': "' + oldText + '"\n\nwith:\n\n'
-            + '  ' + newTypeLabel + ': "' + newText + '"\n\n'
+            + '  "' + old.text + '"\n\nwith:\n\n'
+            + '  "' + nw.text + '"\n\n'
             + 'in ALL current formulas?\n\n'
             + 'New formula versions will be created. This cannot be easily undone.';
         if (!confirm(msg)) {

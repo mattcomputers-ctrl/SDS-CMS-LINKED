@@ -47,14 +47,16 @@ class FinishedGoodController
 
         $families     = $this->loadProductFamilies();
         $rawMaterials = RawMaterial::all(['per_page' => 999, 'sort' => 'internal_code', 'dir' => 'asc']);
+        $finishedGoods = FinishedGood::all(['per_page' => 999, 'sort' => 'product_code', 'dir' => 'asc']);
 
         view('finished-goods/form', [
-            'pageTitle'    => 'Add Finished Good',
-            'item'         => null,
-            'mode'         => 'create',
-            'families'     => $families,
-            'rawMaterials' => $rawMaterials,
-            'formula'      => null,
+            'pageTitle'     => 'Add Finished Good',
+            'item'          => null,
+            'mode'          => 'create',
+            'families'      => $families,
+            'rawMaterials'  => $rawMaterials,
+            'finishedGoods' => $finishedGoods,
+            'formula'       => null,
         ]);
     }
 
@@ -97,13 +99,20 @@ class FinishedGoodController
         $rawMaterials = RawMaterial::all(['per_page' => 999, 'sort' => 'internal_code', 'dir' => 'asc']);
         $formula      = Formula::findCurrentByFinishedGood((int) $id);
 
+        // Get all finished goods for the dropdown (exclude self)
+        $allFinishedGoods = FinishedGood::all(['per_page' => 999, 'sort' => 'product_code', 'dir' => 'asc']);
+        $finishedGoods = array_values(array_filter($allFinishedGoods, function ($item) use ($id) {
+            return (int) $item['id'] !== (int) $id;
+        }));
+
         view('finished-goods/form', [
-            'pageTitle'    => 'Edit: ' . $item['product_code'],
-            'item'         => $item,
-            'mode'         => 'edit',
-            'families'     => $families,
-            'rawMaterials' => $rawMaterials,
-            'formula'      => $formula,
+            'pageTitle'     => 'Edit: ' . $item['product_code'],
+            'item'          => $item,
+            'mode'          => 'edit',
+            'families'      => $families,
+            'rawMaterials'  => $rawMaterials,
+            'finishedGoods' => $finishedGoods,
+            'formula'       => $formula,
         ]);
     }
 
@@ -142,23 +151,38 @@ class FinishedGoodController
      */
     private function saveFormulaFromPost(int $fgId): void
     {
-        $rmIds = $_POST['raw_material_id'] ?? [];
-        $pcts  = $_POST['pct'] ?? [];
-        $lines = [];
+        $lineTypes = $_POST['line_type'] ?? [];
+        $rmIds     = $_POST['raw_material_id'] ?? [];
+        $fgIds     = $_POST['finished_good_component_id'] ?? [];
+        $pcts      = $_POST['pct'] ?? [];
+        $lines     = [];
 
-        foreach ($rmIds as $i => $rmId) {
-            $rmId = (int) $rmId;
-            $pct  = (float) ($pcts[$i] ?? 0);
-
-            if ($rmId <= 0 || $pct <= 0) {
+        foreach ($lineTypes as $i => $type) {
+            $pct = (float) ($pcts[$i] ?? 0);
+            if ($pct <= 0) {
                 continue;
             }
 
-            $lines[] = [
-                'raw_material_id' => $rmId,
-                'pct'             => $pct,
-                'sort_order'      => $i + 1,
+            $line = [
+                'pct'        => $pct,
+                'sort_order' => $i + 1,
             ];
+
+            if ($type === 'finished_good') {
+                $fgCompId = (int) ($fgIds[$i] ?? 0);
+                if ($fgCompId <= 0) {
+                    continue;
+                }
+                $line['finished_good_component_id'] = $fgCompId;
+            } else {
+                $rmId = (int) ($rmIds[$i] ?? 0);
+                if ($rmId <= 0) {
+                    continue;
+                }
+                $line['raw_material_id'] = $rmId;
+            }
+
+            $lines[] = $line;
         }
 
         // Only save if lines were actually provided

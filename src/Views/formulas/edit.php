@@ -10,7 +10,7 @@
 
         <table class="table" id="formulaLinesTable">
             <thead>
-                <tr><th>#</th><th>Type</th><th>Component</th><th>Weight %</th><th></th></tr>
+                <tr><th>#</th><th>Component</th><th>Weight %</th><th></th></tr>
             </thead>
             <tbody>
             <?php
@@ -20,31 +20,35 @@
             }
             foreach ($lines as $i => $line):
                 $lineType = $line['line_type'] ?? 'raw_material';
+                $selectedValue = '';
+                if ($lineType === 'finished_good' && !empty($line['finished_good_component_id'])) {
+                    $selectedValue = 'fg_' . (int) $line['finished_good_component_id'];
+                } elseif (!empty($line['raw_material_id'])) {
+                    $selectedValue = 'rm_' . (int) $line['raw_material_id'];
+                }
             ?>
                 <tr class="formula-line">
                     <td><?= $i + 1 ?></td>
                     <td>
-                        <select name="line_type[<?= $i ?>]" class="line-type-select" data-index="<?= $i ?>">
-                            <option value="raw_material" <?= $lineType === 'raw_material' ? 'selected' : '' ?>>Raw Material</option>
-                            <option value="finished_good" <?= $lineType === 'finished_good' ? 'selected' : '' ?>>Finished Good</option>
-                        </select>
-                    </td>
-                    <td>
-                        <select name="raw_material_id[<?= $i ?>]" class="searchable-select rm-select" data-index="<?= $i ?>" <?= $lineType === 'finished_good' ? 'style="display:none" disabled' : '' ?>>
-                            <option value="">— Select Raw Material —</option>
-                            <?php foreach ($rawMaterials as $rm): ?>
-                                <option value="<?= (int) $rm['id'] ?>" <?= ($lineType === 'raw_material' && (int) ($line['raw_material_id'] ?? 0)) === (int) $rm['id'] ? 'selected' : '' ?>>
-                                    <?= e($rm['internal_code']) ?> — <?= e($rm['supplier_product_name']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                        <select name="finished_good_component_id[<?= $i ?>]" class="searchable-select fg-select" data-index="<?= $i ?>" <?= $lineType === 'raw_material' ? 'style="display:none" disabled' : '' ?>>
-                            <option value="">— Select Finished Good —</option>
-                            <?php foreach ($finishedGoods as $fg): ?>
-                                <option value="<?= (int) $fg['id'] ?>" <?= ($lineType === 'finished_good' && (int) ($line['finished_good_component_id'] ?? 0)) === (int) $fg['id'] ? 'selected' : '' ?>>
-                                    <?= e($fg['product_code']) ?> — <?= e($fg['description']) ?>
-                                </option>
-                            <?php endforeach; ?>
+                        <input type="hidden" name="line_type[<?= $i ?>]" class="line-type-hidden" value="<?= e($lineType) ?>">
+                        <input type="hidden" name="raw_material_id[<?= $i ?>]" class="rm-id-hidden" value="<?= $lineType === 'raw_material' ? (int) ($line['raw_material_id'] ?? 0) : '' ?>">
+                        <input type="hidden" name="finished_good_component_id[<?= $i ?>]" class="fg-id-hidden" value="<?= $lineType === 'finished_good' ? (int) ($line['finished_good_component_id'] ?? 0) : '' ?>">
+                        <select class="searchable-select component-select" required data-index="<?= $i ?>">
+                            <option value="">— Select —</option>
+                            <optgroup label="Raw Materials">
+                                <?php foreach ($rawMaterials as $rm): ?>
+                                    <option value="rm_<?= (int) $rm['id'] ?>" data-type="raw_material" data-id="<?= (int) $rm['id'] ?>" <?= $selectedValue === 'rm_' . (int) $rm['id'] ? 'selected' : '' ?>>
+                                        <?= e($rm['internal_code']) ?> — <?= e($rm['supplier_product_name']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </optgroup>
+                            <optgroup label="Finished Goods">
+                                <?php foreach ($finishedGoods as $fg): ?>
+                                    <option value="fg_<?= (int) $fg['id'] ?>" data-type="finished_good" data-id="<?= (int) $fg['id'] ?>" <?= $selectedValue === 'fg_' . (int) $fg['id'] ? 'selected' : '' ?>>
+                                        <?= e($fg['product_code']) ?> — <?= e($fg['description']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </optgroup>
                         </select>
                     </td>
                     <td><input type="number" name="pct[<?= $i ?>]" value="<?= e((string) ($line['pct'] ?? '')) ?>" step="0.0001" min="0" max="100" class="input-sm formula-pct" required></td>
@@ -54,7 +58,7 @@
             </tbody>
             <tfoot>
                 <tr>
-                    <th colspan="3" class="text-right">Total:</th>
+                    <th colspan="2" class="text-right">Total:</th>
                     <th id="totalPct">0.00%</th>
                     <th></th>
                 </tr>
@@ -74,16 +78,36 @@
 </div>
 
 <script>
-var rawMaterialOptions = <?= json_encode(array_map(function($rm) {
-    return ['id' => (int) $rm['id'], 'label' => $rm['internal_code'] . ' — ' . $rm['supplier_product_name']];
-}, $rawMaterials)) ?>;
-
-var finishedGoodOptions = <?= json_encode(array_map(function($fg) {
-    return ['id' => (int) $fg['id'], 'label' => $fg['product_code'] . ' — ' . $fg['description']];
-}, $finishedGoods)) ?>;
+var componentOptions = [];
+<?php foreach ($rawMaterials as $rm): ?>
+componentOptions.push({value: 'rm_<?= (int) $rm['id'] ?>', type: 'raw_material', id: <?= (int) $rm['id'] ?>, label: <?= json_encode($rm['internal_code'] . ' — ' . $rm['supplier_product_name']) ?>, group: 'Raw Materials'});
+<?php endforeach; ?>
+<?php foreach ($finishedGoods as $fg): ?>
+componentOptions.push({value: 'fg_<?= (int) $fg['id'] ?>', type: 'finished_good', id: <?= (int) $fg['id'] ?>, label: <?= json_encode($fg['product_code'] . ' — ' . $fg['description']) ?>, group: 'Finished Goods'});
+<?php endforeach; ?>
 
 function escHtml(str) {
     return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function syncHiddenFields(selectEl) {
+    var row = selectEl.closest('tr');
+    var opt = selectEl.options[selectEl.selectedIndex];
+    var lineTypeInput = row.querySelector('.line-type-hidden');
+    var rmIdInput = row.querySelector('.rm-id-hidden');
+    var fgIdInput = row.querySelector('.fg-id-hidden');
+
+    if (opt && opt.value) {
+        var type = opt.getAttribute('data-type');
+        var id = opt.getAttribute('data-id');
+        lineTypeInput.value = type;
+        rmIdInput.value = (type === 'raw_material') ? id : '';
+        fgIdInput.value = (type === 'finished_good') ? id : '';
+    } else {
+        lineTypeInput.value = 'raw_material';
+        rmIdInput.value = '';
+        fgIdInput.value = '';
+    }
 }
 
 function updateTotal() {
@@ -96,51 +120,30 @@ function updateTotal() {
     el.className = Math.abs(total - 100) > 0.1 ? 'text-danger' : '';
 }
 
-function toggleLineType(selectEl) {
-    var idx = selectEl.getAttribute('data-index');
-    var row = selectEl.closest('tr');
-    var rmSelect = row.querySelector('.rm-select');
-    var fgSelect = row.querySelector('.fg-select');
-
-    if (selectEl.value === 'finished_good') {
-        rmSelect.style.display = 'none';
-        rmSelect.disabled = true;
-        rmSelect.value = '';
-        fgSelect.style.display = '';
-        fgSelect.disabled = false;
-    } else {
-        fgSelect.style.display = 'none';
-        fgSelect.disabled = true;
-        fgSelect.value = '';
-        rmSelect.style.display = '';
-        rmSelect.disabled = false;
-    }
-}
-
 document.getElementById('addLine').addEventListener('click', function() {
     var tbody = document.querySelector('#formulaLinesTable tbody');
     var idx = tbody.querySelectorAll('.formula-line').length;
     var tr = document.createElement('tr');
     tr.className = 'formula-line';
 
-    var rmOptions = '<option value="">— Select Raw Material —</option>';
-    rawMaterialOptions.forEach(function(rm) {
-        rmOptions += '<option value="' + rm.id + '">' + escHtml(rm.label) + '</option>';
+    var options = '<option value="">— Select —</option>';
+    var currentGroup = '';
+    componentOptions.forEach(function(c) {
+        if (c.group !== currentGroup) {
+            if (currentGroup) options += '</optgroup>';
+            options += '<optgroup label="' + escHtml(c.group) + '">';
+            currentGroup = c.group;
+        }
+        options += '<option value="' + c.value + '" data-type="' + c.type + '" data-id="' + c.id + '">' + escHtml(c.label) + '</option>';
     });
-
-    var fgOptions = '<option value="">— Select Finished Good —</option>';
-    finishedGoodOptions.forEach(function(fg) {
-        fgOptions += '<option value="' + fg.id + '">' + escHtml(fg.label) + '</option>';
-    });
+    if (currentGroup) options += '</optgroup>';
 
     tr.innerHTML = '<td>' + (idx + 1) + '</td>' +
-        '<td><select name="line_type[' + idx + ']" class="line-type-select" data-index="' + idx + '">' +
-            '<option value="raw_material" selected>Raw Material</option>' +
-            '<option value="finished_good">Finished Good</option>' +
-        '</select></td>' +
         '<td>' +
-            '<select name="raw_material_id[' + idx + ']" class="searchable-select rm-select" data-index="' + idx + '">' + rmOptions + '</select>' +
-            '<select name="finished_good_component_id[' + idx + ']" class="searchable-select fg-select" data-index="' + idx + '" style="display:none" disabled>' + fgOptions + '</select>' +
+            '<input type="hidden" name="line_type[' + idx + ']" class="line-type-hidden" value="raw_material">' +
+            '<input type="hidden" name="raw_material_id[' + idx + ']" class="rm-id-hidden" value="">' +
+            '<input type="hidden" name="finished_good_component_id[' + idx + ']" class="fg-id-hidden" value="">' +
+            '<select class="searchable-select component-select" required data-index="' + idx + '">' + options + '</select>' +
         '</td>' +
         '<td><input type="number" name="pct[' + idx + ']" step="0.0001" min="0" max="100" class="input-sm formula-pct" required></td>' +
         '<td><button type="button" class="btn btn-sm btn-danger remove-line">X</button></td>';
@@ -152,8 +155,8 @@ document.addEventListener('input', function(e) {
 });
 
 document.addEventListener('change', function(e) {
-    if (e.target.classList.contains('line-type-select')) {
-        toggleLineType(e.target);
+    if (e.target.classList.contains('component-select')) {
+        syncHiddenFields(e.target);
     }
 });
 

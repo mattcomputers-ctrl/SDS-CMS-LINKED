@@ -354,6 +354,98 @@ class FinishedGood
     }
 
     /* ------------------------------------------------------------------
+     *  Alias-based SDS Lookup
+     * ----------------------------------------------------------------*/
+
+    /**
+     * Return paginated aliases with their latest published SDS info per language.
+     *
+     * Each row represents an alias (customer-facing product code) linked to
+     * a finished good. The product code shown is the alias customer_code
+     * and the description is the alias description.
+     *
+     * @return array{rows: array, total: int}
+     */
+    public static function lookupAllAliases(string $searchTerm = '', int $page = 1, int $perPage = 250): array
+    {
+        $db = Database::getInstance();
+
+        $where  = [];
+        $params = [];
+
+        if ($searchTerm !== '') {
+            $where[]  = '(a.customer_code LIKE ? OR a.description LIKE ?)';
+            $like     = '%' . $searchTerm . '%';
+            $params[] = $like;
+            $params[] = $like;
+        }
+
+        $whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+
+        // Count total aliases
+        $countRow = $db->fetch(
+            "SELECT COUNT(*) AS cnt FROM aliases a
+             INNER JOIN finished_goods fg ON fg.product_code = a.internal_code_base
+             {$whereSQL}",
+            $params
+        );
+        $total = (int) ($countRow['cnt'] ?? 0);
+
+        $offset = ($page - 1) * $perPage;
+
+        // Latest version subquery per language, scoped to alias_id
+        $latestVersionJoin = function (string $alias, string $lang) {
+            return "LEFT JOIN (
+                SELECT sv.alias_id, sv.id AS sds_id, sv.version, sv.published_at
+                FROM sds_versions sv
+                INNER JOIN (
+                    SELECT alias_id, MAX(version) AS max_ver
+                    FROM sds_versions
+                    WHERE status = 'published' AND language = '{$lang}' AND is_deleted = 0 AND alias_id IS NOT NULL
+                    GROUP BY alias_id
+                ) mx ON sv.alias_id = mx.alias_id
+                     AND sv.version = mx.max_ver
+                     AND sv.language = '{$lang}'
+                     AND sv.status = 'published'
+                     AND sv.is_deleted = 0
+            ) {$alias} ON {$alias}.alias_id = a.id";
+        };
+
+        $sql = "SELECT a.id AS alias_id, a.customer_code, a.description AS alias_description,
+                       fg.id AS fg_id, fg.family, fg.is_active,
+                       sv_en.version AS ver_en, sv_en.published_at AS date_en, sv_en.sds_id AS sds_id_en,
+                       sv_es.version AS ver_es, sv_es.published_at AS date_es, sv_es.sds_id AS sds_id_es,
+                       sv_fr.version AS ver_fr, sv_fr.published_at AS date_fr, sv_fr.sds_id AS sds_id_fr,
+                       sv_de.version AS ver_de, sv_de.published_at AS date_de, sv_de.sds_id AS sds_id_de
+                FROM aliases a
+                INNER JOIN finished_goods fg ON fg.product_code = a.internal_code_base
+                {$latestVersionJoin('sv_en', 'en')}
+                {$latestVersionJoin('sv_es', 'es')}
+                {$latestVersionJoin('sv_fr', 'fr')}
+                {$latestVersionJoin('sv_de', 'de')}
+                {$whereSQL}
+                ORDER BY a.customer_code ASC
+                LIMIT {$perPage} OFFSET {$offset}";
+
+        $rows = $db->fetchAll($sql, $params);
+
+        // Post-process to match the expected lookup format
+        foreach ($rows as &$row) {
+            $row['product_code'] = $row['customer_code'];
+            $row['description']  = $row['alias_description'];
+            $row['has_en'] = $row['ver_en'] !== null;
+            $row['has_es'] = $row['ver_es'] !== null;
+            $row['has_fr'] = $row['ver_fr'] !== null;
+            $row['has_de'] = $row['ver_de'] !== null;
+            $row['latest_version'] = $row['ver_en'] ?? $row['ver_es'] ?? $row['ver_fr'] ?? $row['ver_de'];
+            $row['latest_date']    = $row['date_en'] ?? $row['date_es'] ?? $row['date_fr'] ?? $row['date_de'];
+        }
+        unset($row);
+
+        return ['rows' => $rows, 'total' => $total];
+    }
+
+    /* ------------------------------------------------------------------
      *  Create / Update
      * ----------------------------------------------------------------*/
 

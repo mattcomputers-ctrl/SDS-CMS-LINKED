@@ -15,7 +15,7 @@ class LookupController
         $page    = max(1, (int) ($_GET['page'] ?? 1));
         $perPage = 250;
 
-        $result = FinishedGood::lookupAll($search, $page, $perPage);
+        $result = FinishedGood::lookupAllAliases($search, $page, $perPage);
 
         $total = $result['total'];
         $pages = (int) ceil($total / $perPage);
@@ -44,9 +44,11 @@ class LookupController
         $db = Database::getInstance();
 
         $version = $db->fetch(
-            "SELECT sv.*, fg.product_code
+            "SELECT sv.*, fg.product_code,
+                    a.customer_code AS alias_code
              FROM sds_versions sv
              JOIN finished_goods fg ON fg.id = sv.finished_good_id
+             LEFT JOIN aliases a ON a.id = sv.alias_id
              WHERE sv.id = ? AND sv.status = 'published' AND sv.is_deleted = 0",
             [(int) $id]
         );
@@ -72,8 +74,11 @@ class LookupController
             'ip_address'  => $_SERVER['REMOTE_ADDR'] ?? null,
         ]);
 
+        // Use alias code for filename when available, otherwise fall back to product code
+        $displayCode = $version['alias_code'] ?? $version['product_code'];
+
         header('Content-Type: application/pdf');
-        header('Content-Disposition: inline; filename="SDS_' . $version['product_code'] . '_v' . $version['version'] . '.pdf"');
+        header('Content-Disposition: inline; filename="SDS_' . $displayCode . '_v' . $version['version'] . '.pdf"');
         header('Content-Length: ' . filesize($pdfPath));
         readfile($pdfPath);
         exit;

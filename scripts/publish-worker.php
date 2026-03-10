@@ -72,6 +72,7 @@ foreach ($workItems as $i => $item) {
     $version = (int) $item['version'];
 
     // Alias support: items with alias_id get a modified section 1
+    // alias_code is already the base code (pack extension stripped by BulkPublishController)
     $aliasId          = isset($item['alias_id']) ? (int) $item['alias_id'] : null;
     $aliasCode        = $item['alias_code'] ?? null;
     $aliasDescription = $item['alias_description'] ?? null;

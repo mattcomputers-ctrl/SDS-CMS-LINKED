@@ -97,9 +97,9 @@ class BulkPublishController
              WHERE fg.is_active = 1"
         );
 
-        // Count aliases linked to active finished goods with formulas
+        // Count unique aliases (by base customer code) linked to active finished goods with formulas
         $aliasStats = $db->fetch(
-            "SELECT COUNT(*) AS alias_count
+            "SELECT COUNT(DISTINCT SUBSTRING_INDEX(a.customer_code, '-', 1)) AS alias_count
              FROM aliases a
              INNER JOIN finished_goods fg ON fg.product_code = a.internal_code_base
              INNER JOIN formulas f ON f.finished_good_id = fg.id AND f.is_current = 1
@@ -176,11 +176,11 @@ class BulkPublishController
                 ];
             }
 
-            // Add alias work items for this finished good
-            $aliases = $db->fetchAll(
+            // Add alias work items for this finished good (deduplicated by base customer code)
+            $aliases = self::deduplicateAliasesByBaseCode($db->fetchAll(
                 "SELECT id, customer_code, description FROM aliases WHERE internal_code_base = ? ORDER BY customer_code",
                 [$fg['product_code']]
-            );
+            ));
             foreach ($aliases as $alias) {
                 $aliasLastVersion = $db->fetch(
                     "SELECT MAX(version) AS max_ver FROM sds_versions WHERE alias_id = ?",
@@ -451,6 +451,39 @@ class BulkPublishController
     /* ------------------------------------------------------------------
      *  Helpers
      * ----------------------------------------------------------------*/
+
+    /**
+     * Strip the pack extension from a code (everything after the first "-").
+     */
+    private static function stripPackExtension(string $code): string
+    {
+        $pos = strpos($code, '-');
+        return $pos !== false ? substr($code, 0, $pos) : $code;
+    }
+
+    /**
+     * Deduplicate alias rows by base customer code (pack extension stripped).
+     *
+     * Returns one row per unique base code, using the first occurrence's id
+     * and description, with customer_code set to the base (no pack extension).
+     */
+    private static function deduplicateAliasesByBaseCode(array $rows): array
+    {
+        $seen = [];
+        $result = [];
+
+        foreach ($rows as $row) {
+            $baseCode = self::stripPackExtension($row['customer_code']);
+            if (isset($seen[$baseCode])) {
+                continue;
+            }
+            $seen[$baseCode] = true;
+            $row['customer_code'] = $baseCode;
+            $result[] = $row;
+        }
+
+        return $result;
+    }
 
     private function jsonResponse(array $data, int $status = 200): void
     {

@@ -545,16 +545,55 @@ class SDSController
 
     /**
      * Find all aliases whose internal_code_base matches the finished good's product code.
+     *
+     * Aliases are deduplicated by base customer code (pack extension stripped)
+     * so that only one SDS is generated per base alias regardless of how many
+     * pack extension variants exist (e.g., B1320-50, B1320-2G → one SDS for B1320).
      */
     private function getAliasesForFinishedGood(string $productCode, Database $db): array
     {
-        return $db->fetchAll(
+        $rows = $db->fetchAll(
             "SELECT id, customer_code, description, internal_code, internal_code_base
              FROM aliases
              WHERE internal_code_base = ?
              ORDER BY customer_code ASC",
             [$productCode]
         );
+
+        return self::deduplicateAliasesByBaseCode($rows);
+    }
+
+    /**
+     * Strip the pack extension from a code (everything after the first "-").
+     */
+    private static function stripPackExtension(string $code): string
+    {
+        $pos = strpos($code, '-');
+        return $pos !== false ? substr($code, 0, $pos) : $code;
+    }
+
+    /**
+     * Deduplicate alias rows by base customer code (pack extension stripped).
+     *
+     * Returns one row per unique base code, using the first occurrence's id
+     * and description, with customer_code set to the base (no pack extension).
+     */
+    private static function deduplicateAliasesByBaseCode(array $rows): array
+    {
+        $seen = [];
+        $result = [];
+
+        foreach ($rows as $row) {
+            $baseCode = self::stripPackExtension($row['customer_code']);
+            if (isset($seen[$baseCode])) {
+                continue;
+            }
+            $seen[$baseCode] = true;
+            $row['customer_code'] = $baseCode;
+            $result[] = $row;
+        }
+
+        return $result;
     }
 
     /**

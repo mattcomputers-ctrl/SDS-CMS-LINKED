@@ -343,12 +343,22 @@ class ReportController
         $db = Database::getInstance();
         $basePath = \SDS\Core\App::basePath();
 
-        // Load all aliases indexed by internal_code_base
+        // Load all aliases indexed by internal_code_base, deduplicated by base customer code
         $allAliases = $db->fetchAll("SELECT * FROM aliases ORDER BY customer_code");
         $aliasesByBase = [];
+        $seenAliases = [];
         foreach ($allAliases as $alias) {
+            $baseCustomerCode = $this->stripPackExtension($alias['customer_code']);
+            // Deduplicate: only keep the first alias per base customer code per internal_code_base
+            $dedupeKey = $alias['internal_code_base'] . '::' . $baseCustomerCode;
+            if (isset($seenAliases[$dedupeKey])) {
+                continue;
+            }
+            $seenAliases[$dedupeKey] = true;
+            $alias['customer_code'] = $baseCustomerCode;
             $aliasesByBase[$alias['internal_code_base']][] = $alias;
         }
+        unset($seenAliases);
 
         // Create ZIP
         $tempZip = tempnam(sys_get_temp_dir(), 'sds_shipped_') . '.zip';

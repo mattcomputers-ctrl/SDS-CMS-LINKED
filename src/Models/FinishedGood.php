@@ -374,17 +374,20 @@ class FinishedGood
         $params = [];
 
         if ($searchTerm !== '') {
-            $where[]  = '(a.customer_code LIKE ? OR a.description LIKE ?)';
+            // Search against the base customer code (pack extension stripped) as well
+            $where[]  = '(a.customer_code LIKE ? OR a.description LIKE ? OR SUBSTRING_INDEX(a.customer_code, \'-\', 1) LIKE ?)';
             $like     = '%' . $searchTerm . '%';
+            $params[] = $like;
             $params[] = $like;
             $params[] = $like;
         }
 
         $whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
-        // Count total aliases
+        // Count total unique base customer codes (pack extension agnostic)
         $countRow = $db->fetch(
-            "SELECT COUNT(*) AS cnt FROM aliases a
+            "SELECT COUNT(DISTINCT SUBSTRING_INDEX(a.customer_code, '-', 1)) AS cnt
+             FROM aliases a
              INNER JOIN finished_goods fg ON fg.product_code = a.internal_code_base
              {$whereSQL}",
             $params
@@ -392,6 +395,18 @@ class FinishedGood
         $total = (int) ($countRow['cnt'] ?? 0);
 
         $offset = ($page - 1) * $perPage;
+
+        // Pick one representative alias per base customer code (lowest id)
+        // This ensures we show one row per product regardless of pack extensions
+        $representativeAlias = "INNER JOIN (
+                SELECT MIN(a2.id) AS rep_id
+                FROM aliases a2
+                INNER JOIN finished_goods fg2 ON fg2.product_code = a2.internal_code_base
+                {$whereSQL}
+                GROUP BY SUBSTRING_INDEX(a2.customer_code, '-', 1)
+                ORDER BY SUBSTRING_INDEX(a2.customer_code, '-', 1) ASC
+                LIMIT {$perPage} OFFSET {$offset}
+            ) rep ON rep.rep_id = a.id";
 
         // Latest version subquery per language, scoped to alias_id
         $latestVersionJoin = function (string $alias, string $lang) {
@@ -411,6 +426,8 @@ class FinishedGood
             ) {$alias} ON {$alias}.alias_id = a.id";
         };
 
+        // The representative alias subquery already handles pagination and filtering,
+        // so we don't need WHERE or LIMIT/OFFSET on the outer query
         $sql = "SELECT a.id AS alias_id, a.customer_code, a.description AS alias_description,
                        fg.id AS fg_id, fg.family, fg.is_active,
                        sv_en.version AS ver_en, sv_en.published_at AS date_en, sv_en.sds_id AS sds_id_en,
@@ -419,19 +436,23 @@ class FinishedGood
                        sv_de.version AS ver_de, sv_de.published_at AS date_de, sv_de.sds_id AS sds_id_de
                 FROM aliases a
                 INNER JOIN finished_goods fg ON fg.product_code = a.internal_code_base
+                {$representativeAlias}
                 {$latestVersionJoin('sv_en', 'en')}
                 {$latestVersionJoin('sv_es', 'es')}
                 {$latestVersionJoin('sv_fr', 'fr')}
                 {$latestVersionJoin('sv_de', 'de')}
-                {$whereSQL}
-                ORDER BY a.customer_code ASC
-                LIMIT {$perPage} OFFSET {$offset}";
+                ORDER BY a.customer_code ASC";
 
-        $rows = $db->fetchAll($sql, $params);
+        // The representative subquery uses the same WHERE params
+        $queryParams = array_merge($params, $params);
+        $rows = $db->fetchAll($sql, $queryParams);
 
-        // Post-process to match the expected lookup format
+        // Post-process: strip pack extension from displayed product code
         foreach ($rows as &$row) {
-            $row['product_code'] = $row['customer_code'];
+            $baseCode = strpos($row['customer_code'], '-') !== false
+                ? substr($row['customer_code'], 0, strpos($row['customer_code'], '-'))
+                : $row['customer_code'];
+            $row['product_code'] = $baseCode;
             $row['description']  = $row['alias_description'];
             $row['has_en'] = $row['ver_en'] !== null;
             $row['has_es'] = $row['ver_es'] !== null;

@@ -142,12 +142,13 @@ class FormulaController
             redirect('/');
         }
 
-        // Get all raw materials for the dropdowns
         $rawMaterials = RawMaterial::all(['per_page' => 999, 'sort' => 'internal_code', 'dir' => 'asc']);
+        $finishedGoods = FinishedGood::all(['per_page' => 999, 'sort' => 'product_code', 'dir' => 'asc']);
 
         view('formulas/mass-replace', [
-            'pageTitle'    => 'RM Mass Replacement',
-            'rawMaterials' => $rawMaterials,
+            'pageTitle'     => 'Component Mass Replacement',
+            'rawMaterials'  => $rawMaterials,
+            'finishedGoods' => $finishedGoods,
         ]);
     }
 
@@ -159,50 +160,88 @@ class FormulaController
 
         CSRF::validateRequest();
 
-        $oldRmId = (int) ($_POST['old_raw_material_id'] ?? 0);
-        $newRmId = (int) ($_POST['new_raw_material_id'] ?? 0);
+        $oldType = $_POST['old_type'] ?? 'raw_material';
+        $newType = $_POST['new_type'] ?? 'raw_material';
 
-        if ($oldRmId <= 0 || $newRmId <= 0) {
-            $_SESSION['_flash']['error'] = 'Please select both an old and a new raw material.';
+        // Validate types
+        $validTypes = ['raw_material', 'finished_good'];
+        if (!in_array($oldType, $validTypes, true) || !in_array($newType, $validTypes, true)) {
+            $_SESSION['_flash']['error'] = 'Invalid component type selected.';
             redirect('/formulas/mass-replace');
         }
 
-        if ($oldRmId === $newRmId) {
-            $_SESSION['_flash']['error'] = 'Old and new raw materials must be different.';
+        $oldId = (int) ($oldType === 'finished_good'
+            ? ($_POST['old_finished_good_id'] ?? 0)
+            : ($_POST['old_raw_material_id'] ?? 0));
+
+        $newId = (int) ($newType === 'finished_good'
+            ? ($_POST['new_finished_good_id'] ?? 0)
+            : ($_POST['new_raw_material_id'] ?? 0));
+
+        if ($oldId <= 0 || $newId <= 0) {
+            $_SESSION['_flash']['error'] = 'Please select both an old and a new component.';
             redirect('/formulas/mass-replace');
         }
 
-        // Verify both RMs exist
-        $oldRm = RawMaterial::findById($oldRmId);
-        $newRm = RawMaterial::findById($newRmId);
+        if ($oldType === $newType && $oldId === $newId) {
+            $_SESSION['_flash']['error'] = 'Old and new components must be different.';
+            redirect('/formulas/mass-replace');
+        }
 
-        if (!$oldRm || !$newRm) {
-            $_SESSION['_flash']['error'] = 'One or both raw materials not found.';
+        // Verify old component exists
+        if ($oldType === 'finished_good') {
+            $oldItem = FinishedGood::findById($oldId);
+            $oldLabel = $oldItem ? $oldItem['product_code'] : null;
+        } else {
+            $oldItem = RawMaterial::findById($oldId);
+            $oldLabel = $oldItem ? $oldItem['internal_code'] : null;
+        }
+
+        // Verify new component exists
+        if ($newType === 'finished_good') {
+            $newItem = FinishedGood::findById($newId);
+            $newLabel = $newItem ? $newItem['product_code'] : null;
+        } else {
+            $newItem = RawMaterial::findById($newId);
+            $newLabel = $newItem ? $newItem['internal_code'] : null;
+        }
+
+        if (!$oldItem || !$newItem) {
+            $_SESSION['_flash']['error'] = 'One or both components not found.';
             redirect('/formulas/mass-replace');
         }
 
         try {
-            $count = Formula::massReplaceRawMaterial($oldRmId, $newRmId, current_user_id());
+            $count = Formula::massReplaceComponent(
+                $oldType, $oldId,
+                $newType, $newId,
+                current_user_id()
+            );
+
+            $oldTypeLabel = $oldType === 'finished_good' ? 'FG' : 'RM';
+            $newTypeLabel = $newType === 'finished_good' ? 'FG' : 'RM';
 
             AuditService::log('formula', 0, 'mass_replace', [
-                'old_raw_material_id'   => $oldRmId,
-                'old_internal_code'     => $oldRm['internal_code'],
-                'new_raw_material_id'   => $newRmId,
-                'new_internal_code'     => $newRm['internal_code'],
-                'formulas_updated'      => $count,
+                'old_type'       => $oldType,
+                'old_id'         => $oldId,
+                'old_label'      => $oldLabel,
+                'new_type'       => $newType,
+                'new_id'         => $newId,
+                'new_label'      => $newLabel,
+                'formulas_updated' => $count,
             ]);
 
             if ($count > 0) {
                 $_SESSION['_flash']['success'] = sprintf(
-                    'Mass replacement complete: replaced "%s" with "%s" in %d formula(s). New versions were created for each.',
-                    $oldRm['internal_code'],
-                    $newRm['internal_code'],
+                    'Mass replacement complete: replaced %s "%s" with %s "%s" in %d formula(s). New versions were created for each.',
+                    $oldTypeLabel, $oldLabel,
+                    $newTypeLabel, $newLabel,
                     $count
                 );
             } else {
                 $_SESSION['_flash']['warning'] = sprintf(
-                    'No current formulas contain "%s". Nothing was changed.',
-                    $oldRm['internal_code']
+                    'No current formulas contain %s "%s". Nothing was changed.',
+                    $oldTypeLabel, $oldLabel
                 );
             }
         } catch (\Throwable $e) {

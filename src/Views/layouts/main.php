@@ -39,7 +39,7 @@
                     <li><a href="/reports" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/reports') ? 'active' : '' ?>">Reports</a></li>
                     <?php endif; ?>
                     <?php if (can_edit('rm_mass_replace')): ?>
-                    <li><a href="/formulas/mass-replace" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/formulas/mass-replace') ? 'active' : '' ?>">RM Mass Replacement</a></li>
+                    <li><a href="/formulas/mass-replace" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/formulas/mass-replace') ? 'active' : '' ?>">Mass Replacement</a></li>
                     <?php endif; ?>
                     <?php if (can_read('cas_determinations')): ?>
                     <li><a href="/determinations" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/determinations') ? 'active' : '' ?>">CAS Determinations</a></li>

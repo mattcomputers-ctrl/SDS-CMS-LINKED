@@ -434,37 +434,59 @@ class Formula
 
     /**
      * Replace one raw material with another across all current formulas.
-     *
-     * For each current formula that contains the old raw material, a new
-     * formula version is created with the old RM swapped for the new RM
-     * (keeping the same percentage and sort order). All other lines are
-     * copied unchanged (including any finished good component lines).
-     *
-     * @param int      $oldRmId  The raw material ID to replace.
-     * @param int      $newRmId  The replacement raw material ID.
-     * @param int|null $userId   The user performing the replacement.
-     * @return int     Number of formulas updated.
+     * Convenience wrapper around massReplaceComponent().
      */
     public static function massReplaceRawMaterial(int $oldRmId, int $newRmId, ?int $userId): int
     {
+        return self::massReplaceComponent(
+            'raw_material', $oldRmId,
+            'raw_material', $newRmId,
+            $userId
+        );
+    }
+
+    /**
+     * Replace a component (raw material or finished good) with another
+     * component (raw material or finished good) across all current formulas.
+     *
+     * For each current formula that contains the old component, a new
+     * formula version is created with the old component swapped 1:1 for
+     * the new component (same percentage and sort order). All other lines
+     * are copied unchanged.
+     *
+     * @param string   $oldType  'raw_material' or 'finished_good'
+     * @param int      $oldId    The old component ID.
+     * @param string   $newType  'raw_material' or 'finished_good'
+     * @param int      $newId    The new component ID.
+     * @param int|null $userId   The user performing the replacement.
+     * @return int     Number of formulas updated.
+     */
+    public static function massReplaceComponent(
+        string $oldType, int $oldId,
+        string $newType, int $newId,
+        ?int $userId
+    ): int {
         $db = Database::getInstance();
 
-        // Find all current formulas that contain the old raw material
+        // Determine the column to search for the old component
+        $oldColumn = $oldType === 'finished_good'
+            ? 'fl.finished_good_component_id'
+            : 'fl.raw_material_id';
+
+        // Find all current formulas that contain the old component
         $formulas = $db->fetchAll(
             "SELECT DISTINCT f.id AS formula_id, f.finished_good_id
              FROM formulas f
              JOIN formula_lines fl ON fl.formula_id = f.id
-             WHERE f.is_current = 1 AND fl.raw_material_id = ?",
-            [$oldRmId]
+             WHERE f.is_current = 1 AND {$oldColumn} = ?",
+            [$oldId]
         );
 
         $count = 0;
 
         foreach ($formulas as $formula) {
-            // Get current formula lines
             $lines = self::getLines((int) $formula['formula_id']);
 
-            // Build new lines with the replacement
             $newLines = [];
             foreach ($lines as $line) {
                 $newLine = [
@@ -472,22 +494,40 @@ class Formula
                     'sort_order' => (int) $line['sort_order'],
                 ];
 
-                if ($line['line_type'] === 'finished_good') {
-                    $newLine['finished_good_component_id'] = (int) $line['finished_good_component_id'];
+                // Check if this is the line to replace
+                $isMatch = false;
+                if ($oldType === 'finished_good' && $line['line_type'] === 'finished_good') {
+                    $isMatch = ((int) $line['finished_good_component_id'] === $oldId);
+                } elseif ($oldType === 'raw_material' && $line['line_type'] === 'raw_material') {
+                    $isMatch = ((int) $line['raw_material_id'] === $oldId);
+                }
+
+                if ($isMatch) {
+                    // Replace with the new component
+                    if ($newType === 'finished_good') {
+                        $newLine['finished_good_component_id'] = $newId;
+                    } else {
+                        $newLine['raw_material_id'] = $newId;
+                    }
                 } else {
-                    $newLine['raw_material_id'] = ((int) $line['raw_material_id'] === $oldRmId)
-                        ? $newRmId
-                        : (int) $line['raw_material_id'];
+                    // Keep the line as-is
+                    if ($line['line_type'] === 'finished_good') {
+                        $newLine['finished_good_component_id'] = (int) $line['finished_good_component_id'];
+                    } else {
+                        $newLine['raw_material_id'] = (int) $line['raw_material_id'];
+                    }
                 }
 
                 $newLines[] = $newLine;
             }
 
-            // Create a new formula version with the swapped material
+            $oldLabel = ($oldType === 'finished_good' ? 'FG' : 'RM') . " #{$oldId}";
+            $newLabel = ($newType === 'finished_good' ? 'FG' : 'RM') . " #{$newId}";
+
             self::create(
                 (int) $formula['finished_good_id'],
                 $newLines,
-                sprintf('Mass replacement: RM #%d replaced with RM #%d', $oldRmId, $newRmId),
+                sprintf('Mass replacement: %s replaced with %s', $oldLabel, $newLabel),
                 $userId
             );
 

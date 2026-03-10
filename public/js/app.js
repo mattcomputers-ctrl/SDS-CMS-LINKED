@@ -5,51 +5,58 @@
 (function() {
     'use strict';
 
-    // ── Mobile navbar toggle ──────────────────────────────
-    var navToggle = document.getElementById('navToggle');
-    var navCollapse = document.getElementById('navCollapse');
-    if (navToggle && navCollapse) {
-        navToggle.addEventListener('click', function() {
-            navToggle.classList.toggle('active');
-            navCollapse.classList.toggle('open');
-        });
+    // ── Sidebar toggle (mobile) ──────────────────────────────
+    var sidebar = document.getElementById('sidebar');
+    var sidebarToggle = document.getElementById('sidebarToggle');
+    var sidebarOverlay = document.getElementById('sidebarOverlay');
 
-        // Mobile dropdown toggle (tap instead of hover)
-        var dropdowns = navCollapse.querySelectorAll('.dropdown > a');
-        dropdowns.forEach(function(link) {
-            link.addEventListener('click', function(e) {
-                if (window.innerWidth <= 900) {
-                    e.preventDefault();
-                    link.parentElement.classList.toggle('open');
-                }
-            });
-        });
+    function openSidebar() {
+        if (sidebar) sidebar.classList.add('open');
+        if (sidebarOverlay) sidebarOverlay.classList.add('open');
+        document.body.style.overflow = 'hidden';
+    }
 
-        // Close menu when clicking a nav link (not dropdown toggles)
-        navCollapse.querySelectorAll('.navbar-menu a').forEach(function(link) {
-            if (!link.parentElement.classList.contains('dropdown')) {
-                link.addEventListener('click', function() {
-                    if (window.innerWidth <= 900) {
-                        navToggle.classList.remove('active');
-                        navCollapse.classList.remove('open');
-                    }
-                });
+    function closeSidebar() {
+        if (sidebar) sidebar.classList.remove('open');
+        if (sidebarOverlay) sidebarOverlay.classList.remove('open');
+        document.body.style.overflow = '';
+    }
+
+    if (sidebarToggle) {
+        sidebarToggle.addEventListener('click', function() {
+            if (sidebar && sidebar.classList.contains('open')) {
+                closeSidebar();
+            } else {
+                openSidebar();
             }
         });
-        navCollapse.querySelectorAll('.dropdown-menu a').forEach(function(link) {
+    }
+
+    if (sidebarOverlay) {
+        sidebarOverlay.addEventListener('click', closeSidebar);
+    }
+
+    // Close sidebar when clicking a link on mobile
+    if (sidebar) {
+        sidebar.querySelectorAll('.sidebar-menu a').forEach(function(link) {
             link.addEventListener('click', function() {
                 if (window.innerWidth <= 900) {
-                    navToggle.classList.remove('active');
-                    navCollapse.classList.remove('open');
+                    closeSidebar();
                 }
             });
         });
     }
 
+    // Close sidebar on window resize to desktop
+    window.addEventListener('resize', function() {
+        if (window.innerWidth > 900) {
+            closeSidebar();
+        }
+    });
+
     // ── Wrap tables for horizontal scrolling on mobile ────
     document.querySelectorAll('.table').forEach(function(table) {
         if (table.parentElement.classList.contains('table-responsive')) return;
-        // Skip tables already inside compact containers (e.g. nested in cards with little data)
         var wrapper = document.createElement('div');
         wrapper.className = 'table-responsive';
         table.parentNode.insertBefore(wrapper, table);
@@ -89,7 +96,7 @@
             if (val === '') return;
 
             if (!/^\d{2,7}-\d{2}-\d$/.test(val)) {
-                input.style.borderColor = '#dc3545';
+                input.style.borderColor = '#e74c3c';
                 input.title = 'Invalid CAS format. Expected: XXXXXXX-YY-Z';
             } else {
                 // Checksum validation
@@ -103,10 +110,10 @@
                     weight++;
                 }
                 if (sum % 10 !== check) {
-                    input.style.borderColor = '#fd7e14';
+                    input.style.borderColor = '#e67e22';
                     input.title = 'CAS checksum mismatch — verify number';
                 } else {
-                    input.style.borderColor = '#198754';
+                    input.style.borderColor = '#27ae60';
                     input.title = '';
                 }
             }
@@ -120,7 +127,7 @@
         document.querySelectorAll('th a').forEach(function(a) {
             if (a.href && a.href.includes('sort=' + sortCol)) {
                 a.style.fontWeight = '700';
-                a.style.color = '#003366';
+                a.style.color = '#1a5276';
             }
         });
     }

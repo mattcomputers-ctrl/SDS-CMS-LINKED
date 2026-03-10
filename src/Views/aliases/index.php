@@ -4,7 +4,7 @@
     <!-- Upload Aliases -->
     <div class="card">
         <h2 class="card-title">Upload Aliases (CSV)</h2>
-        <p class="text-muted" style="margin-bottom: 0.75rem;">CSV must contain <strong>Customer Code</strong> and <strong>Internal Code</strong> columns. An optional <strong>Description</strong> column is also supported. Existing aliases with the same customer code will be updated.</p>
+        <p class="text-muted" style="margin-bottom: 0.75rem;">CSV must contain <strong>Item Code</strong> (customer-facing code) and <strong>Inventory Item</strong> (internal code) columns. An optional <strong>Description</strong> column is also supported. Pack extensions are stored but ignored for SDS matching. Existing aliases with the same item code will be updated.</p>
         <?php if (can_edit('aliases')): ?>
         <form method="POST" action="/aliases/upload" enctype="multipart/form-data">
             <?= csrf_field() ?>

@@ -105,12 +105,12 @@ class AliasController
         // Normalize headers and find required columns
         $headers = array_map(fn($h) => strtolower(trim($h)), array_keys($rows[0]));
 
-        $customerCodeCol = $this->findColumn($headers, ['customer code', 'customercode', 'customer_code', 'alias code', 'alias_code', 'alias']);
+        $customerCodeCol = $this->findColumn($headers, ['item code', 'item_code', 'itemcode', 'customer code', 'customercode', 'customer_code', 'alias code', 'alias_code', 'alias']);
         $descCol         = $this->findColumn($headers, ['description', 'desc', 'customer description', 'customer_description']);
-        $internalCodeCol = $this->findColumn($headers, ['internal code', 'internalcode', 'internal_code', 'item name', 'itemname', 'item_name', 'item code', 'item_code']);
+        $internalCodeCol = $this->findColumn($headers, ['inventory item', 'inventory_item', 'inventoryitem', 'internal code', 'internalcode', 'internal_code', 'item name', 'itemname', 'item_name']);
 
         if ($customerCodeCol === null || $internalCodeCol === null) {
-            $_SESSION['_flash']['error'] = 'CSV must contain "Customer Code" and "Internal Code" columns.';
+            $_SESSION['_flash']['error'] = 'CSV must contain "Item Code" and "Inventory Item" columns.';
             redirect('/aliases');
         }
 

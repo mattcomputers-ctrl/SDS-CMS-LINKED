@@ -52,6 +52,14 @@ class FinishedGoodController
         // Pre-fill with default recommended use / restrictions from settings
         $defaults = $this->loadDefaultUseSettings();
 
+        // Restore formula lines from flash data if returning from a validation error
+        $oldFormula = $_SESSION['_flash']['_old_formula'] ?? null;
+        $formula = null;
+        if ($oldFormula) {
+            $formula = $this->rebuildFormulaFromFlash($oldFormula);
+            unset($_SESSION['_flash']['_old_formula']);
+        }
+
         view('finished-goods/form', [
             'pageTitle'     => 'Add Finished Good',
             'item'          => $defaults,
@@ -59,7 +67,7 @@ class FinishedGoodController
             'families'      => $families,
             'rawMaterials'  => $rawMaterials,
             'finishedGoods' => $finishedGoods,
-            'formula'       => null,
+            'formula'       => $formula,
         ]);
     }
 
@@ -75,17 +83,30 @@ class FinishedGoodController
         $data['created_by'] = current_user_id();
 
         try {
+            // Pre-validate formula lines before creating the finished good
+            // so we don't save an incomplete entry if the formula is invalid
+            $formulaLines = $this->parseFormulaLines();
+            if (!empty($formulaLines)) {
+                $validationError = Formula::validateTotalPercent($formulaLines);
+                if ($validationError !== null) {
+                    throw new \InvalidArgumentException($validationError);
+                }
+            }
+
             $id = FinishedGood::create($data);
             AuditService::log('finished_good', $id, 'create', $data);
 
-            // Save formula if lines were provided
-            $this->saveFormulaFromPost($id);
+            // Save formula (already validated above)
+            if (!empty($formulaLines)) {
+                $this->saveFormulaLines($id, $formulaLines);
+            }
 
             $_SESSION['_flash']['success'] = 'Finished good created successfully.';
             redirect('/finished-goods');
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = $e->getMessage();
             $_SESSION['_flash']['_old_input'] = $data;
+            $_SESSION['_flash']['_old_formula'] = $this->captureFormulaPost();
             redirect('/finished-goods/create');
         }
     }
@@ -134,12 +155,23 @@ class FinishedGoodController
         }
 
         try {
+            // Pre-validate formula lines before updating
+            $formulaLines = $this->parseFormulaLines();
+            if (!empty($formulaLines)) {
+                $validationError = Formula::validateTotalPercent($formulaLines);
+                if ($validationError !== null) {
+                    throw new \InvalidArgumentException($validationError);
+                }
+            }
+
             $diff = AuditService::diff($item, $_POST);
             FinishedGood::update((int) $id, $_POST);
             AuditService::log('finished_good', $id, 'update', $diff);
 
-            // Save formula if lines were provided
-            $this->saveFormulaFromPost((int) $id);
+            // Save formula (already validated above)
+            if (!empty($formulaLines)) {
+                $this->saveFormulaLines((int) $id, $formulaLines);
+            }
 
             $_SESSION['_flash']['success'] = 'Finished good updated.';
         } catch (\Throwable $e) {
@@ -150,9 +182,10 @@ class FinishedGoodController
     }
 
     /**
-     * Parse formula lines from POST and create a new formula version if lines exist.
+     * Parse formula lines from POST into an array suitable for Formula::create().
+     * Returns empty array if no valid lines were provided.
      */
-    private function saveFormulaFromPost(int $fgId): void
+    private function parseFormulaLines(): array
     {
         $lineTypes = $_POST['line_type'] ?? [];
         $rmIds     = $_POST['raw_material_id'] ?? [];
@@ -188,11 +221,14 @@ class FinishedGoodController
             $lines[] = $line;
         }
 
-        // Only save if lines were actually provided
-        if (empty($lines)) {
-            return;
-        }
+        return $lines;
+    }
 
+    /**
+     * Save pre-parsed formula lines for a finished good.
+     */
+    private function saveFormulaLines(int $fgId, array $lines): void
+    {
         $notes = trim($_POST['formula_notes'] ?? '');
 
         $formulaId = Formula::create(
@@ -206,6 +242,48 @@ class FinishedGoodController
             'finished_good_id' => $fgId,
             'line_count'       => count($lines),
         ]);
+    }
+
+    /**
+     * Capture the raw formula POST data so it can be preserved in flash session
+     * when validation fails, allowing the form to re-populate.
+     */
+    private function captureFormulaPost(): array
+    {
+        return [
+            'line_type'                  => $_POST['line_type'] ?? [],
+            'raw_material_id'            => $_POST['raw_material_id'] ?? [],
+            'finished_good_component_id' => $_POST['finished_good_component_id'] ?? [],
+            'pct'                        => $_POST['pct'] ?? [],
+            'formula_notes'              => $_POST['formula_notes'] ?? '',
+        ];
+    }
+
+    /**
+     * Rebuild a formula array from flash session data so the form can re-populate
+     * formula lines after a validation error.
+     */
+    private function rebuildFormulaFromFlash(array $oldFormula): array
+    {
+        $lines = [];
+        $lineTypes = $oldFormula['line_type'] ?? [];
+        $rmIds     = $oldFormula['raw_material_id'] ?? [];
+        $fgIds     = $oldFormula['finished_good_component_id'] ?? [];
+        $pcts      = $oldFormula['pct'] ?? [];
+
+        foreach ($lineTypes as $i => $type) {
+            $lines[] = [
+                'line_type'                  => $type,
+                'raw_material_id'            => $rmIds[$i] ?? '',
+                'finished_good_component_id' => $fgIds[$i] ?? '',
+                'pct'                        => $pcts[$i] ?? '',
+            ];
+        }
+
+        return [
+            'lines' => $lines,
+            'notes' => $oldFormula['formula_notes'] ?? '',
+        ];
     }
 
     /**

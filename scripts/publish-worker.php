@@ -71,18 +71,31 @@ foreach ($workItems as $i => $item) {
     $lang    = $item['language'];
     $version = (int) $item['version'];
 
+    // Alias support: items with alias_id get a modified section 1
+    $aliasId          = isset($item['alias_id']) ? (int) $item['alias_id'] : null;
+    $aliasCode        = $item['alias_code'] ?? null;
+    $aliasDescription = $item['alias_description'] ?? null;
+
+    $displayCode = $aliasCode ?? $code;
+
     try {
         // Compute language-independent data once per FG
         if (!isset($baseDataCache[$fgId])) {
             $baseDataCache[$fgId] = $generator->computeBase($fgId);
         }
 
-        $sdsData      = $generator->generateFromBase($baseDataCache[$fgId], $lang);
+        $sdsData = $generator->generateFromBase($baseDataCache[$fgId], $lang);
+
+        // For alias items, replace product code/description in section 1
+        if ($aliasId !== null && $aliasCode !== null) {
+            $sdsData = SDSGenerator::createAliasVariant($sdsData, $aliasCode, $aliasDescription ?? '');
+        }
+
         $pdfPath      = $pdfService->generate($sdsData);
         $relativePath = str_replace(App::basePath() . '/', '', $pdfPath);
 
         // Insert version record
-        $versionId = $db->insert('sds_versions', [
+        $versionData = [
             'finished_good_id' => $fgId,
             'language'         => $lang,
             'version'          => $version,
@@ -94,7 +107,13 @@ foreach ($workItems as $i => $item) {
             'pdf_path'         => $relativePath,
             'change_summary'   => 'Bulk publish',
             'created_by'       => $userId,
-        ]);
+        ];
+
+        if ($aliasId !== null) {
+            $versionData['alias_id'] = $aliasId;
+        }
+
+        $versionId = $db->insert('sds_versions', $versionData);
 
         $traceData = array_merge(
             $sdsData['hazard_result']['trace'] ?? [],
@@ -105,17 +124,24 @@ foreach ($workItems as $i => $item) {
             'trace_json'     => json_encode($traceData, JSON_UNESCAPED_UNICODE),
         ]);
 
-        AuditService::log('sds_version', (string) $fgId, 'bulk_publish', [
+        $auditAction = $aliasId !== null ? 'bulk_publish_alias' : 'bulk_publish';
+        $auditData = [
             'finished_good_id' => $fgId,
-            'product_code'     => $code,
+            'product_code'     => $displayCode,
             'language'         => $lang,
             'version'          => $version,
-        ]);
+        ];
+        if ($aliasId !== null) {
+            $auditData['alias_id']   = $aliasId;
+            $auditData['alias_code'] = $aliasCode;
+        }
+
+        AuditService::log('sds_version', (string) $fgId, $auditAction, $auditData);
 
         $published++;
     } catch (\Throwable $e) {
         $failed++;
-        $errors[] = $code . ' [' . $lang . ']: ' . $e->getMessage();
+        $errors[] = $displayCode . ' [' . $lang . ']: ' . $e->getMessage();
     }
 
     writeWorkerProgress($progressFile, $total, $i + 1, $published, $failed, $errors, false);

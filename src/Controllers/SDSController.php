@@ -296,7 +296,16 @@ class SDSController
                 $publishedVersions[] = strtoupper($lang);
             }
 
-            $_SESSION['_flash']['success'] = 'SDS v' . $nextVersion . ' published successfully: ' . implode(', ', $publishedVersions);
+            // Publish alias SDS documents
+            $aliasCount = $this->publishAliases(
+                $fg, $langData, $changeSummary, $now, $db
+            );
+
+            $msg = 'SDS v' . $nextVersion . ' published successfully: ' . implode(', ', $publishedVersions);
+            if ($aliasCount > 0) {
+                $msg .= ' (+ ' . $aliasCount . ' alias SDS' . ($aliasCount > 1 ? 'es' : '') . ')';
+            }
+            $_SESSION['_flash']['success'] = $msg;
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = 'Publish failed: ' . $e->getMessage();
         }
@@ -443,6 +452,109 @@ class SDSController
             'version'   => $version,
             'trace'     => $traceData,
         ]);
+    }
+
+    /**
+     * Publish SDS documents for all aliases of a finished good.
+     *
+     * Each alias gets its own SDS per language, identical to the parent
+     * except for product code and description in section 1.
+     *
+     * @return int Number of alias SDS documents published.
+     */
+    private function publishAliases(
+        array $fg,
+        array $langData,
+        string $changeSummary,
+        string $now,
+        Database $db
+    ): int {
+        $aliases = $this->getAliasesForFinishedGood($fg['product_code'], $db);
+        if (empty($aliases)) {
+            return 0;
+        }
+
+        $count = 0;
+
+        foreach ($aliases as $alias) {
+            // Build alias-specific SDS data per language, then generate PDFs
+            $aliasLangData = [];
+            foreach ($langData as $lang => $sdsData) {
+                $aliasLangData[$lang] = SDSGenerator::createAliasVariant(
+                    $sdsData,
+                    $alias['customer_code'],
+                    $alias['description']
+                );
+            }
+
+            // Generate PDFs for all languages
+            $pdfResults = $this->generatePdfsInParallel($aliasLangData);
+
+            // Determine next version for this alias
+            $lastVersion = $db->fetch(
+                "SELECT MAX(version) AS max_ver FROM sds_versions WHERE alias_id = ?",
+                [(int) $alias['id']]
+            );
+            $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
+
+            foreach ($aliasLangData as $lang => $aliasSds) {
+                if (!($pdfResults[$lang]['ok'] ?? false)) {
+                    continue;
+                }
+
+                $relativePath = str_replace(\SDS\Core\App::basePath() . '/', '', $pdfResults[$lang]['pdf_path']);
+
+                $versionId = $db->insert('sds_versions', [
+                    'finished_good_id' => (int) $fg['id'],
+                    'alias_id'         => (int) $alias['id'],
+                    'language'         => $lang,
+                    'version'          => $nextVersion,
+                    'status'           => 'published',
+                    'effective_date'   => date('Y-m-d'),
+                    'published_by'     => current_user_id(),
+                    'published_at'     => $now,
+                    'snapshot_json'    => json_encode($aliasSds, JSON_UNESCAPED_UNICODE),
+                    'pdf_path'         => $relativePath,
+                    'change_summary'   => $changeSummary ?: ('Alias of ' . $fg['product_code']),
+                    'created_by'       => current_user_id(),
+                ]);
+
+                $traceData = array_merge(
+                    $aliasSds['hazard_result']['trace'] ?? [],
+                    $aliasSds['voc_result']['trace'] ?? []
+                );
+                $db->insert('sds_generation_trace', [
+                    'sds_version_id' => $versionId,
+                    'trace_json'     => json_encode($traceData, JSON_UNESCAPED_UNICODE),
+                ]);
+
+                AuditService::log('sds_version', $versionId, 'publish_alias', [
+                    'finished_good_id' => $fg['id'],
+                    'alias_id'         => $alias['id'],
+                    'alias_code'       => $alias['customer_code'],
+                    'language'         => $lang,
+                    'version'          => $nextVersion,
+                ]);
+
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    /**
+     * Find all aliases whose internal_code_base matches the finished good's product code.
+     */
+    private function getAliasesForFinishedGood(string $productCode, Database $db): array
+    {
+        return $db->fetchAll(
+            "SELECT id, customer_code, description, internal_code, internal_code_base
+             FROM aliases
+             WHERE internal_code_base = ?
+             ORDER BY customer_code ASC",
+            [$productCode]
+        );
     }
 
     /**

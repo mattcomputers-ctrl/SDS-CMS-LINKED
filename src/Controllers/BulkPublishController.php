@@ -97,11 +97,21 @@ class BulkPublishController
              WHERE fg.is_active = 1"
         );
 
+        // Count aliases linked to active finished goods with formulas
+        $aliasStats = $db->fetch(
+            "SELECT COUNT(*) AS alias_count
+             FROM aliases a
+             INNER JOIN finished_goods fg ON fg.product_code = a.internal_code_base
+             INNER JOIN formulas f ON f.finished_good_id = fg.id AND f.is_current = 1
+             WHERE fg.is_active = 1"
+        );
+
         $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
 
         view('admin/bulk-publish', [
             'pageTitle'  => 'Bulk SDS Publish',
             'fgCount'    => (int) ($stats['fg_count'] ?? 0),
+            'aliasCount' => (int) ($aliasStats['alias_count'] ?? 0),
             'langCount'  => count($languages),
             'languages'  => $languages,
         ]);
@@ -148,10 +158,11 @@ class BulkPublishController
 
         // Build (FG, language) work items with pre-computed version numbers
         // so concurrent workers don't race on version selection.
+        // Also include alias work items for each finished good.
         $workItems = [];
         foreach ($finishedGoods as $fg) {
             $lastVersion = $db->fetch(
-                "SELECT MAX(version) AS max_ver FROM sds_versions WHERE finished_good_id = ?",
+                "SELECT MAX(version) AS max_ver FROM sds_versions WHERE finished_good_id = ? AND alias_id IS NULL",
                 [$fg['id']]
             );
             $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
@@ -163,6 +174,31 @@ class BulkPublishController
                     'language'     => $lang,
                     'version'      => $nextVersion,
                 ];
+            }
+
+            // Add alias work items for this finished good
+            $aliases = $db->fetchAll(
+                "SELECT id, customer_code, description FROM aliases WHERE internal_code_base = ? ORDER BY customer_code",
+                [$fg['product_code']]
+            );
+            foreach ($aliases as $alias) {
+                $aliasLastVersion = $db->fetch(
+                    "SELECT MAX(version) AS max_ver FROM sds_versions WHERE alias_id = ?",
+                    [(int) $alias['id']]
+                );
+                $aliasNextVersion = ((int) ($aliasLastVersion['max_ver'] ?? 0)) + 1;
+
+                foreach ($languages as $lang) {
+                    $workItems[] = [
+                        'id'                => $fg['id'],
+                        'product_code'      => $fg['product_code'],
+                        'language'          => $lang,
+                        'version'           => $aliasNextVersion,
+                        'alias_id'          => (int) $alias['id'],
+                        'alias_code'        => $alias['customer_code'],
+                        'alias_description' => $alias['description'],
+                    ];
+                }
             }
         }
 

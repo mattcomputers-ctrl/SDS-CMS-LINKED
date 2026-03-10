@@ -160,7 +160,11 @@ var SearchableSelect = (function() {
                 closeDropdown();
                 input.blur();
             } else if (e.key === 'Tab') {
-                closeDropdown();
+                if (current) {
+                    selectOption(current.dataset.value, current.textContent.trim());
+                } else {
+                    closeDropdown();
+                }
             }
         });
 

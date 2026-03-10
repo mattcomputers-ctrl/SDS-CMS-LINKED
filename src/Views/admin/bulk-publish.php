@@ -6,8 +6,11 @@
     <h2>Publish Summary</h2>
     <table class="table table-sm" style="max-width: 400px;">
         <tr><td><strong>Active Finished Goods with Formulas:</strong></td><td><?= (int) $fgCount ?></td></tr>
+        <?php if (($aliasCount ?? 0) > 0): ?>
+        <tr><td><strong>Aliases:</strong></td><td><?= (int) $aliasCount ?></td></tr>
+        <?php endif; ?>
         <tr><td><strong>Languages:</strong></td><td><?= (int) $langCount ?> (<?= e(strtoupper(implode(', ', $languages))) ?>)</td></tr>
-        <tr><td><strong>Total PDFs to Generate:</strong></td><td><?= (int) $fgCount * (int) $langCount ?></td></tr>
+        <tr><td><strong>Total PDFs to Generate:</strong></td><td><?= ((int) $fgCount + (int) ($aliasCount ?? 0)) * (int) $langCount ?></td></tr>
     </table>
 
     <?php if ($fgCount === 0): ?>

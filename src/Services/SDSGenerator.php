@@ -326,6 +326,31 @@ class SDSGenerator
         return $sds;
     }
 
+    /**
+     * Create an alias-specific copy of SDS data.
+     *
+     * Replaces the product code and description in Section 1 and meta
+     * while keeping all other sections identical to the parent finished good.
+     *
+     * @param  array  $sdsData        The original SDS data array.
+     * @param  string $aliasCode      The alias customer code.
+     * @param  string $aliasDescription The alias description.
+     * @return array  Modified SDS data for the alias.
+     */
+    public static function createAliasVariant(array $sdsData, string $aliasCode, string $aliasDescription): array
+    {
+        $aliasSds = $sdsData;
+
+        // Update meta
+        $aliasSds['meta']['product_code'] = $aliasCode;
+        $aliasSds['meta']['description']  = $aliasDescription;
+
+        // Update Section 1 product identifier
+        $aliasSds['sections'][1]['product_identifier'] = $aliasCode . ' — ' . $aliasDescription;
+
+        return $aliasSds;
+    }
+
     /* ------------------------------------------------------------------
      *  Section builders
      * ----------------------------------------------------------------*/

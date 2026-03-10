@@ -136,7 +136,7 @@ $selfId = $isEdit ? (int) $item['id'] : 0;
 
         <div class="form-group">
             <label for="formula_notes">Formula Notes</label>
-            <textarea id="formula_notes" name="formula_notes" rows="2" placeholder="Optional notes about this formula version..."><?= e($formula['notes'] ?? '') ?></textarea>
+            <textarea id="formula_notes" name="formula_notes" rows="2" placeholder="Optional notes about this formula version..."><?= e(old('formula_notes', $formula['notes'] ?? '')) ?></textarea>
         </div>
 
         <div class="form-actions">

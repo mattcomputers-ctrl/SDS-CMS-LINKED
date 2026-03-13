@@ -62,12 +62,16 @@ class RawMaterialController
         $data['created_by'] = current_user_id();
 
         // Process checkbox fields (unchecked = not in POST)
-        $data['is_prop65'] = !empty($data['is_prop65']) ? 1 : 0;
         $data['voc_less_than_one'] = !empty($data['voc_less_than_one']) ? 1 : 0;
         $data['flash_point_greater_than'] = !empty($data['flash_point_greater_than']) ? 1 : 0;
 
         // Build HAPs data JSON from form arrays
         $data['haps_data'] = $this->buildHapsJson();
+
+        // Build Prop 65 data JSON from form arrays
+        $prop65Json = $this->buildProp65Json();
+        $data['prop65_data'] = $prop65Json;
+        $data['is_prop65'] = ($prop65Json !== null) ? 1 : 0;
 
         try {
             // Handle SDS file upload
@@ -141,12 +145,16 @@ class RawMaterialController
         $data['expected_updated_at'] = $data['updated_at'] ?? null;
 
         // Process checkbox fields (unchecked = not in POST)
-        $data['is_prop65'] = !empty($data['is_prop65']) ? 1 : 0;
         $data['voc_less_than_one'] = !empty($data['voc_less_than_one']) ? 1 : 0;
         $data['flash_point_greater_than'] = !empty($data['flash_point_greater_than']) ? 1 : 0;
 
         // Build HAPs data JSON from form arrays
         $data['haps_data'] = $this->buildHapsJson();
+
+        // Build Prop 65 data JSON from form arrays
+        $prop65Json = $this->buildProp65Json();
+        $data['prop65_data'] = $prop65Json;
+        $data['is_prop65'] = ($prop65Json !== null) ? 1 : 0;
 
         try {
             // Handle SDS file upload — always adds to history, never removes old
@@ -388,6 +396,53 @@ class RawMaterialController
 
         RawMaterial::saveConstituents($rmId, $constituents);
         return count($constituents);
+    }
+
+    /**
+     * Build Prop 65 data JSON from the form's repeating Prop 65 rows.
+     */
+    private function buildProp65Json(): ?string
+    {
+        $chemNames = $_POST['p65_chemical_name'] ?? [];
+        $casNums   = $_POST['p65_cas_number'] ?? [];
+        $toxCancer = $_POST['p65_tox_cancer'] ?? [];
+        $toxDev    = $_POST['p65_tox_developmental'] ?? [];
+        $toxRepro  = $_POST['p65_tox_reproductive'] ?? [];
+        $toxFemale = $_POST['p65_tox_female_reproductive'] ?? [];
+        $toxMale   = $_POST['p65_tox_male_reproductive'] ?? [];
+
+        $entries = [];
+        foreach ($chemNames as $i => $name) {
+            $name = trim($name);
+            if ($name === '') {
+                continue;
+            }
+
+            $types = [];
+            if (!empty($toxCancer[$i])) {
+                $types[] = 'cancer';
+            }
+            if (!empty($toxDev[$i])) {
+                $types[] = 'developmental';
+            }
+            if (!empty($toxRepro[$i])) {
+                $types[] = 'reproductive';
+            }
+            if (!empty($toxFemale[$i])) {
+                $types[] = 'female reproductive';
+            }
+            if (!empty($toxMale[$i])) {
+                $types[] = 'male reproductive';
+            }
+
+            $entries[] = [
+                'chemical_name'  => $name,
+                'cas_number'     => trim($casNums[$i] ?? ''),
+                'toxicity_types' => implode(', ', $types),
+            ];
+        }
+
+        return !empty($entries) ? json_encode($entries) : null;
     }
 
     /**

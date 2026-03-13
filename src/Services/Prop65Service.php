@@ -97,7 +97,7 @@ class Prop65Service
             if (in_array('cancer', $types)) {
                 $cancerChemicals[] = $displayName;
             }
-            if (array_intersect(['developmental', 'female reproductive', 'male reproductive'], $types)) {
+            if (array_intersect(['developmental', 'reproductive', 'female reproductive', 'male reproductive'], $types)) {
                 $reproChemicals[] = $displayName;
             }
         }
@@ -129,7 +129,7 @@ class Prop65Service
             if (in_array('cancer', $types)) {
                 $cancerChemicals[] = $chemName;
             }
-            if (array_intersect(['developmental', 'female reproductive', 'male reproductive'], $types)) {
+            if (array_intersect(['developmental', 'reproductive', 'female reproductive', 'male reproductive'], $types)) {
                 $reproChemicals[] = $chemName;
             }
         }

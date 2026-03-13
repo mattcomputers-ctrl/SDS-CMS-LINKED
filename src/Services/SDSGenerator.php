@@ -1221,24 +1221,42 @@ class SDSGenerator
 
         $placeholders = implode(',', array_fill(0, count($rmIds), '?'));
         $rows = $db->fetchAll(
-            "SELECT id, internal_code, prop65_chemical_name, prop65_toxicity_types
+            "SELECT id, internal_code, prop65_data, prop65_chemical_name, prop65_toxicity_types
              FROM raw_materials
-             WHERE id IN ({$placeholders}) AND is_prop65 = 1
-             AND prop65_chemical_name IS NOT NULL AND prop65_chemical_name != ''",
+             WHERE id IN ({$placeholders}) AND is_prop65 = 1",
             $rmIds
         );
 
         $result = [];
         foreach ($rows as $row) {
             $rmPct = $pctByRm[(int) $row['id']] ?? 0;
-            $result[] = [
-                'chemical_name'     => $row['prop65_chemical_name'],
-                'cas_number'        => '',
-                'concentration_pct' => $rmPct,
-                'toxicity_type'     => array_map('trim', explode(',', $row['prop65_toxicity_types'] ?? '')),
-                'source'            => 'manual',
-                'raw_material_code' => $row['internal_code'],
-            ];
+
+            // Prefer new JSON column with multiple entries
+            $entries = !empty($row['prop65_data']) ? (json_decode($row['prop65_data'], true) ?: []) : [];
+
+            // Backward compat: fall back to legacy single-entry fields
+            if (empty($entries) && !empty($row['prop65_chemical_name'])) {
+                $entries = [[
+                    'chemical_name'  => $row['prop65_chemical_name'],
+                    'cas_number'     => '',
+                    'toxicity_types' => $row['prop65_toxicity_types'] ?? '',
+                ]];
+            }
+
+            foreach ($entries as $entry) {
+                $chemName = trim($entry['chemical_name'] ?? '');
+                if ($chemName === '') {
+                    continue;
+                }
+                $result[] = [
+                    'chemical_name'     => $chemName,
+                    'cas_number'        => $entry['cas_number'] ?? '',
+                    'concentration_pct' => $rmPct,
+                    'toxicity_type'     => array_map('trim', explode(',', $entry['toxicity_types'] ?? '')),
+                    'source'            => 'manual',
+                    'raw_material_code' => $row['internal_code'],
+                ];
+            }
         }
 
         return $result;

@@ -252,39 +252,56 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
 
         <!-- Prop 65 Manual Marking -->
         <h3>California Proposition 65</h3>
-        <p class="text-muted">If this raw material contains a Prop 65 listed chemical that isn't detected automatically via CAS number lookup, you can manually flag it here.</p>
+        <p class="text-muted">If this raw material contains Prop 65 listed chemicals that aren't detected automatically via CAS number lookup, you can manually add them here. Add multiple rows for purchased mixtures containing more than one listed chemical.</p>
 
-        <div style="margin-bottom: 0.5rem;">
-            <label class="inline-check" style="font-size: 0.9rem;">
-                <input type="checkbox" name="is_prop65" value="1" id="prop65Checkbox"
-                    <?= !empty($item['is_prop65']) ? 'checked' : '' ?>>
-                This raw material contains a California Prop 65 listed chemical
-            </label>
-        </div>
+        <?php
+        $prop65Data = [];
+        if (!empty($item['prop65_data'])) {
+            $prop65Data = json_decode($item['prop65_data'], true) ?: [];
+        }
+        // Backward compat: if no JSON data but old fields exist, build one entry
+        if (empty($prop65Data) && !empty($item['is_prop65']) && !empty($item['prop65_chemical_name'])) {
+            $prop65Data = [[
+                'chemical_name'  => $item['prop65_chemical_name'],
+                'cas_number'     => '',
+                'toxicity_types' => $item['prop65_toxicity_types'] ?? '',
+            ]];
+        }
+        ?>
 
-        <div id="prop65Fields" style="display: <?= !empty($item['is_prop65']) ? 'block' : 'none' ?>;">
-            <div class="form-grid-2col">
-                <div class="form-group">
-                    <label>Prop 65 Chemical Name</label>
-                    <input type="text" name="prop65_chemical_name"
-                           value="<?= e($item['prop65_chemical_name'] ?? '') ?>"
-                           placeholder="e.g. Titanium dioxide">
-                </div>
-                <div class="form-group">
-                    <label>Toxicity Type(s)</label>
-                    <select name="prop65_toxicity_types" id="prop65ToxTypes">
-                        <option value="">— Select —</option>
-                        <option value="cancer" <?= ($item['prop65_toxicity_types'] ?? '') === 'cancer' ? 'selected' : '' ?>>Cancer</option>
-                        <option value="developmental" <?= ($item['prop65_toxicity_types'] ?? '') === 'developmental' ? 'selected' : '' ?>>Developmental Toxicity</option>
-                        <option value="female reproductive" <?= ($item['prop65_toxicity_types'] ?? '') === 'female reproductive' ? 'selected' : '' ?>>Female Reproductive Toxicity</option>
-                        <option value="male reproductive" <?= ($item['prop65_toxicity_types'] ?? '') === 'male reproductive' ? 'selected' : '' ?>>Male Reproductive Toxicity</option>
-                        <option value="cancer, developmental" <?= ($item['prop65_toxicity_types'] ?? '') === 'cancer, developmental' ? 'selected' : '' ?>>Cancer + Developmental</option>
-                        <option value="cancer, female reproductive" <?= ($item['prop65_toxicity_types'] ?? '') === 'cancer, female reproductive' ? 'selected' : '' ?>>Cancer + Female Reproductive</option>
-                        <option value="cancer, male reproductive" <?= ($item['prop65_toxicity_types'] ?? '') === 'cancer, male reproductive' ? 'selected' : '' ?>>Cancer + Male Reproductive</option>
-                        <option value="cancer, developmental, female reproductive, male reproductive" <?= ($item['prop65_toxicity_types'] ?? '') === 'cancer, developmental, female reproductive, male reproductive' ? 'selected' : '' ?>>All Types</option>
-                    </select>
-                </div>
-            </div>
+        <table class="table table-sm" id="prop65Table">
+            <thead>
+                <tr>
+                    <th>Chemical Name</th>
+                    <th>CAS Number</th>
+                    <th>Toxicity Type(s)</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="prop65Body">
+            <?php if (!empty($prop65Data)): ?>
+                <?php foreach ($prop65Data as $pi => $p65):
+                    $existingTypes = array_map('trim', explode(',', $p65['toxicity_types'] ?? ''));
+                ?>
+                <tr class="prop65-row">
+                    <td><input type="text" name="p65_chemical_name[<?= $pi ?>]" value="<?= e($p65['chemical_name'] ?? '') ?>" class="input-sm" placeholder="e.g. Titanium dioxide"></td>
+                    <td><input type="text" name="p65_cas_number[<?= $pi ?>]" value="<?= e($p65['cas_number'] ?? '') ?>" class="input-sm" placeholder="e.g. 13463-67-7"></td>
+                    <td class="p65-tox-checkboxes">
+                        <label class="inline-check"><input type="checkbox" name="p65_tox_cancer[<?= $pi ?>]" value="1" <?= in_array('cancer', $existingTypes) ? 'checked' : '' ?>> Cancer</label>
+                        <label class="inline-check"><input type="checkbox" name="p65_tox_developmental[<?= $pi ?>]" value="1" <?= in_array('developmental', $existingTypes) ? 'checked' : '' ?>> Developmental</label>
+                        <label class="inline-check"><input type="checkbox" name="p65_tox_reproductive[<?= $pi ?>]" value="1" <?= in_array('reproductive', $existingTypes) ? 'checked' : '' ?>> Reproductive</label>
+                        <label class="inline-check"><input type="checkbox" name="p65_tox_female_reproductive[<?= $pi ?>]" value="1" <?= in_array('female reproductive', $existingTypes) ? 'checked' : '' ?>> Female Reproductive</label>
+                        <label class="inline-check"><input type="checkbox" name="p65_tox_male_reproductive[<?= $pi ?>]" value="1" <?= in_array('male reproductive', $existingTypes) ? 'checked' : '' ?>> Male Reproductive</label>
+                    </td>
+                    <td><button type="button" class="btn btn-sm btn-danger remove-p65">X</button></td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </tbody>
+        </table>
+
+        <div style="margin-bottom: 1.5rem;">
+            <button type="button" id="addProp65Row" class="btn btn-sm btn-outline">+ Add Prop 65 Chemical</button>
         </div>
 
         <!-- HAPs Manual Entry -->
@@ -368,6 +385,8 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
     line-height: 1.4;
 }
 .cas-exposure-info .el-line { white-space: nowrap; }
+.p65-tox-checkboxes { display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; }
+.p65-tox-checkboxes .inline-check { font-size: 0.85rem; white-space: nowrap; }
 </style>
 <script>
 // Trade secret description options from admin settings
@@ -602,9 +621,29 @@ document.getElementById('vocLessThanOne').addEventListener('change', function() 
     }
 });
 
-// ── Prop 65 toggle ──────────────────────────────────────────
-document.getElementById('prop65Checkbox').addEventListener('change', function() {
-    document.getElementById('prop65Fields').style.display = this.checked ? 'block' : 'none';
+// ── Prop 65 dynamic rows ────────────────────────────────────
+document.getElementById('addProp65Row').addEventListener('click', function() {
+    var tbody = document.getElementById('prop65Body');
+    var idx = tbody.querySelectorAll('.prop65-row').length;
+    var tr = document.createElement('tr');
+    tr.className = 'prop65-row';
+    tr.innerHTML = '<td><input type="text" name="p65_chemical_name[' + idx + ']" class="input-sm" placeholder="e.g. Titanium dioxide"></td>' +
+        '<td><input type="text" name="p65_cas_number[' + idx + ']" class="input-sm" placeholder="e.g. 13463-67-7"></td>' +
+        '<td class="p65-tox-checkboxes">' +
+            '<label class="inline-check"><input type="checkbox" name="p65_tox_cancer[' + idx + ']" value="1"> Cancer</label>' +
+            '<label class="inline-check"><input type="checkbox" name="p65_tox_developmental[' + idx + ']" value="1"> Developmental</label>' +
+            '<label class="inline-check"><input type="checkbox" name="p65_tox_reproductive[' + idx + ']" value="1"> Reproductive</label>' +
+            '<label class="inline-check"><input type="checkbox" name="p65_tox_female_reproductive[' + idx + ']" value="1"> Female Reproductive</label>' +
+            '<label class="inline-check"><input type="checkbox" name="p65_tox_male_reproductive[' + idx + ']" value="1"> Male Reproductive</label>' +
+        '</td>' +
+        '<td><button type="button" class="btn btn-sm btn-danger remove-p65">X</button></td>';
+    tbody.appendChild(tr);
+});
+
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('remove-p65')) {
+        e.target.closest('tr').remove();
+    }
 });
 
 // ── HAPs dynamic rows ───────────────────────────────────────

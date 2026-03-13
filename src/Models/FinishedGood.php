@@ -443,8 +443,8 @@ class FinishedGood
                 {$latestVersionJoin('sv_de', 'de')}
                 ORDER BY a.customer_code ASC";
 
-        // The representative subquery uses the same WHERE params
-        $queryParams = array_merge($params, $params);
+        // The representative subquery uses the WHERE params
+        $queryParams = $params;
         $rows = $db->fetchAll($sql, $queryParams);
 
         // Post-process: strip pack extension from displayed product code

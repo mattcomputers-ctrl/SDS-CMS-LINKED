@@ -255,6 +255,16 @@ function sanitize_filename(string $name): string
     return $name;
 }
 
+/**
+ * Strip the pack extension from a product/alias code.
+ * e.g. "ABC123-5G" → "ABC123", "XYZ" → "XYZ"
+ */
+function strip_pack_extension(string $code): string
+{
+    $pos = strpos($code, '-');
+    return $pos !== false ? substr($code, 0, $pos) : $code;
+}
+
 /* ------------------------------------------------------------------
  *  Auth convenience functions (permission-group based)
  * ----------------------------------------------------------------*/

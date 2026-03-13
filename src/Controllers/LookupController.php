@@ -75,7 +75,8 @@ class LookupController
         ]);
 
         // Use alias code for filename when available, otherwise fall back to product code
-        $displayCode = $version['alias_code'] ?? $version['product_code'];
+        // Strip pack extension (e.g. "-5G") from the display code
+        $displayCode = strip_pack_extension($version['alias_code'] ?? $version['product_code']);
 
         header('Content-Type: application/pdf');
         header('Content-Disposition: inline; filename="SDS_' . $displayCode . '_v' . $version['version'] . '.pdf"');

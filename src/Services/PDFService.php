@@ -133,7 +133,7 @@ class PDFService
         $this->renderLegalDisclaimer($pdf, $sdsData['legal_disclaimer'] ?? '');
 
         // Save to file
-        $filename = sanitize_filename($meta['product_code']) . '_SDS_' . $meta['language'] . '_' . date('Ymd_His') . '.pdf';
+        $filename = sanitize_filename(strip_pack_extension($meta['product_code'])) . '_SDS_' . $meta['language'] . '_' . date('Ymd_His') . '.pdf';
         $filepath = $outputDir . '/' . $filename;
 
         $pdf->Output($filepath, 'F');

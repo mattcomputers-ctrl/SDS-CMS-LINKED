@@ -792,6 +792,9 @@ class SDSGenerator
 
     private function concentrationRange(float $pct): string
     {
+        if ($pct >= 99.5) {
+            return '100%';
+        }
         if ($pct >= 10) {
             $low  = floor($pct / 5) * 5;
             $high = $low + 5;

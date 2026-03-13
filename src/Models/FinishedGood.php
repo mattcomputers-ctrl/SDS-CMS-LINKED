@@ -374,15 +374,26 @@ class FinishedGood
         $params = [];
 
         if ($searchTerm !== '') {
-            // Search against the base customer code (pack extension stripped) as well
-            $where[]  = '(a.customer_code LIKE ? OR a.description LIKE ? OR SUBSTRING_INDEX(a.customer_code, \'-\', 1) LIKE ?)';
             $like     = '%' . $searchTerm . '%';
+            // WHERE for outer queries using alias "a"
+            $where[]  = '(a.customer_code LIKE ? OR a.description LIKE ? OR SUBSTRING_INDEX(a.customer_code, \'-\', 1) LIKE ?)';
             $params[] = $like;
             $params[] = $like;
             $params[] = $like;
         }
 
         $whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+
+        // Build a matching WHERE for the representative subquery (alias "a2")
+        $where2 = [];
+        $params2 = [];
+        if ($searchTerm !== '') {
+            $where2[] = '(a2.customer_code LIKE ? OR a2.description LIKE ? OR SUBSTRING_INDEX(a2.customer_code, \'-\', 1) LIKE ?)';
+            $params2[] = $like;
+            $params2[] = $like;
+            $params2[] = $like;
+        }
+        $whereSQL2 = $where2 ? 'WHERE ' . implode(' AND ', $where2) : '';
 
         // Count total unique base customer codes (pack extension agnostic)
         $countRow = $db->fetch(
@@ -402,7 +413,7 @@ class FinishedGood
                 SELECT MIN(a2.id) AS rep_id
                 FROM aliases a2
                 INNER JOIN finished_goods fg2 ON fg2.product_code = a2.internal_code_base
-                {$whereSQL}
+                {$whereSQL2}
                 GROUP BY SUBSTRING_INDEX(a2.customer_code, '-', 1)
                 ORDER BY SUBSTRING_INDEX(a2.customer_code, '-', 1) ASC
                 LIMIT {$perPage} OFFSET {$offset}
@@ -443,8 +454,8 @@ class FinishedGood
                 {$latestVersionJoin('sv_de', 'de')}
                 ORDER BY a.customer_code ASC";
 
-        // The representative subquery uses the WHERE params
-        $queryParams = $params;
+        // The representative subquery uses its own params (a2 alias)
+        $queryParams = $params2;
         $rows = $db->fetchAll($sql, $queryParams);
 
         // Post-process: strip pack extension from displayed product code

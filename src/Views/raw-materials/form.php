@@ -284,7 +284,12 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                     $existingTypes = array_map('trim', explode(',', $p65['toxicity_types'] ?? ''));
                 ?>
                 <tr class="prop65-row">
-                    <td><input type="text" name="p65_chemical_name[<?= $pi ?>]" value="<?= e($p65['chemical_name'] ?? '') ?>" class="input-sm" placeholder="e.g. Titanium dioxide"></td>
+                    <td>
+                        <div style="display:flex; align-items:center; gap:0.5rem;">
+                            <input type="text" name="p65_chemical_name[<?= $pi ?>]" value="<?= e($p65['chemical_name'] ?? '') ?>" class="input-sm" placeholder="e.g. Titanium dioxide" style="flex:1;">
+                            <label class="inline-check" style="white-space:nowrap; font-size:0.85rem;"><input type="checkbox" name="p65_is_trace[<?= $pi ?>]" value="1" <?= !empty($p65['is_trace']) ? 'checked' : '' ?>> Trace</label>
+                        </div>
+                    </td>
                     <td><input type="text" name="p65_cas_number[<?= $pi ?>]" value="<?= e($p65['cas_number'] ?? '') ?>" class="input-sm" placeholder="e.g. 13463-67-7"></td>
                     <td class="p65-tox-checkboxes">
                         <label class="inline-check"><input type="checkbox" name="p65_tox_cancer[<?= $pi ?>]" value="1" <?= in_array('cancer', $existingTypes) ? 'checked' : '' ?>> Cancer</label>
@@ -627,7 +632,7 @@ document.getElementById('addProp65Row').addEventListener('click', function() {
     var idx = tbody.querySelectorAll('.prop65-row').length;
     var tr = document.createElement('tr');
     tr.className = 'prop65-row';
-    tr.innerHTML = '<td><input type="text" name="p65_chemical_name[' + idx + ']" class="input-sm" placeholder="e.g. Titanium dioxide"></td>' +
+    tr.innerHTML = '<td><div style="display:flex; align-items:center; gap:0.5rem;"><input type="text" name="p65_chemical_name[' + idx + ']" class="input-sm" placeholder="e.g. Titanium dioxide" style="flex:1;"><label class="inline-check" style="white-space:nowrap; font-size:0.85rem;"><input type="checkbox" name="p65_is_trace[' + idx + ']" value="1"> Trace</label></div></td>' +
         '<td><input type="text" name="p65_cas_number[' + idx + ']" class="input-sm" placeholder="e.g. 13463-67-7"></td>' +
         '<td class="p65-tox-checkboxes">' +
             '<label class="inline-check"><input type="checkbox" name="p65_tox_cancer[' + idx + ']" value="1"> Cancer</label>' +

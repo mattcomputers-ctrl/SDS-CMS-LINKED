@@ -59,6 +59,10 @@ class Prop65Service
         $cancerChemicals = [];
         $reproChemicals  = [];
 
+        // Track trace status per chemical name: true = all occurrences are trace,
+        // false = at least one non-trace occurrence exists
+        $traceStatus = [];
+
         // Check CAS-level composition against the Prop 65 database
         foreach ($composition as $component) {
             $cas  = $component['cas_number'] ?? '';
@@ -94,6 +98,9 @@ class Prop65Service
 
             $displayName = $name ?: $row['chemical_name'];
 
+            // CAS-matched chemicals from composition are never trace
+            self::updateTraceStatus($traceStatus, $displayName, false);
+
             if (in_array('cancer', $types)) {
                 $cancerChemicals[] = $displayName;
             }
@@ -115,6 +122,8 @@ class Prop65Service
             }
             $types = array_filter($types);
 
+            $isTrace = !empty($manual['is_trace']);
+
             $listedChemicals[] = [
                 'cas_number'        => $manual['cas_number'] ?? '',
                 'chemical_name'     => $chemName,
@@ -123,8 +132,11 @@ class Prop65Service
                 'nsrl_ug'           => null,
                 'madl_ug'           => null,
                 'date_listed'       => null,
+                'is_trace'          => $isTrace,
                 'source'            => 'manual',
             ];
+
+            self::updateTraceStatus($traceStatus, $chemName, $isTrace);
 
             if (in_array('cancer', $types)) {
                 $cancerChemicals[] = $chemName;
@@ -134,9 +146,13 @@ class Prop65Service
             }
         }
 
-        $cancerChemicals = array_unique($cancerChemicals);
-        $reproChemicals  = array_unique($reproChemicals);
+        $cancerChemicals = array_values(array_unique($cancerChemicals));
+        $reproChemicals  = array_values(array_unique($reproChemicals));
         $requiresWarning = !empty($cancerChemicals) || !empty($reproChemicals);
+
+        // Apply trace suffix: only if ALL occurrences of a chemical are trace
+        $cancerChemicals = self::applyTraceSuffix($cancerChemicals, $traceStatus);
+        $reproChemicals  = self::applyTraceSuffix($reproChemicals, $traceStatus);
 
         $warningText = '';
         if ($requiresWarning) {
@@ -145,11 +161,40 @@ class Prop65Service
 
         return [
             'listed_chemicals'  => $listedChemicals,
-            'cancer_chemicals'  => array_values($cancerChemicals),
-            'repro_chemicals'   => array_values($reproChemicals),
+            'cancer_chemicals'  => $cancerChemicals,
+            'repro_chemicals'   => $reproChemicals,
             'requires_warning'  => $requiresWarning,
             'warning_text'      => $warningText,
         ];
+    }
+
+    /**
+     * Update the trace status tracker for a chemical name.
+     *
+     * A chemical is only considered trace if ALL of its occurrences
+     * (across all raw materials in the formula) are marked as trace.
+     */
+    private static function updateTraceStatus(array &$traceStatus, string $chemName, bool $isTrace): void
+    {
+        if (!isset($traceStatus[$chemName])) {
+            $traceStatus[$chemName] = $isTrace;
+        } elseif (!$isTrace) {
+            // Any non-trace occurrence removes the trace designation
+            $traceStatus[$chemName] = false;
+        }
+    }
+
+    /**
+     * Append " (trace)" to chemical names where all occurrences are trace.
+     */
+    private static function applyTraceSuffix(array $chemNames, array $traceStatus): array
+    {
+        return array_map(function (string $name) use ($traceStatus) {
+            if (!empty($traceStatus[$name])) {
+                return $name . ' (trace)';
+            }
+            return $name;
+        }, $chemNames);
     }
 
     /**

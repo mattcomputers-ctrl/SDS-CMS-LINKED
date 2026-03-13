@@ -1253,6 +1253,7 @@ class SDSGenerator
                     'cas_number'        => $entry['cas_number'] ?? '',
                     'concentration_pct' => $rmPct,
                     'toxicity_type'     => array_map('trim', explode(',', $entry['toxicity_types'] ?? '')),
+                    'is_trace'          => !empty($entry['is_trace']),
                     'source'            => 'manual',
                     'raw_material_code' => $row['internal_code'],
                 ];

@@ -405,6 +405,7 @@ class RawMaterialController
     {
         $chemNames = $_POST['p65_chemical_name'] ?? [];
         $casNums   = $_POST['p65_cas_number'] ?? [];
+        $isTrace   = $_POST['p65_is_trace'] ?? [];
         $toxCancer = $_POST['p65_tox_cancer'] ?? [];
         $toxDev    = $_POST['p65_tox_developmental'] ?? [];
         $toxRepro  = $_POST['p65_tox_reproductive'] ?? [];
@@ -439,6 +440,7 @@ class RawMaterialController
                 'chemical_name'  => $name,
                 'cas_number'     => trim($casNums[$i] ?? ''),
                 'toxicity_types' => implode(', ', $types),
+                'is_trace'       => !empty($isTrace[$i]) ? 1 : 0,
             ];
         }
 

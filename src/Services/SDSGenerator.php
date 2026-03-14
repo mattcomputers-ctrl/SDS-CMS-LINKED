@@ -77,16 +77,8 @@ class SDSGenerator
         // non-powder material, do not apply the carcinogen classification.
         $this->applyCarbonBlackLogic($hazardResult, $calcResult);
 
-        // Run carcinogen analysis (IARC/NTP/OSHA) — must run before translation
-        // so carcinogen findings can be merged into Section 2 hazard data
+        // Run carcinogen analysis (IARC/NTP/OSHA)
         $carcinogenResult = CarcinogenService::analyse($calcResult['composition']);
-
-        // Merge carcinogen registry findings into hazard result so Section 2
-        // reflects carcinogenicity when federal GHS data is missing
-        $this->applyCarcinogenFindings($hazardResult, $carcinogenResult);
-
-        // Translate GHS data (H/P statements, signal word, pictograms) for target language
-        $hazardResult = GHSStatements::translateHazardResult($hazardResult, $language);
 
         // Run SARA 313 analysis
         $saraResult = SARA313Service::analyse($calcResult['composition']);
@@ -101,6 +93,20 @@ class SDSGenerator
 
         // Run HAP analysis (Clean Air Act Section 112(b) + manual entries)
         $hapResult = HAPService::analyse($calcResult['composition'], $manualHaps);
+
+        // Solid/powder-in-liquid filtering: suppress carcinogen findings,
+        // exposure controls, and Prop 65 (carbon black) for solid/powder
+        // ingredients that are mixed with a liquid component.
+        // Must run BEFORE applyCarcinogenFindings so suppressed findings
+        // are not merged into hazard classifications.
+        $this->applySolidPowderLiquidFiltering($carcinogenResult, $hazardResult, $prop65Result, $calcResult);
+
+        // Merge carcinogen registry findings into hazard result so Section 2
+        // reflects carcinogenicity when federal GHS data is missing
+        $this->applyCarcinogenFindings($hazardResult, $carcinogenResult);
+
+        // Translate GHS data (H/P statements, signal word, pictograms) for target language
+        $hazardResult = GHSStatements::translateHazardResult($hazardResult, $language);
 
         // Load DOT transport info
         $dotInfo = $this->getDOTInfo($calcResult['composition']);
@@ -200,9 +206,7 @@ class SDSGenerator
 
         $this->applyCarbonBlackLogic($hazardResult, $calcResult);
 
-        // Run carcinogen analysis before merging into hazard result
         $carcinogenResult = CarcinogenService::analyse($calcResult['composition']);
-        $this->applyCarcinogenFindings($hazardResult, $carcinogenResult);
 
         $saraResult = SARA313Service::analyse($calcResult['composition']);
 
@@ -212,6 +216,10 @@ class SDSGenerator
 
         $prop65Result     = Prop65Service::analyse($calcResult['composition'], $manualProp65);
         $hapResult        = HAPService::analyse($calcResult['composition'], $manualHaps);
+
+        // Solid/powder-in-liquid filtering (before merging carcinogen findings)
+        $this->applySolidPowderLiquidFiltering($carcinogenResult, $hazardResult, $prop65Result, $calcResult);
+        $this->applyCarcinogenFindings($hazardResult, $carcinogenResult);
 
         $dotInfo = $this->getDOTInfo($calcResult['composition']);
         $company = $this->getCompanySettings();
@@ -1035,6 +1043,183 @@ class SDSGenerator
                 ));
             }
         }
+    }
+
+    /**
+     * Identify CAS numbers that originate exclusively from solid or powder
+     * raw materials, when the formula also contains at least one liquid.
+     *
+     * Returns an empty array when the formula has no liquid component
+     * (i.e. the solid/powder-in-liquid rule does not apply).
+     *
+     * @return string[]  CAS numbers to suppress from carcinogen / exposure / Prop 65 outputs.
+     */
+    private function getSolidPowderCasInLiquidMixture(array $calcResult): array
+    {
+        $enrichedLines = $calcResult['formula_props']['enriched_lines'] ?? [];
+
+        if (empty($enrichedLines)) {
+            return [];
+        }
+
+        // 1. Does the formula contain at least one liquid raw material?
+        $hasLiquid = false;
+        foreach ($enrichedLines as $line) {
+            $state = strtolower($line['physical_state'] ?? '');
+            if ($state === 'liquid') {
+                $hasLiquid = true;
+                break;
+            }
+        }
+
+        if (!$hasLiquid) {
+            return [];
+        }
+
+        // 2. Build a map: CAS → set of physical states from contributing lines.
+        //    A CAS is "solid/powder only" when every raw material line that
+        //    contains it has a physical_state of Solid or Powder.
+        $casStates = []; // cas => ['solid' => true, ...]
+        foreach ($enrichedLines as $line) {
+            $state = strtolower($line['physical_state'] ?? '');
+            foreach ($line['constituents'] ?? [] as $constituent) {
+                $cas = $constituent['cas_number'] ?? '';
+                if ($cas === '') {
+                    continue;
+                }
+                $casStates[$cas][$state] = true;
+            }
+        }
+
+        $solidPowderCas = [];
+        foreach ($casStates as $cas => $states) {
+            // All contributing lines must be solid or powder (no liquid, paste, gas, or unknown)
+            $allSolidPowder = true;
+            foreach (array_keys($states) as $s) {
+                if ($s !== 'solid' && $s !== 'powder') {
+                    $allSolidPowder = false;
+                    break;
+                }
+            }
+            if ($allSolidPowder) {
+                $solidPowderCas[] = $cas;
+            }
+        }
+
+        return $solidPowderCas;
+    }
+
+    /**
+     * Filter carcinogen findings, exposure limits, and Prop 65 results
+     * for solid/powder CAS numbers that are mixed into a liquid formula.
+     *
+     * When a solid or powder ingredient is mixed with a liquid, inhalation
+     * exposure is no longer a concern, so carcinogen listings and exposure
+     * controls for that ingredient should not appear on the SDS.
+     *
+     * Carbon black (1333-86-4) additionally should not appear on Prop 65
+     * when mixed with any liquid component.
+     */
+    private function applySolidPowderLiquidFiltering(
+        array &$carcinogenResult,
+        array &$hazardResult,
+        array &$prop65Result,
+        array $calcResult
+    ): void {
+        $suppressedCas = $this->getSolidPowderCasInLiquidMixture($calcResult);
+
+        if (empty($suppressedCas)) {
+            return;
+        }
+
+        $suppressedSet = array_flip($suppressedCas);
+
+        // --- Filter CarcinogenService findings ---
+        $carcinogenResult['findings'] = array_values(array_filter(
+            $carcinogenResult['findings'],
+            fn($f) => !isset($suppressedSet[$f['cas_number']])
+        ));
+
+        // Remove suppressed CAS from component_texts
+        foreach ($suppressedCas as $cas) {
+            unset($carcinogenResult['component_texts'][$cas]);
+        }
+
+        // Recalculate has_carcinogens and summary_text
+        $carcinogenResult['has_carcinogens'] = !empty($carcinogenResult['findings']);
+        if ($carcinogenResult['has_carcinogens']) {
+            $lines = [];
+            foreach ($carcinogenResult['findings'] as $f) {
+                $parts = [];
+                foreach ($f['agencies'] as $a) {
+                    $parts[] = $a['agency'] . ' ' . $a['classification'];
+                }
+                $lines[] = $f['chemical_name'] . ' (CAS ' . $f['cas_number'] . ', '
+                         . round($f['concentration_pct'], 2) . '%): '
+                         . implode('; ', $parts);
+            }
+            $carcinogenResult['summary_text'] = "The following component(s) are listed as carcinogens:\n" . implode("\n", $lines);
+        } else {
+            $carcinogenResult['summary_text'] = 'No components of this product are listed as carcinogens by IARC, NTP, or OSHA.';
+        }
+
+        // --- Filter exposure limits from hazard result ---
+        $hazardResult['exposure_limits'] = array_values(array_filter(
+            $hazardResult['exposure_limits'],
+            fn($el) => !isset($suppressedSet[$el['cas_number']])
+        ));
+
+        // --- Filter Prop 65 for Carbon Black specifically ---
+        $carbonBlackCas = '1333-86-4';
+        if (isset($suppressedSet[$carbonBlackCas])) {
+            // Remove carbon black from listed chemicals
+            $prop65Result['listed_chemicals'] = array_values(array_filter(
+                $prop65Result['listed_chemicals'],
+                fn($lc) => ($lc['cas_number'] ?? '') !== $carbonBlackCas
+            ));
+
+            // Remove carbon black name from cancer and repro chemical lists
+            $prop65Result['cancer_chemicals'] = array_values(array_filter(
+                $prop65Result['cancer_chemicals'],
+                fn($name) => stripos($name, 'carbon black') === false
+            ));
+            $prop65Result['repro_chemicals'] = array_values(array_filter(
+                $prop65Result['repro_chemicals'],
+                fn($name) => stripos($name, 'carbon black') === false
+            ));
+
+            // Recalculate warning
+            $prop65Result['requires_warning'] = !empty($prop65Result['cancer_chemicals']) || !empty($prop65Result['repro_chemicals']);
+            if ($prop65Result['requires_warning']) {
+                $prop65Result['warning_text'] = self::rebuildProp65Warning(
+                    $prop65Result['cancer_chemicals'],
+                    $prop65Result['repro_chemicals']
+                );
+            } else {
+                $prop65Result['warning_text'] = '';
+            }
+        }
+    }
+
+    /**
+     * Rebuild Prop 65 warning text after filtering chemicals.
+     */
+    private static function rebuildProp65Warning(array $cancerChems, array $reproChems): string
+    {
+        $hasCancer = !empty($cancerChems);
+        $hasRepro  = !empty($reproChems);
+
+        if ($hasCancer && $hasRepro) {
+            return sprintf(
+                Prop65Service::WARNING_COMBINED,
+                implode(', ', $cancerChems),
+                implode(', ', $reproChems)
+            );
+        }
+        if ($hasCancer) {
+            return sprintf(Prop65Service::WARNING_CANCER, implode(', ', $cancerChems));
+        }
+        return sprintf(Prop65Service::WARNING_REPRO, implode(', ', $reproChems));
     }
 
     /**

@@ -32,6 +32,12 @@ $exposureLimits = json_decode($det['exposure_limits'] ?? ($old['exposure_limits_
         <h2><?= $mode === 'create' ? 'New CAS Number Determination' : 'Edit CAS Determination' ?></h2>
         <p class="text-muted mb-1">Define hazard classification for a CAS number. Select hazard statements to auto-populate H/P codes, pictograms, and signal words. You can also manually add H/P codes and exposure limits.</p>
 
+        <?php if ($mode === 'create' && !empty($det['basis']) && str_contains($det['basis'], 'federal')): ?>
+        <div style="background: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; padding: 0.75rem 1rem; border-radius: 4px; margin-bottom: 1rem;">
+            <strong>Federal data pre-loaded.</strong> Hazard classifications, H/P codes, and exposure limits from federal sources have been filled in below. Review and adjust as needed before saving.
+        </div>
+        <?php endif; ?>
+
         <!-- CAS Number & Jurisdiction -->
         <div class="form-grid-2col">
             <div class="form-group">

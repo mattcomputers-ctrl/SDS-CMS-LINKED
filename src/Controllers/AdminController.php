@@ -635,9 +635,11 @@ class AdminController
              ORDER BY cpd.created_at DESC"
         );
 
-        // All distinct CAS numbers from raw material constituents that are
-        // used in at least one active formula, excluding non-hazardous and
-        // trade-secret entries.
+        // All distinct CAS numbers from raw material constituents that do
+        // not yet have an active determination, excluding non-hazardous and
+        // trade-secret entries. CAS numbers with federal data are included
+        // so users can review and complete the determination; a flag
+        // indicates whether federal data is available.
         $needsDetermination = $db->fetchAll(
             "SELECT rmc.cas_number,
                     rmc.chemical_name,
@@ -647,28 +649,27 @@ class AdminController
                         SELECT 1 FROM formula_lines fl
                         JOIN formulas f ON f.id = fl.formula_id AND f.is_current = 1
                         WHERE fl.raw_material_id = rm.id
-                    ) THEN 1 ELSE 0 END) AS in_formula
+                    ) THEN 1 ELSE 0 END) AS in_formula,
+                    MAX(CASE WHEN EXISTS (
+                        SELECT 1 FROM hazard_classifications hc
+                        JOIN hazard_source_records hsr ON hsr.id = hc.hazard_source_record_id
+                        WHERE hc.cas_number = rmc.cas_number AND hsr.is_current = 1
+                    ) OR EXISTS (
+                        SELECT 1 FROM exposure_limits el
+                        JOIN hazard_source_records hsr ON hsr.id = el.hazard_source_record_id
+                        WHERE el.cas_number = rmc.cas_number AND hsr.is_current = 1
+                    ) THEN 1 ELSE 0 END) AS has_federal_data
              FROM raw_material_constituents rmc
              JOIN raw_materials rm ON rm.id = rmc.raw_material_id
              WHERE rmc.cas_number != ''
                AND rmc.is_trade_secret = 0
                AND rmc.is_non_hazardous = 0
                AND NOT EXISTS (
-                   SELECT 1 FROM hazard_classifications hc
-                   JOIN hazard_source_records hsr ON hsr.id = hc.hazard_source_record_id
-                   WHERE hc.cas_number = rmc.cas_number AND hsr.is_current = 1
-               )
-               AND NOT EXISTS (
-                   SELECT 1 FROM exposure_limits el
-                   JOIN hazard_source_records hsr ON hsr.id = el.hazard_source_record_id
-                   WHERE el.cas_number = rmc.cas_number AND hsr.is_current = 1
-               )
-               AND NOT EXISTS (
                    SELECT 1 FROM competent_person_determinations cpd
                    WHERE cpd.cas_number = rmc.cas_number AND cpd.is_active = 1
                )
              GROUP BY rmc.cas_number, rmc.chemical_name
-             ORDER BY raw_material_count DESC, rmc.chemical_name ASC"
+             ORDER BY in_formula DESC, has_federal_data ASC, raw_material_count DESC, rmc.chemical_name ASC"
         );
 
         view('admin/determinations', [
@@ -687,6 +688,12 @@ class AdminController
         $item = null;
         if ($prefillCas !== '') {
             $item = ['cas_number' => $prefillCas];
+
+            // Pre-load federal data if available
+            $federalDet = $this->buildFederalPrefill($prefillCas);
+            if ($federalDet !== null) {
+                $item['determination'] = $federalDet;
+            }
         }
 
         view('admin/determination-form', [
@@ -694,6 +701,141 @@ class AdminController
             'item'      => $item,
             'mode'      => 'create',
         ]);
+    }
+
+    /**
+     * Look up federal hazard classifications and exposure limits for a CAS
+     * number and build a determination-compatible data structure to pre-fill
+     * the form.
+     *
+     * @return array|null  Null if no federal data exists.
+     */
+    private function buildFederalPrefill(string $cas): ?array
+    {
+        $db = Database::getInstance();
+
+        // Fetch federal hazard classifications
+        $hazardRows = $db->fetchAll(
+            "SELECT hc.class_name, hc.category, hc.signal_word,
+                    hc.h_statements_json, hc.p_statements_json, hc.pictograms_json
+             FROM hazard_classifications hc
+             JOIN hazard_source_records hsr ON hsr.id = hc.hazard_source_record_id
+             WHERE hc.cas_number = ? AND hsr.is_current = 1
+             ORDER BY hsr.retrieved_at DESC",
+            [$cas]
+        );
+
+        // Fetch federal exposure limits
+        $limitRows = $db->fetchAll(
+            "SELECT el.limit_type, el.value, el.units, el.notes
+             FROM exposure_limits el
+             JOIN hazard_source_records hsr ON hsr.id = el.hazard_source_record_id
+             WHERE el.cas_number = ? AND hsr.is_current = 1",
+            [$cas]
+        );
+
+        if (empty($hazardRows) && empty($limitRows)) {
+            return null;
+        }
+
+        // Map federal hazard data to GHS determination keys
+        $ghsData = \SDS\Services\GHSHazardData::HAZARD_CLASSIFICATIONS;
+        $selectedHazards = [];
+        $allHCodes = [];
+        $allPCodes = [];
+        $pictograms = [];
+        $signalWord = null;
+        $signalHierarchy = ['Danger' => 2, 'Warning' => 1];
+
+        foreach ($hazardRows as $row) {
+            $className = $row['class_name'] ?? '';
+            $category  = $row['category'] ?? '';
+
+            // Try to match to a GHS_DATA key ("ClassName - Category")
+            $matchKey = $className . ' - ' . $category;
+            if (isset($ghsData[$matchKey])) {
+                $selectedHazards[] = $matchKey;
+            }
+
+            // Collect H-codes from federal data
+            $hStmts = json_decode($row['h_statements_json'] ?? '[]', true);
+            if (is_array($hStmts)) {
+                foreach ($hStmts as $stmt) {
+                    $code = is_string($stmt) ? $stmt : ($stmt['code'] ?? '');
+                    if ($code !== '') {
+                        $allHCodes[$code] = true;
+                    }
+                }
+            }
+
+            // Collect P-codes from federal data
+            $pStmts = json_decode($row['p_statements_json'] ?? '[]', true);
+            if (is_array($pStmts)) {
+                foreach ($pStmts as $stmt) {
+                    $code = is_string($stmt) ? $stmt : ($stmt['code'] ?? '');
+                    if ($code !== '') {
+                        $allPCodes[$code] = true;
+                    }
+                }
+            }
+
+            // Collect pictograms
+            $pics = json_decode($row['pictograms_json'] ?? '[]', true);
+            if (is_array($pics)) {
+                foreach ($pics as $p) {
+                    $pictograms[$p] = true;
+                }
+            }
+
+            // Signal word (highest priority wins)
+            $sw = $row['signal_word'] ?? null;
+            if ($sw !== null) {
+                $newPri = $signalHierarchy[$sw] ?? 0;
+                $curPri = $signalWord ? ($signalHierarchy[$signalWord] ?? 0) : 0;
+                if ($newPri > $curPri) {
+                    $signalWord = $sw;
+                }
+            }
+        }
+
+        $selectedHazards = array_values(array_unique($selectedHazards));
+
+        // Build exposure limits array
+        $exposureLimits = [];
+        foreach ($limitRows as $el) {
+            if (empty($el['value'])) {
+                continue;
+            }
+            $exposureLimits[] = [
+                'limit_type' => $el['limit_type'] ?? '',
+                'value'      => $el['value'] ?? '',
+                'units'      => $el['units'] ?? 'mg/m3',
+                'notes'      => $el['notes'] ?? '',
+            ];
+        }
+
+        // Apply pictogram precedence
+        $pictogramKeys = array_keys($pictograms);
+        if (in_array('GHS06', $pictogramKeys) || in_array('GHS05', $pictogramKeys)) {
+            $pictogramKeys = array_filter($pictogramKeys, fn($p) => $p !== 'GHS07');
+        }
+        sort($pictogramKeys);
+
+        $hCodes = array_keys($allHCodes);
+        sort($hCodes);
+        $pCodes = array_keys($allPCodes);
+        sort($pCodes);
+
+        return [
+            'selected_hazards' => json_encode($selectedHazards),
+            'hazard_classes'   => '',
+            'signal_word'      => $signalWord ?? '',
+            'h_statements'     => implode(', ', $hCodes),
+            'p_statements'     => implode(', ', $pCodes),
+            'pictograms'       => implode(', ', $pictogramKeys),
+            'exposure_limits'  => json_encode($exposureLimits),
+            'basis'            => 'Pre-loaded from federal source data',
+        ];
     }
 
     public function storeDetermination(): void

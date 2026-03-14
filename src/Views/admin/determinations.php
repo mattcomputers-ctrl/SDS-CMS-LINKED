@@ -5,7 +5,7 @@
     <a href="/determinations/create" class="btn btn-primary">+ New CAS Determination</a>
 </div>
 
-<p class="text-muted">When federal hazard data is missing for a CAS number, define the hazard determination here. Select hazard statements, H/P codes, and exposure limits. These are clearly marked as non-federal in Section 16.</p>
+<p class="text-muted">Define hazard determinations for CAS numbers. When federal data is available it will be pre-loaded into the form. Select hazard statements, H/P codes, and exposure limits. Determinations are clearly marked as non-federal in Section 16.</p>
 
 <!-- Tab Navigation -->
 <div class="tab-nav" style="display: flex; gap: 0; border-bottom: 2px solid #003366; margin-bottom: 1rem;">
@@ -30,7 +30,7 @@
             <strong>All CAS numbers have federal data or determinations.</strong>
         </div>
     <?php else: ?>
-        <p class="text-muted" style="margin-bottom: 0.5rem;">These CAS numbers appear in raw materials but have no federal hazard data or active determination. Click <strong>Create</strong> to enter a determination.</p>
+        <p class="text-muted" style="margin-bottom: 0.5rem;">These CAS numbers appear in raw materials but have no active determination. Click <strong>Create</strong> to enter a determination. Items with federal data will be pre-loaded into the form.</p>
         <table class="table">
             <thead>
                 <tr>
@@ -38,6 +38,7 @@
                     <th>Chemical Name</th>
                     <th>Raw Materials</th>
                     <th>In Formula</th>
+                    <th>Federal Data</th>
                     <th style="width: 100px;">Action</th>
                 </tr>
             </thead>
@@ -57,6 +58,13 @@
                             <span style="color: #28a745; font-weight: bold;">Yes</span>
                         <?php else: ?>
                             <span class="text-muted">No</span>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <?php if ((int)($nd['has_federal_data'] ?? 0)): ?>
+                            <span style="color: #0d6efd; font-weight: bold;" title="Federal hazard data or exposure limits are available and will be pre-loaded">Available</span>
+                        <?php else: ?>
+                            <span class="text-muted">None</span>
                         <?php endif; ?>
                     </td>
                     <td>

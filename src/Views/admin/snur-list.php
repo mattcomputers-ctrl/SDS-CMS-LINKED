@@ -15,11 +15,11 @@
         <div class="form-grid-2col">
             <div class="form-group">
                 <label>CAS Number *</label>
-                <input type="text" name="cas_number" required placeholder="e.g. 68084-62-8" style="font-family: monospace;">
+                <input type="text" name="cas_number" id="snur-cas-number" required placeholder="e.g. 68084-62-8" style="font-family: monospace;">
             </div>
             <div class="form-group">
                 <label>Chemical Name *</label>
-                <input type="text" name="chemical_name" required placeholder="e.g. Acrylonitrile-styrene copolymer">
+                <input type="text" name="chemical_name" id="snur-chemical-name" required placeholder="e.g. Acrylonitrile-styrene copolymer">
             </div>
             <div class="form-group">
                 <label>Rule Citation</label>
@@ -67,5 +67,23 @@
         </table>
     <?php endif; ?>
 </div>
+
+<script>
+document.getElementById('snur-cas-number').addEventListener('blur', function () {
+    var cas = this.value.trim();
+    var nameField = document.getElementById('snur-chemical-name');
+    if (!cas || nameField.value.trim() !== '') return;
+    if (!/^\d{2,7}-\d{2}-\d$/.test(cas)) return;
+
+    fetch('/raw-materials/cas-lookup?cas=' + encodeURIComponent(cas))
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.found && data.chemical_name && nameField.value.trim() === '') {
+                nameField.value = data.chemical_name;
+            }
+        })
+        .catch(function () { /* silently ignore lookup failures */ });
+});
+</script>
 
 <?php include dirname(__DIR__) . '/layouts/footer.php'; ?>

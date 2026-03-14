@@ -174,6 +174,8 @@ return [
         'el_notes'              => 'Hinweise',
 
         // Section 9 (Physical/Chemical Properties)
+        'physical_state'        => 'Aggregatzustand',
+        'color'                 => 'Farbe',
         'appearance'            => 'Aussehen',
         'odor'                  => 'Geruch',
         'boiling_point'         => 'Siedepunkt',
@@ -225,6 +227,7 @@ return [
         'hap_none'              => 'Dieses Produkt enthält keine EPA-HAPs gemäß Abschnitt 112(b) des Clean Air Act.',
         'prop65_title'          => 'California Proposition 65',
         'prop65_none'           => 'Es ist nicht bekannt, dass dieses Produkt Chemikalien enthält, die unter California Proposition 65 aufgeführt sind.',
+        'snur_title'            => 'EPA-Regeln für Bedeutende Neue Verwendung (SNUR)',
         'state_regulations'     => 'Staatliche Vorschriften',
 
         // Section 16 (Other Information)

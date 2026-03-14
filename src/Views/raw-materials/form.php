@@ -347,6 +347,25 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
             <button type="button" id="addHapRow" class="btn btn-sm btn-outline">+ Add HAP</button>
         </div>
 
+        <!-- SNUR (Significant New Use Rule) -->
+        <h3>EPA Significant New Use Rule (SNUR)</h3>
+        <p class="text-muted">Flag this raw material if it contains chemicals subject to EPA SNUR requirements. This will be reported in SDS Section 15.</p>
+        <div class="form-grid-2col">
+            <div class="form-group">
+                <label>
+                    <input type="hidden" name="is_snur" value="0">
+                    <input type="checkbox" name="is_snur" value="1" <?= !empty($item['is_snur']) ? 'checked' : '' ?>>
+                    Subject to SNUR
+                </label>
+            </div>
+            <div class="form-group full-width">
+                <label for="snur_description">SNUR Description</label>
+                <input type="text" id="snur_description" name="snur_description"
+                       value="<?= e($item['snur_description'] ?? '') ?>"
+                       placeholder="e.g. 40 CFR 721.10536 — Must notify EPA before manufacturing or processing for...">
+            </div>
+        </div>
+
         <div class="form-actions">
             <button type="submit" class="btn btn-primary"><?= $isEdit ? 'Update' : 'Create' ?> Raw Material</button>
             <a href="/raw-materials" class="btn btn-outline">Cancel</a>

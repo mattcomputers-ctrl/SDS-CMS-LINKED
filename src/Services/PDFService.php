@@ -565,6 +565,8 @@ class PDFService
     private function renderSection9(\TCPDF $pdf, array $s): void
     {
         $props = [
+            'physical_state'    => $s['physical_state'] ?? '',
+            'color'             => $s['color'] ?? '',
             'appearance'        => $s['appearance'] ?? '',
             'odor'              => $s['odor'] ?? '',
             'boiling_point'     => $s['boiling_point'] ?? '',
@@ -695,6 +697,28 @@ class PDFService
         } elseif (isset($hap['has_haps'])) {
             $pdf->SetFont('helvetica', '', 8);
             $pdf->MultiCell(0, 4, $this->label('hap_none'), 0, 'L');
+            $pdf->Ln(2);
+        }
+
+        // SNUR (Significant New Use Rules)
+        $snur = $s['snur'] ?? [];
+        if (!empty($snur['has_snur'])) {
+            $pdf->SetFont('helvetica', 'B', 9);
+            $pdf->Cell(0, 5, $this->label('snur_title') . ':', 0, 1);
+            $pdf->SetFont('helvetica', '', 8);
+            foreach ($snur['listed_chemicals'] as $chem) {
+                $text = ($chem['chemical_name'] ?? '') . ' (CAS ' . ($chem['cas_number'] ?? '') . ')';
+                if (!empty($chem['rule_citation'])) {
+                    $text .= ' — ' . $chem['rule_citation'];
+                }
+                $pdf->MultiCell(0, 4, "\xE2\x80\xA2 " . $text, 0, 'L');
+                if (!empty($chem['description'])) {
+                    $pdf->SetFont('helvetica', 'I', 7);
+                    $pdf->Cell(5, 4, '', 0, 0);
+                    $pdf->MultiCell(0, 3, $chem['description'], 0, 'L');
+                    $pdf->SetFont('helvetica', '', 8);
+                }
+            }
             $pdf->Ln(2);
         }
 

@@ -1755,4 +1755,83 @@ class AdminController
 
         redirect('/admin/network-settings');
     }
+
+    /* ------------------------------------------------------------------
+     *  SNUR List Management
+     * ----------------------------------------------------------------*/
+
+    public function snurList(): void
+    {
+        $this->requireAdmin();
+
+        $db = Database::getInstance();
+        $snurs = $db->fetchAll("SELECT * FROM snur_list ORDER BY cas_number ASC");
+
+        view('admin/snur-list', [
+            'pageTitle' => 'SNUR List',
+            'snurs'     => $snurs,
+        ]);
+    }
+
+    public function storeSnur(): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+
+        $db = Database::getInstance();
+
+        $casNumber    = trim($_POST['cas_number'] ?? '');
+        $chemicalName = trim($_POST['chemical_name'] ?? '');
+        $ruleCitation = trim($_POST['rule_citation'] ?? '');
+        $description  = trim($_POST['description'] ?? '');
+
+        if ($casNumber === '' || $chemicalName === '') {
+            $_SESSION['_flash']['error'] = 'CAS number and chemical name are required.';
+            redirect('/admin/snur-list');
+            return;
+        }
+
+        // Check for duplicate CAS
+        $existing = $db->fetch("SELECT id FROM snur_list WHERE cas_number = ?", [$casNumber]);
+        if ($existing) {
+            // Update existing
+            $db->update('snur_list', [
+                'chemical_name' => $chemicalName,
+                'rule_citation' => $ruleCitation ?: null,
+                'description'   => $description ?: null,
+            ], 'id = ?', [(int) $existing['id']]);
+            $_SESSION['_flash']['success'] = "SNUR entry for CAS {$casNumber} updated.";
+        } else {
+            $db->insert('snur_list', [
+                'cas_number'    => $casNumber,
+                'chemical_name' => $chemicalName,
+                'rule_citation' => $ruleCitation ?: null,
+                'description'   => $description ?: null,
+            ]);
+            $_SESSION['_flash']['success'] = "SNUR entry for CAS {$casNumber} added.";
+        }
+
+        AuditService::log('snur_list', $casNumber, 'upsert', [
+            'cas_number'    => $casNumber,
+            'chemical_name' => $chemicalName,
+        ]);
+
+        redirect('/admin/snur-list');
+    }
+
+    public function deleteSnur(string $id): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+
+        $db = Database::getInstance();
+        $entry = $db->fetch("SELECT cas_number FROM snur_list WHERE id = ?", [(int) $id]);
+        if ($entry) {
+            $db->query("DELETE FROM snur_list WHERE id = ?", [(int) $id]);
+            AuditService::log('snur_list', $entry['cas_number'], 'delete');
+            $_SESSION['_flash']['success'] = 'SNUR entry removed.';
+        }
+
+        redirect('/admin/snur-list');
+    }
 }

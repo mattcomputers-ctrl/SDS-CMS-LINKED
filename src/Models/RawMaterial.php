@@ -218,6 +218,8 @@ class RawMaterial
             'prop65_toxicity_types' => $strOrNull('prop65_toxicity_types'),
             'prop65_data'           => $strOrNull('prop65_data'),
             'haps_data'             => $strOrNull('haps_data'),
+            'is_snur'               => !empty($data['is_snur']) ? 1 : 0,
+            'snur_description'      => $strOrNull('snur_description'),
             'created_by'            => $data['created_by'] ?? null,
         ];
 
@@ -269,6 +271,7 @@ class RawMaterial
             'solids_wt', 'solids_vol', 'flash_point_c', 'flash_point_greater_than',
             'physical_state', 'solubility', 'appearance', 'odor', 'notes',
             'is_prop65', 'prop65_chemical_name', 'prop65_toxicity_types', 'prop65_data', 'haps_data',
+            'is_snur', 'snur_description',
         ];
 
         // Numeric columns that must be null instead of empty string

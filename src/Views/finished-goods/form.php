@@ -63,6 +63,30 @@ $selfId = $isEdit ? (int) $item['id'] : 0;
             </div>
         </div>
 
+        <!-- Physical Properties (SDS Section 9) -->
+        <h3>Physical Properties</h3>
+        <p class="text-muted">These fields appear in SDS Section 9 — Physical and Chemical Properties.</p>
+        <div class="form-grid-2col">
+            <div class="form-group">
+                <label for="physical_state">Physical State</label>
+                <select id="physical_state" name="physical_state">
+                    <option value="">— Select —</option>
+                    <?php foreach ($physicalStates as $ps): ?>
+                        <option value="<?= e($ps) ?>" <?= (old('physical_state', $item['physical_state'] ?? '') === $ps) ? 'selected' : '' ?>><?= e($ps) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="color">Color</label>
+                <select id="color" name="color">
+                    <option value="">— Select —</option>
+                    <?php foreach ($colorOptions as $co): ?>
+                        <option value="<?= e($co) ?>" <?= (old('color', $item['color'] ?? '') === $co) ? 'selected' : '' ?>><?= e($co) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+        </div>
+
         <!-- Formula -->
         <h3>Formula</h3>
         <?php if ($isEdit && $formula): ?>

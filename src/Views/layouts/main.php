@@ -73,6 +73,7 @@
                     <li><a href="/admin/groups" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/admin/groups') ? 'active' : '' ?>"><span class="menu-icon">&#128274;</span> Permission Groups</a></li>
                     <li><a href="/admin/settings" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/settings' ? 'active' : '' ?>"><span class="menu-icon">&#9881;</span> Settings</a></li>
                     <li><a href="/admin/pictograms" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/pictograms' ? 'active' : '' ?>"><span class="menu-icon">&#9888;</span> Pictograms</a></li>
+                    <li><a href="/admin/snur-list" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/admin/snur-list') ? 'active' : '' ?>"><span class="menu-icon">&#128220;</span> SNUR List</a></li>
                     <li><a href="/admin/federal-data" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/admin/federal-data') ? 'active' : '' ?>"><span class="menu-icon">&#127963;</span> Federal Data</a></li>
                     <li><a href="/admin/audit-log" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/audit-log' ? 'active' : '' ?>"><span class="menu-icon">&#128203;</span> Audit Log</a></li>
                     <li><a href="/admin/sds-versions" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/admin/sds-versions') ? 'active' : '' ?>"><span class="menu-icon">&#128195;</span> SDS Versions</a></li>

@@ -151,13 +151,13 @@ class SDSGenerator
                 6  => $this->section6($overrides),
                 7  => $this->section7($overrides),
                 8  => $this->section8($hazardResult, $overrides),
-                9  => $this->section9($calcResult, $overrides),
+                9  => $this->section9($fg, $calcResult, $overrides),
                 10 => $this->section10($overrides),
                 11 => $this->section11($hazardResult, $calcResult['composition'], $carcinogenResult, $overrides),
                 12 => $this->section12($overrides),
                 13 => $this->section13($overrides),
                 14 => $this->section14($dotInfo, $overrides),
-                15 => $this->section15($saraResult, $prop65Result, $hapResult, $overrides),
+                15 => $this->section15($saraResult, $prop65Result, $hapResult, $calcResult, $overrides),
                 16 => $this->section16($calcResult, $overrides),
             ],
             'hazard_result'       => $hazardResult,
@@ -306,13 +306,13 @@ class SDSGenerator
                 6  => $this->section6($overrides),
                 7  => $this->section7($overrides),
                 8  => $this->section8($hazardResult, $overrides),
-                9  => $this->section9($calcResult, $overrides),
+                9  => $this->section9($fg, $calcResult, $overrides),
                 10 => $this->section10($overrides),
                 11 => $this->section11($hazardResult, $calcResult['composition'], $carcinogenResult, $overrides),
                 12 => $this->section12($overrides),
                 13 => $this->section13($overrides),
                 14 => $this->section14($dotInfo, $overrides),
-                15 => $this->section15($saraResult, $prop65Result, $hapResult, $overrides),
+                15 => $this->section15($saraResult, $prop65Result, $hapResult, $calcResult, $overrides),
                 16 => $this->section16($calcResult, $overrides),
             ],
             'hazard_result'       => $hazardResult,
@@ -541,12 +541,16 @@ class SDSGenerator
         ];
     }
 
-    private function section9(array $calcResult, array $overrides): array
+    private function section9(array $fg, array $calcResult, array $overrides): array
     {
         $voc   = $calcResult['voc'];
         $props = $calcResult['formula_props'] ?? [];
 
         $notDetermined = $this->t->get('labels.not_determined');
+
+        // Physical state and color from the finished good record
+        $physicalState = $fg['physical_state'] ?? '';
+        $color = $fg['color'] ?? '';
 
         // Flash point: auto-derive from formula, allow override
         $flashPoint = $overrides[9]['flash_point'] ?? null;
@@ -570,9 +574,24 @@ class SDSGenerator
         // Solubility: auto-derive from formula
         $solubility = $overrides[9]['solubility'] ?? ($props['solubility'] ?? '');
 
+        // Build appearance from physical state + color if not overridden
+        $appearance = $overrides[9]['appearance'] ?? '';
+        if ($appearance === '' && ($physicalState !== '' || $color !== '')) {
+            $parts = [];
+            if ($color !== '') {
+                $parts[] = $color;
+            }
+            if ($physicalState !== '') {
+                $parts[] = strtolower($physicalState);
+            }
+            $appearance = implode(' ', $parts);
+        }
+
         return [
             'title'                => $this->t->get('section9.title'),
-            'appearance'           => $overrides[9]['appearance'] ?? '',
+            'physical_state'       => $physicalState,
+            'color'                => $color,
+            'appearance'           => $appearance,
             'odor'                 => $overrides[9]['odor'] ?? '',
             'boiling_point'        => $overrides[9]['boiling_point'] ?? $notDetermined,
             'flash_point'          => $flashPoint,
@@ -691,13 +710,16 @@ class SDSGenerator
         ];
     }
 
-    private function section15(array $saraResult, array $prop65Result, array $hapResult, array $overrides): array
+    private function section15(array $saraResult, array $prop65Result, array $hapResult, array $calcResult, array $overrides): array
     {
         // Build state regulations text with Prop 65 data
         $stateRegs = $overrides[15]['state_regs'] ?? '';
         if ($stateRegs === '' && $prop65Result['requires_warning']) {
             $stateRegs = $prop65Result['warning_text'];
         }
+
+        // SNUR analysis — check formula components against snur_list + manual flags
+        $snurResult = $this->analyseSnur($calcResult);
 
         return [
             'title'          => $this->t->get('section15.title'),
@@ -706,6 +728,7 @@ class SDSGenerator
             'sara_313'       => $saraResult,
             'prop65'         => $prop65Result,
             'hap'            => $hapResult,
+            'snur'           => $snurResult,
             'state_regs'     => $stateRegs,
             'note'           => $this->t->get('section15.note'),
         ];
@@ -845,6 +868,7 @@ class SDSGenerator
             'eye_protection', 'skin_protection', 'respiratory', 'skin_body',
             'el_cas', 'el_chemical', 'el_type', 'el_value', 'el_units', 'el_conc_pct', 'el_notes',
             // Section 9
+            'physical_state', 'color',
             'appearance', 'odor', 'boiling_point', 'flash_point', 'solubility',
             'specific_gravity', 'voc_lb_gal', 'voc_less_we', 'voc_wt_pct',
             'solids_wt_pct', 'solids_vol_pct',
@@ -863,7 +887,7 @@ class SDSGenerator
             // Section 15
             'osha_status', 'tsca_status', 'sara_313_title',
             'hap_title', 'hap_triggering', 'hap_wt_pct', 'hap_total', 'hap_none',
-            'prop65_title', 'prop65_none', 'state_regulations',
+            'prop65_title', 'prop65_none', 'snur_title', 'state_regulations',
             // Section 16
             'revision_date', 'abbreviations', 'disclaimer',
             // Generic
@@ -1505,5 +1529,96 @@ class SDSGenerator
         }
 
         return $result;
+    }
+
+    /**
+     * Analyse SNUR (Significant New Use Rule) applicability for the formula.
+     *
+     * Checks each CAS number in the composition against:
+     * 1. The snur_list table (centrally managed SNUR CAS numbers)
+     * 2. Manual is_snur flags on raw materials
+     *
+     * @return array{has_snur: bool, listed_chemicals: array}
+     */
+    private function analyseSnur(array $calcResult): array
+    {
+        $db = Database::getInstance();
+        $composition = $calcResult['composition'] ?? [];
+
+        if (empty($composition)) {
+            return ['has_snur' => false, 'listed_chemicals' => []];
+        }
+
+        $casNumbers = array_filter(array_column($composition, 'cas_number'));
+        if (empty($casNumbers)) {
+            return ['has_snur' => false, 'listed_chemicals' => []];
+        }
+
+        // Build CAS-to-concentration map
+        $casPctMap = [];
+        foreach ($composition as $c) {
+            $cas = $c['cas_number'] ?? '';
+            if ($cas !== '') {
+                $casPctMap[$cas] = (float) ($c['concentration_pct'] ?? 0);
+            }
+        }
+
+        $listedChemicals = [];
+
+        // 1. Check snur_list table
+        $placeholders = implode(',', array_fill(0, count($casNumbers), '?'));
+        $snurRows = $db->fetchAll(
+            "SELECT cas_number, chemical_name, rule_citation, description
+             FROM snur_list
+             WHERE cas_number IN ({$placeholders})",
+            $casNumbers
+        );
+        foreach ($snurRows as $row) {
+            $listedChemicals[] = [
+                'cas_number'        => $row['cas_number'],
+                'chemical_name'     => $row['chemical_name'],
+                'concentration_pct' => $casPctMap[$row['cas_number']] ?? 0,
+                'rule_citation'     => $row['rule_citation'] ?? '',
+                'description'       => $row['description'] ?? '',
+                'source'            => 'snur_list',
+            ];
+        }
+
+        // 2. Check raw materials with is_snur flag
+        $formulaLines = $calcResult['formula']['lines'] ?? [];
+        $rmIds = array_filter(array_column($formulaLines, 'raw_material_id'));
+        if (!empty($rmIds)) {
+            $rmPlaceholders = implode(',', array_fill(0, count($rmIds), '?'));
+            $snurRms = $db->fetchAll(
+                "SELECT rm.id, rm.internal_code, rm.snur_description, rmc.cas_number, rmc.chemical_name
+                 FROM raw_materials rm
+                 LEFT JOIN raw_material_constituents rmc ON rmc.raw_material_id = rm.id
+                 WHERE rm.id IN ({$rmPlaceholders}) AND rm.is_snur = 1",
+                $rmIds
+            );
+
+            // Track CAS numbers already found via snur_list to avoid duplicates
+            $alreadyListed = array_column($listedChemicals, 'cas_number');
+
+            foreach ($snurRms as $row) {
+                $cas = $row['cas_number'] ?? '';
+                if ($cas !== '' && !in_array($cas, $alreadyListed, true)) {
+                    $listedChemicals[] = [
+                        'cas_number'        => $cas,
+                        'chemical_name'     => $row['chemical_name'] ?? '',
+                        'concentration_pct' => $casPctMap[$cas] ?? 0,
+                        'rule_citation'     => '',
+                        'description'       => $row['snur_description'] ?? '',
+                        'source'            => 'manual',
+                    ];
+                    $alreadyListed[] = $cas;
+                }
+            }
+        }
+
+        return [
+            'has_snur'         => !empty($listedChemicals),
+            'listed_chemicals' => $listedChemicals,
+        ];
     }
 }

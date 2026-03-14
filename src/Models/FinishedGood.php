@@ -510,6 +510,8 @@ class FinishedGood
             'family'             => $data['family'] ?? null,
             'recommended_use'    => $strOrNull('recommended_use'),
             'restrictions_on_use' => $strOrNull('restrictions_on_use'),
+            'physical_state'     => $strOrNull('physical_state'),
+            'color'              => $strOrNull('color'),
             'is_active'          => isset($data['is_active']) ? (int) $data['is_active'] : 1,
             'created_by'         => $data['created_by'] ?? null,
         ];
@@ -556,7 +558,7 @@ class FinishedGood
             }
         }
 
-        $allowed = ['product_code', 'description', 'family', 'is_active', 'recommended_use', 'restrictions_on_use'];
+        $allowed = ['product_code', 'description', 'family', 'is_active', 'recommended_use', 'restrictions_on_use', 'physical_state', 'color'];
         $updateData = [];
         foreach ($allowed as $col) {
             if (array_key_exists($col, $data)) {

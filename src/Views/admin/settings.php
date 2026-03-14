@@ -96,6 +96,18 @@
             <textarea name="sds__product_families" rows="5" style="font-size: 0.9rem;" placeholder="UV Offset&#10;Aqueous&#10;Solvent&#10;Flexo&#10;Digital"><?= e($settings['sds.product_families'] ?? '') ?></textarea>
         </div>
 
+        <h2>Physical State Options</h2>
+        <p class="text-muted mb-1">Enter one physical state per line. These appear as dropdown options on the finished good form and populate SDS Section 9.</p>
+        <div class="form-group">
+            <textarea name="sds__physical_states" rows="5" style="font-size: 0.9rem;" placeholder="Liquid&#10;Paste&#10;Solid&#10;Powder&#10;Gel"><?= e($settings['sds.physical_states'] ?? '') ?></textarea>
+        </div>
+
+        <h2>Color Options</h2>
+        <p class="text-muted mb-1">Enter one color per line. These appear as dropdown options on the finished good form and populate SDS Section 9.</p>
+        <div class="form-group">
+            <textarea name="sds__color_options" rows="5" style="font-size: 0.9rem;" placeholder="Black&#10;White&#10;Yellow&#10;Cyan&#10;Magenta&#10;Transparent&#10;Various"><?= e($settings['sds.color_options'] ?? '') ?></textarea>
+        </div>
+
         <h2>Trade Secret Descriptions</h2>
         <p class="text-muted mb-1">Enter one trade secret description per line. These appear as dropdown options when marking a CAS constituent as a trade secret.</p>
         <div class="form-group">

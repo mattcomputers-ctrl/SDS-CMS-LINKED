@@ -194,6 +194,8 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
         <?php elseif ($num === 9): // ── Physical/Chemical Properties ── ?>
             <?php
                 $sec9LabelMap = [
+                    'physical_state'       => 'physical_state',
+                    'color'                => 'color',
                     'appearance'           => 'appearance',
                     'odor'                 => 'odor',
                     'boiling_point'        => 'boiling_point',
@@ -319,6 +321,26 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                 </table>
             <?php elseif (isset($hap['has_haps'])): ?>
                 <p><?= e($l('hap_none')) ?></p>
+            <?php endif; ?>
+
+            <?php
+                $snur = $section['snur'] ?? [];
+                if (!empty($snur['has_snur'])):
+            ?>
+                <h4 style="margin-top: 1rem;"><?= e($l('snur_title')) ?></h4>
+                <ul>
+                <?php foreach ($snur['listed_chemicals'] as $chem): ?>
+                    <li>
+                        <?= e($chem['chemical_name']) ?> (CAS <?= e($chem['cas_number']) ?>)
+                        <?php if (!empty($chem['rule_citation'])): ?>
+                            &mdash; <?= e($chem['rule_citation']) ?>
+                        <?php endif; ?>
+                        <?php if (!empty($chem['description'])): ?>
+                            <br><em style="font-size: 0.85em; color: #666;"><?= e($chem['description']) ?></em>
+                        <?php endif; ?>
+                    </li>
+                <?php endforeach; ?>
+                </ul>
             <?php endif; ?>
 
             <?php

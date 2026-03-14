@@ -45,9 +45,11 @@ class FinishedGoodController
             redirect('/finished-goods');
         }
 
-        $families     = $this->loadProductFamilies();
-        $rawMaterials = RawMaterial::all(['per_page' => 999, 'sort' => 'internal_code', 'dir' => 'asc']);
-        $finishedGoods = FinishedGood::all(['per_page' => 999, 'sort' => 'product_code', 'dir' => 'asc']);
+        $families       = $this->loadProductFamilies();
+        $physicalStates = $this->loadPhysicalStates();
+        $colorOptions   = $this->loadColorOptions();
+        $rawMaterials   = RawMaterial::all(['per_page' => 999, 'sort' => 'internal_code', 'dir' => 'asc']);
+        $finishedGoods  = FinishedGood::all(['per_page' => 999, 'sort' => 'product_code', 'dir' => 'asc']);
 
         // Pre-fill with default recommended use / restrictions from settings
         $defaults = $this->loadDefaultUseSettings();
@@ -61,13 +63,15 @@ class FinishedGoodController
         }
 
         view('finished-goods/form', [
-            'pageTitle'     => 'Add Finished Good',
-            'item'          => $defaults,
-            'mode'          => 'create',
-            'families'      => $families,
-            'rawMaterials'  => $rawMaterials,
-            'finishedGoods' => $finishedGoods,
-            'formula'       => $formula,
+            'pageTitle'      => 'Add Finished Good',
+            'item'           => $defaults,
+            'mode'           => 'create',
+            'families'       => $families,
+            'physicalStates' => $physicalStates,
+            'colorOptions'   => $colorOptions,
+            'rawMaterials'   => $rawMaterials,
+            'finishedGoods'  => $finishedGoods,
+            'formula'        => $formula,
         ]);
     }
 
@@ -119,9 +123,11 @@ class FinishedGoodController
             redirect('/finished-goods');
         }
 
-        $families     = $this->loadProductFamilies();
-        $rawMaterials = RawMaterial::all(['per_page' => 999, 'sort' => 'internal_code', 'dir' => 'asc']);
-        $formula      = Formula::findCurrentByFinishedGood((int) $id);
+        $families       = $this->loadProductFamilies();
+        $physicalStates = $this->loadPhysicalStates();
+        $colorOptions   = $this->loadColorOptions();
+        $rawMaterials   = RawMaterial::all(['per_page' => 999, 'sort' => 'internal_code', 'dir' => 'asc']);
+        $formula        = Formula::findCurrentByFinishedGood((int) $id);
 
         // Get all finished goods for the dropdown (exclude self)
         $allFinishedGoods = FinishedGood::all(['per_page' => 999, 'sort' => 'product_code', 'dir' => 'asc']);
@@ -130,13 +136,15 @@ class FinishedGoodController
         }));
 
         view('finished-goods/form', [
-            'pageTitle'     => 'Edit: ' . $item['product_code'],
-            'item'          => $item,
-            'mode'          => 'edit',
-            'families'      => $families,
-            'rawMaterials'  => $rawMaterials,
-            'finishedGoods' => $finishedGoods,
-            'formula'       => $formula,
+            'pageTitle'      => 'Edit: ' . $item['product_code'],
+            'item'           => $item,
+            'mode'           => 'edit',
+            'families'       => $families,
+            'physicalStates' => $physicalStates,
+            'colorOptions'   => $colorOptions,
+            'rawMaterials'   => $rawMaterials,
+            'finishedGoods'  => $finishedGoods,
+            'formula'        => $formula,
         ]);
     }
 
@@ -315,5 +323,35 @@ class FinishedGoodController
         }
         // Fallback to distinct families already in use
         return FinishedGood::getFamilies();
+    }
+
+    /**
+     * Load physical state options from admin settings.
+     *
+     * @return string[]
+     */
+    private function loadPhysicalStates(): array
+    {
+        $db  = \SDS\Core\Database::getInstance();
+        $row = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'sds.physical_states'");
+        if ($row && !empty($row['value'])) {
+            return array_filter(array_map('trim', explode("\n", $row['value'])));
+        }
+        return ['Liquid', 'Paste', 'Solid', 'Powder', 'Gel', 'Gas'];
+    }
+
+    /**
+     * Load color options from admin settings.
+     *
+     * @return string[]
+     */
+    private function loadColorOptions(): array
+    {
+        $db  = \SDS\Core\Database::getInstance();
+        $row = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'sds.color_options'");
+        if ($row && !empty($row['value'])) {
+            return array_filter(array_map('trim', explode("\n", $row['value'])));
+        }
+        return ['Black', 'White', 'Yellow', 'Cyan', 'Magenta', 'Transparent', 'Various'];
     }
 }

@@ -177,6 +177,8 @@ return [
         'el_notes'              => 'Notes',
 
         // Section 9 (Physical/Chemical Properties)
+        'physical_state'        => 'Physical State',
+        'color'                 => 'Color',
         'appearance'            => 'Appearance',
         'odor'                  => 'Odor',
         'boiling_point'         => 'Boiling Point',
@@ -228,6 +230,7 @@ return [
         'hap_none'              => 'This product does not contain any EPA HAPs listed under Clean Air Act Section 112(b).',
         'prop65_title'          => 'California Proposition 65',
         'prop65_none'           => 'This product is not known to contain any chemicals listed under California Proposition 65.',
+        'snur_title'            => 'EPA Significant New Use Rules (SNUR)',
         'state_regulations'     => 'State Regulations',
 
         // Section 16 (Other Information)

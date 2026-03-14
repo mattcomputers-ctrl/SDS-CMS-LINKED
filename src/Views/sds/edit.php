@@ -282,7 +282,7 @@
             </div>
 
         <?php elseif ($num === 15): ?>
-            <p class="text-muted">SARA 313 and Prop 65 data are auto-populated from regulatory databases.</p>
+            <p class="text-muted">SARA 313, Prop 65, and SNUR data are auto-populated from regulatory databases and raw material flags.</p>
             <div class="form-group">
                 <label>OSHA Status</label>
                 <textarea name="override[15][osha_status]" class="form-control" rows="2"><?= e($section['osha_status'] ?? '') ?></textarea>

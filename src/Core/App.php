@@ -286,6 +286,11 @@ class App
             // Purge Data
             $r->get('/purge-data',  'AdminController@purgeData');
             $r->post('/purge-data', 'AdminController@executePurgeData');
+
+            // SNUR List Management
+            $r->get('/snur-list',              'AdminController@snurList');
+            $r->post('/snur-list',             'AdminController@storeSnur');
+            $r->post('/snur-list/{id}/delete', 'AdminController@deleteSnur');
         });
 
         // ── Dispatch ─────────────────────────────────────────────────

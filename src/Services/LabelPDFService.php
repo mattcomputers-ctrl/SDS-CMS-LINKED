@@ -144,18 +144,13 @@ class LabelPDFService
         $tinySize    = $isBig ? 4.5 : 3;
         $pictoSize   = $isBig ? 10 : 7;
 
-        // ── Product Name (bold, top) ──
+        // ── Lot Number & Item Code (bold, top) ──
         $pdf->SetFont('helvetica', 'B', $nameSize);
         $pdf->SetXY($innerX, $curY);
-        $displayName = $this->truncateText($pdf, $productName, $innerW, $nameSize);
+        $lotLine = 'LOT: ' . $lotNumber . ' ' . $itemCode;
+        $displayName = $this->truncateText($pdf, $lotLine, $innerW, $nameSize);
         $pdf->Cell($innerW, $isBig ? 4 : 3, $displayName, 0, 0, 'C');
         $curY += $isBig ? 4 : 3;
-
-        // ── Item Code & Lot Number line ──
-        $pdf->SetFont('helvetica', '', $bodySize);
-        $pdf->SetXY($innerX, $curY);
-        $pdf->Cell($innerW, $isBig ? 3 : 2.5, 'Item: ' . $itemCode . '    Lot: ' . $lotNumber, 0, 0, 'C');
-        $curY += $isBig ? 3.5 : 2.5;
 
         // ── Thin divider ──
         $pdf->Line($innerX, $curY, $innerX + $innerW, $curY);

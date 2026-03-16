@@ -62,7 +62,7 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                     ];
                 ?>
                 <?php foreach ($groupLabels as $groupKey => $groupLabel): ?>
-                    <p style="margin-bottom: 0.2rem;"><strong><?= e($groupLabel) ?>:</strong></p>
+                    <p style="margin-bottom: 0.2rem;"><strong><?= e($groupLabel) ?></strong></p>
                     <?php if (empty($grouped[$groupKey])): ?>
                         <p style="margin-left: 1rem;">None</p>
                     <?php else: ?>

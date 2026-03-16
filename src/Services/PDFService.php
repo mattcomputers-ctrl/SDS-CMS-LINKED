@@ -293,7 +293,7 @@ class PDFService
 
             foreach ($groupLabels as $groupKey => $groupLabel) {
                 $pdf->SetFont('helvetica', 'B', 9);
-                $pdf->Cell(0, 5, $groupLabel . ':', 0, 1);
+                $pdf->Cell(0, 5, $groupLabel, 0, 1);
                 $pdf->SetFont('helvetica', '', 9);
 
                 if (empty($grouped[$groupKey])) {

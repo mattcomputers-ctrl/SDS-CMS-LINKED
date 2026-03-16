@@ -58,21 +58,21 @@ function e(?string $str): string
  *                          e.g. 'raw-materials/index' or 'layouts/main'
  * @param array  $data      Variables to extract into the view scope
  */
-function view(string $template, array $data = []): void
+function view(string $__template, array $__data = []): void
 {
     // Convert dot notation to directory separators
-    $template = str_replace('.', '/', $template);
+    $__template = str_replace('.', '/', $__template);
 
-    $file = dirname(__DIR__) . '/Views/' . $template . '.php';
+    $__file = dirname(__DIR__) . '/Views/' . $__template . '.php';
 
-    if (!file_exists($file)) {
-        throw new \RuntimeException("View [{$template}] not found at [{$file}].");
+    if (!file_exists($__file)) {
+        throw new \RuntimeException("View [{$__template}] not found at [{$__file}].");
     }
 
     // Extract variables into the view scope
-    extract($data, EXTR_SKIP);
+    extract($__data, EXTR_SKIP);
 
-    include $file;
+    include $__file;
 }
 
 /* ------------------------------------------------------------------

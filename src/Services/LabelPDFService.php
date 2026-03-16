@@ -72,7 +72,7 @@ class LabelPDFService
         $section2 = $sdsData['sections'][2] ?? [];
         $hazard   = $sdsData['hazard_result'] ?? [];
 
-        $productName  = $fg['product_code'] . ' - ' . ($fg['description'] ?? '');
+        $productName  = $fg['product_code'];
         $itemCode     = $fg['product_code'];
         $signalWord   = $section2['signal_word'] ?? $hazard['signal_word'] ?? null;
         $pictograms   = $section2['pictograms'] ?? $hazard['pictograms'] ?? [];

@@ -45,9 +45,9 @@ class LabelPDFService
             'height'      => 39.6875,  // 1.5625"
             'cols'        => 3,
             'rows'        => 6,
-            'margin_left' => 6.7818,   // 0.267" (was 0.375", shifted left 0.108")
+            'margin_left' => 9.525,    // 0.375"
             'margin_top'  => 12.7,     // 0.5"
-            'h_spacing'   => 5.9182,   // 0.233" (was 0.125", increased 0.108")
+            'h_spacing'   => 3.175,    // 0.125"
             'v_spacing'   => 3.175,    // 0.125"
         ],
     ];
@@ -116,7 +116,7 @@ class LabelPDFService
                 $productName, $itemCode, $lotNumber, $signalWord,
                 $pictograms, $hStatements, $pStatements,
                 $supplierName, $supplierAddress, $supplierPhone,
-                $isBig, $netWeight, $privateLabel, $row
+                $isBig, $netWeight, $privateLabel
             );
 
             $labelIndex++;
@@ -132,31 +132,13 @@ class LabelPDFService
         ?string $signalWord, array $pictograms,
         array $hStatements, array $pStatements,
         string $supplierName, string $supplierAddress, string $supplierPhone,
-        bool $isBig, string $netWeight = '', bool $privateLabel = false, int $sheetRow = 0
+        bool $isBig, string $netWeight = '', bool $privateLabel = false
     ): void {
         $pad = $isBig ? 1.5 : 1.0;
         $innerW = $w - 2 * $pad;
         $innerX = $x + $pad;
 
-        // Per-row vertical content offset for big labels to center content on sheet
-        // Row 0 (top): 0.25", Row 1: 0.16", Row 2: 0.08", Row 3 (bottom): 0"
-        if ($isBig) {
-            $rowOffsets = [0 => 2.032, 1 => 3.302, 2 => 5.715, 3 => 7.62];
-            $contentOffset = $rowOffsets[$sheetRow] ?? 0.0;
-        } else {
-            // Per-row vertical offset to align with physical label positions on sheet
-            // Row 0: 0.067" up, Row 1: good, Row 2-5: progressively down
-            $rowOffsets = [
-                0 => -1.7018,  // -0.067"
-                1 =>  0.0,
-                2 =>  1.6002,  // +0.063"
-                3 =>  3.3782,  // +0.133"
-                4 =>  4.445,   // +0.175"
-                5 =>  5.842,   // +0.23"
-            ];
-            $contentOffset = $rowOffsets[$sheetRow] ?? 0.0;
-        }
-        $curY = $y + $pad + $contentOffset;
+        $curY = $y + $pad;
 
         // Font sizes
         $nameSize    = $isBig ? 9 : 7;

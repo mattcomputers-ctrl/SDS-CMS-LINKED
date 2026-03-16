@@ -165,6 +165,9 @@ return [
         // Section 2
         'pictograms'            => 'Piktogramme',
         'ghs_classification'    => 'GHS-Einstufung',
+        'physical_hazards'      => 'Physikalische Gefahren',
+        'health_hazards'        => 'Gesundheitsgefahren',
+        'environmental_hazards' => 'Umweltgefahren',
         'hazard_statements'     => 'Gefahrenhinweise',
         'precautionary_statements' => 'Sicherheitshinweise',
         'ppe_recommendations'   => 'Empfohlene persönliche Schutzausrüstung (PSA)',

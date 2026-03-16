@@ -165,6 +165,9 @@ return [
         // Section 2
         'pictograms'            => 'Pictogrammes',
         'ghs_classification'    => 'Classification SGH',
+        'physical_hazards'      => 'Dangers Physiques',
+        'health_hazards'        => 'Dangers pour la Santé',
+        'environmental_hazards' => 'Dangers pour l\'Environnement',
         'hazard_statements'     => 'Mentions de Danger',
         'precautionary_statements' => 'Conseils de Prudence',
         'ppe_recommendations'   => 'Équipement de Protection Individuelle (EPI) Recommandé',

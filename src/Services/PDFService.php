@@ -279,25 +279,42 @@ class PDFService
             $pdf->Ln(2);
         }
 
-        // Hazard classes summary
+        // Hazard classes summary — grouped by hazard type
         if (!empty($s['hazard_classes'])) {
             $pdf->SetFont('helvetica', 'B', 9);
             $pdf->Cell(0, 5, $this->label('ghs_classification') . ':', 0, 1);
-            $pdf->SetFont('helvetica', '', 9);
-            $seen = [];
-            foreach ($s['hazard_classes'] as $hc) {
-                $class = trim($hc['class_translated'] ?? $hc['class'] ?? '');
-                $category = trim($hc['category_translated'] ?? $hc['category'] ?? '');
-                if ($class !== '' && $category !== '') {
-                    $label = $class . ' (' . $category . ')';
-                } elseif ($class !== '') {
-                    $label = $class;
+
+            $grouped = HazardEngine::groupByHazardType($s['hazard_classes']);
+            $groupLabels = [
+                'physical'      => $this->label('physical_hazards'),
+                'health'        => $this->label('health_hazards'),
+                'environmental' => $this->label('environmental_hazards'),
+            ];
+
+            foreach ($groupLabels as $groupKey => $groupLabel) {
+                $pdf->SetFont('helvetica', 'B', 9);
+                $pdf->Cell(0, 5, $groupLabel . ':', 0, 1);
+                $pdf->SetFont('helvetica', '', 9);
+
+                if (empty($grouped[$groupKey])) {
+                    $pdf->MultiCell(0, 4, 'None', 0, 'L');
                 } else {
-                    $label = $category;
-                }
-                if ($label !== '' && !isset($seen[$label])) {
-                    $seen[$label] = true;
-                    $pdf->MultiCell(0, 4, "\xE2\x80\xA2 " . $label, 0, 'L');
+                    $seen = [];
+                    foreach ($grouped[$groupKey] as $hc) {
+                        $class = trim($hc['class_translated'] ?? $hc['class'] ?? '');
+                        $category = trim($hc['category_translated'] ?? $hc['category'] ?? '');
+                        if ($class !== '' && $category !== '') {
+                            $label = $class . ' (' . $category . ')';
+                        } elseif ($class !== '') {
+                            $label = $class;
+                        } else {
+                            $label = $category;
+                        }
+                        if ($label !== '' && !isset($seen[$label])) {
+                            $seen[$label] = true;
+                            $pdf->MultiCell(0, 4, "\xE2\x80\xA2 " . $label, 0, 'L');
+                        }
+                    }
                 }
             }
             $pdf->Ln(1);

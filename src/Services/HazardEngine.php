@@ -762,6 +762,27 @@ class HazardEngine
         return 500; // Unknown categories sort last
     }
 
+    /**
+     * Group hazard classes by GHS hazard type (physical, health, environmental).
+     *
+     * @param  array $hazardClasses  Consolidated hazard class list
+     * @return array  ['physical' => [...], 'health' => [...], 'environmental' => [...]]
+     */
+    public static function groupByHazardType(array $hazardClasses): array
+    {
+        $groups = ['physical' => [], 'health' => [], 'environmental' => []];
+        $groupNames = [1 => 'physical', 2 => 'health', 3 => 'environmental'];
+
+        foreach ($hazardClasses as $hc) {
+            $className = $hc['class'] ?? '';
+            $group = self::HAZARD_GROUP_ORDER[$className] ?? 2; // default to health
+            $groupKey = $groupNames[$group] ?? 'health';
+            $groups[$groupKey][] = $hc;
+        }
+
+        return $groups;
+    }
+
     private function traceStep(string $type, string $description, array $data): void
     {
         $this->trace[] = [

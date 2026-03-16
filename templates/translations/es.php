@@ -165,6 +165,9 @@ return [
         // Section 2
         'pictograms'            => 'Pictogramas',
         'ghs_classification'    => 'Clasificación GHS',
+        'physical_hazards'      => 'Peligros Físicos',
+        'health_hazards'        => 'Peligros para la Salud',
+        'environmental_hazards' => 'Peligros Ambientales',
         'hazard_statements'     => 'Indicaciones de Peligro',
         'precautionary_statements' => 'Consejos de Prudencia',
         'ppe_recommendations'   => 'Equipo de Protección Personal (EPP) Recomendado',

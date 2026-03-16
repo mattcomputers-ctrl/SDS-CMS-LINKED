@@ -53,19 +53,34 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
 
             <?php if (!empty($section['hazard_classes'])): ?>
                 <p><strong><?= e($l('ghs_classification')) ?>:</strong></p>
-                <ul>
                 <?php
-                    $seen = [];
-                    foreach ($section['hazard_classes'] as $hc):
-                        $cls = trim($hc['class_translated'] ?? $hc['class'] ?? '');
-                        $cat = trim($hc['category_translated'] ?? $hc['category'] ?? '');
-                        $label = ($cls !== '' && $cat !== '') ? $cls . ' (' . $cat . ')' : ($cls !== '' ? $cls : $cat);
-                        if ($label !== '' && !isset($seen[$label])):
-                            $seen[$label] = true;
+                    $grouped = \SDS\Services\HazardEngine::groupByHazardType($section['hazard_classes']);
+                    $groupLabels = [
+                        'physical'      => $l('physical_hazards'),
+                        'health'        => $l('health_hazards'),
+                        'environmental' => $l('environmental_hazards'),
+                    ];
                 ?>
-                    <li><?= e($label) ?></li>
-                <?php endif; endforeach; ?>
-                </ul>
+                <?php foreach ($groupLabels as $groupKey => $groupLabel): ?>
+                    <p style="margin-bottom: 0.2rem;"><strong><?= e($groupLabel) ?>:</strong></p>
+                    <?php if (empty($grouped[$groupKey])): ?>
+                        <p style="margin-left: 1rem;">None</p>
+                    <?php else: ?>
+                        <ul>
+                        <?php
+                            $seen = [];
+                            foreach ($grouped[$groupKey] as $hc):
+                                $cls = trim($hc['class_translated'] ?? $hc['class'] ?? '');
+                                $cat = trim($hc['category_translated'] ?? $hc['category'] ?? '');
+                                $label = ($cls !== '' && $cat !== '') ? $cls . ' (' . $cat . ')' : ($cls !== '' ? $cls : $cat);
+                                if ($label !== '' && !isset($seen[$label])):
+                                    $seen[$label] = true;
+                        ?>
+                            <li><?= e($label) ?></li>
+                        <?php endif; endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                <?php endforeach; ?>
             <?php endif; ?>
 
             <?php if (!empty($section['h_statements'])): ?>

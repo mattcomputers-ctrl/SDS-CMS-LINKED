@@ -1177,7 +1177,9 @@ class SDSGenerator
             'product_identifier', 'product_family', 'recommended_use', 'restrictions',
             'manufacturer_info', 'company', 'address', 'phone', 'emergency',
             // Section 2
-            'pictograms', 'ghs_classification', 'hazard_statements',
+            'pictograms', 'ghs_classification',
+            'physical_hazards', 'health_hazards', 'environmental_hazards',
+            'hazard_statements',
             'precautionary_statements', 'ppe_recommendations', 'other_hazards',
             'ppe_wear_eye', 'ppe_wear_gloves', 'ppe_wear_respiratory', 'ppe_wear_skin',
             // Section 3

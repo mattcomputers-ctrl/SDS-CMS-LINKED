@@ -175,6 +175,9 @@ return [
         // Section 2
         'pictograms'            => 'Pictograms',
         'ghs_classification'    => 'GHS Classification',
+        'physical_hazards'      => 'Physical Hazards',
+        'health_hazards'        => 'Health Hazards',
+        'environmental_hazards' => 'Environmental Hazards',
         'hazard_statements'     => 'Hazard Statements',
         'precautionary_statements' => 'Precautionary Statements',
         'ppe_recommendations'   => 'Recommended Personal Protective Equipment (PPE)',

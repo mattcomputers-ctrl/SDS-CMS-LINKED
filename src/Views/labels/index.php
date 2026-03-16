@@ -4,7 +4,7 @@
     <h2>Generate GHS Labels</h2>
     <p class="text-muted">Generate GHS-compliant product labels with hazard information, pictograms, and lot tracking.</p>
 
-    <form method="POST" action="/labels/generate" id="labelForm">
+    <form method="POST" action="/labels/generate" id="labelForm" target="_blank">
         <?= csrf_field() ?>
 
         <div class="form-group">
@@ -21,10 +21,10 @@
             <div class="form-group" style="flex: 1; min-width: 200px;">
                 <label for="lot_number">Lot Number <span class="text-danger">*</span></label>
                 <input type="text" name="lot_number" id="lot_number" class="input" required
-                       pattern="\d{9}" maxlength="9" inputmode="numeric"
+                       pattern="\d{1,12}" maxlength="12" inputmode="numeric"
                        placeholder="123456789"
-                       title="Lot number must be exactly 9 digits">
-                <small class="text-muted">Exactly 9 digits</small>
+                       title="Lot number must be 1 to 12 digits">
+                <small class="text-muted">Up to 12 digits</small>
             </div>
 
             <div class="form-group" style="flex: 1; min-width: 200px;">
@@ -96,7 +96,7 @@
         <li><strong>Pictograms</strong> — GHS hazard pictograms (red diamond symbols)</li>
         <li><strong>Precautionary Statements</strong> — Prevention, response, storage, disposal (P-codes)</li>
         <li><strong>Supplier Identification</strong> — Company name, address, and phone number</li>
-        <li><strong>Lot Number</strong> — 9-digit production lot identifier</li>
+        <li><strong>Lot Number</strong> — Up to 12-digit production lot identifier</li>
     </ul>
 </div>
 
@@ -106,7 +106,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var lotInput = document.getElementById('lot_number');
     if (lotInput) {
         lotInput.addEventListener('input', function() {
-            this.value = this.value.replace(/\D/g, '').slice(0, 9);
+            this.value = this.value.replace(/\D/g, '').slice(0, 12);
         });
     }
 });

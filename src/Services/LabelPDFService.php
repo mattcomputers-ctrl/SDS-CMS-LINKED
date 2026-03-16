@@ -57,7 +57,7 @@ class LabelPDFService
      *
      * @param  array  $sdsData    Full SDS data from SDSGenerator
      * @param  array  $fg         Finished good record
-     * @param  string $lotNumber  9-digit lot number
+     * @param  string $lotNumber  Lot number (up to 12 digits)
      * @param  string $size       'big' or 'small'
      * @param  int    $quantity   Number of labels to print
      * @param  string $netWeight     Optional net weight text
@@ -116,7 +116,7 @@ class LabelPDFService
                 $productName, $itemCode, $lotNumber, $signalWord,
                 $pictograms, $hStatements, $pStatements,
                 $supplierName, $supplierAddress, $supplierPhone,
-                $isBig, $netWeight, $privateLabel
+                $isBig, $netWeight, $privateLabel, $row
             );
 
             $labelIndex++;
@@ -132,24 +132,33 @@ class LabelPDFService
         ?string $signalWord, array $pictograms,
         array $hStatements, array $pStatements,
         string $supplierName, string $supplierAddress, string $supplierPhone,
-        bool $isBig, string $netWeight = '', bool $privateLabel = false
+        bool $isBig, string $netWeight = '', bool $privateLabel = false, int $sheetRow = 0
     ): void {
         $pad = $isBig ? 1.5 : 1.0;
         $innerW = $w - 2 * $pad;
         $innerX = $x + $pad;
-        $curY = $y + $pad;
+
+        // Per-row vertical content offset for big labels to center content on sheet
+        // Row 0 (top): 0.25", Row 1: 0.16", Row 2: 0.08", Row 3 (bottom): 0"
+        if ($isBig) {
+            $rowOffsets = [0 => 6.35, 1 => 4.064, 2 => 2.032, 3 => 0.0];
+            $contentOffset = $rowOffsets[$sheetRow] ?? 0.0;
+        } else {
+            $contentOffset = 0.0;
+        }
+        $curY = $y + $pad + $contentOffset;
 
         // Font sizes
-        $nameSize    = $isBig ? 7 : 5;
+        $nameSize    = $isBig ? 8 : 5;
         $signalSize  = $isBig ? 8 : 5.5;
         $bodySize    = $isBig ? 5 : 3.5;
         $tinySize    = $isBig ? 4.5 : 3;
-        $pictoSize   = $isBig ? 10 : 7;
+        $pictoSize   = $isBig ? 8 : 7;
 
         // ── Lot Number & Item Code (bold, top) ──
         $lineH = $isBig ? 4 : 3;
         $pdf->SetFont('helvetica', 'B', $nameSize);
-        $lotLine = 'LOT: ' . $lotNumber . ' ' . $itemCode;
+        $lotLine = 'LOT: ' . $lotNumber . $itemCode;
         if ($netWeight !== '') {
             // Lot+item on left, net weight on right — both bold
             $pdf->SetXY($innerX, $curY);
@@ -168,7 +177,7 @@ class LabelPDFService
         $curY += 0.5;
 
         // ── Pictograms row + Signal Word ──
-        $pictoRowH = $isBig ? 12 : 8;
+        $pictoRowH = $isBig ? 10 : 8;
         $availPictos = $this->getAvailablePictograms($pictograms);
         $numPictos = count($availPictos);
 

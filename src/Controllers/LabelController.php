@@ -42,9 +42,9 @@ class LabelController
             redirect('/labels');
         }
 
-        // Validate lot number: must be exactly 9 digits
-        if (!preg_match('/^\d{9}$/', $lotNumber)) {
-            $_SESSION['_flash']['error'] = 'Lot number must be exactly 9 digits.';
+        // Validate lot number: must be 1 to 12 digits
+        if (!preg_match('/^\d{1,12}$/', $lotNumber)) {
+            $_SESSION['_flash']['error'] = 'Lot number must be 1 to 12 digits.';
             redirect('/labels');
         }
 

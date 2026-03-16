@@ -45,9 +45,9 @@ class LabelPDFService
             'height'      => 39.6875,  // 1.5625"
             'cols'        => 3,
             'rows'        => 6,
-            'margin_left' => 9.525,    // 0.375"
+            'margin_left' => 6.7818,   // 0.267" (was 0.375", shifted left 0.108")
             'margin_top'  => 12.7,     // 0.5"
-            'h_spacing'   => 3.175,    // 0.125"
+            'h_spacing'   => 5.9182,   // 0.233" (was 0.125", increased 0.108")
             'v_spacing'   => 3.175,    // 0.125"
         ],
     ];
@@ -144,16 +144,26 @@ class LabelPDFService
             $rowOffsets = [0 => 6.35, 1 => 4.064, 2 => 2.032, 3 => 0.0];
             $contentOffset = $rowOffsets[$sheetRow] ?? 0.0;
         } else {
-            $contentOffset = 0.0;
+            // Per-row vertical offset to align with physical label positions on sheet
+            // Row 0: 0.067" up, Row 1: good, Row 2-5: progressively down
+            $rowOffsets = [
+                0 => -1.7018,  // -0.067"
+                1 =>  0.0,
+                2 =>  1.6002,  // +0.063"
+                3 =>  3.3782,  // +0.133"
+                4 =>  4.445,   // +0.175"
+                5 =>  5.842,   // +0.23"
+            ];
+            $contentOffset = $rowOffsets[$sheetRow] ?? 0.0;
         }
         $curY = $y + $pad + $contentOffset;
 
         // Font sizes
-        $nameSize    = $isBig ? 8 : 5;
+        $nameSize    = $isBig ? 8 : 6;
         $signalSize  = $isBig ? 8 : 5.5;
         $bodySize    = $isBig ? 5 : 3.5;
-        $tinySize    = $isBig ? 4.5 : 3;
-        $pictoSize   = $isBig ? 8 : 7;
+        $tinySize    = $isBig ? 4.5 : 3.5;
+        $pictoSize   = $isBig ? 8 : 5.5;
 
         // ── Lot Number & Item Code (bold, top) ──
         $lineH = $isBig ? 4 : 3;
@@ -177,7 +187,7 @@ class LabelPDFService
         $curY += 0.5;
 
         // ── Pictograms row + Signal Word ──
-        $pictoRowH = $isBig ? 10 : 8;
+        $pictoRowH = $isBig ? 10 : 6.5;
         $availPictos = $this->getAvailablePictograms($pictograms);
         $numPictos = count($availPictos);
 

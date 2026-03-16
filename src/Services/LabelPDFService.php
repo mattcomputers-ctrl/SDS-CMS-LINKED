@@ -60,10 +60,11 @@ class LabelPDFService
      * @param  string $lotNumber  9-digit lot number
      * @param  string $size       'big' or 'small'
      * @param  int    $quantity   Number of labels to print
-     * @param  string $netWeight  Optional net weight text
-     * @return string             Raw PDF content
+     * @param  string $netWeight     Optional net weight text
+     * @param  bool   $privateLabel  If true, hide supplier info
+     * @return string                Raw PDF content
      */
-    public function generate(array $sdsData, array $fg, string $lotNumber, string $size, int $quantity, string $netWeight = ''): string
+    public function generate(array $sdsData, array $fg, string $lotNumber, string $size, int $quantity, string $netWeight = '', bool $privateLabel = false): string
     {
         $spec = self::LABELS[$size] ?? self::LABELS['big'];
         $labelsPerSheet = $spec['cols'] * $spec['rows'];
@@ -115,7 +116,7 @@ class LabelPDFService
                 $productName, $itemCode, $lotNumber, $signalWord,
                 $pictograms, $hStatements, $pStatements,
                 $supplierName, $supplierAddress, $supplierPhone,
-                $isBig, $netWeight
+                $isBig, $netWeight, $privateLabel
             );
 
             $labelIndex++;
@@ -131,7 +132,7 @@ class LabelPDFService
         ?string $signalWord, array $pictograms,
         array $hStatements, array $pStatements,
         string $supplierName, string $supplierAddress, string $supplierPhone,
-        bool $isBig, string $netWeight = ''
+        bool $isBig, string $netWeight = '', bool $privateLabel = false
     ): void {
         $pad = $isBig ? 1.5 : 1.0;
         $innerW = $w - 2 * $pad;
@@ -207,7 +208,7 @@ class LabelPDFService
         $pText = $this->formatStatements($pStatements);
 
         // Calculate available space
-        $supplierH = $isBig ? 6 : 5;
+        $supplierH = $privateLabel ? 0 : ($isBig ? 6 : 5);
         $availH = $maxBottom - $curY - $supplierH - 1;
 
         if ($hText !== '') {
@@ -241,20 +242,22 @@ class LabelPDFService
         }
 
         // ── Supplier info (bottom of label) ──
-        $supplierY = $maxBottom - $supplierH;
-        $pdf->Line($innerX, $supplierY - 0.3, $innerX + $innerW, $supplierY - 0.3);
+        if (!$privateLabel) {
+            $supplierY = $maxBottom - $supplierH;
+            $pdf->Line($innerX, $supplierY - 0.3, $innerX + $innerW, $supplierY - 0.3);
 
-        $pdf->SetFont('helvetica', '', $tinySize);
-        $supplierLine = $supplierName;
-        if ($supplierAddress !== '' && $supplierAddress !== ', ,  ') {
-            $supplierLine .= ' | ' . $supplierAddress;
-        }
-        if ($supplierPhone !== '') {
-            $supplierLine .= ' | ' . $supplierPhone;
-        }
+            $pdf->SetFont('helvetica', '', $tinySize);
+            $supplierLine = $supplierName;
+            if ($supplierAddress !== '' && $supplierAddress !== ', ,  ') {
+                $supplierLine .= ' | ' . $supplierAddress;
+            }
+            if ($supplierPhone !== '') {
+                $supplierLine .= ' | ' . $supplierPhone;
+            }
 
-        $pdf->SetXY($innerX, $supplierY);
-        $pdf->MultiCell($innerW, $isBig ? 2 : 1.6, $supplierLine, 0, 'C', false, 1, $innerX, $supplierY, true, 0, false, true, $supplierH, 'T', true);
+            $pdf->SetXY($innerX, $supplierY);
+            $pdf->MultiCell($innerW, $isBig ? 2 : 1.6, $supplierLine, 0, 'C', false, 1, $innerX, $supplierY, true, 0, false, true, $supplierH, 'T', true);
+        }
     }
 
     /**

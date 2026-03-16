@@ -50,6 +50,14 @@
             </div>
         </div>
 
+        <div class="form-group" style="margin-top: 0.5rem;">
+            <label style="display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="checkbox" name="private_label" id="private_label" value="1">
+                <span>Private Label?</span>
+            </label>
+            <small class="text-muted" style="display: block;">Hides manufacturer info from the label</small>
+        </div>
+
         <div style="margin-top: 1rem;">
             <button type="submit" class="btn btn-primary">Generate Label PDF</button>
         </div>

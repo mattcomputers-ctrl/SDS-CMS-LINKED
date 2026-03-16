@@ -162,14 +162,19 @@ class LabelPDFService
             // Skip fields with no real space
             if ($fw < 1 || $fh < 1) continue;
 
+            // Use per-field font size override if set, otherwise fall back to template default
+            $fieldFont = isset($pos['font_size']) && (float) $pos['font_size'] > 0
+                ? (float) $pos['font_size']
+                : $defaultFont;
+
             switch ($fieldType) {
                 case 'lot_item_code':
-                    $this->renderLotItemCode($pdf, $fx, $fy, $fw, $fh, $defaultFont, $lotNumber, $itemCode);
+                    $this->renderLotItemCode($pdf, $fx, $fy, $fw, $fh, $fieldFont, $lotNumber, $itemCode);
                     break;
 
                 case 'net_weight':
                     if ($netWeight !== '') {
-                        $this->renderTextFit($pdf, $fx, $fy, $fw, $fh, $defaultFont, $netWeight, 'B', 'C');
+                        $this->renderTextFit($pdf, $fx, $fy, $fw, $fh, $fieldFont, $netWeight, 'B', 'C');
                     }
                     break;
 
@@ -179,21 +184,21 @@ class LabelPDFService
 
                 case 'signal_word':
                     if ($signalWord) {
-                        $this->renderSignalWord($pdf, $fx, $fy, $fw, $fh, $defaultFont, $signalWord);
+                        $this->renderSignalWord($pdf, $fx, $fy, $fw, $fh, $fieldFont, $signalWord);
                     }
                     break;
 
                 case 'hazard_statements':
-                    $this->renderStatements($pdf, $fx, $fy, $fw, $fh, $defaultFont, $hStatements, 'Hazard Statements:');
+                    $this->renderStatements($pdf, $fx, $fy, $fw, $fh, $fieldFont, $hStatements, 'Hazard Statements:');
                     break;
 
                 case 'precautionary_statements':
-                    $this->renderPStatements($pdf, $fx, $fy, $fw, $fh, $defaultFont, $pStatements);
+                    $this->renderPStatements($pdf, $fx, $fy, $fw, $fh, $fieldFont, $pStatements);
                     break;
 
                 case 'supplier_info':
                     if (!$privateLabel) {
-                        $this->renderSupplierInfo($pdf, $fx, $fy, $fw, $fh, $defaultFont, $supplierName, $supplierAddress, $supplierPhone);
+                        $this->renderSupplierInfo($pdf, $fx, $fy, $fw, $fh, $fieldFont, $supplierName, $supplierAddress, $supplierPhone);
                     }
                     break;
             }

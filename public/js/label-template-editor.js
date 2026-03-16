@@ -10,7 +10,7 @@ function LabelTemplateEditor(canvasId, hiddenInputId, paletteId, initialLayout, 
     this.hiddenInput = document.getElementById(hiddenInputId);
     this.palette = document.getElementById(paletteId);
     this.fieldTypes = fieldTypes;
-    this.fields = {}; // fieldType -> { x, y, width, height } in %
+    this.fields = {}; // fieldType -> { x, y, width, height, font_size? } in %
     this.selectedField = null;
 
     // Canvas scale: px per 1% of label
@@ -75,6 +75,14 @@ LabelTemplateEditor.prototype.init = function() {
             self.renderFields();
             self.syncHiddenInput();
             self.updatePaletteState();
+        });
+    }
+
+    // Set up field properties panel
+    var fontSizeInput = document.getElementById('fieldPropFontSize');
+    if (fontSizeInput) {
+        fontSizeInput.addEventListener('input', function() {
+            self.onFieldFontSizeChange(this.value);
         });
     }
 
@@ -183,7 +191,11 @@ LabelTemplateEditor.prototype.createFieldElement = function(type, pos) {
     // Label
     var label = document.createElement('span');
     label.className = 'field-label';
-    label.textContent = this.fieldTypes[type] || type;
+    var displayText = this.fieldTypes[type] || type;
+    if (pos.font_size != null) {
+        displayText += ' (' + pos.font_size + 'pt)';
+    }
+    label.textContent = displayText;
     el.appendChild(label);
 
     // Remove button
@@ -309,6 +321,45 @@ LabelTemplateEditor.prototype.selectField = function(type) {
     allFields.forEach(function(el) {
         el.classList.toggle('selected', el.dataset.fieldType === type);
     });
+    this.updateFieldPropertiesPanel();
+};
+
+LabelTemplateEditor.prototype.updateFieldPropertiesPanel = function() {
+    var panel = document.getElementById('fieldPropertiesPanel');
+    if (!panel) return;
+
+    var type = this.selectedField;
+    if (!type || !this.fields[type]) {
+        panel.style.display = 'none';
+        return;
+    }
+
+    panel.style.display = 'block';
+    var field = this.fields[type];
+
+    var nameEl = document.getElementById('fieldPropName');
+    if (nameEl) nameEl.textContent = this.fieldTypes[type] || type;
+
+    var fontSizeInput = document.getElementById('fieldPropFontSize');
+    if (fontSizeInput) {
+        // Show the field-level override, or empty to indicate "use default"
+        fontSizeInput.value = field.font_size != null ? field.font_size : '';
+    }
+};
+
+LabelTemplateEditor.prototype.onFieldFontSizeChange = function(value) {
+    var type = this.selectedField;
+    if (!type || !this.fields[type]) return;
+
+    var parsed = parseFloat(value);
+    if (value === '' || isNaN(parsed) || parsed <= 0) {
+        // Clear override — use template default
+        delete this.fields[type].font_size;
+    } else {
+        this.fields[type].font_size = Math.round(parsed * 10) / 10; // round to 1 decimal
+    }
+    this.syncHiddenInput();
+    this.renderFields();
 };
 
 LabelTemplateEditor.prototype.updatePaletteState = function() {

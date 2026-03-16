@@ -111,6 +111,18 @@ $fieldIcons = [
                 <div style="margin-top: 1rem;">
                     <button type="button" class="btn btn-sm" id="clearAllFields" style="width: 100%;">Clear All Fields</button>
                 </div>
+
+                <!-- Field Properties Panel -->
+                <div id="fieldPropertiesPanel" style="display: none; margin-top: 1rem; padding: 0.75rem; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);">
+                    <h4 style="margin: 0 0 0.5rem 0; font-size: 0.9rem;">Field Properties</h4>
+                    <p style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.5rem;" id="fieldPropName"></p>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="fieldPropFontSize" style="font-size: 0.8rem;">Font Size (pt)</label>
+                        <input type="number" id="fieldPropFontSize" class="input" step="0.5" min="1" max="72" placeholder="Use default"
+                               style="font-size: 0.85rem; padding: 0.3rem 0.5rem;">
+                        <small class="text-muted">Leave blank to use the template default</small>
+                    </div>
+                </div>
             </div>
 
             <!-- Label Canvas -->

@@ -52,6 +52,9 @@
                     <?php if (can_read('aliases')): ?>
                     <li><a href="/aliases" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/aliases') ? 'active' : '' ?>"><span class="menu-icon">&#128279;</span> Aliases</a></li>
                     <?php endif; ?>
+                    <?php if (can_read('finished_goods')): ?>
+                    <li><a href="/labels" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/labels') ? 'active' : '' ?>"><span class="menu-icon">&#127991;</span> GHS Labels</a></li>
+                    <?php endif; ?>
                     <?php if (can_read('reports')): ?>
                     <li><a href="/reports" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/reports') ? 'active' : '' ?>"><span class="menu-icon">&#128202;</span> Reports</a></li>
                     <?php endif; ?>

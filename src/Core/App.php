@@ -220,6 +220,10 @@ class App
         $router->post('/bulk-publish/start',             'BulkPublishController@start');
         $router->get('/bulk-publish/progress/{token}',   'BulkPublishController@progress');
 
+        // ── GHS Labels ────────────────────────────────────────────
+        $router->get('/labels',           'LabelController@index');
+        $router->post('/labels/generate', 'LabelController@generate');
+
         // ── Bulk SDS Export (permission-gated) ──────────────────────
         $router->get('/bulk-export',                      'ExportController@exportPage');
         $router->post('/bulk-export/start',               'ExportController@startExport');

@@ -272,6 +272,10 @@ class HazardEngine
         // Apply pictogram precedence rules
         $finalPictograms = $this->applyPictogramPrecedence(array_keys($allPictograms));
 
+        // Consolidate hazard classes: keep only the most severe category per class,
+        // then sort by GHS group order (physical > health > environmental) and severity
+        $allHClasses = $this->consolidateHazardClasses($allHClasses);
+
         // Sort H and P statements by code
         $hStatements = array_values($allHStmts);
         $pStatements = array_values($allPStmts);
@@ -597,6 +601,165 @@ class HazardEngine
             'hazard_classes' => $hazardClasses,
             'exposure_limits' => $exposureLimits,
         ];
+    }
+
+    /**
+     * GHS hazard group classification for sort ordering.
+     *
+     * Group 1 = Physical hazards, Group 2 = Health hazards, Group 3 = Environmental hazards.
+     */
+    private const HAZARD_GROUP_ORDER = [
+        // Physical hazards (Group 1)
+        'Explosives'                         => 1,
+        'Flammable Gases'                    => 1,
+        'Flammable Aerosols'                 => 1,
+        'Flammable Liquids'                  => 1,
+        'Flammable Solids'                   => 1,
+        'Self-Reactive Substances'           => 1,
+        'Pyrophoric Liquids'                 => 1,
+        'Pyrophoric Solids'                  => 1,
+        'Self-Heating Substances'            => 1,
+        'Oxidizing Liquids'                  => 1,
+        'Oxidizing Solids'                   => 1,
+        'Oxidizing Gases'                    => 1,
+        'Gases Under Pressure'               => 1,
+        'Corrosive to Metals'                => 1,
+        'Substances which, in contact with water, emit flammable gases' => 1,
+
+        // Health hazards (Group 2)
+        'Acute Toxicity (Oral)'              => 2,
+        'Acute Toxicity (Dermal)'            => 2,
+        'Acute Toxicity (Inhalation)'        => 2,
+        'Skin Corrosion/Irritation'          => 2,
+        'Serious Eye Damage/Eye Irritation'  => 2,
+        'Respiratory Sensitization'          => 2,
+        'Skin Sensitization'                 => 2,
+        'Germ Cell Mutagenicity'             => 2,
+        'Carcinogenicity'                    => 2,
+        'Reproductive Toxicity'              => 2,
+        'STOT — Single Exposure'             => 2,
+        'STOT — Repeated Exposure'           => 2,
+        'Aspiration Hazard'                  => 2,
+
+        // Environmental hazards (Group 3)
+        'Hazardous to the Aquatic Environment (Acute)'   => 3,
+        'Hazardous to the Aquatic Environment (Chronic)' => 3,
+        'Hazardous to the Ozone Layer'                   => 3,
+    ];
+
+    /**
+     * Consolidate hazard classes: for each unique hazard class, keep only the
+     * most severe (lowest numbered) category. Then sort by GHS group order
+     * (physical > health > environmental) with most severe categories first.
+     *
+     * @param  array $hazardClasses  Raw list from classification
+     * @return array                 Consolidated and sorted list
+     */
+    private function consolidateHazardClasses(array $hazardClasses): array
+    {
+        // Group by class name, keeping only the most severe category per class
+        $bestPerClass = [];
+        foreach ($hazardClasses as $hc) {
+            $class = $hc['class'] ?? '';
+            if ($class === '') {
+                continue;
+            }
+
+            $severity = $this->categoryToSeverity($hc['category'] ?? '');
+
+            if (!isset($bestPerClass[$class])) {
+                $bestPerClass[$class] = ['entry' => $hc, 'severity' => $severity];
+            } elseif ($severity < $bestPerClass[$class]['severity']) {
+                // Lower severity number = more severe (Category 1 < Category 2)
+                $bestPerClass[$class] = ['entry' => $hc, 'severity' => $severity];
+            }
+        }
+
+        // Extract the winning entries
+        $consolidated = array_map(fn($item) => $item['entry'], $bestPerClass);
+
+        // Sort by: 1) GHS group (physical=1, health=2, environmental=3)
+        //          2) Severity within group (most severe first)
+        usort($consolidated, function (array $a, array $b) {
+            $groupA = self::HAZARD_GROUP_ORDER[$a['class'] ?? ''] ?? 2;
+            $groupB = self::HAZARD_GROUP_ORDER[$b['class'] ?? ''] ?? 2;
+            if ($groupA !== $groupB) {
+                return $groupA <=> $groupB;
+            }
+            // Within same group, sort by severity (lower = more severe = listed first)
+            $sevA = $this->categoryToSeverity($a['category'] ?? '');
+            $sevB = $this->categoryToSeverity($b['category'] ?? '');
+            if ($sevA !== $sevB) {
+                return $sevA <=> $sevB;
+            }
+            // Tie-break by class name alphabetically
+            return strcmp($a['class'] ?? '', $b['class'] ?? '');
+        });
+
+        $beforeCount = count($hazardClasses);
+        $afterCount = count($consolidated);
+        if ($beforeCount !== $afterCount) {
+            $this->traceStep('consolidate', 'Consolidated hazard classes to most severe per class', [
+                'before' => $beforeCount,
+                'after'  => $afterCount,
+            ]);
+        }
+
+        return $consolidated;
+    }
+
+    /**
+     * Convert a GHS category string to a numeric severity value.
+     * Lower number = more severe.
+     *
+     * Handles formats like: "Category 1", "Category 1A", "Category 1 (1A/1B)",
+     * "Category 2A", "Division 1.1", "Type A", "Lactation", etc.
+     */
+    private function categoryToSeverity(string $category): int
+    {
+        $cat = trim($category);
+        if ($cat === '') {
+            return 999;
+        }
+
+        // "Category 1 (1A/1B)" or "Category 1A" or "Category 1"
+        if (preg_match('/Category\s+(\d+)/i', $cat, $m)) {
+            $base = (int) $m[1] * 10; // Category 1 = 10, Category 2 = 20, etc.
+            // Sub-categories: 1A < 1B < 1C (more specific = slightly more severe)
+            if (preg_match('/(\d+)([A-C])/i', $cat, $sub)) {
+                $base += ord(strtoupper($sub[2])) - ord('A'); // A=0, B=1, C=2
+            }
+            return $base;
+        }
+
+        // "Division 1.1", "Division 1.2", etc. (Explosives)
+        if (preg_match('/Division\s+(\d+)\.(\d+)/i', $cat, $m)) {
+            return (int) $m[1] * 10 + (int) $m[2];
+        }
+
+        // "Type A", "Type B", etc. (Self-Reactive)
+        if (preg_match('/Type\s+([A-G])/i', $cat, $m)) {
+            return ord(strtoupper($m[1])) - ord('A') + 1; // A=1, B=2, etc.
+        }
+
+        // Special categories
+        if (stripos($cat, 'Lactation') !== false) {
+            return 100;
+        }
+        if (stripos($cat, 'Compressed') !== false) {
+            return 10;
+        }
+        if (stripos($cat, 'Liquefied') !== false) {
+            return 20;
+        }
+        if (stripos($cat, 'Refrigerated') !== false) {
+            return 30;
+        }
+        if (stripos($cat, 'Dissolved') !== false) {
+            return 40;
+        }
+
+        return 500; // Unknown categories sort last
     }
 
     private function traceStep(string $type, string $description, array $data): void

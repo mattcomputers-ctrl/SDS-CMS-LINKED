@@ -224,7 +224,6 @@ class LabelPDFService
         // ── Hazard Statements ──
         $maxBottom = $y + $h - $pad;
         $hText = $this->formatStatements($hStatements);
-        $pText = $this->formatStatements($pStatements);
 
         // Calculate available space
         $supplierH = $privateLabel ? 0 : ($isBig ? 6 : 5);
@@ -239,25 +238,54 @@ class LabelPDFService
             $pdf->SetFont('helvetica', '', $tinySize);
             $pdf->SetXY($innerX, $curY);
 
-            // Determine space for H vs P statements
-            $hAlloc = min($availH * 0.4, $this->getTextHeight($pdf, $hText, $innerW, $tinySize));
+            // All hazard statements must be listed — give them as much space as needed
+            $hNeeded = $this->getTextHeight($pdf, $hText, $innerW, $tinySize);
+            $hAlloc = min($availH, $hNeeded);
             $pdf->MultiCell($innerW, $isBig ? 2.2 : 1.8, $hText, 0, 'L', false, 1, $innerX, $curY, true, 0, false, true, $hAlloc, 'T', true);
             $curY += $hAlloc;
         }
 
         // ── Precautionary Statements ──
+        // Prioritize physical (P200) and health (P300) statements when space is limited.
+        // If not all statements fit, show prioritized ones + "See SDS" note.
         $availForP = $maxBottom - $curY - $supplierH - 1;
-        if ($pText !== '' && $availForP > ($isBig ? 4 : 3)) {
+        if (count($pStatements) > 0 && $availForP > ($isBig ? 4 : 3)) {
+            $headerH = $isBig ? 2.5 : 2;
+            $seeMoreText = 'See SDS for additional precautionary statements.';
+            $seeMoreH = $this->getTextHeight($pdf, $seeMoreText, $innerW, $tinySize);
+
+            $pTextFull = $this->formatStatements($pStatements);
+            $pFullNeeded = $this->getTextHeight($pdf, $pTextFull, $innerW, $tinySize);
+            $pSpaceForText = $availForP - $headerH - 0.5;
+
+            if ($pFullNeeded <= $pSpaceForText) {
+                // All P-statements fit — render them all
+                $pText = $pTextFull;
+                $pTruncated = false;
+            } else {
+                // Not all fit — prioritize physical/health risk statements
+                $pText = $this->buildPrioritizedPStatements($pdf, $pStatements, $innerW, $tinySize, $pSpaceForText - $seeMoreH);
+                $pTruncated = true;
+            }
+
             $pdf->SetFont('helvetica', 'B', $tinySize);
             $pdf->SetXY($innerX, $curY);
-            $pdf->Cell($innerW, $isBig ? 2.5 : 2, 'Precautionary Statements:', 0, 0, 'L');
-            $curY += $isBig ? 2.5 : 2;
+            $pdf->Cell($innerW, $headerH, 'Precautionary Statements:', 0, 0, 'L');
+            $curY += $headerH;
 
             $pdf->SetFont('helvetica', '', $tinySize);
             $pdf->SetXY($innerX, $curY);
             $pAlloc = $maxBottom - $curY - $supplierH - 0.5;
             $pdf->MultiCell($innerW, $isBig ? 2.2 : 1.8, $pText, 0, 'L', false, 1, $innerX, $curY, true, 0, false, true, max(0, $pAlloc), 'T', true);
             $curY = min($curY + $pAlloc, $maxBottom - $supplierH - 0.5);
+
+            if ($pTruncated) {
+                // Add "See SDS" note
+                $seeY = $curY;
+                $pdf->SetFont('helvetica', 'I', $tinySize);
+                $pdf->SetXY($innerX, $seeY);
+                $pdf->MultiCell($innerW, $isBig ? 2.2 : 1.8, $seeMoreText, 0, 'L', false, 1, $innerX, $seeY, true, 0, false, true, $seeMoreH, 'T', true);
+            }
         }
 
         // ── Supplier info (bottom of label) ──
@@ -332,6 +360,46 @@ class LabelPDFService
             $textWidth = $pdf->GetStringWidth($text);
         }
         return $text;
+    }
+
+    /**
+     * Build prioritized P-statement text that fits within available space.
+     *
+     * Priority order: physical safety (P200s), health/response (P300s),
+     * then general (P100s), storage (P400s), disposal (P500s).
+     */
+    private function buildPrioritizedPStatements(\TCPDF $pdf, array $pStatements, float $width, float $fontSize, float $maxHeight): string
+    {
+        // Separate statements into priority groups
+        $priority = [];   // P200 (prevention/physical) and P300 (response/health)
+        $secondary = [];  // P100 (general), P400 (storage), P500 (disposal)
+
+        foreach ($pStatements as $stmt) {
+            $code = $stmt['code'] ?? '';
+            $num = (int) substr($code, 1);
+            if ($num >= 200 && $num < 400) {
+                $priority[] = $stmt;
+            } else {
+                $secondary[] = $stmt;
+            }
+        }
+
+        // Build text incrementally, fitting as many priority statements as possible,
+        // then secondary statements if space remains
+        $ordered = array_merge($priority, $secondary);
+        $included = [];
+
+        foreach ($ordered as $stmt) {
+            $candidate = array_merge($included, [$stmt]);
+            $candidateText = $this->formatStatements($candidate);
+            $needed = $this->getTextHeight($pdf, $candidateText, $width, $fontSize);
+            if ($needed > $maxHeight && count($included) > 0) {
+                break;
+            }
+            $included[] = $stmt;
+        }
+
+        return $this->formatStatements($included);
     }
 
     /**

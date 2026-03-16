@@ -28,11 +28,18 @@
             </div>
 
             <div class="form-group" style="flex: 1; min-width: 200px;">
-                <label for="label_size">Label Size <span class="text-danger">*</span></label>
-                <select name="label_size" id="label_size" class="input" required>
-                    <option value="big">Big — OL575WR (3.75" x 2.4375", 8/sheet)</option>
-                    <option value="small">Small — OL800WX (2.5" x 1.5625", 18/sheet)</option>
+                <label for="template_id">Label Template <span class="text-danger">*</span></label>
+                <select name="template_id" id="template_id" class="input" required>
+                    <?php foreach ($templates as $t): ?>
+                        <option value="<?= (int) $t['id'] ?>" <?= $t['is_default'] ? 'selected' : '' ?>>
+                            <?= e($t['name']) ?> — <?= e($t['description']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                    <?php if (empty($templates)): ?>
+                        <option value="" disabled>No templates — create one first</option>
+                    <?php endif; ?>
                 </select>
+                <small class="text-muted"><a href="/label-templates">Manage templates</a></small>
             </div>
 
             <div class="form-group" style="flex: 1; min-width: 150px;">
@@ -64,31 +71,35 @@
     </form>
 </div>
 
+<?php if (!empty($templates)): ?>
 <div class="card" style="margin-top: 1.5rem;">
-    <h3>Label Information</h3>
+    <h3>Available Templates</h3>
     <table class="table">
         <thead>
-            <tr><th>Size</th><th>Template</th><th>Dimensions</th><th>Labels/Sheet</th><th>Layout</th></tr>
+            <tr><th>Name</th><th>Dimensions</th><th>Labels/Sheet</th><th>Layout</th><th>Default Font</th></tr>
         </thead>
         <tbody>
+            <?php foreach ($templates as $t): ?>
             <tr>
-                <td><strong>Big</strong></td>
-                <td>OL575WR</td>
-                <td>3.75" &times; 2.4375"</td>
-                <td>8</td>
-                <td>2 columns &times; 4 rows</td>
+                <td>
+                    <strong><?= e($t['name']) ?></strong>
+                    <?php if ($t['is_default']): ?>
+                        <span class="badge badge-admin">Default</span>
+                    <?php endif; ?>
+                </td>
+                <td><?= number_format((float) $t['label_width'] / 25.4, 4) ?>" &times; <?= number_format((float) $t['label_height'] / 25.4, 4) ?>"</td>
+                <td><?= (int) $t['cols'] * (int) $t['rows'] ?></td>
+                <td><?= (int) $t['cols'] ?> cols &times; <?= (int) $t['rows'] ?> rows</td>
+                <td><?= number_format((float) $t['default_font_size'], 1) ?>pt</td>
             </tr>
-            <tr>
-                <td><strong>Small</strong></td>
-                <td>OL800WX</td>
-                <td>2.5" &times; 1.5625"</td>
-                <td>18</td>
-                <td>3 columns &times; 6 rows</td>
-            </tr>
+            <?php endforeach; ?>
         </tbody>
     </table>
+</div>
+<?php endif; ?>
 
-    <h3 style="margin-top: 1rem;">GHS Label Elements</h3>
+<div class="card" style="margin-top: 1.5rem;">
+    <h3>GHS Label Elements</h3>
     <ul>
         <li><strong>Product Identifier</strong> — Product name and item code</li>
         <li><strong>Signal Word</strong> — "DANGER" or "WARNING"</li>

@@ -6,6 +6,7 @@ namespace SDS\Controllers;
 
 use SDS\Core\Database;
 use SDS\Models\FinishedGood;
+use SDS\Models\LabelTemplate;
 use SDS\Services\SDSGenerator;
 use SDS\Services\LabelPDFService;
 
@@ -20,9 +21,12 @@ class LabelController
             'is_active' => 1,
         ]);
 
+        $templates = LabelTemplate::all();
+
         view('labels/index', [
             'pageTitle'     => 'GHS Labels',
             'finishedGoods' => $finishedGoods,
+            'templates'     => $templates,
         ]);
     }
 
@@ -30,7 +34,7 @@ class LabelController
     {
         $finishedGoodId = (int) ($_POST['finished_good_id'] ?? 0);
         $lotNumber      = trim($_POST['lot_number'] ?? '');
-        $labelSize      = $_POST['label_size'] ?? 'big';
+        $templateId     = (int) ($_POST['template_id'] ?? 0);
         $quantity        = max(1, (int) ($_POST['quantity'] ?? 1));
         $netWeight       = trim($_POST['net_weight'] ?? '');
         $privateLabel    = !empty($_POST['private_label']);
@@ -48,9 +52,17 @@ class LabelController
             redirect('/labels');
         }
 
-        // Validate label size
-        if (!in_array($labelSize, ['big', 'small'], true)) {
-            $labelSize = 'big';
+        // Get template
+        $template = null;
+        if ($templateId > 0) {
+            $template = LabelTemplate::findById($templateId);
+        }
+        if ($template === null) {
+            $template = LabelTemplate::getDefault();
+        }
+        if ($template === null) {
+            $_SESSION['_flash']['error'] = 'No label template found. Please create one first.';
+            redirect('/labels');
         }
 
         try {
@@ -60,7 +72,7 @@ class LabelController
 
             // Generate PDF
             $pdfService = new LabelPDFService();
-            $pdfContent = $pdfService->generate($sdsData, $fg, $lotNumber, $labelSize, $quantity, $netWeight, $privateLabel);
+            $pdfContent = $pdfService->generateFromTemplate($sdsData, $fg, $lotNumber, $template, $quantity, $netWeight, $privateLabel);
 
             // Output PDF
             $filename = $fg['product_code'] . '_label_' . $lotNumber . '.pdf';

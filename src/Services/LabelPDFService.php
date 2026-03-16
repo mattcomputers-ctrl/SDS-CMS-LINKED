@@ -141,7 +141,7 @@ class LabelPDFService
         // Per-row vertical content offset for big labels to center content on sheet
         // Row 0 (top): 0.25", Row 1: 0.16", Row 2: 0.08", Row 3 (bottom): 0"
         if ($isBig) {
-            $rowOffsets = [0 => 6.35, 1 => 4.064, 2 => 2.032, 3 => 0.0];
+            $rowOffsets = [0 => 2.032, 1 => 3.302, 2 => 5.715, 3 => 7.62];
             $contentOffset = $rowOffsets[$sheetRow] ?? 0.0;
         } else {
             // Per-row vertical offset to align with physical label positions on sheet
@@ -159,11 +159,11 @@ class LabelPDFService
         $curY = $y + $pad + $contentOffset;
 
         // Font sizes
-        $nameSize    = $isBig ? 8 : 6;
+        $nameSize    = $isBig ? 9 : 7;
         $signalSize  = $isBig ? 8 : 5.5;
         $bodySize    = $isBig ? 5 : 3.5;
         $tinySize    = $isBig ? 4.5 : 3.5;
-        $pictoSize   = $isBig ? 8 : 5.5;
+        $pictoSize   = $isBig ? 7 : 5;
 
         // ── Lot Number & Item Code (bold, top) ──
         $lineH = $isBig ? 4 : 3;
@@ -187,7 +187,7 @@ class LabelPDFService
         $curY += 0.5;
 
         // ── Pictograms row + Signal Word ──
-        $pictoRowH = $isBig ? 10 : 6.5;
+        $pictoRowH = $isBig ? 9 : 5.5;
         $availPictos = $this->getAvailablePictograms($pictograms);
         $numPictos = count($availPictos);
 

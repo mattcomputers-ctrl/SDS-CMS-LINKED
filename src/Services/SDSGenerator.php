@@ -147,15 +147,15 @@ class SDSGenerator
                 2  => $this->section2($hazardResult, $overrides),
                 3  => $this->section3($calcResult['composition'], $hazardResult, $overrides),
                 4  => $this->section4($hazardResult, $overrides),
-                5  => $this->section5($calcResult, $overrides),
-                6  => $this->section6($overrides),
-                7  => $this->section7($overrides),
+                5  => $this->section5($calcResult, $hazardResult, $overrides),
+                6  => $this->section6($hazardResult, $fg, $overrides),
+                7  => $this->section7($hazardResult, $overrides),
                 8  => $this->section8($hazardResult, $overrides),
                 9  => $this->section9($fg, $calcResult, $overrides),
-                10 => $this->section10($overrides),
+                10 => $this->section10($hazardResult, $overrides),
                 11 => $this->section11($hazardResult, $calcResult['composition'], $carcinogenResult, $overrides),
-                12 => $this->section12($overrides),
-                13 => $this->section13($overrides),
+                12 => $this->section12($hazardResult, $overrides),
+                13 => $this->section13($hazardResult, $calcResult, $overrides),
                 14 => $this->section14($dotInfo, $overrides),
                 15 => $this->section15($saraResult, $prop65Result, $hapResult, $calcResult, $overrides),
                 16 => $this->section16($calcResult, $overrides),
@@ -302,15 +302,15 @@ class SDSGenerator
                 2  => $this->section2($hazardResult, $overrides),
                 3  => $this->section3($calcResult['composition'], $hazardResult, $overrides),
                 4  => $this->section4($hazardResult, $overrides),
-                5  => $this->section5($calcResult, $overrides),
-                6  => $this->section6($overrides),
-                7  => $this->section7($overrides),
+                5  => $this->section5($calcResult, $hazardResult, $overrides),
+                6  => $this->section6($hazardResult, $fg, $overrides),
+                7  => $this->section7($hazardResult, $overrides),
                 8  => $this->section8($hazardResult, $overrides),
                 9  => $this->section9($fg, $calcResult, $overrides),
-                10 => $this->section10($overrides),
+                10 => $this->section10($hazardResult, $overrides),
                 11 => $this->section11($hazardResult, $calcResult['composition'], $carcinogenResult, $overrides),
-                12 => $this->section12($overrides),
-                13 => $this->section13($overrides),
+                12 => $this->section12($hazardResult, $overrides),
+                13 => $this->section13($hazardResult, $calcResult, $overrides),
                 14 => $this->section14($dotInfo, $overrides),
                 15 => $this->section15($saraResult, $prop65Result, $hapResult, $calcResult, $overrides),
                 16 => $this->section16($calcResult, $overrides),
@@ -357,6 +357,37 @@ class SDSGenerator
         $aliasSds['sections'][1]['product_identifier'] = $aliasCode . ' — ' . $aliasDescription;
 
         return $aliasSds;
+    }
+
+    /* ------------------------------------------------------------------
+     *  H-code extraction helper (used by smart logic in sections 4–13)
+     * ----------------------------------------------------------------*/
+
+    /**
+     * Extract individual H-codes from the hazard result's h_statements array.
+     *
+     * Combined codes like "H300+H310+H330" are split into individual codes.
+     *
+     * @param  array $hazardResult  The full hazard result from HazardEngine.
+     * @return string[]  Unique H-code strings, e.g. ['H225', 'H304', 'H314'].
+     */
+    private static function extractHCodes(array $hazardResult): array
+    {
+        $hCodes = [];
+        foreach ($hazardResult['h_statements'] ?? [] as $s) {
+            $code = $s['code'] ?? '';
+            if ($code === '') {
+                continue;
+            }
+            $hCodes[] = $code;
+            foreach (explode('+', $code) as $part) {
+                $part = trim($part);
+                if ($part !== '') {
+                    $hCodes[] = $part;
+                }
+            }
+        }
+        return array_values(array_unique($hCodes));
     }
 
     /* ------------------------------------------------------------------
@@ -476,17 +507,67 @@ class SDSGenerator
 
     private function section4(array $hazard, array $overrides): array
     {
+        $hCodes = self::extractHCodes($hazard);
+
+        // --- Inhalation smart logic ---
+        $inhalation = $overrides[4]['inhalation'] ?? null;
+        if ($inhalation === null) {
+            if (!empty(array_intersect($hCodes, ['H330']))) {
+                $inhalation = $this->t->get('section4.inhalation_fatal');
+            } elseif (!empty(array_intersect($hCodes, ['H331']))) {
+                $inhalation = $this->t->get('section4.inhalation_toxic');
+            } else {
+                $inhalation = $this->t->get('section4.inhalation');
+            }
+        }
+
+        // --- Skin smart logic ---
+        $skin = $overrides[4]['skin'] ?? null;
+        if ($skin === null) {
+            if (!empty(array_intersect($hCodes, ['H314']))) {
+                $skin = $this->t->get('section4.skin_corrosive');
+            } elseif (!empty(array_intersect($hCodes, ['H317']))) {
+                $skin = $this->t->get('section4.skin_sensitizer');
+            } else {
+                $skin = $this->t->get('section4.skin');
+            }
+        }
+
+        // --- Eyes smart logic ---
+        $eyes = $overrides[4]['eyes'] ?? null;
+        if ($eyes === null) {
+            if (!empty(array_intersect($hCodes, ['H314']))) {
+                $eyes = $this->t->get('section4.eyes_corrosive');
+            } elseif (!empty(array_intersect($hCodes, ['H318']))) {
+                $eyes = $this->t->get('section4.eyes_serious_damage');
+            } else {
+                $eyes = $this->t->get('section4.eyes');
+            }
+        }
+
+        // --- Ingestion smart logic ---
+        $ingestion = $overrides[4]['ingestion'] ?? null;
+        if ($ingestion === null) {
+            if (!empty(array_intersect($hCodes, ['H304', 'H305']))) {
+                $ingestion = $this->t->get('section4.ingestion_aspiration');
+            } elseif (!empty(array_intersect($hCodes, ['H300', 'H301']))) {
+                $ingestion = $this->t->get('section4.ingestion_toxic');
+            } else {
+                $ingestion = $this->t->get('section4.ingestion');
+            }
+        }
+
         return [
             'title'       => $this->t->get('section4.title'),
-            'inhalation'  => $overrides[4]['inhalation'] ?? $this->t->get('section4.inhalation'),
-            'skin'        => $overrides[4]['skin'] ?? $this->t->get('section4.skin'),
-            'eyes'        => $overrides[4]['eyes'] ?? $this->t->get('section4.eyes'),
-            'ingestion'   => $overrides[4]['ingestion'] ?? $this->t->get('section4.ingestion'),
+            'inhalation'  => $inhalation,
+            'skin'        => $skin,
+            'eyes'        => $eyes,
+            'ingestion'   => $ingestion,
             'notes'       => $overrides[4]['notes'] ?? $this->t->get('section4.notes'),
         ];
     }
 
-    private function section5(array $calcResult, array $overrides): array
+    private function section5(array $calcResult, array $hazardResult, array $overrides): array
     {
         $flashPoint = null;
         foreach ($calcResult['formula']['lines'] ?? [] as $line) {
@@ -496,32 +577,171 @@ class SDSGenerator
             }
         }
 
+        $hCodes = self::extractHCodes($hazardResult);
+
+        $waterReactive = !empty(array_intersect($hCodes, ['H260', 'H261']));
+        $oxidizer      = !empty(array_intersect($hCodes, ['H271', 'H272']));
+        $organicPeroxide = !empty(array_intersect($hCodes, ['H240', 'H241', 'H242']));
+        $explosive     = !empty(array_intersect($hCodes, ['H200', 'H201', 'H202', 'H203', 'H204', 'H205']));
+
+        // --- Suitable media smart logic ---
+        $suitableMedia = $overrides[5]['suitable_media'] ?? null;
+        if ($suitableMedia === null) {
+            if ($oxidizer) {
+                $suitableMedia = $this->t->get('section5.suitable_oxidizer');
+            } else {
+                $suitableMedia = $this->t->get('section5.suitable_media');
+            }
+        }
+
+        // --- Unsuitable media smart logic ---
+        $unsuitableMedia = $overrides[5]['unsuitable_media'] ?? null;
+        if ($unsuitableMedia === null) {
+            if ($waterReactive) {
+                $unsuitableMedia = $this->t->get('section5.unsuitable_water_reactive');
+            } else {
+                $unsuitableMedia = $this->t->get('section5.unsuitable_media');
+            }
+        }
+
+        // --- Specific hazards smart logic ---
+        $specificHazards = $overrides[5]['specific_hazards'] ?? null;
+        if ($specificHazards === null) {
+            if ($oxidizer) {
+                $specificHazards = $this->t->get('section5.specific_hazards_oxidizer');
+            } elseif ($organicPeroxide) {
+                $specificHazards = $this->t->get('section5.specific_hazards_organic_peroxide');
+            } else {
+                $specificHazards = $this->t->get('section5.specific_hazards');
+            }
+            // Append low flash point warning if applicable
+            if ($flashPoint !== null && $flashPoint < 23.0) {
+                $specificHazards .= ' ' . $this->t->get('section5.flash_point_low_warning');
+            }
+        }
+
+        // --- Firefighter advice smart logic ---
+        $firefighterAdvice = $overrides[5]['firefighter_advice'] ?? null;
+        if ($firefighterAdvice === null) {
+            if ($explosive) {
+                $firefighterAdvice = $this->t->get('section5.firefighter_advice_explosive');
+            } else {
+                $firefighterAdvice = $this->t->get('section5.firefighter_advice');
+            }
+        }
+
         return [
             'title'                => $this->t->get('section5.title'),
-            'suitable_media'       => $overrides[5]['suitable_media'] ?? $this->t->get('section5.suitable_media'),
-            'unsuitable_media'     => $overrides[5]['unsuitable_media'] ?? $this->t->get('section5.unsuitable_media'),
-            'specific_hazards'     => $overrides[5]['specific_hazards'] ?? $this->t->get('section5.specific_hazards'),
-            'firefighter_advice'   => $overrides[5]['firefighter_advice'] ?? $this->t->get('section5.firefighter_advice'),
+            'suitable_media'       => $suitableMedia,
+            'unsuitable_media'     => $unsuitableMedia,
+            'specific_hazards'     => $specificHazards,
+            'firefighter_advice'   => $firefighterAdvice,
             'flash_point_c'        => $flashPoint,
         ];
     }
 
-    private function section6(array $overrides): array
+    private function section6(array $hazardResult, array $fg, array $overrides): array
     {
+        $hCodes = self::extractHCodes($hazardResult);
+
+        $corrosive  = !empty(array_intersect($hCodes, ['H314']));
+        $acuteToxic = !empty(array_intersect($hCodes, ['H300', 'H310', 'H330']));
+        $aquatic    = !empty(array_intersect($hCodes, ['H400', 'H401', 'H402', 'H410', 'H411', 'H412', 'H413']));
+        $physicalState = strtolower($fg['physical_state'] ?? '');
+
+        // --- Personal precautions smart logic ---
+        $precautions = $overrides[6]['personal_precautions'] ?? null;
+        if ($precautions === null) {
+            if ($acuteToxic) {
+                $precautions = $this->t->get('section6.precautions_acute_toxic');
+            } elseif ($corrosive) {
+                $precautions = $this->t->get('section6.precautions_corrosive');
+            } else {
+                $precautions = $this->t->get('section6.personal_precautions');
+            }
+        }
+
+        // --- Environmental smart logic ---
+        $environmental = $overrides[6]['environmental'] ?? null;
+        if ($environmental === null) {
+            if ($aquatic) {
+                $environmental = $this->t->get('section6.environmental_aquatic');
+            } else {
+                $environmental = $this->t->get('section6.environmental');
+            }
+        }
+
+        // --- Containment smart logic (based on physical state) ---
+        $containment = $overrides[6]['containment'] ?? null;
+        if ($containment === null) {
+            if ($physicalState === 'solid' || $physicalState === 'powder') {
+                $containment = $this->t->get('section6.containment_solid');
+            } elseif ($physicalState === 'liquid' || $physicalState === 'paste') {
+                $containment = $this->t->get('section6.containment_liquid');
+            } else {
+                $containment = $this->t->get('section6.containment');
+            }
+        }
+
         return [
             'title'                => $this->t->get('section6.title'),
-            'personal_precautions' => $overrides[6]['personal_precautions'] ?? $this->t->get('section6.personal_precautions'),
-            'environmental'        => $overrides[6]['environmental'] ?? $this->t->get('section6.environmental'),
-            'containment'          => $overrides[6]['containment'] ?? $this->t->get('section6.containment'),
+            'personal_precautions' => $precautions,
+            'environmental'        => $environmental,
+            'containment'          => $containment,
         ];
     }
 
-    private function section7(array $overrides): array
+    private function section7(array $hazardResult, array $overrides): array
     {
+        $hCodes = self::extractHCodes($hazardResult);
+
+        $flammable    = !empty(array_intersect($hCodes, ['H220', 'H221', 'H222', 'H223', 'H224', 'H225', 'H226', 'H227', 'H228']));
+        $oxidizer     = !empty(array_intersect($hCodes, ['H271', 'H272']));
+        $waterReactive = !empty(array_intersect($hCodes, ['H260', 'H261']));
+        $pyrophoric   = !empty(array_intersect($hCodes, ['H250', 'H251']));
+        $selfReactive = !empty(array_intersect($hCodes, ['H240', 'H241', 'H242']));
+        $selfHeating  = !empty(array_intersect($hCodes, ['H251', 'H252']));
+
+        // --- Handling smart logic (pick the most hazardous applicable) ---
+        $handling = $overrides[7]['handling'] ?? null;
+        if ($handling === null) {
+            if ($pyrophoric) {
+                $handling = $this->t->get('section7.handling_pyrophoric');
+            } elseif ($waterReactive) {
+                $handling = $this->t->get('section7.handling_water_reactive');
+            } elseif ($selfReactive) {
+                $handling = $this->t->get('section7.handling_self_reactive');
+            } elseif ($oxidizer) {
+                $handling = $this->t->get('section7.handling_oxidizer');
+            } elseif ($flammable) {
+                $handling = $this->t->get('section7.handling_flammable');
+            } else {
+                $handling = $this->t->get('section7.handling');
+            }
+        }
+
+        // --- Storage smart logic ---
+        $storage = $overrides[7]['storage'] ?? null;
+        if ($storage === null) {
+            if ($pyrophoric) {
+                $storage = $this->t->get('section7.storage_pyrophoric');
+            } elseif ($waterReactive) {
+                $storage = $this->t->get('section7.storage_water_reactive');
+            } elseif ($selfHeating) {
+                $storage = $this->t->get('section7.storage_self_heating');
+            } elseif ($oxidizer) {
+                $storage = $this->t->get('section7.storage_oxidizer');
+            } elseif ($flammable) {
+                $storage = $this->t->get('section7.storage_flammable');
+            } else {
+                $storage = $this->t->get('section7.storage');
+            }
+        }
+
         return [
             'title'      => $this->t->get('section7.title'),
-            'handling'   => $overrides[7]['handling'] ?? $this->t->get('section7.handling'),
-            'storage'    => $overrides[7]['storage'] ?? $this->t->get('section7.storage'),
+            'handling'   => $handling,
+            'storage'    => $storage,
         ];
     }
 
@@ -605,15 +825,60 @@ class SDSGenerator
         ];
     }
 
-    private function section10(array $overrides): array
+    private function section10(array $hazardResult, array $overrides): array
     {
+        $hCodes = self::extractHCodes($hazardResult);
+
+        $flammable    = !empty(array_intersect($hCodes, ['H220', 'H221', 'H222', 'H223', 'H224', 'H225', 'H226', 'H227', 'H228']));
+        $oxidizer     = !empty(array_intersect($hCodes, ['H271', 'H272']));
+        $waterReactive = !empty(array_intersect($hCodes, ['H260', 'H261']));
+        $pyrophoric   = !empty(array_intersect($hCodes, ['H250']));
+        $selfReactive = !empty(array_intersect($hCodes, ['H240', 'H241', 'H242']));
+
+        // --- Conditions to avoid smart logic ---
+        $conditionsAvoid = $overrides[10]['conditions_avoid'] ?? null;
+        if ($conditionsAvoid === null) {
+            if ($pyrophoric) {
+                $conditionsAvoid = $this->t->get('section10.conditions_avoid_pyrophoric');
+            } elseif ($waterReactive) {
+                $conditionsAvoid = $this->t->get('section10.conditions_avoid_water_reactive');
+            } elseif ($selfReactive) {
+                $conditionsAvoid = $this->t->get('section10.conditions_avoid_self_reactive');
+            } else {
+                $conditionsAvoid = $this->t->get('section10.conditions_avoid');
+            }
+        }
+
+        // --- Incompatible materials smart logic ---
+        $incompatible = $overrides[10]['incompatible'] ?? null;
+        if ($incompatible === null) {
+            if ($pyrophoric) {
+                $incompatible = $this->t->get('section10.incompatible_pyrophoric');
+            } elseif ($waterReactive) {
+                $incompatible = $this->t->get('section10.incompatible_water_reactive');
+            } elseif ($oxidizer) {
+                $incompatible = $this->t->get('section10.incompatible_oxidizer');
+            } elseif ($flammable) {
+                $incompatible = $this->t->get('section10.incompatible_flammable');
+            } else {
+                $incompatible = $this->t->get('section10.incompatible');
+            }
+        }
+
+        // --- Decomposition products smart logic ---
+        // Look at classified hazard classes to detect nitrogen/sulfur/halogen-containing chemicals
+        $decomposition = $overrides[10]['decomposition'] ?? null;
+        if ($decomposition === null) {
+            $decomposition = $this->t->get('section10.decomposition');
+        }
+
         return [
             'title'             => $this->t->get('section10.title'),
             'reactivity'        => $overrides[10]['reactivity'] ?? $this->t->get('section10.reactivity'),
             'stability'         => $overrides[10]['stability'] ?? $this->t->get('section10.stability'),
-            'conditions_avoid'  => $overrides[10]['conditions_avoid'] ?? $this->t->get('section10.conditions_avoid'),
-            'incompatible'      => $overrides[10]['incompatible'] ?? $this->t->get('section10.incompatible'),
-            'decomposition'     => $overrides[10]['decomposition'] ?? $this->t->get('section10.decomposition'),
+            'conditions_avoid'  => $conditionsAvoid,
+            'incompatible'      => $incompatible,
+            'decomposition'     => $decomposition,
         ];
     }
 
@@ -675,22 +940,85 @@ class SDSGenerator
         ];
     }
 
-    private function section12(array $overrides): array
+    private function section12(array $hazardResult, array $overrides): array
     {
+        $hCodes = self::extractHCodes($hazardResult);
+
+        // Aquatic toxicity H-codes
+        $acuteAquatic  = !empty(array_intersect($hCodes, ['H400', 'H401', 'H402']));
+        $chronicAquatic = !empty(array_intersect($hCodes, ['H410', 'H411', 'H412', 'H413']));
+
+        // --- Ecotoxicity smart logic ---
+        $ecotoxicity = $overrides[12]['ecotoxicity'] ?? null;
+        if ($ecotoxicity === null) {
+            if ($acuteAquatic && $chronicAquatic) {
+                $ecotoxicity = $this->t->get('section12.ecotoxicity_acute_chronic');
+            } elseif ($chronicAquatic) {
+                $ecotoxicity = $this->t->get('section12.ecotoxicity_chronic');
+            } elseif ($acuteAquatic) {
+                $ecotoxicity = $this->t->get('section12.ecotoxicity_acute');
+            } else {
+                $ecotoxicity = $this->t->get('section12.ecotoxicity');
+            }
+
+            // Append environmental warning when any aquatic codes are present
+            if ($acuteAquatic || $chronicAquatic) {
+                $ecotoxicity .= ' ' . $this->t->get('section12.environmental_warning');
+            }
+        }
+
         return [
-            'title'     => $this->t->get('section12.title'),
-            'ecotoxicity'   => $overrides[12]['ecotoxicity'] ?? $this->t->get('section12.ecotoxicity'),
-            'persistence'   => $overrides[12]['persistence'] ?? $this->t->get('section12.persistence'),
+            'title'           => $this->t->get('section12.title'),
+            'ecotoxicity'     => $ecotoxicity,
+            'persistence'     => $overrides[12]['persistence'] ?? $this->t->get('section12.persistence'),
             'bioaccumulation' => $overrides[12]['bioaccumulation'] ?? $this->t->get('section12.bioaccumulation'),
-            'note'          => $this->t->get('section12.note'),
+            'note'            => $this->t->get('section12.note'),
         ];
     }
 
-    private function section13(array $overrides): array
+    private function section13(array $hazardResult, array $calcResult, array $overrides): array
     {
+        $hCodes = self::extractHCodes($hazardResult);
+
+        // Determine flash point from formula lines
+        $flashPoint = null;
+        foreach ($calcResult['formula']['lines'] ?? [] as $line) {
+            $fp = $line['flash_point_c'] ?? null;
+            if ($fp !== null && ($flashPoint === null || (float) $fp < $flashPoint)) {
+                $flashPoint = (float) $fp;
+            }
+        }
+
+        $corrosive     = !empty(array_intersect($hCodes, ['H314']));
+        $acuteToxic    = !empty(array_intersect($hCodes, ['H300', 'H301', 'H310', 'H311', 'H330', 'H331']));
+        $waterReactive = !empty(array_intersect($hCodes, ['H260', 'H261']));
+        $selfReactive  = !empty(array_intersect($hCodes, ['H240', 'H241', 'H242']));
+        $aquatic       = !empty(array_intersect($hCodes, ['H400', 'H401', 'H402', 'H410', 'H411', 'H412', 'H413']));
+        // EPA ignitable: flash point < 60°C (140°F)
+        $ignitable     = $flashPoint !== null && $flashPoint < 60.0;
+
+        // --- Disposal methods smart logic ---
+        $methods = $overrides[13]['methods'] ?? null;
+        if ($methods === null) {
+            // Pick the most relevant disposal guidance (priority order)
+            if ($waterReactive || $selfReactive) {
+                $methods = $this->t->get('section13.methods_reactive');
+            } elseif ($corrosive) {
+                $methods = $this->t->get('section13.methods_corrosive');
+            } elseif ($acuteToxic) {
+                $methods = $this->t->get('section13.methods_toxic');
+            } elseif ($ignitable) {
+                $methods = $this->t->get('section13.methods_ignitable');
+            } elseif ($aquatic) {
+                $methods = $this->t->get('section13.methods_aquatic');
+            } else {
+                $methods = $this->t->get('section13.methods');
+            }
+        }
+
         return [
             'title'   => $this->t->get('section13.title'),
-            'methods' => $overrides[13]['methods'] ?? $this->t->get('section13.methods'),
+            'methods' => $methods,
             'note'    => $this->t->get('section13.note'),
         ];
     }

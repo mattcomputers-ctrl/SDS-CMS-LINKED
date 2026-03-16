@@ -35,6 +35,14 @@
                 </select>
             </div>
 
+            <div class="form-group" style="flex: 1; min-width: 150px;">
+                <label for="net_weight">Net Weight</label>
+                <input type="text" name="net_weight" id="net_weight" class="input"
+                       placeholder="e.g. 5 LBS"
+                       maxlength="20">
+                <small class="text-muted">Optional (e.g. 5 LBS, 1 GAL)</small>
+            </div>
+
             <div class="form-group" style="flex: 0 0 150px;">
                 <label for="quantity">Quantity</label>
                 <input type="number" name="quantity" id="quantity" class="input" value="1" min="1" max="500">

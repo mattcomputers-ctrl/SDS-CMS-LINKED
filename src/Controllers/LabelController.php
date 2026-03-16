@@ -32,6 +32,7 @@ class LabelController
         $lotNumber      = trim($_POST['lot_number'] ?? '');
         $labelSize      = $_POST['label_size'] ?? 'big';
         $quantity        = max(1, (int) ($_POST['quantity'] ?? 1));
+        $netWeight       = trim($_POST['net_weight'] ?? '');
 
         // Validate finished good
         $fg = FinishedGood::findById($finishedGoodId);
@@ -58,7 +59,7 @@ class LabelController
 
             // Generate PDF
             $pdfService = new LabelPDFService();
-            $pdfContent = $pdfService->generate($sdsData, $fg, $lotNumber, $labelSize, $quantity);
+            $pdfContent = $pdfService->generate($sdsData, $fg, $lotNumber, $labelSize, $quantity, $netWeight);
 
             // Output PDF
             $filename = $fg['product_code'] . '_label_' . $lotNumber . '.pdf';

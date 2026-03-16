@@ -60,9 +60,10 @@ class LabelPDFService
      * @param  string $lotNumber  9-digit lot number
      * @param  string $size       'big' or 'small'
      * @param  int    $quantity   Number of labels to print
+     * @param  string $netWeight  Optional net weight text
      * @return string             Raw PDF content
      */
-    public function generate(array $sdsData, array $fg, string $lotNumber, string $size, int $quantity): string
+    public function generate(array $sdsData, array $fg, string $lotNumber, string $size, int $quantity, string $netWeight = ''): string
     {
         $spec = self::LABELS[$size] ?? self::LABELS['big'];
         $labelsPerSheet = $spec['cols'] * $spec['rows'];
@@ -114,7 +115,7 @@ class LabelPDFService
                 $productName, $itemCode, $lotNumber, $signalWord,
                 $pictograms, $hStatements, $pStatements,
                 $supplierName, $supplierAddress, $supplierPhone,
-                $isBig
+                $isBig, $netWeight
             );
 
             $labelIndex++;
@@ -130,7 +131,7 @@ class LabelPDFService
         ?string $signalWord, array $pictograms,
         array $hStatements, array $pStatements,
         string $supplierName, string $supplierAddress, string $supplierPhone,
-        bool $isBig
+        bool $isBig, string $netWeight = ''
     ): void {
         $pad = $isBig ? 1.5 : 1.0;
         $innerW = $w - 2 * $pad;
@@ -145,12 +146,21 @@ class LabelPDFService
         $pictoSize   = $isBig ? 10 : 7;
 
         // ── Lot Number & Item Code (bold, top) ──
+        $lineH = $isBig ? 4 : 3;
         $pdf->SetFont('helvetica', 'B', $nameSize);
-        $pdf->SetXY($innerX, $curY);
         $lotLine = 'LOT: ' . $lotNumber . ' ' . $itemCode;
-        $displayName = $this->truncateText($pdf, $lotLine, $innerW, $nameSize);
-        $pdf->Cell($innerW, $isBig ? 4 : 3, $displayName, 0, 0, 'C');
-        $curY += $isBig ? 4 : 3;
+        if ($netWeight !== '') {
+            // Lot+item on left, net weight on right — both bold
+            $pdf->SetXY($innerX, $curY);
+            $pdf->Cell($innerW, $lineH, $lotLine, 0, 0, 'L');
+            $pdf->SetXY($innerX, $curY);
+            $pdf->Cell($innerW, $lineH, $netWeight, 0, 0, 'R');
+        } else {
+            $pdf->SetXY($innerX, $curY);
+            $displayName = $this->truncateText($pdf, $lotLine, $innerW, $nameSize);
+            $pdf->Cell($innerW, $lineH, $displayName, 0, 0, 'C');
+        }
+        $curY += $lineH;
 
         // ── Thin divider ──
         $pdf->Line($innerX, $curY, $innerX + $innerW, $curY);

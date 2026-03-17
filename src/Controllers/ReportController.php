@@ -333,15 +333,23 @@ class ReportController
             redirect('/reports');
         }
 
-        // Collect unique product codes (item_name without pack extension)
-        $productCodes = [];
-        foreach ($filtered as $row) {
-            $code = $this->stripPackExtension($row['item_name']);
-            $productCodes[$code] = true;
-        }
-
         $db = Database::getInstance();
         $basePath = \SDS\Core\App::basePath();
+
+        // Collect unique product codes (item_name without pack extension),
+        // resolving alias customer codes to finished good product codes
+        $productCodes = [];
+        $unresolvedCodes = []; // original stripped codes that couldn't be resolved
+        foreach ($filtered as $row) {
+            $stripped = $this->stripPackExtension($row['item_name']);
+            $resolved = $this->resolveToProductCode($stripped, $db);
+            if ($resolved !== null) {
+                $productCodes[$resolved] = true;
+            } else {
+                // Track the unresolved code for the missing items CSV
+                $unresolvedCodes[$stripped] = true;
+            }
+        }
 
         // Load all aliases indexed by internal_code_base, deduplicated by base customer code
         $allAliases = $db->fetchAll("SELECT * FROM aliases ORDER BY customer_code");
@@ -478,6 +486,11 @@ class ReportController
             }
         }
 
+        // Include codes that couldn't be resolved to any finished good
+        foreach (array_keys($unresolvedCodes) as $code) {
+            $missingItems[$code] = true;
+        }
+
         // Add missing items CSV to the ZIP if there are any
         if (!empty($missingItems)) {
             $missingCsv = "Product Code,Status\n";
@@ -504,22 +517,7 @@ class ReportController
             redirect('/reports');
         }
 
-        if ($addedFiles === 0 && !empty($missingItems)) {
-            // Only missing items, still export the ZIP with the CSV
-            $safeCustomer = preg_replace('/[^a-zA-Z0-9]/', '_', $customerValue);
-            $exportName = 'SDS_Export_' . $safeCustomer . '_' . date('Ymd') . '.zip';
-
-            header('Content-Type: application/zip');
-            header('Content-Disposition: attachment; filename="' . $exportName . '"');
-            header('Content-Length: ' . filesize($tempZip));
-            header('Cache-Control: no-cache, must-revalidate');
-
-            readfile($tempZip);
-            $cleanupTempPdfs();
-            @unlink($tempZip);
-            exit;
-        }
-
+        // Export the ZIP — includes available SDSs and missing items CSV (if any)
         $safeCustomer = preg_replace('/[^a-zA-Z0-9]/', '_', $customerValue);
         $langSuffix = $exportLang !== 'all' ? '_' . strtoupper($exportLang) : '';
         $exportName = 'SDS_Export_' . $safeCustomer . $langSuffix . '_' . date('Ymd') . '.zip';
@@ -622,6 +620,9 @@ class ReportController
         // Cache calculations by product code (strip pack extension)
         $calcCache = [];
 
+        // Cache resolved product codes: stripped alias code => FG product code
+        $resolvedCodes = [];
+
         // Aggregate HAP and SARA 313 breakdowns: CAS => ['name' => ..., 'lbs' => ...]
         $hapBreakdown  = [];
         $saraBreakdown = [];
@@ -632,8 +633,13 @@ class ReportController
             $description = $aliasDescriptions[$itemCode] ?? ($sessionItemNames[$itemCode] ?? '');
             $qtyShipped  = $row['qty_shipped'];
 
-            // Strip pack extension to get the finished good product code
-            $productCode = $this->stripPackExtension($itemCode);
+            // Strip pack extension and resolve to the finished good product code
+            // (the item code may be an alias customer_code, not a direct FG code)
+            $strippedCode = $this->stripPackExtension($itemCode);
+            if (!isset($resolvedCodes[$strippedCode])) {
+                $resolvedCodes[$strippedCode] = $this->resolveToProductCode($strippedCode, $db) ?? $strippedCode;
+            }
+            $productCode = $resolvedCodes[$strippedCode];
 
             // Lookup VOC/HAP from SDS system
             $vocWtPct = null;
@@ -881,6 +887,35 @@ class ReportController
             }
             return null;
         }
+    }
+
+    /**
+     * Resolve a stripped item code to a finished good product code.
+     *
+     * Tries direct finished good lookup first. If not found, checks the
+     * aliases table — the code may be an alias customer_code (base, without
+     * pack extension) whose internal_code_base points to the actual finished good.
+     *
+     * @return string|null  The finished good product_code, or null if not found.
+     */
+    private function resolveToProductCode(string $strippedCode, Database $db): ?string
+    {
+        // Direct match — the code IS the finished good product code
+        $fg = $db->fetch("SELECT id FROM finished_goods WHERE product_code = ?", [$strippedCode]);
+        if ($fg !== null) {
+            return $strippedCode;
+        }
+
+        // Try alias lookup — the code may be an alias customer_code (base)
+        $alias = $db->fetch(
+            "SELECT internal_code_base FROM aliases WHERE customer_code = ? OR customer_code LIKE ? LIMIT 1",
+            [$strippedCode, $strippedCode . '-%']
+        );
+        if ($alias !== null && !empty($alias['internal_code_base'])) {
+            return $alias['internal_code_base'];
+        }
+
+        return null;
     }
 
     /**

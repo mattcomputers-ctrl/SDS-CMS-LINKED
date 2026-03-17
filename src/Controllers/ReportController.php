@@ -337,14 +337,18 @@ class ReportController
         $basePath = \SDS\Core\App::basePath();
 
         // Collect unique product codes (item_name without pack extension),
-        // resolving alias customer codes to finished good product codes
+        // resolving alias customer codes to finished good product codes.
+        // Also track which original item names (customer codes) appear on the
+        // report so that only matching aliases are exported later.
         $productCodes = [];
+        $reportItemsByProduct = []; // productCode => [stripped item names that appeared on report]
         $unresolvedCodes = []; // original stripped codes that couldn't be resolved
         foreach ($filtered as $row) {
             $stripped = $this->stripPackExtension($row['item_name']);
             $resolved = $this->resolveToProductCode($stripped, $db);
             if ($resolved !== null) {
                 $productCodes[$resolved] = true;
+                $reportItemsByProduct[$resolved][$stripped] = true;
             } else {
                 // Track the unresolved code for the missing items CSV
                 $unresolvedCodes[$stripped] = true;
@@ -407,8 +411,18 @@ class ReportController
                 continue;
             }
 
-            // Check if there are aliases for this product code
-            $aliases = $aliasesByBase[$productCode] ?? [];
+            // Check if there are aliases for this product code, but only
+            // include aliases whose customer_code actually appeared on the
+            // report.  If the item appeared by its internal FG code (not via
+            // an alias), fall through to the non-alias branch.
+            $allAliasesForCode = $aliasesByBase[$productCode] ?? [];
+            $reportItems = $reportItemsByProduct[$productCode] ?? [];
+            $aliases = [];
+            foreach ($allAliasesForCode as $alias) {
+                if (isset($reportItems[$alias['customer_code']])) {
+                    $aliases[] = $alias;
+                }
+            }
 
             if (!empty($aliases)) {
                 // Export an SDS for each alias with modified product identifier

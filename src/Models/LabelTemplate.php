@@ -68,6 +68,7 @@ class LabelTemplate
             'hazard_statements'        => 'Hazard Statements',
             'precautionary_statements' => 'Precautionary Statements',
             'net_weight'               => 'Net Weight',
+            'prop65_warning'           => 'Prop 65 Warning',
             'supplier_info'            => 'Supplier Info',
         ];
     }

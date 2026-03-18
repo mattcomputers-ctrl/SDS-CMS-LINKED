@@ -93,6 +93,9 @@ class LabelPDFService
         $supplierAddress = $section1['manufacturer_address'] ?? '';
         $supplierPhone   = $section1['manufacturer_phone'] ?? '';
 
+        // Extract Prop 65 warning text (if present)
+        $prop65Text = $sdsData['prop65_result']['warning_text'] ?? '';
+
         // Create TCPDF instance
         $pdf = new \TCPDF('P', 'mm', 'LETTER', true, 'UTF-8', false);
         $pdf->SetCreator('SDS System');
@@ -122,7 +125,7 @@ class LabelPDFService
                 $itemCode, $lotNumber, $signalWord,
                 $pictograms, $hStatements, $pStatements,
                 $supplierName, $supplierAddress, $supplierPhone,
-                $netWeight, $privateLabel
+                $netWeight, $privateLabel, $prop65Text
             );
 
             $labelIndex++;
@@ -144,7 +147,7 @@ class LabelPDFService
         string $itemCode, string $lotNumber, ?string $signalWord,
         array $pictograms, array $hStatements, array $pStatements,
         string $supplierName, string $supplierAddress, string $supplierPhone,
-        string $netWeight, bool $privateLabel
+        string $netWeight, bool $privateLabel, string $prop65Text = ''
     ): void {
         $pad = 1.0; // mm padding inside label
 
@@ -174,7 +177,7 @@ class LabelPDFService
 
                 case 'net_weight':
                     if ($netWeight !== '') {
-                        $this->renderTextFit($pdf, $fx, $fy, $fw, $fh, $fieldFont, $netWeight, 'B', 'C');
+                        $this->renderNetWeight($pdf, $fx, $fy, $fw, $fh, $fieldFont, $netWeight);
                     }
                     break;
 
@@ -196,6 +199,12 @@ class LabelPDFService
                     $this->renderPStatements($pdf, $fx, $fy, $fw, $fh, $fieldFont, $pStatements);
                     break;
 
+                case 'prop65_warning':
+                    if ($prop65Text !== '') {
+                        $this->renderProp65Warning($pdf, $fx, $fy, $fw, $fh, $fieldFont, $prop65Text);
+                    }
+                    break;
+
                 case 'supplier_info':
                     if (!$privateLabel) {
                         $this->renderSupplierInfo($pdf, $fx, $fy, $fw, $fh, $fieldFont, $supplierName, $supplierAddress, $supplierPhone);
@@ -209,14 +218,99 @@ class LabelPDFService
 
     private function renderLotItemCode(\TCPDF $pdf, float $x, float $y, float $w, float $h, float $baseFontSize, string $lotNumber, string $itemCode): void
     {
-        $text = 'LOT: ' . $lotNumber . $itemCode;
-        $fontSize = $this->fitFontSize($pdf, $text, $w, $h, $baseFontSize, 'B');
-        $pdf->SetFont('helvetica', 'B', $fontSize);
-        $pdf->SetXY($x, $y);
-        $pdf->Cell($w, $h, $text, 0, 0, 'C', false, '', 0, false, 'T', 'C');
+        // Lot number with trailing item code — bold and prominent for at-a-glance reading
+        $lotText = $lotNumber . $itemCode;
+        $labelPrefix = 'LOT: ';
+        $fullText = $labelPrefix . $lotText;
 
-        // Draw divider at bottom
+        $fontSize = $this->fitFontSize($pdf, $fullText, $w, $h * 0.85, $baseFontSize, 'B');
+
+        // Draw "LOT: " prefix in normal weight, then lot+item code in bold
+        $pdf->SetFont('helvetica', '', $fontSize);
+        $prefixW = $pdf->GetStringWidth($labelPrefix);
+        $pdf->SetXY($x, $y);
+        $pdf->Cell($prefixW, $h, $labelPrefix, 0, 0, 'L', false, '', 0, false, 'T', 'C');
+
+        $pdf->SetFont('helvetica', 'B', $fontSize);
+        $pdf->SetXY($x + $prefixW, $y);
+        $pdf->Cell($w - $prefixW, $h, $lotText, 0, 0, 'L', false, '', 0, false, 'T', 'C');
+
+        // Draw a clean divider line at the bottom
+        $pdf->SetLineWidth(0.3);
         $pdf->Line($x, $y + $h, $x + $w, $y + $h);
+        $pdf->SetLineWidth(0.2);
+    }
+
+    private function renderNetWeight(\TCPDF $pdf, float $x, float $y, float $w, float $h, float $baseFontSize, string $netWeight): void
+    {
+        // Net weight — bold and prominent, right-aligned for at-a-glance reading
+        $labelPrefix = 'NET WT: ';
+        $fullText = $labelPrefix . $netWeight;
+
+        $fontSize = $this->fitFontSize($pdf, $fullText, $w, $h * 0.85, $baseFontSize, 'B');
+
+        // Draw "NET WT: " in normal weight, then value in bold
+        $pdf->SetFont('helvetica', '', $fontSize);
+        $pdf->SetFont('helvetica', 'B', $fontSize);
+        $valueW = $pdf->GetStringWidth($netWeight);
+        $pdf->SetFont('helvetica', '', $fontSize);
+        $prefixW = $pdf->GetStringWidth($labelPrefix);
+        $totalW = $prefixW + $valueW;
+
+        // Right-align the whole block within the field
+        $startX = $x + $w - $totalW;
+        $startX = max($x, $startX); // Don't overflow left
+
+        $pdf->SetFont('helvetica', '', $fontSize);
+        $pdf->SetXY($startX, $y);
+        $pdf->Cell($prefixW, $h, $labelPrefix, 0, 0, 'L', false, '', 0, false, 'T', 'C');
+
+        $pdf->SetFont('helvetica', 'B', $fontSize);
+        $pdf->SetXY($startX + $prefixW, $y);
+        $pdf->Cell($valueW, $h, $netWeight, 0, 0, 'L', false, '', 0, false, 'T', 'C');
+
+        // Draw matching divider line at the bottom
+        $pdf->SetLineWidth(0.3);
+        $pdf->Line($x, $y + $h, $x + $w, $y + $h);
+        $pdf->SetLineWidth(0.2);
+    }
+
+    private function renderProp65Warning(\TCPDF $pdf, float $x, float $y, float $w, float $h, float $baseFontSize, string $prop65Text): void
+    {
+        // Draw a thin border around the Prop 65 warning area
+        $pdf->SetLineWidth(0.2);
+        $pdf->Rect($x, $y, $w, $h);
+
+        $innerPad = 0.8;
+        $ix = $x + $innerPad;
+        $iy = $y + $innerPad;
+        $iw = $w - 2 * $innerPad;
+        $ih = $h - 2 * $innerPad;
+
+        // Warning triangle symbol + bold "WARNING:" header
+        $headerText = "\xE2\x9A\xA0 WARNING:";
+        $headerSize = min($baseFontSize, 5.0);
+        $headerH = $headerSize * 0.5;
+
+        $pdf->SetFont('helvetica', 'B', $headerSize);
+        $pdf->SetXY($ix, $iy);
+        $pdf->Cell($iw, $headerH, $headerText, 0, 0, 'L');
+
+        // Warning body text — auto-fit to remaining space
+        $bodyY = $iy + $headerH;
+        $bodyH = $ih - $headerH;
+
+        // Strip the leading "WARNING: " from the Prop65 text since we already rendered it
+        $bodyText = $prop65Text;
+        if (str_starts_with($bodyText, 'WARNING: ')) {
+            $bodyText = substr($bodyText, 9);
+        }
+
+        $bodyFontSize = $this->fitMultilineFontSize($pdf, $bodyText, $iw, $bodyH, min($baseFontSize * 0.75, 4.5));
+        $pdf->SetFont('helvetica', '', $bodyFontSize);
+        $lineH = $bodyFontSize * 0.42;
+        $pdf->SetXY($ix, $bodyY);
+        $pdf->MultiCell($iw, $lineH, $bodyText, 0, 'L', false, 1, $ix, $bodyY, true, 0, false, true, $bodyH, 'T', true);
     }
 
     private function renderSignalWord(\TCPDF $pdf, float $x, float $y, float $w, float $h, float $baseFontSize, string $signalWord): void

@@ -35,14 +35,14 @@ INSERT INTO `label_templates` (`name`, `description`, `label_width`, `label_heig
     'OL575WR',
     'Big — 3.75\" x 2.4375\", 8 per sheet (2 cols x 4 rows)',
     95.25, 61.9125, 2, 4, 11.1125, 11.1125, 3.175, 3.175, 7.0,
-    '{"lot_item_code":{"x":0,"y":0,"width":100,"height":8},"pictograms":{"x":0,"y":9,"width":45,"height":15},"signal_word":{"x":45,"y":9,"width":55,"height":15},"hazard_statements":{"x":0,"y":25,"width":100,"height":30},"precautionary_statements":{"x":0,"y":56,"width":100,"height":30},"net_weight":{"x":70,"y":0,"width":30,"height":8},"supplier_info":{"x":0,"y":87,"width":100,"height":13}}',
+    '{"lot_item_code":{"x":0,"y":0,"width":100,"height":8},"signal_word":{"x":0,"y":9,"width":100,"height":6},"pictograms":{"x":0,"y":15,"width":100,"height":10},"hazard_statements":{"x":0,"y":25,"width":100,"height":30},"precautionary_statements":{"x":0,"y":56,"width":100,"height":30},"net_weight":{"x":70,"y":0,"width":30,"height":8},"supplier_info":{"x":0,"y":87,"width":100,"height":13}}',
     1
 ),
 (
     'OL800WX',
     'Small — 2.5\" x 1.5625\", 18 per sheet (3 cols x 6 rows)',
     63.5, 39.6875, 3, 6, 9.525, 12.7, 3.175, 3.175, 5.0,
-    '{"lot_item_code":{"x":0,"y":0,"width":100,"height":10},"pictograms":{"x":0,"y":11,"width":45,"height":16},"signal_word":{"x":45,"y":11,"width":55,"height":16},"hazard_statements":{"x":0,"y":28,"width":100,"height":28},"precautionary_statements":{"x":0,"y":57,"width":100,"height":28},"net_weight":{"x":70,"y":0,"width":30,"height":10},"supplier_info":{"x":0,"y":86,"width":100,"height":14}}',
+    '{"lot_item_code":{"x":0,"y":0,"width":100,"height":10},"signal_word":{"x":0,"y":11,"width":100,"height":6},"pictograms":{"x":0,"y":17,"width":100,"height":11},"hazard_statements":{"x":0,"y":28,"width":100,"height":28},"precautionary_statements":{"x":0,"y":57,"width":100,"height":28},"net_weight":{"x":70,"y":0,"width":30,"height":10},"supplier_info":{"x":0,"y":86,"width":100,"height":14}}',
     0
 );
 

@@ -19,8 +19,8 @@ INSERT INTO `label_templates` (`name`, `description`, `label_width`, `label_heig
     '{
         "lot_item_code":          {"x":0,  "y":0,  "width":58, "height":12, "font_size":11},
         "net_weight":             {"x":58, "y":0,  "width":42, "height":12, "font_size":11},
-        "pictograms":             {"x":0,  "y":13, "width":18, "height":28},
-        "signal_word":            {"x":18, "y":13, "width":12, "height":14},
+        "signal_word":            {"x":0,  "y":13, "width":30, "height":7},
+        "pictograms":             {"x":0,  "y":20, "width":30, "height":33},
         "hazard_statements":      {"x":31, "y":13, "width":34, "height":40},
         "precautionary_statements":{"x":66,"y":13, "width":34, "height":40},
         "prop65_warning":         {"x":0,  "y":54, "width":100,"height":24},

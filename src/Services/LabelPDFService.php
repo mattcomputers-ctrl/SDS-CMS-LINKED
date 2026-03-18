@@ -287,8 +287,8 @@ class LabelPDFService
         $iw = $w - 2 * $innerPad;
         $ih = $h - 2 * $innerPad;
 
-        // Prop 65 warning pictogram + bold "WARNING:" header
-        $headerSize = min($baseFontSize, 5.0);
+        // Prop 65 warning pictogram + bold "WARNING:" header (fixed 6pt font)
+        $headerSize = 6.0;
         $headerH = $headerSize * 0.5;
         $pictoSize = $headerH * 1.8;
 
@@ -313,7 +313,7 @@ class LabelPDFService
             $bodyText = substr($bodyText, 9);
         }
 
-        $bodyFontSize = $this->fitMultilineFontSize($pdf, $bodyText, $iw, $bodyH, min($baseFontSize * 0.75, 4.5));
+        $bodyFontSize = $this->fitMultilineFontSize($pdf, $bodyText, $iw, $bodyH, 6.0);
         $pdf->SetFont('helvetica', '', $bodyFontSize);
         $lineH = $bodyFontSize * 0.42;
         $pdf->SetXY($ix, $bodyY);
@@ -343,20 +343,33 @@ class LabelPDFService
         if (empty($paths)) return;
 
         $n = count($paths);
-        // Size each pictogram to fit within the field, capped to avoid overlapping other fields
-        $maxPictoSize = min($h * 0.85, 10.0); // cap at 85% of field height or 10mm
-        $maxPerRow = min($n, max(1, (int) floor($w / ($maxPictoSize * 0.9))));
-        $pictoSize = min($maxPictoSize, ($w - ($maxPerRow - 1) * 0.5) / $maxPerRow);
-        $pictoSize = max(3, $pictoSize); // at least 3mm
+        $gap = 0.5;
 
-        $totalW = $n * $pictoSize + ($n - 1) * 0.5;
-        $startX = $x + max(0, ($w - $totalW) / 2);
+        // Size each pictogram to fit, supporting multiple rows if needed
+        $maxPictoSize = min($h * 0.45, 10.0);
+        $perRow = max(1, (int) floor(($w + $gap) / ($maxPictoSize + $gap)));
+        $pictoSize = min($maxPictoSize, ($w - ($perRow - 1) * $gap) / $perRow);
+        $pictoSize = max(3, $pictoSize);
 
-        foreach ($paths as $path) {
-            if ($path !== '') {
-                $pdf->Image($path, $startX, $y + ($h - $pictoSize) / 2, $pictoSize, $pictoSize, '', '', '', true, 300, '', false, false, 0);
+        // Recalculate actual items per row now that size is known
+        $perRow = max(1, (int) floor(($w + $gap) / ($pictoSize + $gap)));
+        $rows = (int) ceil($n / $perRow);
+
+        $curY = $y; // top-aligned
+        $idx = 0;
+        for ($row = 0; $row < $rows; $row++) {
+            $itemsThisRow = min($perRow, $n - $idx);
+            $rowW = $itemsThisRow * $pictoSize + ($itemsThisRow - 1) * $gap;
+            $startX = $x + max(0, ($w - $rowW) / 2);
+
+            for ($col = 0; $col < $itemsThisRow; $col++) {
+                $path = $paths[$idx++];
+                if ($path !== '') {
+                    $pdf->Image($path, $startX, $curY, $pictoSize, $pictoSize, '', '', '', true, 300, '', false, false, 0);
+                }
+                $startX += $pictoSize + $gap;
             }
-            $startX += $pictoSize + 0.5;
+            $curY += $pictoSize + $gap;
         }
     }
 
@@ -593,36 +606,45 @@ class LabelPDFService
         $pdf->Line($innerX, $curY, $innerX + $innerW, $curY);
         $curY += 0.5;
 
-        // ── Pictograms + Signal Word ──
-        $pictoRowH = $isBig ? 9 : 5.5;
+        // ── Signal Word ──
         $availPictos = $this->getAvailablePictograms($pictograms);
         $numPictos = count($availPictos);
 
-        if ($numPictos > 0 || $signalWord) {
-            $pictoAreaW = $numPictos > 0 ? min($numPictos * ($pictoSize + 1), $innerW * 0.6) : 0;
-            $signalAreaW = $innerW - $pictoAreaW;
-
-            $pictoX = $innerX;
-            foreach ($availPictos as $pictoPath) {
-                if ($pictoPath !== '') {
-                    $pdf->Image($pictoPath, $pictoX, $curY + 0.5, $pictoSize, $pictoSize, '', '', '', true, 300, '', false, false, 0);
-                }
-                $pictoX += $pictoSize + ($isBig ? 1 : 0.5);
-            }
-
-            if ($signalWord) {
-                $pdf->SetFont('helvetica', 'B', $signalSize);
-                if (strtoupper($signalWord) === 'DANGER') {
-                    $pdf->SetTextColor(255, 0, 0);
-                } else {
-                    $pdf->SetTextColor(0, 0, 0);
-                }
-                $pdf->SetXY($innerX + $pictoAreaW, $curY + ($pictoRowH / 2 - $signalSize * 0.18));
-                $pdf->Cell($signalAreaW, $isBig ? 5 : 3.5, strtoupper($signalWord), 0, 0, 'C');
+        if ($signalWord) {
+            $signalH = $isBig ? 5 : 3.5;
+            $pdf->SetFont('helvetica', 'B', $signalSize);
+            if (strtoupper($signalWord) === 'DANGER') {
+                $pdf->SetTextColor(255, 0, 0);
+            } else {
                 $pdf->SetTextColor(0, 0, 0);
             }
+            $pdf->SetXY($innerX, $curY);
+            $pdf->Cell($innerW, $signalH, strtoupper($signalWord), 0, 0, 'C');
+            $pdf->SetTextColor(0, 0, 0);
+            $curY += $signalH;
+        }
 
-            $curY += $pictoRowH;
+        // ── Pictograms (below signal word) ──
+        if ($numPictos > 0) {
+            $gap = $isBig ? 1 : 0.5;
+            $perRow = max(1, (int) floor(($innerW + $gap) / ($pictoSize + $gap)));
+            $rows = (int) ceil($numPictos / $perRow);
+
+            $idx = 0;
+            for ($r = 0; $r < $rows; $r++) {
+                $itemsThisRow = min($perRow, $numPictos - $idx);
+                $rowW = $itemsThisRow * $pictoSize + ($itemsThisRow - 1) * $gap;
+                $pictoX = $innerX + max(0, ($innerW - $rowW) / 2);
+
+                for ($c = 0; $c < $itemsThisRow; $c++) {
+                    $pictoPath = $availPictos[$idx++];
+                    if ($pictoPath !== '') {
+                        $pdf->Image($pictoPath, $pictoX, $curY, $pictoSize, $pictoSize, '', '', '', true, 300, '', false, false, 0);
+                    }
+                    $pictoX += $pictoSize + $gap;
+                }
+                $curY += $pictoSize + $gap;
+            }
         }
 
         // ── Hazard Statements ──

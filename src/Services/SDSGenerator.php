@@ -1566,8 +1566,8 @@ class SDSGenerator
         if ($hasCancer && $hasRepro) {
             return sprintf(
                 Prop65Service::WARNING_COMBINED,
-                implode(', ', $cancerChems),
-                implode(', ', $reproChems)
+                implode(', ', $reproChems),
+                implode(', ', $cancerChems)
             );
         }
         if ($hasCancer) {

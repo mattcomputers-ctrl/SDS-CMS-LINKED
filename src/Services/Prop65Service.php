@@ -31,9 +31,9 @@ class Prop65Service
     public const WARNING_REPRO = 'WARNING: This product can expose you to chemicals including %s, which is/are known to the State of California to cause birth defects or other reproductive harm. For more information go to www.P65Warnings.ca.gov.';
 
     /**
-     * Standard Prop 65 combined warning (cancer + reproductive).
+     * Standard Prop 65 combined warning (reproductive + cancer).
      */
-    public const WARNING_COMBINED = 'WARNING: This product can expose you to chemicals including %s, which is/are known to the State of California to cause cancer, and %s, which is/are known to the State of California to cause birth defects or other reproductive harm. For more information go to www.P65Warnings.ca.gov.';
+    public const WARNING_COMBINED = 'WARNING: This product can expose you to chemicals including %s, which is/are known to the State of California to cause birth defects or other reproductive harm and chemicals including %s, which is/are known to the State of California to cause cancer. For more information go to www.P65Warnings.ca.gov.';
 
     /**
      * Analyse a composition against the California Prop 65 list.
@@ -208,8 +208,8 @@ class Prop65Service
         if ($hasCancer && $hasRepro) {
             return sprintf(
                 self::WARNING_COMBINED,
-                implode(', ', $cancerChems),
-                implode(', ', $reproChems)
+                implode(', ', $reproChems),
+                implode(', ', $cancerChems)
             );
         }
 

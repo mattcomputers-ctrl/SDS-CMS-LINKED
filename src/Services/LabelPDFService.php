@@ -287,18 +287,25 @@ class LabelPDFService
         $iw = $w - 2 * $innerPad;
         $ih = $h - 2 * $innerPad;
 
-        // Warning triangle symbol + bold "WARNING:" header
-        $headerText = "\xE2\x9A\xA0 WARNING:";
+        // Prop 65 warning pictogram + bold "WARNING:" header
         $headerSize = min($baseFontSize, 5.0);
         $headerH = $headerSize * 0.5;
+        $pictoSize = $headerH * 1.8;
+
+        $prop65Png = PictogramHelper::getPngPath('PROP65');
+        $textOffsetX = 0.0;
+        if ($prop65Png !== '') {
+            $pdf->Image($prop65Png, $ix, $iy, $pictoSize, $pictoSize, '', '', '', true, 300, '', false, false, 0);
+            $textOffsetX = $pictoSize + 0.5;
+        }
 
         $pdf->SetFont('helvetica', 'B', $headerSize);
-        $pdf->SetXY($ix, $iy);
-        $pdf->Cell($iw, $headerH, $headerText, 0, 0, 'L');
+        $pdf->SetXY($ix + $textOffsetX, $iy);
+        $pdf->Cell($iw - $textOffsetX, $headerH, 'WARNING:', 0, 0, 'L');
 
         // Warning body text — auto-fit to remaining space
-        $bodyY = $iy + $headerH;
-        $bodyH = $ih - $headerH;
+        $bodyY = $iy + max($headerH, $pictoSize) + 0.3;
+        $bodyH = $ih - max($headerH, $pictoSize) - 0.3;
 
         // Strip the leading "WARNING: " from the Prop65 text since we already rendered it
         $bodyText = $prop65Text;
@@ -336,9 +343,10 @@ class LabelPDFService
         if (empty($paths)) return;
 
         $n = count($paths);
-        // Size each pictogram to fit within the field
-        $maxPerRow = min($n, max(1, (int) floor($w / ($h * 0.9))));
-        $pictoSize = min($h - 0.5, ($w - ($maxPerRow - 1) * 0.5) / $maxPerRow);
+        // Size each pictogram to fit within the field, capped to avoid overlapping other fields
+        $maxPictoSize = min($h * 0.85, 10.0); // cap at 85% of field height or 10mm
+        $maxPerRow = min($n, max(1, (int) floor($w / ($maxPictoSize * 0.9))));
+        $pictoSize = min($maxPictoSize, ($w - ($maxPerRow - 1) * 0.5) / $maxPerRow);
         $pictoSize = max(3, $pictoSize); // at least 3mm
 
         $totalW = $n * $pictoSize + ($n - 1) * 0.5;
@@ -384,24 +392,17 @@ class LabelPDFService
         $bodyH = $h - $headerH;
         $bodyFontSize = $baseFontSize * 0.85;
 
-        // Try fitting all P-statements
+        // Try fitting all P-statements; prioritize if they don't fit
         $fullText = $this->formatStatements($pStatements);
         $testSize = $this->fitMultilineFontSize($pdf, $fullText, $w, $bodyH, $bodyFontSize);
 
-        $seeMoreText = 'See SDS for additional precautionary statements.';
-
         if ($testSize >= 2.5) {
-            // All fit
             $pText = $fullText;
-            $truncated = false;
             $bodySize = $testSize;
         } else {
-            // Not enough room — prioritize, leave room for "See SDS" note
-            $seeMoreH = $this->getTextHeight($pdf, $seeMoreText, $w, min($bodyFontSize, 3.5));
-            $prioritizedText = $this->buildPrioritizedPStatements($pdf, $pStatements, $w, $bodyFontSize, $bodyH - $seeMoreH - $headerH);
-            $bodySize = $this->fitMultilineFontSize($pdf, $prioritizedText, $w, $bodyH - $seeMoreH, $bodyFontSize);
+            $prioritizedText = $this->buildPrioritizedPStatements($pdf, $pStatements, $w, $bodyFontSize, $bodyH);
+            $bodySize = $this->fitMultilineFontSize($pdf, $prioritizedText, $w, $bodyH, $bodyFontSize);
             $pText = $prioritizedText;
-            $truncated = true;
         }
 
         // Header
@@ -413,15 +414,7 @@ class LabelPDFService
         $pdf->SetFont('helvetica', '', $bodySize);
         $lineH = $bodySize * 0.42;
         $pdf->SetXY($x, $y + $headerH);
-        $allocH = $truncated ? ($bodyH - $this->getTextHeight($pdf, $seeMoreText, $w, min($bodyFontSize, 3.5))) : $bodyH;
-        $pdf->MultiCell($w, $lineH, $pText, 0, 'L', false, 1, $x, $y + $headerH, true, 0, false, true, max(0, $allocH), 'T', true);
-
-        if ($truncated) {
-            $noteY = $y + $h - $this->getTextHeight($pdf, $seeMoreText, $w, min($bodyFontSize, 3.5));
-            $pdf->SetFont('helvetica', 'I', min($bodyFontSize, 3.5));
-            $pdf->SetXY($x, $noteY);
-            $pdf->MultiCell($w, $lineH, $seeMoreText, 0, 'L', false, 1, $x, $noteY, true, 0, false, true, 10, 'T', true);
-        }
+        $pdf->MultiCell($w, $lineH, $pText, 0, 'L', false, 1, $x, $y + $headerH, true, 0, false, true, max(0, $bodyH), 'T', true);
     }
 
     private function renderSupplierInfo(\TCPDF $pdf, float $x, float $y, float $w, float $h, float $baseFontSize, string $name, string $address, string $phone): void
@@ -658,8 +651,6 @@ class LabelPDFService
         $availForP = $maxBottom - $curY - $supplierH - 1;
         if (count($pStatements) > 0 && $availForP > ($isBig ? 4 : 3)) {
             $headerH = $isBig ? 2.5 : 2;
-            $seeMoreText = 'See SDS for additional precautionary statements.';
-            $seeMoreH = $this->getTextHeight($pdf, $seeMoreText, $innerW, $tinySize);
 
             $pTextFull = $this->formatStatements($pStatements);
             $pFullNeeded = $this->getTextHeight($pdf, $pTextFull, $innerW, $tinySize);
@@ -667,10 +658,8 @@ class LabelPDFService
 
             if ($pFullNeeded <= $pSpaceForText) {
                 $pText = $pTextFull;
-                $pTruncated = false;
             } else {
-                $pText = $this->buildPrioritizedPStatements($pdf, $pStatements, $innerW, $tinySize, $pSpaceForText - $seeMoreH);
-                $pTruncated = true;
+                $pText = $this->buildPrioritizedPStatements($pdf, $pStatements, $innerW, $tinySize, $pSpaceForText);
             }
 
             $pdf->SetFont('helvetica', 'B', $tinySize);
@@ -683,13 +672,6 @@ class LabelPDFService
             $pAlloc = $maxBottom - $curY - $supplierH - 0.5;
             $pdf->MultiCell($innerW, $isBig ? 2.2 : 1.8, $pText, 0, 'L', false, 1, $innerX, $curY, true, 0, false, true, max(0, $pAlloc), 'T', true);
             $curY = min($curY + $pAlloc, $maxBottom - $supplierH - 0.5);
-
-            if ($pTruncated) {
-                $seeY = $curY;
-                $pdf->SetFont('helvetica', 'I', $tinySize);
-                $pdf->SetXY($innerX, $seeY);
-                $pdf->MultiCell($innerW, $isBig ? 2.2 : 1.8, $seeMoreText, 0, 'L', false, 1, $innerX, $seeY, true, 0, false, true, $seeMoreH, 'T', true);
-            }
         }
 
         // ── Supplier info ──

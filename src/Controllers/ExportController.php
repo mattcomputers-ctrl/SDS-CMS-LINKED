@@ -62,11 +62,18 @@ class ExportController
                         fg.product_code
                  FROM sds_versions sv
                  JOIN finished_goods fg ON fg.id = sv.finished_good_id
-                 WHERE sv.status = 'published'
-                   AND sv.is_deleted = 0
-                   AND sv.pdf_path IS NOT NULL
-                   AND sv.pdf_path != ''
-                   AND sv.id > ?
+                 INNER JOIN (
+                     SELECT finished_good_id, language, MAX(version) AS max_ver
+                     FROM sds_versions
+                     WHERE status = 'published' AND is_deleted = 0
+                       AND pdf_path IS NOT NULL AND pdf_path != ''
+                     GROUP BY finished_good_id, language
+                 ) latest ON sv.finished_good_id = latest.finished_good_id
+                          AND sv.language = latest.language
+                          AND sv.version = latest.max_ver
+                          AND sv.status = 'published'
+                          AND sv.is_deleted = 0
+                 WHERE sv.id > ?
                  ORDER BY sv.id ASC
                  LIMIT " . self::EXPORT_QUERY_PAGE_SIZE,
                 [$lastId]
@@ -152,10 +159,17 @@ class ExportController
                     COUNT(DISTINCT sv.id) AS pdf_count
              FROM sds_versions sv
              JOIN finished_goods fg ON fg.id = sv.finished_good_id
-             WHERE sv.status = 'published'
-               AND sv.is_deleted = 0
-               AND sv.pdf_path IS NOT NULL
-               AND sv.pdf_path != ''"
+             INNER JOIN (
+                 SELECT finished_good_id, language, MAX(version) AS max_ver
+                 FROM sds_versions
+                 WHERE status = 'published' AND is_deleted = 0
+                   AND pdf_path IS NOT NULL AND pdf_path != ''
+                 GROUP BY finished_good_id, language
+             ) latest ON sv.finished_good_id = latest.finished_good_id
+                      AND sv.language = latest.language
+                      AND sv.version = latest.max_ver
+                      AND sv.status = 'published'
+                      AND sv.is_deleted = 0"
         );
 
         // Check for existing export

@@ -415,7 +415,7 @@ class LabelPDFService
         } else {
             $seeMore = 'See SDS for more precautionary statements.';
             $prioritizedText = $this->buildPrioritizedPStatements($pdf, $pStatements, $w, $bodyFontSize, $bodyH, $seeMore);
-            $bodySize = $this->fitMultilineFontSize($pdf, $prioritizedText, $w, $bodyH, $bodyFontSize);
+            $bodySize = max(6.0, $this->fitMultilineFontSize($pdf, $prioritizedText, $w, $bodyH, $bodyFontSize));
             $pText = $prioritizedText;
         }
 
@@ -499,6 +499,12 @@ class LabelPDFService
                 return $size;
             }
             $size -= 0.25;
+        }
+
+        // Check if text fits at minimum size; return below threshold to trigger truncation
+        $needed = $this->getTextHeight($pdf, $text, $w, $minSize);
+        if ($needed > $h) {
+            return $minSize - 0.25;
         }
 
         return $minSize;

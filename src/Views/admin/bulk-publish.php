@@ -10,7 +10,7 @@
         <tr><td><strong>Aliases:</strong></td><td><?= (int) $aliasCount ?></td></tr>
         <?php endif; ?>
         <tr><td><strong>Languages:</strong></td><td><?= (int) $langCount ?> (<?= e(strtoupper(implode(', ', $languages))) ?>)</td></tr>
-        <tr><td><strong>Total PDFs to Generate:</strong></td><td><?= ((int) ($fgsWithoutAliases ?? 0) + (int) ($aliasCount ?? 0)) * (int) $langCount ?></td></tr>
+        <tr><td><strong>Total PDFs to Generate:</strong></td><td><?= ((int) $fgCount + (int) ($aliasCount ?? 0)) * (int) $langCount ?></td></tr>
     </table>
 
     <?php if ($fgCount === 0): ?>

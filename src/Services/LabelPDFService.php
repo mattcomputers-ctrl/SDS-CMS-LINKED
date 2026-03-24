@@ -207,7 +207,9 @@ class LabelPDFService
 
                 case 'supplier_info':
                     if (!$privateLabel) {
-                        $this->renderSupplierInfo($pdf, $fx, $fy, $fw, $fh, $fieldFont, $supplierName, $supplierAddress, $supplierPhone);
+                        $fieldAlign = isset($pos['align']) ? strtoupper((string) $pos['align']) : 'C';
+                        $dividerTop = !isset($pos['divider_top']) || !empty($pos['divider_top']);
+                        $this->renderSupplierInfo($pdf, $fx, $fy, $fw, $fh, $fieldFont, $supplierName, $supplierAddress, $supplierPhone, $fieldAlign, $dividerTop);
                     }
                     break;
             }
@@ -446,10 +448,12 @@ class LabelPDFService
         $pdf->MultiCell($w, $lineH, $pText, 0, 'L', false, 1, $x, $y + $headerH, true, 0, false, true, max(0, $bodyH), 'T', true);
     }
 
-    private function renderSupplierInfo(\TCPDF $pdf, float $x, float $y, float $w, float $h, float $baseFontSize, string $name, string $address, string $phone): void
+    private function renderSupplierInfo(\TCPDF $pdf, float $x, float $y, float $w, float $h, float $baseFontSize, string $name, string $address, string $phone, string $align = 'C', bool $dividerTop = true): void
     {
-        // Draw divider at top
-        $pdf->Line($x, $y, $x + $w, $y);
+        // Draw divider at top (skip when supplier info is placed at top of label)
+        if ($dividerTop) {
+            $pdf->Line($x, $y, $x + $w, $y);
+        }
 
         $line = $name;
         if ($address !== '' && $address !== ', ,  ') {
@@ -463,7 +467,7 @@ class LabelPDFService
         $pdf->SetFont('helvetica', '', $fontSize);
         $lineH = $fontSize * 0.42;
         $pdf->SetXY($x, $y + 0.3);
-        $pdf->MultiCell($w, $lineH, $line, 0, 'C', false, 1, $x, $y + 0.3, true, 0, false, true, $h - 0.3, 'T', true);
+        $pdf->MultiCell($w, $lineH, $line, 0, $align, false, 1, $x, $y + 0.3, true, 0, false, true, $h - 0.3, 'T', true);
     }
 
     // ── Auto-fit helpers ─────────────────────────────────────────────────

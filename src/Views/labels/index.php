@@ -50,7 +50,6 @@
                            style="flex: 1; min-width: 50px;">
                     <?php if (!empty($netWeightUnits)): ?>
                     <select name="net_weight_unit" id="net_weight_unit" class="input" style="flex: 0 0 70px; width: 70px;">
-                        <option value="">—</option>
                         <?php foreach ($netWeightUnits as $unit): ?>
                             <option value="<?= e($unit) ?>"><?= e($unit) ?></option>
                         <?php endforeach; ?>

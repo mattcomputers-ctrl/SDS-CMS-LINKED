@@ -42,12 +42,12 @@
                 <small class="text-muted"><a href="/label-templates">Manage templates</a></small>
             </div>
 
-            <div class="form-group" style="flex: 1; min-width: 200px;">
+            <div class="form-group" style="flex: 0 0 200px;">
                 <label for="net_weight_value">Net Weight</label>
                 <div style="display: flex; gap: 0.5rem;">
                     <input type="text" name="net_weight_value" id="net_weight_value" class="input"
                            placeholder="e.g. 5" maxlength="10" inputmode="decimal"
-                           style="flex: 1; min-width: 80px;">
+                           style="flex: 1; min-width: 60px;">
                     <?php if (!empty($netWeightUnits)): ?>
                     <select name="net_weight_unit" id="net_weight_unit" class="input" style="flex: 0 0 auto; min-width: 80px;">
                         <option value="">—</option>
@@ -64,9 +64,10 @@
             </div>
 
             <div class="form-group" style="flex: 0 0 150px;">
-                <label for="quantity">Quantity</label>
-                <input type="number" name="quantity" id="quantity" class="input" value="1" min="1" max="500">
-                <small class="text-muted">Number of labels</small>
+                <label for="sheets">Sheets</label>
+                <input type="number" name="sheets" id="sheets" class="input" value="1" min="1" max="500">
+                <small class="text-muted">Number of pages</small>
+                <small id="totalUnitsHelper" class="text-muted" style="display: none; margin-top: 0.25rem;"></small>
             </div>
         </div>
 
@@ -133,6 +134,44 @@ document.addEventListener('DOMContentLoaded', function() {
             this.value = this.value.replace(/\D/g, '').slice(0, 12);
         });
     }
+
+    // Template data for labels-per-sheet calculation
+    var templateData = <?= json_encode(array_combine(
+        array_map(fn($t) => (string) $t['id'], $templates),
+        array_map(fn($t) => (int) $t['cols'] * (int) $t['rows'], $templates)
+    ), JSON_FORCE_OBJECT) ?>;
+
+    var templateSelect = document.getElementById('template_id');
+    var sheetsInput = document.getElementById('sheets');
+    var weightInput = document.getElementById('net_weight_value');
+    var unitInput = document.getElementById('net_weight_unit');
+    var helper = document.getElementById('totalUnitsHelper');
+
+    function updateTotalUnits() {
+        var templateId = templateSelect ? templateSelect.value : '';
+        var sheets = parseInt(sheetsInput ? sheetsInput.value : '0', 10) || 0;
+        var weight = parseFloat(weightInput ? weightInput.value : '') || 0;
+        var unit = unitInput ? unitInput.value.trim() : '';
+
+        if (weight > 0 && unit && sheets > 0 && templateId && templateData[templateId]) {
+            var labelsPerSheet = templateData[templateId];
+            var total = weight * labelsPerSheet * sheets;
+            // Format number: remove trailing zeros after decimal
+            var formatted = total % 1 === 0 ? total.toString() : total.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+            helper.textContent = 'Total: ' + formatted + ' ' + unit + ' (' + labelsPerSheet + ' labels/sheet × ' + sheets + ' sheets)';
+            helper.style.display = 'block';
+        } else {
+            helper.style.display = 'none';
+        }
+    }
+
+    if (templateSelect) templateSelect.addEventListener('change', updateTotalUnits);
+    if (sheetsInput) sheetsInput.addEventListener('input', updateTotalUnits);
+    if (weightInput) weightInput.addEventListener('input', updateTotalUnits);
+    if (unitInput) unitInput.addEventListener('change', updateTotalUnits);
+    if (unitInput) unitInput.addEventListener('input', updateTotalUnits);
+
+    updateTotalUnits();
 });
 </script>
 

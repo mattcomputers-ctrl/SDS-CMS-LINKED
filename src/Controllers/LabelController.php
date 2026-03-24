@@ -44,7 +44,7 @@ class LabelController
         $finishedGoodId = (int) ($_POST['finished_good_id'] ?? 0);
         $lotNumber      = trim($_POST['lot_number'] ?? '');
         $templateId     = (int) ($_POST['template_id'] ?? 0);
-        $quantity        = max(1, (int) ($_POST['quantity'] ?? 1));
+        $sheets          = max(1, (int) ($_POST['sheets'] ?? 1));
         $netWeightValue  = trim($_POST['net_weight_value'] ?? '');
         $netWeightUnit   = trim($_POST['net_weight_unit'] ?? '');
         $netWeight       = $netWeightValue !== '' ? $netWeightValue . ($netWeightUnit !== '' ? ' ' . $netWeightUnit : '') : '';
@@ -75,6 +75,10 @@ class LabelController
             $_SESSION['_flash']['error'] = 'No label template found. Please create one first.';
             redirect('/labels');
         }
+
+        // Convert sheets to total label count
+        $labelsPerSheet = (int) $template['cols'] * (int) $template['rows'];
+        $quantity = $sheets * $labelsPerSheet;
 
         try {
             // Generate SDS data to get hazard info

@@ -108,6 +108,12 @@
             <textarea name="sds__color_options" rows="5" style="font-size: 0.9rem;" placeholder="Black&#10;White&#10;Yellow&#10;Cyan&#10;Magenta&#10;Transparent&#10;Various"><?= e($settings['sds.color_options'] ?? '') ?></textarea>
         </div>
 
+        <h2>Net Weight Units</h2>
+        <p class="text-muted mb-1">Enter one unit per line. These appear as dropdown options for the net weight field on GHS labels.</p>
+        <div class="form-group">
+            <textarea name="label__net_weight_units" rows="5" style="font-size: 0.9rem;" placeholder="LBS&#10;OZ&#10;KG&#10;G&#10;GAL&#10;L&#10;ML&#10;FL OZ&#10;QT&#10;PT"><?= e($settings['label.net_weight_units'] ?? '') ?></textarea>
+        </div>
+
         <h2>Trade Secret Descriptions</h2>
         <p class="text-muted mb-1">Enter one trade secret description per line. These appear as dropdown options when marking a CAS constituent as a trade secret.</p>
         <div class="form-group">

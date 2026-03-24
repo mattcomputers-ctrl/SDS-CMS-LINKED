@@ -42,12 +42,25 @@
                 <small class="text-muted"><a href="/label-templates">Manage templates</a></small>
             </div>
 
-            <div class="form-group" style="flex: 1; min-width: 150px;">
-                <label for="net_weight">Net Weight</label>
-                <input type="text" name="net_weight" id="net_weight" class="input"
-                       placeholder="e.g. 5 LBS"
-                       maxlength="20">
-                <small class="text-muted">Optional (e.g. 5 LBS, 1 GAL)</small>
+            <div class="form-group" style="flex: 1; min-width: 200px;">
+                <label for="net_weight_value">Net Weight</label>
+                <div style="display: flex; gap: 0.5rem;">
+                    <input type="text" name="net_weight_value" id="net_weight_value" class="input"
+                           placeholder="e.g. 5" maxlength="10" inputmode="decimal"
+                           style="flex: 1; min-width: 80px;">
+                    <?php if (!empty($netWeightUnits)): ?>
+                    <select name="net_weight_unit" id="net_weight_unit" class="input" style="flex: 0 0 auto; min-width: 80px;">
+                        <option value="">—</option>
+                        <?php foreach ($netWeightUnits as $unit): ?>
+                            <option value="<?= e($unit) ?>"><?= e($unit) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <?php else: ?>
+                    <input type="text" name="net_weight_unit" id="net_weight_unit" class="input"
+                           placeholder="Unit" maxlength="10" style="flex: 0 0 80px;">
+                    <?php endif; ?>
+                </div>
+                <small class="text-muted">Optional<?php if (empty($netWeightUnits)): ?> — <a href="/admin/settings">configure units</a><?php endif; ?></small>
             </div>
 
             <div class="form-group" style="flex: 0 0 150px;">

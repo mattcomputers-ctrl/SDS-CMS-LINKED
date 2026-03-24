@@ -23,10 +23,19 @@ class LabelController
 
         $templates = LabelTemplate::all();
 
+        // Load net weight unit options from admin settings
+        $db = Database::getInstance();
+        $unitRow = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'label.net_weight_units'");
+        $netWeightUnits = [];
+        if ($unitRow && trim($unitRow['value']) !== '') {
+            $netWeightUnits = array_filter(array_map('trim', explode("\n", $unitRow['value'])), 'strlen');
+        }
+
         view('labels/index', [
-            'pageTitle'     => 'GHS Labels',
-            'finishedGoods' => $finishedGoods,
-            'templates'     => $templates,
+            'pageTitle'      => 'GHS Labels',
+            'finishedGoods'  => $finishedGoods,
+            'templates'      => $templates,
+            'netWeightUnits' => $netWeightUnits,
         ]);
     }
 
@@ -36,7 +45,9 @@ class LabelController
         $lotNumber      = trim($_POST['lot_number'] ?? '');
         $templateId     = (int) ($_POST['template_id'] ?? 0);
         $quantity        = max(1, (int) ($_POST['quantity'] ?? 1));
-        $netWeight       = trim($_POST['net_weight'] ?? '');
+        $netWeightValue  = trim($_POST['net_weight_value'] ?? '');
+        $netWeightUnit   = trim($_POST['net_weight_unit'] ?? '');
+        $netWeight       = $netWeightValue !== '' ? $netWeightValue . ($netWeightUnit !== '' ? ' ' . $netWeightUnit : '') : '';
         $privateLabel    = !empty($_POST['private_label']);
 
         // Validate finished good

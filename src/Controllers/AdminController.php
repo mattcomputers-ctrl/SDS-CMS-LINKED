@@ -1322,11 +1322,15 @@ class AdminController
     {
         $this->requireAdmin();
 
-        $backups = BackupService::listAll();
+        $backups   = BackupService::listAll();
+        $sections  = BackupService::SECTIONS;
+        $ftpConfig = BackupService::getFtpConfig();
 
         view('admin/backups', [
             'pageTitle' => 'Backup &amp; Restore',
             'backups'   => $backups,
+            'sections'  => $sections,
+            'ftpConfig' => $ftpConfig,
         ]);
     }
 
@@ -1335,7 +1339,8 @@ class AdminController
         $this->requireAdmin();
         CSRF::validateRequest();
 
-        $type  = in_array($_POST['backup_type'] ?? '', ['full', 'content'], true)
+        $validTypes = array_merge(['full'], array_keys(BackupService::SECTIONS));
+        $type  = in_array($_POST['backup_type'] ?? '', $validTypes, true)
                ? $_POST['backup_type']
                : 'full';
         $notes = trim($_POST['notes'] ?? '') ?: null;
@@ -1362,16 +1367,21 @@ class AdminController
         CSRF::validateRequest();
 
         if (empty($_POST['confirm_restore'])) {
-            $_SESSION['_flash']['error'] = 'You must check the confirmation box to restore a backup.';
+            $_SESSION['_flash']['error'] = 'You must confirm to restore a backup.';
             redirect('/admin/backups');
             return;
         }
 
         try {
             $result = BackupService::restore((int) $id, true);
-            AuditService::log('backup', $id, 'restore');
+            AuditService::log('backup', $id, 'restore', [
+                'type'            => $result['type'] ?? 'unknown',
+                'tables_restored' => $result['tables_restored'],
+            ]);
 
-            $_SESSION['_flash']['success'] = 'Backup restored successfully.'
+            $typeLabel = $result['type'] ?? 'unknown';
+            $sectionInfo = BackupService::SECTIONS[$typeLabel]['label'] ?? ucfirst(str_replace('_', ' ', $typeLabel));
+            $_SESSION['_flash']['success'] = "Backup restored successfully ({$sectionInfo})."
                 . ($result['files_restored'] ? ' Files were also restored.' : '');
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = 'Restore failed: ' . $e->getMessage();
@@ -1408,6 +1418,88 @@ class AdminController
         header('Content-Length: ' . filesize($path));
         readfile($path);
         exit;
+    }
+
+    public function saveFtpSettings(): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+
+        $config = [
+            'ftp_enabled'        => !empty($_POST['ftp_enabled']) ? '1' : '0',
+            'ftp_host'           => trim($_POST['ftp_host'] ?? ''),
+            'ftp_port'           => trim($_POST['ftp_port'] ?? '21'),
+            'ftp_username'       => trim($_POST['ftp_username'] ?? ''),
+            'ftp_password'       => $_POST['ftp_password'] ?? '',
+            'ftp_path'           => trim($_POST['ftp_path'] ?? ''),
+            'ftp_passive'        => !empty($_POST['ftp_passive']) ? '1' : '0',
+            'ftp_ssl'            => !empty($_POST['ftp_ssl']) ? '1' : '0',
+            'schedule_enabled'   => !empty($_POST['schedule_enabled']) ? '1' : '0',
+            'schedule_frequency' => in_array($_POST['schedule_frequency'] ?? '', ['daily', 'weekly', 'monthly'], true)
+                                     ? $_POST['schedule_frequency'] : 'daily',
+            'schedule_type'      => in_array($_POST['schedule_type'] ?? '', array_merge(['full'], array_keys(BackupService::SECTIONS)), true)
+                                     ? $_POST['schedule_type'] : 'full',
+            'schedule_time'      => preg_match('/^\d{2}:\d{2}$/', $_POST['schedule_time'] ?? '') ? $_POST['schedule_time'] : '02:00',
+            'schedule_retention' => max(1, min(100, (int) ($_POST['schedule_retention'] ?? 10))),
+        ];
+
+        BackupService::saveFtpConfig($config);
+        AuditService::log('backup_settings', 'ftp', 'update');
+        $_SESSION['_flash']['success'] = 'Backup schedule and FTP settings saved.';
+        redirect('/admin/backups');
+    }
+
+    public function testFtpConnection(): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+
+        $config = [
+            'ftp_host'     => trim($_POST['ftp_host'] ?? ''),
+            'ftp_port'     => trim($_POST['ftp_port'] ?? '21'),
+            'ftp_username' => trim($_POST['ftp_username'] ?? ''),
+            'ftp_password' => $_POST['ftp_password'] ?? '',
+            'ftp_path'     => trim($_POST['ftp_path'] ?? ''),
+            'ftp_passive'  => !empty($_POST['ftp_passive']) ? '1' : '0',
+            'ftp_ssl'      => !empty($_POST['ftp_ssl']) ? '1' : '0',
+        ];
+
+        $result = BackupService::testFtpConnection($config);
+
+        if ($result['success']) {
+            $_SESSION['_flash']['success'] = $result['message'];
+        } else {
+            $_SESSION['_flash']['error'] = $result['message'];
+        }
+
+        redirect('/admin/backups');
+    }
+
+    public function uploadBackupToFtp(string $id): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+
+        $path = BackupService::getFilePath((int) $id);
+        if ($path === null) {
+            $_SESSION['_flash']['error'] = 'Backup file not found.';
+            redirect('/admin/backups');
+            return;
+        }
+
+        $result = BackupService::uploadToFtp($path, basename($path));
+        AuditService::log('backup', $id, 'ftp_upload', [
+            'success' => $result['success'],
+            'message' => $result['message'],
+        ]);
+
+        if ($result['success']) {
+            $_SESSION['_flash']['success'] = $result['message'];
+        } else {
+            $_SESSION['_flash']['error'] = $result['message'];
+        }
+
+        redirect('/admin/backups');
     }
 
     private static function formatBytes(int $bytes): string

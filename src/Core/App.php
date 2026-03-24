@@ -272,11 +272,14 @@ class App
             $r->post('/sds-versions/{id}/restore', 'AdminController@restoreSdsVersion');
 
             // Backup & Restore
-            $r->get('/backups',                  'AdminController@backups');
-            $r->post('/backups/create',          'AdminController@createBackup');
-            $r->post('/backups/{id}/restore',    'AdminController@restoreBackup');
-            $r->post('/backups/{id}/delete',     'AdminController@deleteBackup');
-            $r->get('/backups/{id}/download',    'AdminController@downloadBackup');
+            $r->get('/backups',                   'AdminController@backups');
+            $r->post('/backups/create',           'AdminController@createBackup');
+            $r->post('/backups/{id}/restore',     'AdminController@restoreBackup');
+            $r->post('/backups/{id}/delete',      'AdminController@deleteBackup');
+            $r->get('/backups/{id}/download',     'AdminController@downloadBackup');
+            $r->post('/backups/ftp-settings',     'AdminController@saveFtpSettings');
+            $r->post('/backups/ftp-test',         'AdminController@testFtpConnection');
+            $r->post('/backups/{id}/ftp-upload',  'AdminController@uploadBackupToFtp');
 
             // Pictograms
             $r->get('/pictograms',               'AdminController@pictograms');

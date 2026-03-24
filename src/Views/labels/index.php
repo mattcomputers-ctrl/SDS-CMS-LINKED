@@ -17,8 +17,8 @@
             </select>
         </div>
 
-        <div class="form-row" style="display: flex; gap: 1rem; flex-wrap: wrap;">
-            <div class="form-group" style="flex: 1; min-width: 200px;">
+        <div class="form-row" style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <div class="form-group" style="flex: 0 0 140px;">
                 <label for="lot_number">Lot Number <span class="text-danger">*</span></label>
                 <input type="text" name="lot_number" id="lot_number" class="input" required
                        pattern="\d{1,12}" maxlength="12" inputmode="numeric"
@@ -27,7 +27,7 @@
                 <small class="text-muted">Up to 12 digits</small>
             </div>
 
-            <div class="form-group" style="flex: 1; min-width: 200px;">
+            <div class="form-group" style="flex: 1; min-width: 180px;">
                 <label for="template_id">Label Template <span class="text-danger">*</span></label>
                 <select name="template_id" id="template_id" class="input" required>
                     <?php foreach ($templates as $t): ?>
@@ -42,14 +42,14 @@
                 <small class="text-muted"><a href="/label-templates">Manage templates</a></small>
             </div>
 
-            <div class="form-group" style="flex: 0 0 200px;">
+            <div class="form-group" style="flex: 0 0 170px;">
                 <label for="net_weight_value">Net Weight</label>
-                <div style="display: flex; gap: 0.5rem;">
+                <div style="display: flex; gap: 0.35rem;">
                     <input type="text" name="net_weight_value" id="net_weight_value" class="input"
                            placeholder="e.g. 5" maxlength="10" inputmode="decimal"
-                           style="flex: 1; min-width: 60px;">
+                           style="flex: 1; min-width: 50px;">
                     <?php if (!empty($netWeightUnits)): ?>
-                    <select name="net_weight_unit" id="net_weight_unit" class="input" style="flex: 0 0 auto; min-width: 80px;">
+                    <select name="net_weight_unit" id="net_weight_unit" class="input" style="flex: 0 0 70px; width: 70px;">
                         <option value="">—</option>
                         <?php foreach ($netWeightUnits as $unit): ?>
                             <option value="<?= e($unit) ?>"><?= e($unit) ?></option>
@@ -57,13 +57,13 @@
                     </select>
                     <?php else: ?>
                     <input type="text" name="net_weight_unit" id="net_weight_unit" class="input"
-                           placeholder="Unit" maxlength="10" style="flex: 0 0 80px;">
+                           placeholder="Unit" maxlength="10" style="flex: 0 0 70px;">
                     <?php endif; ?>
                 </div>
                 <small class="text-muted">Optional<?php if (empty($netWeightUnits)): ?> — <a href="/admin/settings">configure units</a><?php endif; ?></small>
             </div>
 
-            <div class="form-group" style="flex: 0 0 150px;">
+            <div class="form-group" style="flex: 0 0 120px;">
                 <label for="sheets">Sheets</label>
                 <input type="number" name="sheets" id="sheets" class="input" value="1" min="1" max="500">
                 <small class="text-muted">Number of pages</small>

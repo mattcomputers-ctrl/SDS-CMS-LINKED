@@ -176,13 +176,13 @@ class LabelPDFService
             switch ($fieldType) {
                 case 'lot_item_code':
                     $fieldBold = !isset($pos['bold']) || !empty($pos['bold']);
-                    $this->renderLotItemCode($pdf, $fx, $fy, $fw, $fh, $fieldFont, $lotNumber, $itemCode, $fieldBold);
+                    $this->renderLotItemCode($pdf, $fx, $fy, $fw, $fh, $fieldFont, $lotNumber, $itemCode, $fieldBold, $labelX + $pad, $labelW - 2 * $pad);
                     break;
 
                 case 'net_weight':
                     if ($netWeight !== '') {
                         $fieldBold = !isset($pos['bold']) || !empty($pos['bold']);
-                        $this->renderNetWeight($pdf, $fx, $fy, $fw, $fh, $fieldFont, $netWeight, $fieldBold);
+                        $this->renderNetWeight($pdf, $fx, $fy, $fw, $fh, $fieldFont, $netWeight, $fieldBold, $labelX + $pad, $labelW - 2 * $pad);
                     }
                     break;
 
@@ -223,7 +223,7 @@ class LabelPDFService
 
     // ── Template-based field renderers ────────────────────────────────────
 
-    private function renderLotItemCode(\TCPDF $pdf, float $x, float $y, float $w, float $h, float $baseFontSize, string $lotNumber, string $itemCode, bool $bold = true): void
+    private function renderLotItemCode(\TCPDF $pdf, float $x, float $y, float $w, float $h, float $baseFontSize, string $lotNumber, string $itemCode, bool $bold = true, ?float $labelX = null, ?float $labelW = null): void
     {
         // Lot number with trailing item code
         $lotText = $lotNumber . $itemCode;
@@ -243,13 +243,15 @@ class LabelPDFService
         $pdf->SetXY($x + $prefixW, $y);
         $pdf->Cell($w - $prefixW, $h, $lotText, 0, 0, 'L', false, '', 0, false, 'T', 'C');
 
-        // Draw a clean divider line at the bottom
+        // Draw a divider line spanning the full label width
+        $lineX = $labelX ?? $x;
+        $lineW = $labelW ?? $w;
         $pdf->SetLineWidth(0.3);
-        $pdf->Line($x, $y + $h, $x + $w, $y + $h);
+        $pdf->Line($lineX, $y + $h, $lineX + $lineW, $y + $h);
         $pdf->SetLineWidth(0.2);
     }
 
-    private function renderNetWeight(\TCPDF $pdf, float $x, float $y, float $w, float $h, float $baseFontSize, string $netWeight, bool $bold = true): void
+    private function renderNetWeight(\TCPDF $pdf, float $x, float $y, float $w, float $h, float $baseFontSize, string $netWeight, bool $bold = true, ?float $labelX = null, ?float $labelW = null): void
     {
         // Net weight — right-aligned for at-a-glance reading
         $labelPrefix = 'NET WT: ';
@@ -277,9 +279,11 @@ class LabelPDFService
         $pdf->SetXY($startX + $prefixW, $y);
         $pdf->Cell($valueW, $h, $netWeight, 0, 0, 'L', false, '', 0, false, 'T', 'C');
 
-        // Draw matching divider line at the bottom
+        // Draw divider line spanning the full label width
+        $lineX = $labelX ?? $x;
+        $lineW = $labelW ?? $w;
         $pdf->SetLineWidth(0.3);
-        $pdf->Line($x, $y + $h, $x + $w, $y + $h);
+        $pdf->Line($lineX, $y + $h, $lineX + $lineW, $y + $h);
         $pdf->SetLineWidth(0.2);
     }
 

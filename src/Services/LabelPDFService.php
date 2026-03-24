@@ -377,23 +377,36 @@ class LabelPDFService
     {
         if (empty($statements)) return;
 
-        $text = $this->formatStatements($statements);
-        if ($text === '') return;
-
-        // Fit header + body into the field
         $headerSize = max(6.0, $baseFontSize);
-        $bodySize = $this->fitMultilineFontSize($pdf, $text, $w, $h - ($headerSize * 0.45), max(6.0, $baseFontSize));
-
         $headerH = $headerSize * 0.45;
+        $bodyH = $h - $headerH;
+        $bodyFontSize = max(6.0, $baseFontSize);
+
+        // Try fitting all statements; prioritize if they don't fit
+        $fullText = $this->formatStatements($statements);
+        if ($fullText === '') return;
+
+        $testSize = $this->fitMultilineFontSize($pdf, $fullText, $w, $bodyH, $bodyFontSize);
+
+        if ($testSize >= 6.0) {
+            $text = $fullText;
+            $bodySize = $testSize;
+        } else {
+            $seeMore = 'See SDS for more hazard statements.';
+            $text = $this->buildPrioritizedHStatements($pdf, $statements, $w, $bodyFontSize, $bodyH, $seeMore);
+            $bodySize = max(6.0, $this->fitMultilineFontSize($pdf, $text, $w, $bodyH, $bodyFontSize));
+        }
+
+        // Header
         $pdf->SetFont('helvetica', 'B', $headerSize);
         $pdf->SetXY($x, $y);
         $pdf->Cell($w, $headerH, $header, 0, 0, 'L');
 
+        // Body
         $pdf->SetFont('helvetica', '', $bodySize);
-        $pdf->SetXY($x, $y + $headerH);
-        $bodyH = $h - $headerH;
         $lineH = $bodySize * 0.42;
-        $pdf->MultiCell($w, $lineH, $text, 0, 'L', false, 1, $x, $y + $headerH, true, 0, false, true, $bodyH, 'T', true);
+        $pdf->SetXY($x, $y + $headerH);
+        $pdf->MultiCell($w, $lineH, $text, 0, 'L', false, 1, $x, $y + $headerH, true, 0, false, true, max(0, $bodyH), 'T', true);
     }
 
     private function renderPStatements(\TCPDF $pdf, float $x, float $y, float $w, float $h, float $baseFontSize, array $pStatements): void
@@ -656,16 +669,27 @@ class LabelPDFService
 
         // ── Hazard Statements ──
         $maxBottom = $y + $h - $pad;
-        $hText = $this->formatStatements($hStatements);
+        $hTextFull = $this->formatStatements($hStatements);
 
         $supplierH = $privateLabel ? 0 : ($isBig ? 6 : 5);
         $availH = $maxBottom - $curY - $supplierH - 1;
 
-        if ($hText !== '') {
+        if ($hTextFull !== '') {
+            $headerH = $isBig ? 2.5 : 2;
+            $hSpaceForText = $availH - $headerH - 0.5;
+            $hFullNeeded = $this->getTextHeight($pdf, $hTextFull, $innerW, $tinySize);
+
+            if ($hFullNeeded <= $hSpaceForText) {
+                $hText = $hTextFull;
+            } else {
+                $seeMore = 'See SDS for more hazard statements.';
+                $hText = $this->buildPrioritizedHStatements($pdf, $hStatements, $innerW, $tinySize, $hSpaceForText, $seeMore);
+            }
+
             $pdf->SetFont('helvetica', 'B', $tinySize);
             $pdf->SetXY($innerX, $curY);
-            $pdf->Cell($innerW, $isBig ? 2.5 : 2, 'Hazard Statements:', 0, 0, 'L');
-            $curY += $isBig ? 2.5 : 2;
+            $pdf->Cell($innerW, $headerH, 'Hazard Statements:', 0, 0, 'L');
+            $curY += $headerH;
 
             $pdf->SetFont('helvetica', '', $tinySize);
             $pdf->SetXY($innerX, $curY);
@@ -766,6 +790,48 @@ class LabelPDFService
             $text = substr($text, 0, -4) . '...';
             $textWidth = $pdf->GetStringWidth($text);
         }
+        return $text;
+    }
+
+    private function buildPrioritizedHStatements(\TCPDF $pdf, array $hStatements, float $width, float $fontSize, float $maxHeight, string $truncationNotice = ''): string
+    {
+        $priority = [];
+        $secondary = [];
+
+        foreach ($hStatements as $stmt) {
+            $code = $stmt['code'] ?? '';
+            $num = (int) substr($code, 1);
+            // Prioritize health hazards (H300-H399) and physical hazards (H200-H299)
+            if ($num >= 200 && $num < 400) {
+                $priority[] = $stmt;
+            } else {
+                $secondary[] = $stmt;
+            }
+        }
+
+        $ordered = array_merge($priority, $secondary);
+        $included = [];
+        $wasTruncated = false;
+
+        foreach ($ordered as $stmt) {
+            $candidate = array_merge($included, [$stmt]);
+            $candidateText = $this->formatStatements($candidate);
+            if ($truncationNotice !== '') {
+                $candidateText .= ' ' . $truncationNotice;
+            }
+            $needed = $this->getTextHeight($pdf, $candidateText, $width, $fontSize);
+            if ($needed > $maxHeight && count($included) > 0) {
+                $wasTruncated = true;
+                break;
+            }
+            $included[] = $stmt;
+        }
+
+        $text = $this->formatStatements($included);
+        if ($wasTruncated && $truncationNotice !== '') {
+            $text .= ' ' . $truncationNotice;
+        }
+
         return $text;
     }
 

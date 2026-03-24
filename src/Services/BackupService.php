@@ -52,6 +52,14 @@ class BackupService
             ],
             'files' => ['uploads/pictograms', 'uploads/logos'],
         ],
+        'label_templates' => [
+            'label'  => 'Label Templates',
+            'desc'   => 'All label templates (layout, dimensions, field configuration).',
+            'tables' => [
+                'label_templates',
+            ],
+            'files' => [],
+        ],
         'sds_history' => [
             'label'  => 'SDS History',
             'desc'   => 'All published/draft SDS versions, generation traces, text overrides, and generated PDFs.',

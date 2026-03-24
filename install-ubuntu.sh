@@ -474,8 +474,6 @@ return [
     ],
 
     'cron' => [
-        'federal_refresh_hours' => 168,
-        'sara_refresh_hours'    => 168,
         'log_retention_days'    => 365,
     ],
 ];
@@ -598,8 +596,8 @@ else
     print_warn "Seed data loader not found. Skipping."
 fi
 
-print_info "Live federal data can be refreshed later via Admin > Data Sources"
-print_info "or by running: php cron/refresh-federal.php"
+print_info "Federal data can be refreshed manually via Admin > Data Sources"
+print_info "or by running: php scripts/refresh-federal-data.php"
 
 # ============================================================
 # Step 8: Configure Apache
@@ -667,12 +665,8 @@ print_header "Step 9: Setting Up Cron Jobs"
 
 print_step "Installing crontab for www-data..."
 
-# Build cron entries
+# Build cron entries (federal data refresh removed — run manually via scripts/refresh-federal-data.php)
 CRON_ENTRIES="# SDS System — Automated maintenance tasks
-# Federal data refresh (weekly, Sunday 2:00 AM)
-0 2 * * 0 cd $INSTALL_DIR && /usr/bin/php cron/refresh-federal.php >> storage/logs/cron-federal.log 2>&1
-# SARA 313 data refresh (weekly, Sunday 2:30 AM)
-30 2 * * 0 cd $INSTALL_DIR && /usr/bin/php cron/refresh-sara.php >> storage/logs/cron-sara.log 2>&1
 # Housekeeping: purge old logs, temp files (daily, 4:00 AM)
 0 4 * * * cd $INSTALL_DIR && /usr/bin/php cron/housekeeping.php >> storage/logs/cron-housekeeping.log 2>&1"
 
@@ -680,8 +674,6 @@ CRON_ENTRIES="# SDS System — Automated maintenance tasks
 ( crontab -u www-data -l 2>/dev/null | grep -v 'SDS System' | grep -v 'refresh-federal' | grep -v 'refresh-sara' | grep -v 'housekeeping'; echo "$CRON_ENTRIES" ) | crontab -u www-data - 2>/dev/null
 
 print_success "Cron jobs installed for www-data."
-print_info "  Weekly:  Federal data refresh  (Sun 2:00 AM)"
-print_info "  Weekly:  SARA 313 refresh      (Sun 2:30 AM)"
 print_info "  Daily:   Housekeeping           (4:00 AM)"
 
 # ============================================================

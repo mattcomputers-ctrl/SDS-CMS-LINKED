@@ -71,12 +71,14 @@ class User
      * Return a paginated list of users.
      *
      * Supported $filters keys:
-     *   - is_active  (int)     0 or 1
-     *   - search     (string)  partial match on username, email, display_name
-     *   - page       (int)     page number, default 1
-     *   - per_page   (int)     rows per page, default 25
-     *   - sort       (string)  column name, default 'username'
-     *   - dir        (string)  'asc' or 'desc', default 'asc'
+     *   - is_active        (int)     0 or 1
+     *   - search           (string)  partial match on username, email, display_name
+     *   - page             (int)     page number, default 1 (offset-based, ignored when keyset is used)
+     *   - per_page         (int)     rows per page, default 25
+     *   - sort             (string)  column name, default 'username'
+     *   - dir              (string)  'asc' or 'desc', default 'asc'
+     *   - after_id         (int)     keyset pagination: last row's id
+     *   - after_sort_value (string)  keyset pagination: last row's sort column value
      *
      * @return array  List of user rows (password_hash excluded).
      */
@@ -99,24 +101,45 @@ class User
             $params[] = $term;
         }
 
-        $whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
-
         $allowedSorts = ['id', 'username', 'email', 'display_name', 'created_at', 'last_login'];
         $sort = in_array($filters['sort'] ?? '', $allowedSorts, true)
             ? $filters['sort']
             : 'username';
         $dir = strtolower($filters['dir'] ?? 'asc') === 'desc' ? 'DESC' : 'ASC';
 
-        $page    = max(1, (int) ($filters['page'] ?? 1));
         $perPage = max(1, min(100, (int) ($filters['per_page'] ?? 25)));
-        $offset  = ($page - 1) * $perPage;
 
-        $sql = "SELECT id, username, email, display_name, is_active,
-                       created_at, updated_at, last_login
-                FROM users
-                {$whereSQL}
-                ORDER BY `{$sort}` {$dir}
-                LIMIT {$perPage} OFFSET {$offset}";
+        // Keyset pagination: use (sort_col, id) cursor when provided
+        $afterId        = isset($filters['after_id']) ? (int) $filters['after_id'] : null;
+        $afterSortValue = $filters['after_sort_value'] ?? null;
+
+        if ($afterId !== null && $afterSortValue !== null) {
+            $cmp = $dir === 'ASC' ? '>' : '<';
+            $where[]  = "(`{$sort}`, id) {$cmp} (?, ?)";
+            $params[] = $afterSortValue;
+            $params[] = $afterId;
+        }
+
+        $whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+
+        if ($afterId !== null && $afterSortValue !== null) {
+            $sql = "SELECT id, username, email, display_name, is_active,
+                           created_at, updated_at, last_login
+                    FROM users
+                    {$whereSQL}
+                    ORDER BY `{$sort}` {$dir}, id {$dir}
+                    LIMIT {$perPage}";
+        } else {
+            $page   = max(1, (int) ($filters['page'] ?? 1));
+            $offset = ($page - 1) * $perPage;
+
+            $sql = "SELECT id, username, email, display_name, is_active,
+                           created_at, updated_at, last_login
+                    FROM users
+                    {$whereSQL}
+                    ORDER BY `{$sort}` {$dir}, id {$dir}
+                    LIMIT {$perPage} OFFSET {$offset}";
+        }
 
         return $db->fetchAll($sql, $params);
     }

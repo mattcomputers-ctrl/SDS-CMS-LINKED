@@ -62,12 +62,14 @@ class RawMaterial
      * Return a paginated list of raw materials.
      *
      * Supported $filters:
-     *   - search     (string)  partial match on internal_code, supplier, supplier_product_name
-     *   - supplier   (string)  exact supplier match
-     *   - page       (int)     default 1
-     *   - per_page   (int)     default 25, max 100
-     *   - sort       (string)  column name, default 'internal_code'
-     *   - dir        (string)  'asc' or 'desc', default 'asc'
+     *   - search           (string)  partial match on internal_code, supplier, supplier_product_name
+     *   - supplier         (string)  exact supplier match
+     *   - page             (int)     default 1 (offset-based, ignored when keyset is used)
+     *   - per_page         (int)     default 25, max 100
+     *   - sort             (string)  column name, default 'internal_code'
+     *   - dir              (string)  'asc' or 'desc', default 'asc'
+     *   - after_id         (int)     keyset pagination: last row's id
+     *   - after_sort_value (string)  keyset pagination: last row's sort column value
      */
     public static function all(array $filters = []): array
     {
@@ -89,8 +91,6 @@ class RawMaterial
             $params[] = $filters['supplier'];
         }
 
-        $whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
-
         $allowedSorts = [
             'id', 'internal_code', 'supplier', 'supplier_product_name',
             'created_at', 'updated_at',
@@ -100,16 +100,39 @@ class RawMaterial
             : 'internal_code';
         $dir = strtolower($filters['dir'] ?? 'asc') === 'desc' ? 'DESC' : 'ASC';
 
-        $page    = max(1, (int) ($filters['page'] ?? 1));
         $perPage = max(1, min(100, (int) ($filters['per_page'] ?? 25)));
-        $offset  = ($page - 1) * $perPage;
 
-        $sql = "SELECT rm.*, u.display_name AS created_by_name
-                FROM raw_materials rm
-                LEFT JOIN users u ON u.id = rm.created_by
-                {$whereSQL}
-                ORDER BY rm.`{$sort}` {$dir}
-                LIMIT {$perPage} OFFSET {$offset}";
+        // Keyset pagination: use (sort_col, id) cursor when provided
+        $afterId        = isset($filters['after_id']) ? (int) $filters['after_id'] : null;
+        $afterSortValue = $filters['after_sort_value'] ?? null;
+
+        if ($afterId !== null && $afterSortValue !== null) {
+            $cmp = $dir === 'ASC' ? '>' : '<';
+            $where[]  = "(rm.`{$sort}`, rm.id) {$cmp} (?, ?)";
+            $params[] = $afterSortValue;
+            $params[] = $afterId;
+        }
+
+        $whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+
+        if ($afterId !== null && $afterSortValue !== null) {
+            $sql = "SELECT rm.*, u.display_name AS created_by_name
+                    FROM raw_materials rm
+                    LEFT JOIN users u ON u.id = rm.created_by
+                    {$whereSQL}
+                    ORDER BY rm.`{$sort}` {$dir}, rm.id {$dir}
+                    LIMIT {$perPage}";
+        } else {
+            $page   = max(1, (int) ($filters['page'] ?? 1));
+            $offset = ($page - 1) * $perPage;
+
+            $sql = "SELECT rm.*, u.display_name AS created_by_name
+                    FROM raw_materials rm
+                    LEFT JOIN users u ON u.id = rm.created_by
+                    {$whereSQL}
+                    ORDER BY rm.`{$sort}` {$dir}, rm.id {$dir}
+                    LIMIT {$perPage} OFFSET {$offset}";
+        }
 
         return $db->fetchAll($sql, $params);
     }

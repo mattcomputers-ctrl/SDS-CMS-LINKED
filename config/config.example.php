@@ -86,8 +86,6 @@ return [
     ],
 
     'cron' => [
-        'federal_refresh_hours' => 168,  // Weekly
-        'sara_refresh_hours'    => 168,
         'log_retention_days'    => 365,
     ],
 ];

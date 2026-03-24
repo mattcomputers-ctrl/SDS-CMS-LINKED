@@ -128,9 +128,8 @@
             <textarea name="sds__report_disclaimer" rows="4" style="font-size: 0.9rem;"><?= e($settings['sds.report_disclaimer'] ?? '') ?></textarea>
         </div>
 
-        <h2>Data Refresh</h2>
+        <h2>Maintenance</h2>
         <div class="form-grid-2col">
-            <div class="form-group"><label>Federal Refresh Interval (hours)</label><input type="number" name="cron__federal_refresh_hours" value="<?= e($settings['cron.federal_refresh_hours'] ?? '168') ?>"></div>
             <div class="form-group"><label>Audit Log Retention (days)</label><input type="number" name="cron__log_retention_days" value="<?= e($settings['cron.log_retention_days'] ?? '365') ?>"></div>
         </div>
 

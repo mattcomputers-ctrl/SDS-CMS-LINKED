@@ -53,13 +53,15 @@ class FinishedGood
      * Return a paginated list of finished goods.
      *
      * Supported $filters:
-     *   - search     (string)  partial match on product_code, description
-     *   - family     (string)  exact match on family
-     *   - is_active  (int)     0 or 1
-     *   - page       (int)     default 1
-     *   - per_page   (int)     default 25, max 100
-     *   - sort       (string)  column name, default 'product_code'
-     *   - dir        (string)  'asc' or 'desc', default 'asc'
+     *   - search           (string)  partial match on product_code, description
+     *   - family           (string)  exact match on family
+     *   - is_active        (int)     0 or 1
+     *   - page             (int)     default 1 (offset-based, ignored when keyset is used)
+     *   - per_page         (int)     default 25, max 100
+     *   - sort             (string)  column name, default 'product_code'
+     *   - dir              (string)  'asc' or 'desc', default 'asc'
+     *   - after_id         (int)     keyset pagination: last row's id
+     *   - after_sort_value (string)  keyset pagination: last row's sort column value
      */
     public static function all(array $filters = []): array
     {
@@ -85,24 +87,46 @@ class FinishedGood
             $params[] = (int) $filters['is_active'];
         }
 
-        $whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
-
         $allowedSorts = ['id', 'product_code', 'description', 'family', 'created_at', 'updated_at'];
         $sort = in_array($filters['sort'] ?? '', $allowedSorts, true)
             ? $filters['sort']
             : 'product_code';
         $dir = strtolower($filters['dir'] ?? 'asc') === 'desc' ? 'DESC' : 'ASC';
 
-        $page    = max(1, (int) ($filters['page'] ?? 1));
         $perPage = max(1, min(100, (int) ($filters['per_page'] ?? 25)));
-        $offset  = ($page - 1) * $perPage;
 
-        $sql = "SELECT fg.*, u.display_name AS created_by_name
-                FROM finished_goods fg
-                LEFT JOIN users u ON u.id = fg.created_by
-                {$whereSQL}
-                ORDER BY fg.`{$sort}` {$dir}
-                LIMIT {$perPage} OFFSET {$offset}";
+        // Keyset pagination: use (sort_col, id) cursor when provided
+        $afterId        = isset($filters['after_id']) ? (int) $filters['after_id'] : null;
+        $afterSortValue = $filters['after_sort_value'] ?? null;
+
+        if ($afterId !== null && $afterSortValue !== null) {
+            $cmp = $dir === 'ASC' ? '>' : '<';
+            $where[]  = "(fg.`{$sort}`, fg.id) {$cmp} (?, ?)";
+            $params[] = $afterSortValue;
+            $params[] = $afterId;
+        }
+
+        $whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+
+        // When using keyset pagination, no OFFSET is needed
+        if ($afterId !== null && $afterSortValue !== null) {
+            $sql = "SELECT fg.*, u.display_name AS created_by_name
+                    FROM finished_goods fg
+                    LEFT JOIN users u ON u.id = fg.created_by
+                    {$whereSQL}
+                    ORDER BY fg.`{$sort}` {$dir}, fg.id {$dir}
+                    LIMIT {$perPage}";
+        } else {
+            $page   = max(1, (int) ($filters['page'] ?? 1));
+            $offset = ($page - 1) * $perPage;
+
+            $sql = "SELECT fg.*, u.display_name AS created_by_name
+                    FROM finished_goods fg
+                    LEFT JOIN users u ON u.id = fg.created_by
+                    {$whereSQL}
+                    ORDER BY fg.`{$sort}` {$dir}, fg.id {$dir}
+                    LIMIT {$perPage} OFFSET {$offset}";
+        }
 
         return $db->fetchAll($sql, $params);
     }

@@ -109,6 +109,28 @@ class FormulaCalcService
     {
         $enriched = [];
 
+        // Batch-fetch all raw materials needed by this level's lines
+        $rmIds = [];
+        foreach ($lines as $line) {
+            if (($line['line_type'] ?? 'raw_material') === 'raw_material') {
+                $rmId = (int) ($line['raw_material_id'] ?? 0);
+                if ($rmId > 0) {
+                    $rmIds[] = $rmId;
+                }
+            }
+        }
+
+        $rmCache = [];
+        if (!empty($rmIds)) {
+            $rmIds = array_unique($rmIds);
+            foreach ($rmIds as $id) {
+                $rm = RawMaterial::findById($id);
+                if ($rm !== null) {
+                    $rmCache[$id] = $rm;
+                }
+            }
+        }
+
         foreach ($lines as $line) {
             $lineType = $line['line_type'] ?? 'raw_material';
 
@@ -153,7 +175,7 @@ class FormulaCalcService
 
             // --- Raw Material line ---
             $rmId = (int) $line['raw_material_id'];
-            $rm   = RawMaterial::findById($rmId);
+            $rm   = $rmCache[$rmId] ?? null;
 
             if ($rm === null) {
                 $warnings[] = "Raw material #{$rmId} not found; skipped.";

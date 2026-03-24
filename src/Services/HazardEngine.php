@@ -89,6 +89,46 @@ class HazardEngine
             'component_count' => count($composition),
         ]);
 
+        // Batch-load all hazard classifications and exposure limits upfront
+        // to avoid N+1 queries (one per CAS number).
+        $casNumbers = [];
+        foreach ($composition as $component) {
+            if ((float) $component['concentration_pct'] >= 0.01) {
+                $casNumbers[] = $component['cas_number'];
+            }
+        }
+        $casNumbers = array_unique($casNumbers);
+
+        $hazardByCas = [];
+        $limitsByCas = [];
+
+        if (!empty($casNumbers)) {
+            $placeholders = implode(',', array_fill(0, count($casNumbers), '?'));
+
+            $allHazardRows = $db->fetchAll(
+                "SELECT hc.*
+                 FROM hazard_classifications hc
+                 JOIN hazard_source_records hsr ON hsr.id = hc.hazard_source_record_id
+                 WHERE hc.cas_number IN ({$placeholders}) AND hsr.is_current = 1
+                 ORDER BY hsr.retrieved_at DESC",
+                $casNumbers
+            );
+            foreach ($allHazardRows as $row) {
+                $hazardByCas[$row['cas_number']][] = $row;
+            }
+
+            $allLimitRows = $db->fetchAll(
+                "SELECT el.*
+                 FROM exposure_limits el
+                 JOIN hazard_source_records hsr ON hsr.id = el.hazard_source_record_id
+                 WHERE el.cas_number IN ({$placeholders}) AND hsr.is_current = 1",
+                $casNumbers
+            );
+            foreach ($allLimitRows as $row) {
+                $limitsByCas[$row['cas_number']][] = $row;
+            }
+        }
+
         foreach ($composition as $component) {
             $cas  = $component['cas_number'];
             $conc = (float) $component['concentration_pct'];
@@ -99,24 +139,11 @@ class HazardEngine
                 continue;
             }
 
-            // Look up hazard data from cached federal source records
-            $hazardData = $db->fetchAll(
-                "SELECT hc.*
-                 FROM hazard_classifications hc
-                 JOIN hazard_source_records hsr ON hsr.id = hc.hazard_source_record_id
-                 WHERE hc.cas_number = ? AND hsr.is_current = 1
-                 ORDER BY hsr.retrieved_at DESC",
-                [$cas]
-            );
+            // Look up hazard data from pre-fetched batch results
+            $hazardData = $hazardByCas[$cas] ?? [];
 
-            // Exposure limits
-            $limits = $db->fetchAll(
-                "SELECT el.*
-                 FROM exposure_limits el
-                 JOIN hazard_source_records hsr ON hsr.id = el.hazard_source_record_id
-                 WHERE el.cas_number = ? AND hsr.is_current = 1",
-                [$cas]
-            );
+            // Exposure limits from pre-fetched batch results
+            $limits = $limitsByCas[$cas] ?? [];
 
             foreach ($limits as $limit) {
                 $entry = [

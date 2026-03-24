@@ -24,8 +24,14 @@ class ExportController
     /** Export files older than this are auto-deleted (seconds). */
     public const EXPORT_TTL_SECONDS = 7200; // 2 hours
 
+    /** Page size for paginated export queries. */
+    private const EXPORT_QUERY_PAGE_SIZE = 500;
+
     /**
      * GET /sds-book/export — Stream a ZIP of all finished-good SDS PDFs (legacy).
+     *
+     * Paginates the DB query to avoid loading all rows at once, then streams
+     * the completed ZIP to the client as a single download.
      */
     public function exportAllFgSds(): void
     {
@@ -35,24 +41,6 @@ class ExportController
         }
 
         $db = Database::getInstance();
-
-        $versions = $db->fetchAll(
-            "SELECT sv.id, sv.version, sv.language, sv.pdf_path,
-                    fg.product_code
-             FROM sds_versions sv
-             JOIN finished_goods fg ON fg.id = sv.finished_good_id
-             WHERE sv.status = 'published'
-               AND sv.is_deleted = 0
-               AND sv.pdf_path IS NOT NULL
-               AND sv.pdf_path != ''
-             ORDER BY fg.product_code ASC, sv.language ASC, sv.version DESC"
-        );
-
-        if (empty($versions)) {
-            $_SESSION['_flash']['warning'] = 'No published SDS PDFs found to export.';
-            redirect('/sds-book');
-        }
-
         $basePath = App::basePath();
 
         $tempZip = tempnam(sys_get_temp_dir(), 'sds_export_') . '.zip';
@@ -65,30 +53,54 @@ class ExportController
 
         $addedFiles = 0;
         $seen = [];
+        $lastId = 0;
 
-        foreach ($versions as $v) {
-            $pdfFullPath = $basePath . '/' . ltrim($v['pdf_path'], '/');
+        // Paginate through SDS versions using keyset pagination on sv.id
+        while (true) {
+            $versions = $db->fetchAll(
+                "SELECT sv.id, sv.version, sv.language, sv.pdf_path,
+                        fg.product_code
+                 FROM sds_versions sv
+                 JOIN finished_goods fg ON fg.id = sv.finished_good_id
+                 WHERE sv.status = 'published'
+                   AND sv.is_deleted = 0
+                   AND sv.pdf_path IS NOT NULL
+                   AND sv.pdf_path != ''
+                   AND sv.id > ?
+                 ORDER BY sv.id ASC
+                 LIMIT " . self::EXPORT_QUERY_PAGE_SIZE,
+                [$lastId]
+            );
 
-            if (!file_exists($pdfFullPath)) {
-                continue;
+            if (empty($versions)) {
+                break;
             }
 
-            $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $v['product_code']);
-            $zipName  = $safeCode . '-SDS' . $v['version'];
+            foreach ($versions as $v) {
+                $lastId = (int) $v['id'];
+                $pdfFullPath = $basePath . '/' . ltrim($v['pdf_path'], '/');
 
-            if (strtolower($v['language']) !== 'en') {
-                $zipName .= '_' . strtoupper($v['language']);
+                if (!file_exists($pdfFullPath)) {
+                    continue;
+                }
+
+                $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $v['product_code']);
+                $zipName  = $safeCode . '-SDS' . $v['version'];
+
+                if (strtolower($v['language']) !== 'en') {
+                    $zipName .= '_' . strtoupper($v['language']);
+                }
+
+                $zipName .= '.pdf';
+
+                if (isset($seen[$zipName])) {
+                    continue;
+                }
+                $seen[$zipName] = true;
+
+                $zip->addFile($pdfFullPath, $zipName);
+                $addedFiles++;
             }
-
-            $zipName .= '.pdf';
-
-            if (isset($seen[$zipName])) {
-                continue;
-            }
-            $seen[$zipName] = true;
-
-            $zip->addFile($pdfFullPath, $zipName);
-            $addedFiles++;
         }
 
         $zip->close();
@@ -106,7 +118,13 @@ class ExportController
         header('Content-Length: ' . filesize($tempZip));
         header('Cache-Control: no-cache, must-revalidate');
 
-        readfile($tempZip);
+        // Stream the ZIP in 8 KB chunks instead of loading it all into memory
+        $fh = fopen($tempZip, 'rb');
+        while (!feof($fh)) {
+            echo fread($fh, 8192);
+            flush();
+        }
+        fclose($fh);
         unlink($tempZip);
         exit;
     }
@@ -180,11 +198,10 @@ class ExportController
         $db = Database::getInstance();
         $basePath = App::basePath();
 
-        // Get the most recent published version per finished good per language
-        $versions = $db->fetchAll(
-            "SELECT sv.id, sv.version, sv.language, sv.pdf_path, fg.product_code
+        // Count total published PDFs for progress tracking
+        $countRow = $db->fetch(
+            "SELECT COUNT(*) AS cnt
              FROM sds_versions sv
-             JOIN finished_goods fg ON fg.id = sv.finished_good_id
              INNER JOIN (
                  SELECT finished_good_id, language, MAX(version) AS max_ver
                  FROM sds_versions
@@ -195,11 +212,11 @@ class ExportController
                       AND sv.language = latest.language
                       AND sv.version = latest.max_ver
                       AND sv.status = 'published'
-                      AND sv.is_deleted = 0
-             ORDER BY fg.product_code ASC, sv.language ASC"
+                      AND sv.is_deleted = 0"
         );
+        $totalFiles = (int) ($countRow['cnt'] ?? 0);
 
-        if (empty($versions)) {
+        if ($totalFiles === 0) {
             $this->jsonResponse(['error' => 'No published SDS PDFs found to export.']);
             return;
         }
@@ -218,7 +235,6 @@ class ExportController
         $progressFile = $exportDir . '/progress_' . $token . '.json';
         $zipFile = $exportDir . '/SDS_Export_' . date('Y-m-d_His') . '.zip';
 
-        $totalFiles = count($versions);
         $this->writeProgress($progressFile, 0, $totalFiles, 'Starting export...');
 
         // Flush JSON response immediately so the browser can start polling
@@ -241,35 +257,67 @@ class ExportController
 
         $addedFiles = 0;
         $seen = [];
+        $processed = 0;
+        $lastId = 0;
 
-        foreach ($versions as $i => $v) {
-            $pdfFullPath = $basePath . '/' . ltrim($v['pdf_path'], '/');
+        // Paginate through SDS versions to avoid loading all rows at once
+        while (true) {
+            $versions = $db->fetchAll(
+                "SELECT sv.id, sv.version, sv.language, sv.pdf_path, fg.product_code
+                 FROM sds_versions sv
+                 JOIN finished_goods fg ON fg.id = sv.finished_good_id
+                 INNER JOIN (
+                     SELECT finished_good_id, language, MAX(version) AS max_ver
+                     FROM sds_versions
+                     WHERE status = 'published' AND is_deleted = 0
+                       AND pdf_path IS NOT NULL AND pdf_path != ''
+                     GROUP BY finished_good_id, language
+                 ) latest ON sv.finished_good_id = latest.finished_good_id
+                          AND sv.language = latest.language
+                          AND sv.version = latest.max_ver
+                          AND sv.status = 'published'
+                          AND sv.is_deleted = 0
+                 WHERE sv.id > ?
+                 ORDER BY sv.id ASC
+                 LIMIT " . self::EXPORT_QUERY_PAGE_SIZE,
+                [$lastId]
+            );
 
-            if (!file_exists($pdfFullPath)) {
-                $this->writeProgress($progressFile, $i + 1, $totalFiles,
-                    'Skipped: ' . $v['product_code'] . ' (' . strtoupper($v['language']) . ') — file missing');
-                continue;
+            if (empty($versions)) {
+                break;
             }
 
-            $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $v['product_code']);
-            $zipName = $safeCode . '-SDS' . $v['version'];
+            foreach ($versions as $v) {
+                $lastId = (int) $v['id'];
+                $processed++;
+                $pdfFullPath = $basePath . '/' . ltrim($v['pdf_path'], '/');
 
-            if (strtolower($v['language']) !== 'en') {
-                $zipName .= '_' . strtoupper($v['language']);
+                if (!file_exists($pdfFullPath)) {
+                    $this->writeProgress($progressFile, $processed, $totalFiles,
+                        'Skipped: ' . $v['product_code'] . ' (' . strtoupper($v['language']) . ') — file missing');
+                    continue;
+                }
+
+                $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $v['product_code']);
+                $zipName = $safeCode . '-SDS' . $v['version'];
+
+                if (strtolower($v['language']) !== 'en') {
+                    $zipName .= '_' . strtoupper($v['language']);
+                }
+
+                $zipName .= '.pdf';
+
+                if (isset($seen[$zipName])) {
+                    continue;
+                }
+                $seen[$zipName] = true;
+
+                $zip->addFile($pdfFullPath, $zipName);
+                $addedFiles++;
+
+                $this->writeProgress($progressFile, $processed, $totalFiles,
+                    'Added: ' . $v['product_code'] . ' (' . strtoupper($v['language']) . ')');
             }
-
-            $zipName .= '.pdf';
-
-            if (isset($seen[$zipName])) {
-                continue;
-            }
-            $seen[$zipName] = true;
-
-            $zip->addFile($pdfFullPath, $zipName);
-            $addedFiles++;
-
-            $this->writeProgress($progressFile, $i + 1, $totalFiles,
-                'Added: ' . $v['product_code'] . ' (' . strtoupper($v['language']) . ')');
         }
 
         $zip->close();

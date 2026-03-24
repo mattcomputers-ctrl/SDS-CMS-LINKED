@@ -349,6 +349,29 @@ class Formula
             [$formulaId]
         );
 
+        // Batch-fetch current formula IDs for all FG components at once
+        $fgCompIds = [];
+        foreach ($fgLines as $fgLine) {
+            $compFgId = (int) $fgLine['finished_good_component_id'];
+            if (!in_array($compFgId, $ancestorFgIds, true)) {
+                $fgCompIds[] = $compFgId;
+            }
+        }
+
+        $compFormulaMap = [];
+        if (!empty($fgCompIds)) {
+            $fgCompIds = array_unique($fgCompIds);
+            $placeholders = implode(',', array_fill(0, count($fgCompIds), '?'));
+            $compFormulaRows = $db->fetchAll(
+                "SELECT id, finished_good_id FROM formulas
+                 WHERE finished_good_id IN ({$placeholders}) AND is_current = 1",
+                array_values($fgCompIds)
+            );
+            foreach ($compFormulaRows as $cfr) {
+                $compFormulaMap[(int) $cfr['finished_good_id']] = (int) $cfr['id'];
+            }
+        }
+
         foreach ($fgLines as $fgLine) {
             $compFgId = (int) $fgLine['finished_good_component_id'];
 
@@ -357,13 +380,10 @@ class Formula
                 continue;
             }
 
-            // Find the component's current formula
-            $compFormula = $db->fetch(
-                "SELECT id FROM formulas WHERE finished_good_id = ? AND is_current = 1 LIMIT 1",
-                [$compFgId]
-            );
+            // Find the component's current formula from batch-fetched map
+            $compFormulaId = $compFormulaMap[$compFgId] ?? null;
 
-            if (!$compFormula) {
+            if ($compFormulaId === null) {
                 continue; // No formula defined for this component
             }
 
@@ -371,7 +391,7 @@ class Formula
             $subScale = $scaleFactor * (float) $fgLine['line_pct'] / 100.0;
             $subAncestors = array_merge($ancestorFgIds, [$thisFgId]);
             $subComposition = self::getExpandedComposition(
-                (int) $compFormula['id'],
+                $compFormulaId,
                 $subScale,
                 $subAncestors
             );

@@ -305,11 +305,12 @@ class LabelPDFService
         $pdf->SetXY($ix + $textOffsetX, $iy);
         $pdf->Cell($iw - $textOffsetX, $headerH, 'WARNING:', 0, 0, 'L');
 
-        // Warning body text — fixed 6pt, starts below WARNING: and to the right of the pictogram
-        $bodyY = $iy + $headerH + 0.3;
-        $bodyH = $ih - $headerH - 0.3;
-        $bodyX = $ix + $textOffsetX;
-        $bodyW = $iw - $textOffsetX;
+        // Warning body text — 6pt minimum, full width below the pictogram row
+        $headerRowH = max($headerH, $pictoSize) + 0.3;
+        $bodyY = $iy + $headerRowH;
+        $bodyH = $ih - $headerRowH;
+        $bodyX = $ix;
+        $bodyW = $iw;
 
         // Strip the leading "WARNING: " from the Prop65 text since we already rendered it
         $bodyText = $prop65Text;
@@ -321,7 +322,7 @@ class LabelPDFService
         $pdf->SetFont('helvetica', '', $bodyFontSize);
         $lineH = $bodyFontSize * 0.42;
         $pdf->SetXY($bodyX, $bodyY);
-        $pdf->MultiCell($bodyW, $lineH, $bodyText, 0, 'L', false, 1, $bodyX, $bodyY, true, 0, false, true, $bodyH, 'T', true);
+        $pdf->MultiCell($bodyW, $lineH, $bodyText, 0, 'L', false, 1, $bodyX, $bodyY, true, 0, false, true, $bodyH, 'T', false);
     }
 
     private function renderSignalWord(\TCPDF $pdf, float $x, float $y, float $w, float $h, float $baseFontSize, string $signalWord): void

@@ -1245,20 +1245,38 @@ class AdminController
     {
         $this->requireAdmin();
 
+        $search = trim($_GET['search'] ?? '');
+
         $db = Database::getInstance();
-        $versions = $db->fetchAll(
-            "SELECT sv.*, fg.product_code, fg.description,
-                    u.display_name AS published_by_name
-             FROM sds_versions sv
-             JOIN finished_goods fg ON fg.id = sv.finished_good_id
-             LEFT JOIN users u ON u.id = sv.published_by
-             ORDER BY sv.created_at DESC
-             LIMIT 100"
-        );
+
+        $sql = "SELECT sv.*, fg.product_code, fg.description,
+                       u.display_name AS published_by_name,
+                       a.customer_code AS alias_customer_code,
+                       a.description   AS alias_description
+                FROM sds_versions sv
+                JOIN finished_goods fg ON fg.id = sv.finished_good_id
+                LEFT JOIN users u ON u.id = sv.published_by
+                LEFT JOIN aliases a ON a.id = sv.alias_id";
+
+        $params = [];
+
+        if ($search !== '') {
+            $like = '%' . $search . '%';
+            $sql .= " WHERE (fg.product_code LIKE ?
+                         OR fg.description LIKE ?
+                         OR a.customer_code LIKE ?
+                         OR a.description LIKE ?)";
+            $params = [$like, $like, $like, $like];
+        }
+
+        $sql .= " ORDER BY sv.created_at DESC LIMIT 200";
+
+        $versions = $db->fetchAll($sql, $params);
 
         view('admin/sds-versions', [
             'pageTitle' => 'SDS Versions',
             'versions'  => $versions,
+            'search'    => $search,
         ]);
     }
 

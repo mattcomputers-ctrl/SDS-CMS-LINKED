@@ -1,13 +1,22 @@
 <?php include dirname(__DIR__) . '/layouts/main.php'; ?>
 
+<div class="toolbar">
+    <form method="GET" action="/admin/sds-versions" class="search-form">
+        <input type="text" name="search" value="<?= e($search ?? '') ?>" placeholder="Search by product code, alias, or description...">
+        <button type="submit" class="btn btn-sm">Search</button>
+        <?php if (!empty($search)): ?><a href="/admin/sds-versions" class="btn btn-sm btn-outline">Clear</a><?php endif; ?>
+    </form>
+</div>
+
 <table class="table">
     <thead>
-        <tr><th>Product</th><th>Version</th><th>Lang</th><th>Status</th><th>Published By</th><th>Date</th><th>Deleted?</th><th>Actions</th></tr>
+        <tr><th>Product</th><th>Alias</th><th>Version</th><th>Lang</th><th>Status</th><th>Published By</th><th>Date</th><th>Deleted?</th><th>Actions</th></tr>
     </thead>
     <tbody>
     <?php foreach ($versions as $v): ?>
         <tr class="<?= (int) $v['is_deleted'] ? 'row-deleted' : '' ?>">
             <td><a href="/sds/<?= (int) $v['finished_good_id'] ?>"><?= e($v['product_code']) ?></a></td>
+            <td><?= !empty($v['alias_customer_code']) ? e($v['alias_customer_code']) : '<span class="text-muted">—</span>' ?></td>
             <td>v<?= (int) $v['version'] ?></td>
             <td><?= e(strtoupper($v['language'])) ?></td>
             <td><span class="badge badge-<?= $v['status'] ?>"><?= e($v['status']) ?></span></td>
@@ -33,5 +42,15 @@
     <?php endforeach; ?>
     </tbody>
 </table>
+
+<?php if (empty($versions)): ?>
+<div style="text-align: center; padding: 2rem;" class="text-muted">
+    <?php if (!empty($search)): ?>
+        <p>No SDS versions match your search.</p>
+    <?php else: ?>
+        <p>No SDS versions found.</p>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
 
 <?php include dirname(__DIR__) . '/layouts/footer.php'; ?>

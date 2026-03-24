@@ -27,6 +27,9 @@ use SDS\Models\LabelTemplate;
  */
 class LabelPDFService
 {
+    /** Minimum font size (pt) for hazard and precautionary statements per OSHA requirements. */
+    private const MIN_STATEMENT_FONT_SIZE = 6.0;
+
     // Legacy label specs (kept for backward compatibility)
     private const LABELS = [
         'big' => [
@@ -378,10 +381,11 @@ class LabelPDFService
     {
         if (empty($statements)) return;
 
-        $headerSize = max(6.0, $baseFontSize);
+        $minFont = self::MIN_STATEMENT_FONT_SIZE;
+        $headerSize = max($minFont, $baseFontSize);
         $headerH = $headerSize * 0.45;
         $bodyH = $h - $headerH;
-        $bodyFontSize = max(6.0, $baseFontSize);
+        $bodyFontSize = max($minFont, $baseFontSize);
 
         // Try fitting all statements; prioritize if they don't fit
         $fullText = $this->formatStatements($statements);
@@ -389,13 +393,13 @@ class LabelPDFService
 
         $testSize = $this->fitMultilineFontSize($pdf, $fullText, $w, $bodyH, $bodyFontSize);
 
-        if ($testSize >= 6.0) {
+        if ($testSize >= $minFont) {
             $text = $fullText;
             $bodySize = $testSize;
         } else {
             $seeMore = 'See SDS for more hazard statements.';
             $text = $this->buildPrioritizedHStatements($pdf, $statements, $w, $bodyFontSize, $bodyH, $seeMore);
-            $bodySize = max(6.0, $this->fitMultilineFontSize($pdf, $text, $w, $bodyH, $bodyFontSize));
+            $bodySize = max($minFont, $this->fitMultilineFontSize($pdf, $text, $w, $bodyH, $bodyFontSize));
         }
 
         // Header
@@ -414,22 +418,23 @@ class LabelPDFService
     {
         if (empty($pStatements)) return;
 
-        $headerSize = max(6.0, $baseFontSize);
+        $minFont = self::MIN_STATEMENT_FONT_SIZE;
+        $headerSize = max($minFont, $baseFontSize);
         $headerH = $headerSize * 0.45;
         $bodyH = $h - $headerH;
-        $bodyFontSize = max(6.0, $baseFontSize);
+        $bodyFontSize = max($minFont, $baseFontSize);
 
         // Try fitting all P-statements; prioritize if they don't fit
         $fullText = $this->formatStatements($pStatements);
         $testSize = $this->fitMultilineFontSize($pdf, $fullText, $w, $bodyH, $bodyFontSize);
 
-        if ($testSize >= 6.0) {
+        if ($testSize >= $minFont) {
             $pText = $fullText;
             $bodySize = $testSize;
         } else {
             $seeMore = 'See SDS for more precautionary statements.';
             $prioritizedText = $this->buildPrioritizedPStatements($pdf, $pStatements, $w, $bodyFontSize, $bodyH, $seeMore);
-            $bodySize = max(6.0, $this->fitMultilineFontSize($pdf, $prioritizedText, $w, $bodyH, $bodyFontSize));
+            $bodySize = max($minFont, $this->fitMultilineFontSize($pdf, $prioritizedText, $w, $bodyH, $bodyFontSize));
             $pText = $prioritizedText;
         }
 
@@ -485,7 +490,7 @@ class LabelPDFService
      */
     private function fitFontSize(\TCPDF $pdf, string $text, float $w, float $h, float $maxSize, string $style = ''): float
     {
-        $minSize = 6.0;
+        $minSize = self::MIN_STATEMENT_FONT_SIZE;
         $size = max($maxSize, $minSize);
 
         while ($size > $minSize) {
@@ -506,7 +511,7 @@ class LabelPDFService
      */
     private function fitMultilineFontSize(\TCPDF $pdf, string $text, float $w, float $h, float $maxSize): float
     {
-        $minSize = 6.0;
+        $minSize = self::MIN_STATEMENT_FONT_SIZE;
         $size = max($maxSize, $minSize);
 
         while ($size > $minSize) {
@@ -607,7 +612,7 @@ class LabelPDFService
         $nameSize    = $isBig ? 9 : 7;
         $signalSize  = $isBig ? 8 : 6;
         $bodySize    = $isBig ? 6 : 6;
-        $tinySize    = $isBig ? 6 : 6;
+        $tinySize    = max(self::MIN_STATEMENT_FONT_SIZE, $isBig ? 6 : 6);
         $pictoSize   = $isBig ? 7 : 5;
 
         // ── Lot Number & Item Code ──

@@ -123,7 +123,7 @@ class LabelTemplateController
             'margin_top'        => (float) ($_POST['margin_top'] ?? 0),
             'h_spacing'         => (float) ($_POST['h_spacing'] ?? 0),
             'v_spacing'         => (float) ($_POST['v_spacing'] ?? 0),
-            'default_font_size' => max(1.0, (float) ($_POST['default_font_size'] ?? 7.0)),
+            'default_font_size' => max(6.0, (float) ($_POST['default_font_size'] ?? 7.0)),
             'field_layout'      => json_encode($decoded),
         ];
     }

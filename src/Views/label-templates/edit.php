@@ -87,9 +87,9 @@ $fieldIcons = [
             </div>
             <div class="form-group">
                 <label for="default_font_size">Default Font Size (pt)</label>
-                <input type="number" name="default_font_size" id="default_font_size" class="input" step="0.5" min="1" max="72"
+                <input type="number" name="default_font_size" id="default_font_size" class="input" step="0.5" min="6" max="72"
                        value="<?= number_format((float) ($template['default_font_size'] ?? 7.0), 1) ?>">
-                <small class="text-muted">System auto-shrinks from this</small>
+                <small class="text-muted">OSHA minimum 6pt. System auto-shrinks from this.</small>
             </div>
         </div>
 
@@ -118,7 +118,7 @@ $fieldIcons = [
                     <p style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.5rem;" id="fieldPropName"></p>
                     <div class="form-group" style="margin-bottom: 0;">
                         <label for="fieldPropFontSize" style="font-size: 0.8rem;">Font Size (pt)</label>
-                        <input type="number" id="fieldPropFontSize" class="input" step="0.5" min="1" max="72" placeholder="Use default"
+                        <input type="number" id="fieldPropFontSize" class="input" step="0.5" min="6" max="72" placeholder="Use default"
                                style="font-size: 0.85rem; padding: 0.3rem 0.5rem;">
                         <small class="text-muted">Leave blank to use the template default</small>
                     </div>

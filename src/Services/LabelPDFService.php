@@ -381,8 +381,8 @@ class LabelPDFService
         if ($text === '') return;
 
         // Fit header + body into the field
-        $headerSize = min($baseFontSize, $baseFontSize * 0.85);
-        $bodySize = $this->fitMultilineFontSize($pdf, $text, $w, $h - ($headerSize * 0.45), $baseFontSize * 0.85);
+        $headerSize = max(6.0, $baseFontSize);
+        $bodySize = $this->fitMultilineFontSize($pdf, $text, $w, $h - ($headerSize * 0.45), max(6.0, $baseFontSize));
 
         $headerH = $headerSize * 0.45;
         $pdf->SetFont('helvetica', 'B', $headerSize);
@@ -400,20 +400,21 @@ class LabelPDFService
     {
         if (empty($pStatements)) return;
 
-        $headerSize = min($baseFontSize, $baseFontSize * 0.85);
+        $headerSize = max(6.0, $baseFontSize);
         $headerH = $headerSize * 0.45;
         $bodyH = $h - $headerH;
-        $bodyFontSize = $baseFontSize * 0.85;
+        $bodyFontSize = max(6.0, $baseFontSize);
 
         // Try fitting all P-statements; prioritize if they don't fit
         $fullText = $this->formatStatements($pStatements);
         $testSize = $this->fitMultilineFontSize($pdf, $fullText, $w, $bodyH, $bodyFontSize);
 
-        if ($testSize >= 2.5) {
+        if ($testSize >= 6.0) {
             $pText = $fullText;
             $bodySize = $testSize;
         } else {
-            $prioritizedText = $this->buildPrioritizedPStatements($pdf, $pStatements, $w, $bodyFontSize, $bodyH);
+            $seeMore = 'See SDS for more precautionary statements.';
+            $prioritizedText = $this->buildPrioritizedPStatements($pdf, $pStatements, $w, $bodyFontSize, $bodyH, $seeMore);
             $bodySize = $this->fitMultilineFontSize($pdf, $prioritizedText, $w, $bodyH, $bodyFontSize);
             $pText = $prioritizedText;
         }
@@ -443,7 +444,7 @@ class LabelPDFService
             $line .= ' | ' . $phone;
         }
 
-        $fontSize = $this->fitMultilineFontSize($pdf, $line, $w, $h, $baseFontSize * 0.8);
+        $fontSize = $this->fitMultilineFontSize($pdf, $line, $w, $h, max(6.0, $baseFontSize));
         $pdf->SetFont('helvetica', '', $fontSize);
         $lineH = $fontSize * 0.42;
         $pdf->SetXY($x, $y + 0.3);
@@ -468,8 +469,8 @@ class LabelPDFService
      */
     private function fitFontSize(\TCPDF $pdf, string $text, float $w, float $h, float $maxSize, string $style = ''): float
     {
-        $minSize = 2.0;
-        $size = $maxSize;
+        $minSize = 6.0;
+        $size = max($maxSize, $minSize);
 
         while ($size > $minSize) {
             $pdf->SetFont('helvetica', $style, $size);
@@ -489,8 +490,8 @@ class LabelPDFService
      */
     private function fitMultilineFontSize(\TCPDF $pdf, string $text, float $w, float $h, float $maxSize): float
     {
-        $minSize = 2.0;
-        $size = $maxSize;
+        $minSize = 6.0;
+        $size = max($maxSize, $minSize);
 
         while ($size > $minSize) {
             $needed = $this->getTextHeight($pdf, $text, $w, $size);
@@ -582,9 +583,9 @@ class LabelPDFService
         $curY = $y + $pad;
 
         $nameSize    = $isBig ? 9 : 7;
-        $signalSize  = $isBig ? 8 : 5.5;
-        $bodySize    = $isBig ? 5 : 3.5;
-        $tinySize    = $isBig ? 4.5 : 3.5;
+        $signalSize  = $isBig ? 8 : 6;
+        $bodySize    = $isBig ? 6 : 6;
+        $tinySize    = $isBig ? 6 : 6;
         $pictoSize   = $isBig ? 7 : 5;
 
         // ── Lot Number & Item Code ──
@@ -681,7 +682,8 @@ class LabelPDFService
             if ($pFullNeeded <= $pSpaceForText) {
                 $pText = $pTextFull;
             } else {
-                $pText = $this->buildPrioritizedPStatements($pdf, $pStatements, $innerW, $tinySize, $pSpaceForText);
+                $seeMore = 'See SDS for more precautionary statements.';
+                $pText = $this->buildPrioritizedPStatements($pdf, $pStatements, $innerW, $tinySize, $pSpaceForText, $seeMore);
             }
 
             $pdf->SetFont('helvetica', 'B', $tinySize);
@@ -761,7 +763,7 @@ class LabelPDFService
         return $text;
     }
 
-    private function buildPrioritizedPStatements(\TCPDF $pdf, array $pStatements, float $width, float $fontSize, float $maxHeight): string
+    private function buildPrioritizedPStatements(\TCPDF $pdf, array $pStatements, float $width, float $fontSize, float $maxHeight, string $truncationNotice = ''): string
     {
         $priority = [];
         $secondary = [];
@@ -778,18 +780,28 @@ class LabelPDFService
 
         $ordered = array_merge($priority, $secondary);
         $included = [];
+        $wasTruncated = false;
 
         foreach ($ordered as $stmt) {
             $candidate = array_merge($included, [$stmt]);
             $candidateText = $this->formatStatements($candidate);
+            if ($truncationNotice !== '') {
+                $candidateText .= ' ' . $truncationNotice;
+            }
             $needed = $this->getTextHeight($pdf, $candidateText, $width, $fontSize);
             if ($needed > $maxHeight && count($included) > 0) {
+                $wasTruncated = true;
                 break;
             }
             $included[] = $stmt;
         }
 
-        return $this->formatStatements($included);
+        $text = $this->formatStatements($included);
+        if ($wasTruncated && $truncationNotice !== '') {
+            $text .= ' ' . $truncationNotice;
+        }
+
+        return $text;
     }
 
     private function getTextHeight(\TCPDF $pdf, string $text, float $width, float $fontSize): float

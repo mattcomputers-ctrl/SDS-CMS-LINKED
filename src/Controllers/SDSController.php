@@ -22,20 +22,36 @@ class SDSController
         }
 
         $db = Database::getInstance();
+
+        // Main product versions (no alias)
         $versions = $db->fetchAll(
             "SELECT sv.*, u.display_name AS published_by_name, uc.display_name AS created_by_name
              FROM sds_versions sv
              LEFT JOIN users u ON u.id = sv.published_by
              LEFT JOIN users uc ON uc.id = sv.created_by
-             WHERE sv.finished_good_id = ? AND sv.is_deleted = 0
+             WHERE sv.finished_good_id = ? AND sv.alias_id IS NULL AND sv.is_deleted = 0
              ORDER BY sv.version DESC, sv.language ASC",
             [(int) $finished_good_id]
         );
 
+        // Alias-specific versions with alias details
+        $aliasVersions = $db->fetchAll(
+            "SELECT sv.*, a.customer_code AS alias_code, a.description AS alias_description,
+                    u.display_name AS published_by_name, uc.display_name AS created_by_name
+             FROM sds_versions sv
+             JOIN aliases a ON a.id = sv.alias_id
+             LEFT JOIN users u ON u.id = sv.published_by
+             LEFT JOIN users uc ON uc.id = sv.created_by
+             WHERE sv.finished_good_id = ? AND sv.alias_id IS NOT NULL AND sv.is_deleted = 0
+             ORDER BY a.customer_code ASC, sv.version DESC, sv.language ASC",
+            [(int) $finished_good_id]
+        );
+
         view('sds/index', [
-            'pageTitle'    => 'SDS: ' . $fg['product_code'],
-            'finishedGood' => $fg,
-            'versions'     => $versions,
+            'pageTitle'     => 'SDS: ' . $fg['product_code'],
+            'finishedGood'  => $fg,
+            'versions'      => $versions,
+            'aliasVersions' => $aliasVersions,
         ]);
     }
 
@@ -401,7 +417,10 @@ class SDSController
     {
         $db = Database::getInstance();
         $version = $db->fetch(
-            "SELECT * FROM sds_versions WHERE id = ? AND is_deleted = 0",
+            "SELECT sv.*, a.customer_code AS alias_code
+             FROM sds_versions sv
+             LEFT JOIN aliases a ON a.id = sv.alias_id
+             WHERE sv.id = ? AND sv.is_deleted = 0",
             [(int) $id]
         );
 
@@ -417,8 +436,16 @@ class SDSController
             redirect('/sds/' . $version['finished_good_id']);
         }
 
+        // Include alias code in filename when downloading an alias-specific SDS
+        $filename = 'SDS_';
+        if (!empty($version['alias_code'])) {
+            $safeCode = preg_replace('/[^A-Za-z0-9_\-]/', '_', $version['alias_code']);
+            $filename .= $safeCode . '_';
+        }
+        $filename .= 'v' . $version['version'] . '_' . $version['language'] . '.pdf';
+
         header('Content-Type: application/pdf');
-        header('Content-Disposition: attachment; filename="SDS_v' . $version['version'] . '_' . $version['language'] . '.pdf"');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
         header('Content-Length: ' . filesize($pdfPath));
         readfile($pdfPath);
         exit;

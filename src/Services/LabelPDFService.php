@@ -175,12 +175,14 @@ class LabelPDFService
 
             switch ($fieldType) {
                 case 'lot_item_code':
-                    $this->renderLotItemCode($pdf, $fx, $fy, $fw, $fh, $fieldFont, $lotNumber, $itemCode);
+                    $fieldBold = !isset($pos['bold']) || !empty($pos['bold']);
+                    $this->renderLotItemCode($pdf, $fx, $fy, $fw, $fh, $fieldFont, $lotNumber, $itemCode, $fieldBold);
                     break;
 
                 case 'net_weight':
                     if ($netWeight !== '') {
-                        $this->renderNetWeight($pdf, $fx, $fy, $fw, $fh, $fieldFont, $netWeight);
+                        $fieldBold = !isset($pos['bold']) || !empty($pos['bold']);
+                        $this->renderNetWeight($pdf, $fx, $fy, $fw, $fh, $fieldFont, $netWeight, $fieldBold);
                     }
                     break;
 
@@ -221,22 +223,23 @@ class LabelPDFService
 
     // ── Template-based field renderers ────────────────────────────────────
 
-    private function renderLotItemCode(\TCPDF $pdf, float $x, float $y, float $w, float $h, float $baseFontSize, string $lotNumber, string $itemCode): void
+    private function renderLotItemCode(\TCPDF $pdf, float $x, float $y, float $w, float $h, float $baseFontSize, string $lotNumber, string $itemCode, bool $bold = true): void
     {
-        // Lot number with trailing item code — bold and prominent for at-a-glance reading
+        // Lot number with trailing item code
         $lotText = $lotNumber . $itemCode;
         $labelPrefix = 'LOT: ';
         $fullText = $labelPrefix . $lotText;
 
-        $fontSize = $this->fitFontSize($pdf, $fullText, $w, $h * 0.85, $baseFontSize, 'B');
+        $valueStyle = $bold ? 'B' : '';
+        $fontSize = $this->fitFontSize($pdf, $fullText, $w, $h * 0.85, $baseFontSize, $valueStyle);
 
-        // Draw "LOT: " prefix in normal weight, then lot+item code in bold
+        // Draw "LOT: " prefix in normal weight, then lot+item code
         $pdf->SetFont('helvetica', '', $fontSize);
         $prefixW = $pdf->GetStringWidth($labelPrefix);
         $pdf->SetXY($x, $y);
         $pdf->Cell($prefixW, $h, $labelPrefix, 0, 0, 'L', false, '', 0, false, 'T', 'C');
 
-        $pdf->SetFont('helvetica', 'B', $fontSize);
+        $pdf->SetFont('helvetica', $valueStyle, $fontSize);
         $pdf->SetXY($x + $prefixW, $y);
         $pdf->Cell($w - $prefixW, $h, $lotText, 0, 0, 'L', false, '', 0, false, 'T', 'C');
 
@@ -246,17 +249,17 @@ class LabelPDFService
         $pdf->SetLineWidth(0.2);
     }
 
-    private function renderNetWeight(\TCPDF $pdf, float $x, float $y, float $w, float $h, float $baseFontSize, string $netWeight): void
+    private function renderNetWeight(\TCPDF $pdf, float $x, float $y, float $w, float $h, float $baseFontSize, string $netWeight, bool $bold = true): void
     {
-        // Net weight — bold and prominent, right-aligned for at-a-glance reading
+        // Net weight — right-aligned for at-a-glance reading
         $labelPrefix = 'NET WT: ';
         $fullText = $labelPrefix . $netWeight;
 
-        $fontSize = $this->fitFontSize($pdf, $fullText, $w, $h * 0.85, $baseFontSize, 'B');
+        $valueStyle = $bold ? 'B' : '';
+        $fontSize = $this->fitFontSize($pdf, $fullText, $w, $h * 0.85, $baseFontSize, $valueStyle);
 
-        // Draw "NET WT: " in normal weight, then value in bold
-        $pdf->SetFont('helvetica', '', $fontSize);
-        $pdf->SetFont('helvetica', 'B', $fontSize);
+        // Measure widths for right-alignment
+        $pdf->SetFont('helvetica', $valueStyle, $fontSize);
         $valueW = $pdf->GetStringWidth($netWeight);
         $pdf->SetFont('helvetica', '', $fontSize);
         $prefixW = $pdf->GetStringWidth($labelPrefix);
@@ -270,7 +273,7 @@ class LabelPDFService
         $pdf->SetXY($startX, $y);
         $pdf->Cell($prefixW, $h, $labelPrefix, 0, 0, 'L', false, '', 0, false, 'T', 'C');
 
-        $pdf->SetFont('helvetica', 'B', $fontSize);
+        $pdf->SetFont('helvetica', $valueStyle, $fontSize);
         $pdf->SetXY($startX + $prefixW, $y);
         $pdf->Cell($valueW, $h, $netWeight, 0, 0, 'L', false, '', 0, false, 'T', 'C');
 

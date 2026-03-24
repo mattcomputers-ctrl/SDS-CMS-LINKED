@@ -97,23 +97,40 @@ class BulkPublishController
              WHERE fg.is_active = 1"
         );
 
-        // Count unique aliases (by base customer code) linked to active finished goods with formulas
+        // Count unique aliases (by base customer code) per finished good, then sum.
+        // This must match the per-FG deduplication logic in start().
         $aliasStats = $db->fetch(
-            "SELECT COUNT(DISTINCT SUBSTRING_INDEX(a.customer_code, '-', 1)) AS alias_count
-             FROM aliases a
-             INNER JOIN finished_goods fg ON fg.product_code = a.internal_code_base
+            "SELECT COALESCE(SUM(sub.alias_cnt), 0) AS alias_count
+             FROM (
+                 SELECT fg.id,
+                        COUNT(DISTINCT SUBSTRING_INDEX(a.customer_code, '-', 1)) AS alias_cnt
+                 FROM aliases a
+                 INNER JOIN finished_goods fg ON fg.product_code = a.internal_code_base
+                 INNER JOIN formulas f ON f.finished_good_id = fg.id AND f.is_current = 1
+                 WHERE fg.is_active = 1
+                 GROUP BY fg.id
+             ) sub"
+        );
+
+        // Count FGs that have NO aliases (these still need their own SDS PDFs)
+        $fgsWithoutAliases = $db->fetch(
+            "SELECT COUNT(DISTINCT fg.id) AS cnt
+             FROM finished_goods fg
              INNER JOIN formulas f ON f.finished_good_id = fg.id AND f.is_current = 1
-             WHERE fg.is_active = 1"
+             LEFT JOIN aliases a ON a.internal_code_base = fg.product_code
+             WHERE fg.is_active = 1
+               AND a.id IS NULL"
         );
 
         $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
 
         view('admin/bulk-publish', [
-            'pageTitle'  => 'Bulk SDS Publish',
-            'fgCount'    => (int) ($stats['fg_count'] ?? 0),
-            'aliasCount' => (int) ($aliasStats['alias_count'] ?? 0),
-            'langCount'  => count($languages),
-            'languages'  => $languages,
+            'pageTitle'           => 'Bulk SDS Publish',
+            'fgCount'             => (int) ($stats['fg_count'] ?? 0),
+            'aliasCount'          => (int) ($aliasStats['alias_count'] ?? 0),
+            'fgsWithoutAliases'   => (int) ($fgsWithoutAliases['cnt'] ?? 0),
+            'langCount'           => count($languages),
+            'languages'           => $languages,
         ]);
     }
 
@@ -161,43 +178,48 @@ class BulkPublishController
         // Also include alias work items for each finished good.
         $workItems = [];
         foreach ($finishedGoods as $fg) {
-            $lastVersion = $db->fetch(
-                "SELECT MAX(version) AS max_ver FROM sds_versions WHERE finished_good_id = ? AND alias_id IS NULL",
-                [$fg['id']]
-            );
-            $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
-
-            foreach ($languages as $lang) {
-                $workItems[] = [
-                    'id'           => $fg['id'],
-                    'product_code' => $fg['product_code'],
-                    'language'     => $lang,
-                    'version'      => $nextVersion,
-                ];
-            }
-
             // Add alias work items for this finished good (deduplicated by base customer code)
             $aliases = self::deduplicateAliasesByBaseCode($db->fetchAll(
                 "SELECT id, customer_code, description FROM aliases WHERE internal_code_base = ? ORDER BY customer_code",
                 [$fg['product_code']]
             ));
-            foreach ($aliases as $alias) {
-                $aliasLastVersion = $db->fetch(
-                    "SELECT MAX(version) AS max_ver FROM sds_versions WHERE alias_id = ?",
-                    [(int) $alias['id']]
+
+            if (empty($aliases)) {
+                // No aliases — generate an SDS under the internal FG code
+                $lastVersion = $db->fetch(
+                    "SELECT MAX(version) AS max_ver FROM sds_versions WHERE finished_good_id = ? AND alias_id IS NULL",
+                    [$fg['id']]
                 );
-                $aliasNextVersion = ((int) ($aliasLastVersion['max_ver'] ?? 0)) + 1;
+                $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
 
                 foreach ($languages as $lang) {
                     $workItems[] = [
-                        'id'                => $fg['id'],
-                        'product_code'      => $fg['product_code'],
-                        'language'          => $lang,
-                        'version'           => $aliasNextVersion,
-                        'alias_id'          => (int) $alias['id'],
-                        'alias_code'        => $alias['customer_code'],
-                        'alias_description' => $alias['description'],
+                        'id'           => $fg['id'],
+                        'product_code' => $fg['product_code'],
+                        'language'     => $lang,
+                        'version'      => $nextVersion,
                     ];
+                }
+            } else {
+                // Has aliases — generate SDSs under each alias code only
+                foreach ($aliases as $alias) {
+                    $aliasLastVersion = $db->fetch(
+                        "SELECT MAX(version) AS max_ver FROM sds_versions WHERE alias_id = ?",
+                        [(int) $alias['id']]
+                    );
+                    $aliasNextVersion = ((int) ($aliasLastVersion['max_ver'] ?? 0)) + 1;
+
+                    foreach ($languages as $lang) {
+                        $workItems[] = [
+                            'id'                => $fg['id'],
+                            'product_code'      => $fg['product_code'],
+                            'language'          => $lang,
+                            'version'           => $aliasNextVersion,
+                            'alias_id'          => (int) $alias['id'],
+                            'alias_code'        => $alias['customer_code'],
+                            'alias_description' => $alias['description'],
+                        ];
+                    }
                 }
             }
         }

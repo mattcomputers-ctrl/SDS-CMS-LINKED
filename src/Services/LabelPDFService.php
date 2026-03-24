@@ -301,28 +301,24 @@ class LabelPDFService
             $textOffsetX = $pictoSize + 0.5;
         }
 
-        $pdf->SetFont('helvetica', 'B', $headerSize);
-        $pdf->SetXY($ix + $textOffsetX, $iy);
-        $pdf->Cell($iw - $textOffsetX, $headerH, 'WARNING:', 0, 0, 'L');
-
-        // Warning body text — 6pt minimum, full width below the pictogram row
-        $headerRowH = max($headerH, $pictoSize) + 0.3;
-        $bodyY = $iy + $headerRowH;
-        $bodyH = $ih - $headerRowH;
-        $bodyX = $ix;
-        $bodyW = $iw;
-
-        // Strip the leading "WARNING: " from the Prop65 text since we already rendered it
+        // Strip the leading "WARNING: " prefix — we render it inline as bold
         $bodyText = $prop65Text;
         if (str_starts_with($bodyText, 'WARNING: ')) {
             $bodyText = substr($bodyText, 9);
         }
 
+        // Render "WARNING:" bold + body text inline to the right of the pictogram
         $bodyFontSize = max(6.0, $baseFontSize);
-        $pdf->SetFont('helvetica', '', $bodyFontSize);
-        $lineH = $bodyFontSize * 0.42;
-        $pdf->SetXY($bodyX, $bodyY);
-        $pdf->MultiCell($bodyW, $lineH, $bodyText, 0, 'L', false, 1, $bodyX, $bodyY, true, 0, false, true, $bodyH, 'T', false);
+        $textX = $ix + $textOffsetX;
+        $textW = $iw - $textOffsetX;
+        $textH = $ih;
+
+        // Use HTML so "WARNING:" stays bold inline with the regular body text
+        $htmlContent = '<span style="font-weight: bold; font-size: ' . $headerSize . 'pt;">WARNING:</span> '
+            . '<span style="font-size: ' . $bodyFontSize . 'pt;">' . htmlspecialchars($bodyText) . '</span>';
+
+        $pdf->SetXY($textX, $iy);
+        $pdf->writeHTMLCell($textW, $textH, $textX, $iy, $htmlContent, 0, 0, false, true, 'L', true);
     }
 
     private function renderSignalWord(\TCPDF $pdf, float $x, float $y, float $w, float $h, float $baseFontSize, string $signalWord): void

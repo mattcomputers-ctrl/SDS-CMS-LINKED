@@ -289,8 +289,8 @@ class LabelPDFService
         $iw = $w - 2 * $innerPad;
         $ih = $h - 2 * $innerPad;
 
-        // Prop 65 warning pictogram + bold "WARNING:" header (fixed 6pt font)
-        $headerSize = 6.0;
+        // Prop 65 warning pictogram + bold "WARNING:" header (minimum 6pt font per CA regulation)
+        $headerSize = max(6.0, $baseFontSize);
         $headerH = $headerSize * 0.5;
         $pictoSize = $headerH * 1.8;
 
@@ -317,7 +317,7 @@ class LabelPDFService
             $bodyText = substr($bodyText, 9);
         }
 
-        $bodyFontSize = 6.0;
+        $bodyFontSize = max(6.0, $baseFontSize);
         $pdf->SetFont('helvetica', '', $bodyFontSize);
         $lineH = $bodyFontSize * 0.42;
         $pdf->SetXY($bodyX, $bodyY);

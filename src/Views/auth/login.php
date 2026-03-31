@@ -13,7 +13,7 @@
                 <img src="<?= e($loginLogo) ?>" alt="Logo" class="login-logo">
             <?php endif; ?>
             <h1><?= e(\SDS\Core\App::config('app.name', 'SDS System')) ?></h1>
-            <p>Safety Data Sheet Authoring System</p>
+            <p>HAZCOM Management and Reporting System</p>
         </div>
 
         <?= flash_messages() ?>

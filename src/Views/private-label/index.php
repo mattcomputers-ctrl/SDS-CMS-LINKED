@@ -31,6 +31,7 @@
             <tr>
                 <th>Product Code</th>
                 <th>Description</th>
+                <th>Base Product</th>
                 <th>Manufacturer</th>
                 <th>Version</th>
                 <th>Language</th>
@@ -43,11 +44,9 @@
             <tr>
                 <td>
                     <strong><?= e(!empty($item['alias_code']) ? strip_pack_extension($item['alias_code']) : $item['product_code']) ?></strong>
-                    <?php if (!empty($item['alias_code'])): ?>
-                        <br><small class="text-muted">Base: <?= e($item['product_code']) ?></small>
-                    <?php endif; ?>
                 </td>
                 <td><?= e(!empty($item['alias_description']) ? $item['alias_description'] : $item['fg_description']) ?></td>
+                <td><?= e($item['product_code']) ?><?php if (!empty($item['fg_description'])): ?><br><small class="text-muted"><?= e($item['fg_description']) ?></small><?php endif; ?></td>
                 <td><?= e($item['manufacturer_name']) ?></td>
                 <td>v<?= (int) $item['version'] ?></td>
                 <td><?= strtoupper(e($item['language'])) ?></td>

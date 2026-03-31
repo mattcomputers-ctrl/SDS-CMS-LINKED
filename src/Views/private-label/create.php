@@ -18,7 +18,7 @@
             <select name="finished_good_id" id="finished_good_id" class="searchable-select" required>
                 <option value="">— Select a product —</option>
                 <?php foreach ($finishedGoods as $fg): ?>
-                    <option value="<?= (int) $fg['id'] ?>"><?= e($fg['product_code']) ?> — <?= e($fg['description']) ?></option>
+                    <option value="<?= (int) $fg['id'] ?>" data-product-code="<?= e($fg['product_code']) ?>"><?= e($fg['product_code']) ?> — <?= e($fg['description']) ?></option>
                 <?php endforeach; ?>
             </select>
             <small class="text-muted">The product whose formula and hazard data will be used</small>
@@ -76,14 +76,60 @@
 document.addEventListener('DOMContentLoaded', function() {
     var useAliasCheckbox = document.getElementById('use_alias');
     var aliasGroup = document.getElementById('aliasSelectGroup');
+    var fgSelect = document.getElementById('finished_good_id');
+    var aliasSelect = document.getElementById('alias_id');
+
+    // Store all alias options for filtering
+    var allAliasOptions = [];
+    if (aliasSelect) {
+        for (var i = 1; i < aliasSelect.options.length; i++) {
+            allAliasOptions.push({
+                value: aliasSelect.options[i].value,
+                text: aliasSelect.options[i].text,
+                base: aliasSelect.options[i].getAttribute('data-base')
+            });
+        }
+    }
+
+    function filterAliases() {
+        if (!aliasSelect || !fgSelect) return;
+
+        var selectedOption = fgSelect.options[fgSelect.selectedIndex];
+        var productCode = selectedOption ? selectedOption.getAttribute('data-product-code') : '';
+
+        // Clear existing options (keep the placeholder)
+        while (aliasSelect.options.length > 1) {
+            aliasSelect.remove(1);
+        }
+        aliasSelect.value = '';
+
+        // Add only aliases matching the selected product
+        allAliasOptions.forEach(function(opt) {
+            if (productCode && opt.base === productCode) {
+                var option = document.createElement('option');
+                option.value = opt.value;
+                option.text = opt.text;
+                option.setAttribute('data-base', opt.base);
+                aliasSelect.add(option);
+            }
+        });
+    }
 
     if (useAliasCheckbox && aliasGroup) {
         useAliasCheckbox.addEventListener('change', function() {
             aliasGroup.style.display = this.checked ? 'block' : 'none';
-            var aliasSelect = document.getElementById('alias_id');
             if (!this.checked && aliasSelect) {
                 aliasSelect.value = '';
             }
+            if (this.checked) {
+                filterAliases();
+            }
+        });
+    }
+
+    if (fgSelect) {
+        fgSelect.addEventListener('change', function() {
+            filterAliases();
         });
     }
 });

@@ -95,13 +95,14 @@ class PrivateLabelController
 
         $manufacturers = Manufacturer::all();
 
-        // Load aliases
+        // Load aliases, deduplicated by base customer code (pack extension stripped)
         $db = Database::getInstance();
-        $aliases = $db->fetchAll(
+        $aliasRows = $db->fetchAll(
             "SELECT a.id, a.customer_code, a.description, a.internal_code_base
              FROM aliases a
              ORDER BY a.customer_code ASC"
         );
+        $aliases = self::deduplicateAliasesByBaseCode($aliasRows);
 
         view('private-label/create', [
             'pageTitle'     => 'Create Private Label SDS',
@@ -323,6 +324,39 @@ class PrivateLabelController
             'sds'          => $sdsData,
             'language'     => $version['language'],
         ]);
+    }
+
+    /**
+     * Strip the pack extension from a code (everything after the first "-").
+     */
+    private static function stripPackExtension(string $code): string
+    {
+        $pos = strpos($code, '-');
+        return $pos !== false ? substr($code, 0, $pos) : $code;
+    }
+
+    /**
+     * Deduplicate alias rows by base customer code (pack extension stripped).
+     *
+     * Returns one row per unique base code, using the first occurrence's id
+     * and description, with customer_code set to the base (no pack extension).
+     */
+    private static function deduplicateAliasesByBaseCode(array $rows): array
+    {
+        $seen = [];
+        $result = [];
+
+        foreach ($rows as $row) {
+            $baseCode = self::stripPackExtension($row['customer_code']);
+            if (isset($seen[$baseCode])) {
+                continue;
+            }
+            $seen[$baseCode] = true;
+            $row['customer_code'] = $baseCode;
+            $result[] = $row;
+        }
+
+        return $result;
     }
 
     /**

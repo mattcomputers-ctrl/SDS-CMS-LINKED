@@ -6,7 +6,6 @@ namespace SDS\Controllers;
 
 use SDS\Core\App;
 use SDS\Core\CSRF;
-use SDS\Core\Database;
 use SDS\Models\Manufacturer;
 use SDS\Services\AuditService;
 
@@ -176,31 +175,6 @@ class ManufacturerController
         redirect('/manufacturers');
     }
 
-    public function setDefault(string $id): void
-    {
-        if (!can_edit('manufacturers')) {
-            $_SESSION['_flash']['error'] = 'Permission denied.';
-            redirect('/manufacturers');
-        }
-
-        CSRF::validateRequest();
-
-        $item = Manufacturer::findById((int) $id);
-        if ($item === null) {
-            $_SESSION['_flash']['error'] = 'Manufacturer not found.';
-            redirect('/manufacturers');
-        }
-
-        $db = Database::getInstance();
-        $db->query("UPDATE manufacturers SET is_default = 0 WHERE is_default = 1");
-        $db->update('manufacturers', ['is_default' => 1], 'id = ?', [(int) $id]);
-
-        AuditService::log('manufacturer', $id, 'set_default', ['name' => $item['name']]);
-
-        $_SESSION['_flash']['success'] = $item['name'] . ' set as default manufacturer.';
-        redirect('/manufacturers');
-    }
-
     private function extractFormData(): array
     {
         return [
@@ -214,7 +188,6 @@ class ManufacturerController
             'emergency_phone' => $_POST['emergency_phone'] ?? '',
             'email'           => $_POST['email'] ?? '',
             'website'         => $_POST['website'] ?? '',
-            'is_default'      => !empty($_POST['is_default']),
         ];
     }
 

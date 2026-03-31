@@ -94,7 +94,6 @@ class PrivateLabelController
         ]);
 
         $manufacturers = Manufacturer::all();
-        $defaultMfg = Manufacturer::getDefault();
 
         // Load aliases
         $db = Database::getInstance();
@@ -108,7 +107,6 @@ class PrivateLabelController
             'pageTitle'     => 'Create Private Label SDS',
             'finishedGoods' => $finishedGoods,
             'manufacturers' => $manufacturers,
-            'defaultMfg'    => $defaultMfg,
             'aliases'       => $aliases,
         ]);
     }

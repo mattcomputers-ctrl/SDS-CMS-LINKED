@@ -19,13 +19,12 @@
             <th>Name</th>
             <th>Address</th>
             <th>Phone</th>
-            <th>Default</th>
             <th>Actions</th>
         </tr>
     </thead>
     <tbody>
     <?php if (empty($manufacturers)): ?>
-        <tr><td colspan="6" class="text-muted" style="text-align: center;">No manufacturers found. Add one to get started.</td></tr>
+        <tr><td colspan="5" class="text-muted" style="text-align: center;">No manufacturers found. Add one to get started.</td></tr>
     <?php endif; ?>
     <?php foreach ($manufacturers as $m): ?>
         <tr>
@@ -53,16 +52,6 @@
                 ?>
             </td>
             <td><?= e($m['phone'] ?: '—') ?></td>
-            <td>
-                <?php if ((int) $m['is_default']): ?>
-                    <span class="badge badge-admin">Default</span>
-                <?php elseif (can_edit('manufacturers')): ?>
-                    <form method="POST" action="/manufacturers/<?= (int) $m['id'] ?>/set-default" style="display: inline;">
-                        <?= csrf_field() ?>
-                        <button type="submit" class="btn btn-sm btn-outline" onclick="return confirm('Set <?= e($m['name']) ?> as default?')">Set Default</button>
-                    </form>
-                <?php endif; ?>
-            </td>
             <td>
                 <a href="/manufacturers/<?= (int) $m['id'] ?>/edit" class="btn btn-sm">Edit</a>
                 <?php if (can_edit('manufacturers')): ?>

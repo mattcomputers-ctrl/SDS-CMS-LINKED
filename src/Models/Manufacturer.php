@@ -59,18 +59,9 @@ class Manufacturer
              FROM manufacturers m
              LEFT JOIN users u ON u.id = m.created_by
              {$whereSQL}
-             ORDER BY m.is_default DESC, m.name ASC",
+             ORDER BY m.name ASC",
             $params
         );
-    }
-
-    /**
-     * Return the default manufacturer, or null if none set.
-     */
-    public static function getDefault(): ?array
-    {
-        $db = Database::getInstance();
-        return $db->fetch("SELECT * FROM manufacturers WHERE is_default = 1 LIMIT 1");
     }
 
     /* ------------------------------------------------------------------
@@ -86,11 +77,6 @@ class Manufacturer
             throw new \InvalidArgumentException('Manufacturer name is required.');
         }
 
-        // If this is set as default, clear other defaults
-        if (!empty($data['is_default'])) {
-            $db->query("UPDATE manufacturers SET is_default = 0 WHERE is_default = 1");
-        }
-
         $insertData = [
             'name'            => $name,
             'address'         => trim($data['address'] ?? ''),
@@ -103,7 +89,6 @@ class Manufacturer
             'email'           => trim($data['email'] ?? ''),
             'website'         => trim($data['website'] ?? ''),
             'logo_path'       => $data['logo_path'] ?? null,
-            'is_default'      => !empty($data['is_default']) ? 1 : 0,
             'created_by'      => $data['created_by'] ?? null,
         ];
 
@@ -114,22 +99,13 @@ class Manufacturer
     {
         $db = Database::getInstance();
 
-        // If setting as default, clear other defaults
-        if (!empty($data['is_default'])) {
-            $db->query("UPDATE manufacturers SET is_default = 0 WHERE is_default = 1 AND id != ?", [$id]);
-        }
-
         $allowed = ['name', 'address', 'city', 'state', 'zip', 'country', 'phone',
-                     'emergency_phone', 'email', 'website', 'logo_path', 'is_default'];
+                     'emergency_phone', 'email', 'website', 'logo_path'];
         $updateData = [];
         foreach ($allowed as $col) {
             if (array_key_exists($col, $data)) {
                 $val = $data[$col];
-                if ($col === 'is_default') {
-                    $updateData[$col] = !empty($val) ? 1 : 0;
-                } else {
-                    $updateData[$col] = is_string($val) ? trim($val) : $val;
-                }
+                $updateData[$col] = is_string($val) ? trim($val) : $val;
             }
         }
 

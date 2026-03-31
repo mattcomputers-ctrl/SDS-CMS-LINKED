@@ -76,8 +76,8 @@
             <select name="manufacturer_id" id="manufacturer_id" class="input">
                 <option value="">— Default (company settings) —</option>
                 <?php foreach ($manufacturers as $mfg): ?>
-                    <option value="<?= (int) $mfg['id'] ?>" <?= $mfg['is_default'] ? 'selected' : '' ?>>
-                        <?= e($mfg['name']) ?><?= $mfg['is_default'] ? ' (default)' : '' ?>
+                    <option value="<?= (int) $mfg['id'] ?>">
+                        <?= e($mfg['name']) ?>
                     </option>
                 <?php endforeach; ?>
             </select>

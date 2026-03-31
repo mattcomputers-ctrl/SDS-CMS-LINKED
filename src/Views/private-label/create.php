@@ -50,9 +50,8 @@
             <select name="manufacturer_id" id="manufacturer_id" class="input" required>
                 <option value="">— Select a manufacturer —</option>
                 <?php foreach ($manufacturers as $m): ?>
-                    <option value="<?= (int) $m['id'] ?>"
-                            <?= ($defaultMfg && (int) $m['id'] === (int) $defaultMfg['id']) ? 'selected' : '' ?>>
-                        <?= e($m['name']) ?><?= $m['is_default'] ? ' (default)' : '' ?>
+                    <option value="<?= (int) $m['id'] ?>">
+                        <?= e($m['name']) ?>
                     </option>
                 <?php endforeach; ?>
             </select>

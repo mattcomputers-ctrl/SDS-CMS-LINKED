@@ -99,14 +99,6 @@ $action = $isEdit ? '/manufacturers/' . (int) $item['id'] : '/manufacturers';
                 <small class="text-muted">PNG, JPG, or GIF. Max 2 MB.</small>
             </div>
 
-            <div class="form-group">
-                <label style="display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-top: 1.5rem;">
-                    <input type="checkbox" name="is_default" value="1"
-                           <?= !empty($item['is_default']) ? 'checked' : '' ?>>
-                    <span>Set as Default Manufacturer</span>
-                </label>
-                <small class="text-muted" style="display: block;">The default manufacturer is automatically selected for SDS creation.</small>
-            </div>
         </div>
 
         <div class="form-actions">

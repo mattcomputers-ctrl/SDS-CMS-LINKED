@@ -227,7 +227,6 @@ class App
         $router->get('/manufacturers/{id}/edit',           'ManufacturerController@edit');
         $router->post('/manufacturers/{id}',               'ManufacturerController@update');
         $router->post('/manufacturers/{id}/delete',        'ManufacturerController@delete');
-        $router->post('/manufacturers/{id}/set-default',   'ManufacturerController@setDefault');
 
         // ── Private Label SDS ────────────────────────────────────
         $router->get('/private-label',                     'PrivateLabelController@index');

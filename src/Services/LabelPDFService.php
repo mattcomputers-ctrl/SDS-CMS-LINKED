@@ -289,10 +289,6 @@ class LabelPDFService
 
     private function renderProp65Warning(\TCPDF $pdf, float $x, float $y, float $w, float $h, float $baseFontSize, string $prop65Text): void
     {
-        // Draw a thin border around the Prop 65 warning area
-        $pdf->SetLineWidth(0.2);
-        $pdf->Rect($x, $y, $w, $h);
-
         $innerPad = 0.8;
         $ix = $x + $innerPad;
         $iy = $y + $innerPad;

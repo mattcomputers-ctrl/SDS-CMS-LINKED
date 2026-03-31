@@ -39,6 +39,7 @@ class PermissionService
         'exempt_vocs'        => 'Exempt VOC Library',
         'manufacturers'      => 'Manufacturers',
         'private_label'      => 'Private Label SDS',
+        'sds_updates'        => 'SDS Update Required',
     ];
 
     /**

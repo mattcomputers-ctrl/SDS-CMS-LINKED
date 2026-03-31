@@ -47,6 +47,9 @@
                     <?php if (can_read('bulk_export')): ?>
                     <li><a href="/bulk-export" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/bulk-export') ? 'active' : '' ?>"><span class="menu-icon">&#128230;</span> Bulk SDS Export</a></li>
                     <?php endif; ?>
+                    <?php if (can_read('sds_updates')): ?>
+                    <li><a href="/sds-updates" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/sds-updates') ? 'active' : '' ?>"><span class="menu-icon">&#9888;</span> SDS Update Required</a></li>
+                    <?php endif; ?>
 
                     <li class="sidebar-section-label">Private Label</li>
                     <?php if (can_read('manufacturers')): ?>

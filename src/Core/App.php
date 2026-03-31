@@ -228,6 +228,13 @@ class App
         $router->post('/manufacturers/{id}',               'ManufacturerController@update');
         $router->post('/manufacturers/{id}/delete',        'ManufacturerController@delete');
 
+        // ── SDS Update Required ─────────────────────────────────
+        $router->get('/sds-updates',                           'SDSUpdateController@index');
+        $router->post('/sds-updates/scan',                     'SDSUpdateController@scan');
+        $router->post('/sds-updates/republish',                'SDSUpdateController@republish');
+        $router->post('/sds-updates/republish-private-label',  'SDSUpdateController@republishPrivateLabel');
+        $router->post('/sds-updates/dismiss',                  'SDSUpdateController@dismiss');
+
         // ── Private Label SDS ────────────────────────────────────
         $router->get('/private-label',                     'PrivateLabelController@index');
         $router->get('/private-label/create',              'PrivateLabelController@create');

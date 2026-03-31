@@ -7,6 +7,7 @@ namespace SDS\Controllers;
 use SDS\Core\Database;
 use SDS\Models\FinishedGood;
 use SDS\Models\LabelTemplate;
+use SDS\Models\Manufacturer;
 use SDS\Services\SDSGenerator;
 use SDS\Services\LabelPDFService;
 
@@ -31,24 +32,28 @@ class LabelController
             $netWeightUnits = array_filter(array_map('trim', explode("\n", $unitRow['value'])), 'strlen');
         }
 
+        $manufacturers = Manufacturer::all();
+
         view('labels/index', [
             'pageTitle'      => 'GHS Labels',
             'finishedGoods'  => $finishedGoods,
             'templates'      => $templates,
             'netWeightUnits' => $netWeightUnits,
+            'manufacturers'  => $manufacturers,
         ]);
     }
 
     public function generate(): void
     {
-        $finishedGoodId = (int) ($_POST['finished_good_id'] ?? 0);
-        $lotNumber      = trim($_POST['lot_number'] ?? '');
-        $templateId     = (int) ($_POST['template_id'] ?? 0);
+        $finishedGoodId  = (int) ($_POST['finished_good_id'] ?? 0);
+        $lotNumber       = trim($_POST['lot_number'] ?? '');
+        $templateId      = (int) ($_POST['template_id'] ?? 0);
         $sheets          = max(1, (int) ($_POST['sheets'] ?? 1));
         $netWeightValue  = trim($_POST['net_weight_value'] ?? '');
         $netWeightUnit   = trim($_POST['net_weight_unit'] ?? '');
         $netWeight       = $netWeightValue !== '' ? $netWeightValue . ($netWeightUnit !== '' ? ' ' . $netWeightUnit : '') : '';
         $privateLabel    = !empty($_POST['private_label']);
+        $manufacturerId  = (int) ($_POST['manufacturer_id'] ?? 0);
 
         // Validate finished good
         $fg = FinishedGood::findById($finishedGoodId);
@@ -84,6 +89,17 @@ class LabelController
             // Generate SDS data to get hazard info
             $generator = new SDSGenerator();
             $sdsData   = $generator->generate($finishedGoodId, 'en');
+
+            // Override manufacturer info if a specific manufacturer is selected
+            if ($manufacturerId > 0) {
+                $mfg = Manufacturer::findById($manufacturerId);
+                if ($mfg) {
+                    $mfgInfo = Manufacturer::toCompanyInfo($mfg);
+                    $sdsData['sections'][1]['manufacturer_name']    = $mfgInfo['name'];
+                    $sdsData['sections'][1]['manufacturer_address'] = trim($mfgInfo['address'] . ', ' . $mfgInfo['city'] . ', ' . $mfgInfo['state'] . ' ' . $mfgInfo['zip'], ', ');
+                    $sdsData['sections'][1]['manufacturer_phone']   = $mfgInfo['phone'];
+                }
+            }
 
             // Generate PDF
             $pdfService = new LabelPDFService();

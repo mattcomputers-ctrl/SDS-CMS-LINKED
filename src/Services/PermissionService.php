@@ -37,6 +37,8 @@ class PermissionService
         'bulk_publish'       => 'Bulk SDS Publish',
         'bulk_export'        => 'Bulk SDS Export',
         'exempt_vocs'        => 'Exempt VOC Library',
+        'manufacturers'      => 'Manufacturers',
+        'private_label'      => 'Private Label SDS',
     ];
 
     /**

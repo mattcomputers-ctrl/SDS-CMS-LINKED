@@ -48,6 +48,14 @@
                     <li><a href="/bulk-export" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/bulk-export') ? 'active' : '' ?>"><span class="menu-icon">&#128230;</span> Bulk SDS Export</a></li>
                     <?php endif; ?>
 
+                    <li class="sidebar-section-label">Private Label</li>
+                    <?php if (can_read('manufacturers')): ?>
+                    <li><a href="/manufacturers" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/manufacturers') ? 'active' : '' ?>"><span class="menu-icon">&#127981;</span> Manufacturers</a></li>
+                    <?php endif; ?>
+                    <?php if (can_read('private_label')): ?>
+                    <li><a href="/private-label" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/private-label') ? 'active' : '' ?>"><span class="menu-icon">&#128196;</span> Private Label SDS</a></li>
+                    <?php endif; ?>
+
                     <li class="sidebar-section-label">Tools</li>
                     <?php if (can_read('aliases')): ?>
                     <li><a href="/aliases" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/aliases') ? 'active' : '' ?>"><span class="menu-icon">&#128279;</span> Aliases</a></li>

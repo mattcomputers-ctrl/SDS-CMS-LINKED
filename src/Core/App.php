@@ -220,6 +220,22 @@ class App
         $router->post('/bulk-publish/start',             'BulkPublishController@start');
         $router->get('/bulk-publish/progress/{token}',   'BulkPublishController@progress');
 
+        // ── Manufacturers ────────────────────────────────────────
+        $router->get('/manufacturers',                     'ManufacturerController@index');
+        $router->get('/manufacturers/create',              'ManufacturerController@create');
+        $router->post('/manufacturers',                    'ManufacturerController@store');
+        $router->get('/manufacturers/{id}/edit',           'ManufacturerController@edit');
+        $router->post('/manufacturers/{id}',               'ManufacturerController@update');
+        $router->post('/manufacturers/{id}/delete',        'ManufacturerController@delete');
+        $router->post('/manufacturers/{id}/set-default',   'ManufacturerController@setDefault');
+
+        // ── Private Label SDS ────────────────────────────────────
+        $router->get('/private-label',                     'PrivateLabelController@index');
+        $router->get('/private-label/create',              'PrivateLabelController@create');
+        $router->post('/private-label/generate',           'PrivateLabelController@generate');
+        $router->get('/private-label/{id}/download',       'PrivateLabelController@download');
+        $router->get('/private-label/{id}/preview',        'PrivateLabelController@preview');
+
         // ── GHS Labels ────────────────────────────────────────────
         $router->get('/labels',           'LabelController@index');
         $router->post('/labels/generate', 'LabelController@generate');

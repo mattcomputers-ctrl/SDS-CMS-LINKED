@@ -70,6 +70,21 @@
             </div>
         </div>
 
+        <?php if (!empty($manufacturers)): ?>
+        <div class="form-group" style="margin-top: 0.5rem;">
+            <label for="manufacturer_id">Manufacturer on Label</label>
+            <select name="manufacturer_id" id="manufacturer_id" class="input">
+                <option value="">— Default (company settings) —</option>
+                <?php foreach ($manufacturers as $mfg): ?>
+                    <option value="<?= (int) $mfg['id'] ?>" <?= $mfg['is_default'] ? 'selected' : '' ?>>
+                        <?= e($mfg['name']) ?><?= $mfg['is_default'] ? ' (default)' : '' ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            <small class="text-muted">Select which manufacturer appears on the label</small>
+        </div>
+        <?php endif; ?>
+
         <div class="form-group" style="margin-top: 0.5rem;">
             <label style="display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer;">
                 <input type="checkbox" name="private_label" id="private_label" value="1">

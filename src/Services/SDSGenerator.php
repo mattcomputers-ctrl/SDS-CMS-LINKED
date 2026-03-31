@@ -359,6 +359,56 @@ class SDSGenerator
         return $aliasSds;
     }
 
+    /**
+     * Create a variant of SDS data with manufacturer info overridden.
+     *
+     * Used for private-label SDS generation where a different company
+     * identity is placed on the document.
+     *
+     * @param array  $sdsData         Base SDS data array from generate()
+     * @param array  $manufacturerInfo Company info array (name, address, city, state, zip, phone, etc.)
+     * @return array Modified SDS data with manufacturer overrides.
+     */
+    public static function createManufacturerVariant(array $sdsData, array $manufacturerInfo): array
+    {
+        $variant = $sdsData;
+
+        // Override Section 1 manufacturer fields
+        $variant['sections'][1]['manufacturer_name']    = $manufacturerInfo['name'] ?? '';
+        $variant['sections'][1]['manufacturer_address'] = trim(
+            ($manufacturerInfo['address'] ?? '') . ', ' .
+            ($manufacturerInfo['city'] ?? '') . ', ' .
+            ($manufacturerInfo['state'] ?? '') . ' ' .
+            ($manufacturerInfo['zip'] ?? ''),
+            ', '
+        );
+        $variant['sections'][1]['manufacturer_phone']   = $manufacturerInfo['phone'] ?? '';
+        $variant['sections'][1]['emergency_phone']      = $manufacturerInfo['emergency_phone'] ?? ($variant['sections'][1]['emergency_phone'] ?? '');
+        $variant['sections'][1]['manufacturer_email']   = $manufacturerInfo['email'] ?? '';
+        $variant['sections'][1]['manufacturer_website'] = $manufacturerInfo['website'] ?? '';
+
+        // Override logo in meta
+        if (!empty($manufacturerInfo['logo_path'])) {
+            $variant['meta']['company_logo_path'] = $manufacturerInfo['logo_path'];
+        }
+
+        return $variant;
+    }
+
+    /**
+     * Create a variant with both alias and manufacturer overrides.
+     */
+    public static function createPrivateLabelVariant(
+        array $sdsData,
+        string $productCode,
+        string $description,
+        array $manufacturerInfo
+    ): array {
+        $variant = self::createAliasVariant($sdsData, $productCode, $description);
+        $variant = self::createManufacturerVariant($variant, $manufacturerInfo);
+        return $variant;
+    }
+
     /* ------------------------------------------------------------------
      *  H-code extraction helper (used by smart logic in sections 4–13)
      * ----------------------------------------------------------------*/

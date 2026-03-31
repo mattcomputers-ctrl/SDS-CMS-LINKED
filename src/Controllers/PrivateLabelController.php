@@ -141,7 +141,7 @@ class PrivateLabelController
             redirect('/private-label/create');
         }
 
-        // If using alias, validate it
+        // If using alias, validate it and strip pack extension from customer code
         $alias = null;
         if ($useAlias && $aliasId !== null) {
             $db = Database::getInstance();
@@ -150,6 +150,7 @@ class PrivateLabelController
                 $_SESSION['_flash']['error'] = 'Selected alias not found.';
                 redirect('/private-label/create');
             }
+            $alias['customer_code'] = self::stripPackExtension($alias['customer_code']);
         } else {
             $aliasId = null;
         }
@@ -279,7 +280,7 @@ class PrivateLabelController
             redirect('/private-label');
         }
 
-        $productCode = !empty($version['alias_code']) ? $version['alias_code'] : $version['product_code'];
+        $productCode = !empty($version['alias_code']) ? strip_pack_extension($version['alias_code']) : $version['product_code'];
         $safeCode = preg_replace('/[^A-Za-z0-9_\-]/', '_', $productCode);
         $safeMfg  = preg_replace('/[^A-Za-z0-9_\-]/', '_', $version['manufacturer_name']);
         $filename = 'PL_SDS_' . $safeCode . '_' . $safeMfg . '_v' . $version['version'] . '_' . $version['language'] . '.pdf';
@@ -316,7 +317,7 @@ class PrivateLabelController
         }
 
         $sdsData = json_decode($version['snapshot_json'], true);
-        $productCode = !empty($version['alias_code']) ? $version['alias_code'] : $version['product_code'];
+        $productCode = !empty($version['alias_code']) ? strip_pack_extension($version['alias_code']) : $version['product_code'];
 
         view('sds/preview', [
             'pageTitle'    => 'Private Label SDS Preview: ' . $productCode . ' / ' . $version['manufacturer_name'],

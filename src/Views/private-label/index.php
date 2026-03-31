@@ -42,7 +42,7 @@
         <?php foreach ($items as $item): ?>
             <tr>
                 <td>
-                    <strong><?= e(!empty($item['alias_code']) ? $item['alias_code'] : $item['product_code']) ?></strong>
+                    <strong><?= e(!empty($item['alias_code']) ? strip_pack_extension($item['alias_code']) : $item['product_code']) ?></strong>
                     <?php if (!empty($item['alias_code'])): ?>
                         <br><small class="text-muted">Base: <?= e($item['product_code']) ?></small>
                     <?php endif; ?>

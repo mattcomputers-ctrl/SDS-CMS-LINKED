@@ -8,7 +8,11 @@ $l = function(string $key, string $fallback = '') use ($labels) {
 $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
 ?>
 
-<p><a href="/sds/<?= (int) $finishedGood['id'] ?>">&larr; Back to SDS Versions</a></p>
+<?php if (!empty($finishedGood['id'])): ?>
+    <p><a href="/sds/<?= (int) $finishedGood['id'] ?>">&larr; Back to SDS Versions</a></p>
+<?php elseif (!empty($privateLabelId)): ?>
+    <p><a href="/private-label">&larr; Back to Private Label SDS</a></p>
+<?php endif; ?>
 
 <div class="sds-preview">
     <div class="sds-header">

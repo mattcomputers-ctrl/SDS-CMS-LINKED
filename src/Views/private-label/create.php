@@ -66,6 +66,7 @@
 
         <div class="form-actions">
             <button type="submit" class="btn btn-primary">Generate Private Label SDS</button>
+            <button type="button" id="livePreviewBtn" class="btn btn-outline">Preview</button>
             <a href="/private-label" class="btn btn-outline">Cancel</a>
         </div>
     </form>
@@ -130,6 +131,23 @@ document.addEventListener('DOMContentLoaded', function() {
     if (fgSelect) {
         fgSelect.addEventListener('change', function() {
             filterAliases();
+        });
+    }
+
+    var previewBtn = document.getElementById('livePreviewBtn');
+    if (previewBtn) {
+        previewBtn.addEventListener('click', function() {
+            var fgId = fgSelect ? fgSelect.value : '';
+            var mfgId = document.getElementById('manufacturer_id') ? document.getElementById('manufacturer_id').value : '';
+            if (!fgId || !mfgId) {
+                alert('Please select a product and manufacturer before previewing.');
+                return;
+            }
+            var params = 'finished_good_id=' + fgId + '&manufacturer_id=' + mfgId;
+            if (useAliasCheckbox && useAliasCheckbox.checked && aliasSelect && aliasSelect.value) {
+                params += '&alias_id=' + aliasSelect.value;
+            }
+            window.open('/private-label/live-preview?' + params, '_blank');
         });
     }
 });

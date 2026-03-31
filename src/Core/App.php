@@ -231,6 +231,7 @@ class App
         // ── Private Label SDS ────────────────────────────────────
         $router->get('/private-label',                     'PrivateLabelController@index');
         $router->get('/private-label/create',              'PrivateLabelController@create');
+        $router->get('/private-label/live-preview',        'PrivateLabelController@livePreview');
         $router->post('/private-label/generate',           'PrivateLabelController@generate');
         $router->get('/private-label/{id}/download',       'PrivateLabelController@download');
         $router->get('/private-label/{id}/preview',        'PrivateLabelController@preview');

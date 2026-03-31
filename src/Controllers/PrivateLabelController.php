@@ -79,6 +79,81 @@ class PrivateLabelController
         ]);
     }
 
+    /**
+     * Live preview — generates fresh SDS data with manufacturer swap.
+     *
+     * Uses the exact same SDSGenerator::generate() path as the standard
+     * SDS preview, then applies the manufacturer (and optional alias)
+     * override so the output is identical except for Section 1 identity.
+     */
+    public function livePreview(): void
+    {
+        if (!can_read('private_label')) {
+            $_SESSION['_flash']['error'] = 'Permission denied.';
+            redirect('/');
+        }
+
+        $finishedGoodId = (int) ($_GET['finished_good_id'] ?? 0);
+        $manufacturerId = (int) ($_GET['manufacturer_id'] ?? 0);
+        $aliasId        = (int) ($_GET['alias_id'] ?? 0) ?: null;
+        $language       = $_GET['lang'] ?? 'en';
+
+        $fg = FinishedGood::findById($finishedGoodId);
+        if ($fg === null) {
+            $_SESSION['_flash']['error'] = 'Please select a valid product.';
+            redirect('/private-label/create');
+        }
+
+        $manufacturer = Manufacturer::findById($manufacturerId);
+        if ($manufacturer === null) {
+            $_SESSION['_flash']['error'] = 'Please select a manufacturer.';
+            redirect('/private-label/create');
+        }
+
+        $mfgInfo = Manufacturer::toCompanyInfo($manufacturer);
+
+        // Look up alias if provided
+        $alias = null;
+        if ($aliasId !== null) {
+            $db = Database::getInstance();
+            $alias = $db->fetch("SELECT * FROM aliases WHERE id = ?", [$aliasId]);
+            if ($alias !== null) {
+                $alias['customer_code'] = self::stripPackExtension($alias['customer_code']);
+            }
+        }
+
+        try {
+            // Use the exact same generate() call as SDSController::preview()
+            $generator = new SDSGenerator();
+            $sdsData   = $generator->generate($finishedGoodId, $language);
+
+            // Apply manufacturer and optional alias overrides
+            if ($alias !== null) {
+                $sdsData = SDSGenerator::createPrivateLabelVariant(
+                    $sdsData,
+                    $alias['customer_code'],
+                    $alias['description'],
+                    $mfgInfo
+                );
+            } else {
+                $sdsData = SDSGenerator::createManufacturerVariant($sdsData, $mfgInfo);
+            }
+
+            $productCode = $alias ? $alias['customer_code'] : $fg['product_code'];
+
+            view('sds/preview', [
+                'pageTitle'     => 'Private Label SDS Preview: ' . $productCode . ' / ' . $manufacturer['name'],
+                'finishedGood'  => ['product_code' => $productCode],
+                'sds'           => $sdsData,
+                'language'      => $language,
+                'privateLabelId' => 0,
+            ]);
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error'] = 'SDS preview failed: ' . $e->getMessage();
+            redirect('/private-label/create');
+        }
+    }
+
     public function create(): void
     {
         if (!can_edit('private_label')) {
@@ -166,6 +241,16 @@ class PrivateLabelController
             $langData = [];
             foreach ($languages as $lang) {
                 $sdsData = $generator->generateFromBase($baseData, $lang);
+
+                // Enforce missing-data threshold (same check as standard SDS)
+                if ($lang === $languages[0]) {
+                    $blockError = $this->checkMissingHazardData($sdsData, $db);
+                    if ($blockError !== null) {
+                        $_SESSION['_flash']['error'] = $blockError;
+                        redirect('/private-label/create');
+                        return;
+                    }
+                }
 
                 // Apply manufacturer and optional alias overrides
                 if ($alias !== null) {
@@ -320,10 +405,11 @@ class PrivateLabelController
         $productCode = !empty($version['alias_code']) ? strip_pack_extension($version['alias_code']) : $version['product_code'];
 
         view('sds/preview', [
-            'pageTitle'    => 'Private Label SDS Preview: ' . $productCode . ' / ' . $version['manufacturer_name'],
-            'finishedGood' => ['product_code' => $productCode],
-            'sds'          => $sdsData,
-            'language'     => $version['language'],
+            'pageTitle'     => 'Private Label SDS Preview: ' . $productCode . ' / ' . $version['manufacturer_name'],
+            'finishedGood'  => ['product_code' => $productCode],
+            'sds'           => $sdsData,
+            'language'      => $version['language'],
+            'privateLabelId' => (int) $id,
         ]);
     }
 
@@ -433,5 +519,50 @@ class PrivateLabelController
         }
 
         return $results;
+    }
+
+    /**
+     * Check for missing federal hazard data above the configured threshold.
+     *
+     * Same logic as SDSController::checkMissingHazardData() — ensures
+     * private label SDS documents are not published when critical hazard
+     * data is missing.
+     */
+    private function checkMissingHazardData(array $sdsData, Database $db): ?string
+    {
+        $blockSetting = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'sds.block_publish_missing'");
+        $blockEnabled = $blockSetting ? ($blockSetting['value'] !== '0') : App::config('sds.block_publish_missing', true);
+
+        if (!$blockEnabled) {
+            return null;
+        }
+
+        $thresholdRow = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'sds.missing_threshold_pct'");
+        $threshold = $thresholdRow ? (float) $thresholdRow['value'] : App::config('sds.missing_threshold_pct', 1.0);
+
+        $missingCas = [];
+        foreach ($sdsData['hazard_result']['trace'] ?? [] as $step) {
+            if (($step['step'] ?? '') === 'no_data') {
+                $cas = $step['data']['cas'] ?? null;
+                $conc = $step['data']['concentration_pct'] ?? 0;
+                if ($cas !== null && (float) $conc >= $threshold) {
+                    $cpd = $db->fetch(
+                        "SELECT id FROM competent_person_determinations WHERE cas_number = ? AND is_active = 1 LIMIT 1",
+                        [$cas]
+                    );
+                    if (!$cpd) {
+                        $missingCas[] = $cas . ' (' . round((float) $conc, 2) . '%)';
+                    }
+                }
+            }
+        }
+
+        if (!empty($missingCas)) {
+            return 'Publishing blocked: missing federal hazard data for CAS numbers at or above '
+                . $threshold . '% threshold: ' . implode(', ', $missingCas)
+                . '. Create a Competent Person Determination for these CAS numbers or disable the threshold in Admin Settings.';
+        }
+
+        return null;
     }
 }

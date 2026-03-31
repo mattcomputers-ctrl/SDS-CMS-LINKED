@@ -387,7 +387,7 @@ class PrivateLabelController
         $db = Database::getInstance();
         $version = $db->fetch(
             "SELECT pl.*, fg.product_code, m.name AS manufacturer_name,
-                    a.customer_code AS alias_code
+                    a.customer_code AS alias_code, a.description AS alias_description
              FROM private_label_sds pl
              JOIN finished_goods fg ON fg.id = pl.finished_good_id
              JOIN manufacturers m ON m.id = pl.manufacturer_id
@@ -396,13 +396,44 @@ class PrivateLabelController
             [(int) $id]
         );
 
-        if ($version === null || $version['snapshot_json'] === null) {
+        if ($version === null) {
             $_SESSION['_flash']['error'] = 'Private label SDS not found.';
             redirect('/private-label');
         }
 
-        $sdsData = json_decode($version['snapshot_json'], true);
         $productCode = !empty($version['alias_code']) ? strip_pack_extension($version['alias_code']) : $version['product_code'];
+
+        // Regenerate fresh SDS data (same approach as standard SDS preview)
+        // to ensure GHS classification data is always current.
+        try {
+            $generator = new SDSGenerator();
+            $sdsData = $generator->generate(
+                (int) $version['finished_good_id'],
+                $version['language']
+            );
+
+            $manufacturer = Manufacturer::findById((int) $version['manufacturer_id']);
+            $mfgInfo = $manufacturer ? Manufacturer::toCompanyInfo($manufacturer) : [];
+
+            if (!empty($version['alias_code'])) {
+                $aliasCode = strip_pack_extension($version['alias_code']);
+                $aliasDesc = $version['alias_description'] ?? '';
+                $sdsData = SDSGenerator::createPrivateLabelVariant(
+                    $sdsData, $aliasCode, $aliasDesc, $mfgInfo
+                );
+            } elseif (!empty($mfgInfo)) {
+                $sdsData = SDSGenerator::createManufacturerVariant($sdsData, $mfgInfo);
+            }
+        } catch (\Throwable $e) {
+            // Fall back to stored snapshot if regeneration fails
+            if ($version['snapshot_json'] !== null) {
+                $sdsData = json_decode($version['snapshot_json'], true);
+            } else {
+                $_SESSION['_flash']['error'] = 'SDS preview failed: ' . $e->getMessage();
+                redirect('/private-label');
+                return;
+            }
+        }
 
         view('sds/preview', [
             'pageTitle'     => 'Private Label SDS Preview: ' . $productCode . ' / ' . $version['manufacturer_name'],
@@ -411,6 +442,151 @@ class PrivateLabelController
             'language'      => $version['language'],
             'privateLabelId' => (int) $id,
         ]);
+    }
+
+    /**
+     * Republish — regenerate PDF and snapshot for an existing private label SDS.
+     *
+     * Creates a new version with fresh hazard classification data,
+     * ensuring GHS data reflects current federal hazard records.
+     */
+    public function republish(string $id): void
+    {
+        if (!can_edit('private_label')) {
+            $_SESSION['_flash']['error'] = 'Permission denied.';
+            redirect('/private-label');
+        }
+
+        CSRF::validateRequest();
+
+        $db = Database::getInstance();
+        $version = $db->fetch(
+            "SELECT pl.*, fg.product_code, m.name AS manufacturer_name,
+                    a.customer_code AS alias_code, a.description AS alias_description
+             FROM private_label_sds pl
+             JOIN finished_goods fg ON fg.id = pl.finished_good_id
+             JOIN manufacturers m ON m.id = pl.manufacturer_id
+             LEFT JOIN aliases a ON a.id = pl.alias_id
+             WHERE pl.id = ?",
+            [(int) $id]
+        );
+
+        if ($version === null) {
+            $_SESSION['_flash']['error'] = 'Private label SDS not found.';
+            redirect('/private-label');
+            return;
+        }
+
+        $finishedGoodId = (int) $version['finished_good_id'];
+        $manufacturerId = (int) $version['manufacturer_id'];
+        $aliasId        = $version['alias_id'] !== null ? (int) $version['alias_id'] : null;
+
+        $manufacturer = Manufacturer::findById($manufacturerId);
+        if ($manufacturer === null) {
+            $_SESSION['_flash']['error'] = 'Manufacturer not found.';
+            redirect('/private-label');
+            return;
+        }
+
+        $mfgInfo = Manufacturer::toCompanyInfo($manufacturer);
+
+        $alias = null;
+        if ($aliasId !== null) {
+            $alias = $db->fetch("SELECT * FROM aliases WHERE id = ?", [$aliasId]);
+            if ($alias !== null) {
+                $alias['customer_code'] = self::stripPackExtension($alias['customer_code']);
+            }
+        }
+
+        $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
+
+        try {
+            $generator = new SDSGenerator();
+            $baseData  = $generator->computeBase($finishedGoodId);
+
+            $langData = [];
+            foreach ($languages as $lang) {
+                $sdsData = $generator->generateFromBase($baseData, $lang);
+
+                if ($alias !== null) {
+                    $sdsData = SDSGenerator::createPrivateLabelVariant(
+                        $sdsData,
+                        $alias['customer_code'],
+                        $alias['description'],
+                        $mfgInfo
+                    );
+                } else {
+                    $sdsData = SDSGenerator::createManufacturerVariant($sdsData, $mfgInfo);
+                }
+
+                $langData[$lang] = $sdsData;
+            }
+
+            $pdfResults = $this->generatePdfsInParallel($langData);
+
+            // Determine next version
+            $versionWhere = 'finished_good_id = ? AND manufacturer_id = ?';
+            $versionParams = [$finishedGoodId, $manufacturerId];
+            if ($aliasId !== null) {
+                $versionWhere .= ' AND alias_id = ?';
+                $versionParams[] = $aliasId;
+            } else {
+                $versionWhere .= ' AND alias_id IS NULL';
+            }
+
+            $lastVersion = $db->fetch(
+                "SELECT MAX(version) AS max_ver FROM private_label_sds WHERE {$versionWhere}",
+                $versionParams
+            );
+            $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
+
+            $now = date('Y-m-d H:i:s');
+            $publishedVersions = [];
+
+            foreach ($languages as $lang) {
+                if (!($pdfResults[$lang]['ok'] ?? false)) {
+                    throw new \RuntimeException(
+                        'PDF generation failed for ' . strtoupper($lang) . ': ' . ($pdfResults[$lang]['error'] ?? 'unknown error')
+                    );
+                }
+
+                $relativePath = str_replace(App::basePath() . '/', '', $pdfResults[$lang]['pdf_path']);
+
+                $db->insert('private_label_sds', [
+                    'finished_good_id' => $finishedGoodId,
+                    'manufacturer_id'  => $manufacturerId,
+                    'alias_id'         => $aliasId,
+                    'language'         => $lang,
+                    'version'          => $nextVersion,
+                    'status'           => 'published',
+                    'effective_date'   => date('Y-m-d'),
+                    'published_by'     => current_user_id(),
+                    'published_at'     => $now,
+                    'snapshot_json'    => json_encode($langData[$lang], JSON_UNESCAPED_UNICODE),
+                    'pdf_path'         => $relativePath,
+                    'change_summary'   => 'Republished with current hazard data',
+                    'created_by'       => current_user_id(),
+                ]);
+
+                $publishedVersions[] = strtoupper($lang);
+            }
+
+            $productLabel = $alias ? $alias['customer_code'] : $version['product_code'];
+
+            AuditService::log('private_label_sds', (string) $finishedGoodId, 'republish', [
+                'manufacturer_id' => $manufacturerId,
+                'manufacturer'    => $manufacturer['name'],
+                'alias_id'        => $aliasId,
+                'version'         => $nextVersion,
+                'languages'       => $publishedVersions,
+            ]);
+
+            $_SESSION['_flash']['success'] = "Private label SDS v{$nextVersion} republished for {$productLabel} / {$manufacturer['name']}: " . implode(', ', $publishedVersions);
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error'] = 'Republish failed: ' . $e->getMessage();
+        }
+
+        redirect('/private-label');
     }
 
     /**

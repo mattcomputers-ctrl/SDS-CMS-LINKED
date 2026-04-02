@@ -606,12 +606,33 @@ fi
 print_step "Creating admin user..."
 ADMIN_HASH=$(php -r "echo password_hash('$ADMIN_PASS', PASSWORD_ARGON2ID);")
 mariadb $MYSQL_AUTH "$DB_NAME" << ADMINEOF
-INSERT INTO users (username, email, password_hash, display_name, role, is_active)
-VALUES ('$ADMIN_USER', NULL, '$ADMIN_HASH', '$ADMIN_DISPLAY', 'admin', 1)
-ON DUPLICATE KEY UPDATE password_hash='$ADMIN_HASH', role='admin', is_active=1;
+INSERT INTO users (username, email, password_hash, display_name, is_active)
+VALUES ('$ADMIN_USER', NULL, '$ADMIN_HASH', '$ADMIN_DISPLAY', 1)
+ON DUPLICATE KEY UPDATE password_hash='$ADMIN_HASH', is_active=1;
 ADMINEOF
 
 print_success "Admin user '$ADMIN_USER' created."
+
+# Assign admin user to Administrators permission group
+print_step "Assigning admin user to Administrators permission group..."
+mariadb $MYSQL_AUTH "$DB_NAME" << GRPEOF
+INSERT INTO permission_groups (name, description, is_admin)
+VALUES ('Administrators', 'Full access to all areas including user management', 1)
+ON DUPLICATE KEY UPDATE is_admin = 1;
+
+SET @admin_uid = (SELECT id FROM users WHERE username = '$ADMIN_USER' LIMIT 1);
+SET @admin_gid = (SELECT id FROM permission_groups WHERE name = 'Administrators' LIMIT 1);
+
+INSERT INTO user_group_members (user_id, group_id)
+SELECT @admin_uid, @admin_gid
+FROM DUAL
+WHERE @admin_uid IS NOT NULL AND @admin_gid IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM user_group_members WHERE user_id = @admin_uid AND group_id = @admin_gid
+  );
+GRPEOF
+
+print_success "Admin user assigned to Administrators group."
 
 # Seed the server URL setting into the database
 print_step "Saving server URL to settings..."

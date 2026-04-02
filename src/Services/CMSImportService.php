@@ -63,6 +63,7 @@ class CMSImportService
              FROM CMS.dbo.Item i
              JOIN CMS.dbo.Recipe r ON i.CostingRecipe = r.Recipe
              WHERE i.CostingRecipe IS NOT NULL
+               AND r.RecipeNumber LIKE '%.%'
              ORDER BY i.ItemCode"
         );
 

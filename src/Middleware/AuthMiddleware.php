@@ -60,7 +60,7 @@ class AuthMiddleware
         '/exempt-vocs'           => 'exempt_vocs',
         '/bulk-publish'          => 'bulk_publish',
         '/bulk-export'           => 'bulk_export',
-        '/cms-import'            => 'finished_goods',
+        '/cms-import'            => 'cms_import',
         '/raw-materials'         => 'raw_materials',
         '/finished-goods'        => 'finished_goods',
         '/lookup'                => 'fg_sds_lookup',

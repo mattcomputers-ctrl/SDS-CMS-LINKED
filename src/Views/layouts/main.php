@@ -73,7 +73,7 @@
                     <?php if (can_edit('rm_mass_replace')): ?>
                     <li><a href="/formulas/mass-replace" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/formulas/mass-replace') ? 'active' : '' ?>"><span class="menu-icon">&#128260;</span> Mass Replacement</a></li>
                     <?php endif; ?>
-                    <?php if (can_edit('finished_goods')): ?>
+                    <?php if (can_read('cms_import')): ?>
                     <li><a href="/cms-import" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/cms-import') ? 'active' : '' ?>"><span class="menu-icon">&#128229;</span> CMS Import</a></li>
                     <?php endif; ?>
 

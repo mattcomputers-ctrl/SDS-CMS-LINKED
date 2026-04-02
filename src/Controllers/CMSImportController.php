@@ -15,7 +15,7 @@ class CMSImportController
      */
     public function index(): void
     {
-        if (!can_edit('finished_goods')) {
+        if (!can_edit('cms_import')) {
             $_SESSION['_flash']['error'] = 'You do not have permission to import items.';
             redirect('/');
         }
@@ -55,7 +55,7 @@ class CMSImportController
     {
         CSRF::validate();
 
-        if (!can_edit('finished_goods')) {
+        if (!can_edit('cms_import')) {
             $_SESSION['_flash']['error'] = 'You do not have permission to import items.';
             redirect('/cms-import');
         }
@@ -81,7 +81,7 @@ class CMSImportController
     {
         CSRF::validate();
 
-        if (!can_edit('finished_goods')) {
+        if (!can_edit('cms_import')) {
             $_SESSION['_flash']['error'] = 'You do not have permission to import items.';
             redirect('/cms-import');
         }

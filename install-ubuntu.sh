@@ -537,8 +537,9 @@ print_header "Step 6: Setting Up Database"
 if [ -n "$MYSQL_ROOT_PASS" ]; then
     MYSQL_AUTH="-u root -p$MYSQL_ROOT_PASS"
 else
-    # Socket auth (default for MariaDB on Ubuntu)
-    MYSQL_AUTH="-u root"
+    # Socket auth (default for MariaDB on Ubuntu) — no -u flag needed
+    # when running as OS root, MariaDB maps to the root DB user via socket
+    MYSQL_AUTH=""
 fi
 
 print_step "Creating database and user..."

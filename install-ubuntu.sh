@@ -166,6 +166,27 @@ ADMIN_DISPLAY="${ADMIN_DISPLAY:-$ADMIN_USER}"
 read -rp "Timezone [America/New_York]: " TIMEZONE
 TIMEZONE="${TIMEZONE:-America/New_York}"
 
+# CMS (MSSQL) Database — for formula/item sync
+echo ""
+echo "CMS Database Connection (SQL Server on your network):"
+echo "This connects to your CMS system to sync finished goods and formulas."
+echo "You can skip this now and configure it later in config/config.php."
+echo ""
+read -rp "CMS SQL Server hostname or IP [skip]: " CMS_DB_HOST
+CMS_DB_HOST="${CMS_DB_HOST:-}"
+
+if [ -n "$CMS_DB_HOST" ]; then
+    read -rp "CMS SQL Server port [1433]: " CMS_DB_PORT
+    CMS_DB_PORT="${CMS_DB_PORT:-1433}"
+
+    read -rp "CMS database name [CMS]: " CMS_DB_NAME
+    CMS_DB_NAME="${CMS_DB_NAME:-CMS}"
+
+    read -rp "CMS database user: " CMS_DB_USER
+    read -rp "CMS database password: " -s CMS_DB_PASS
+    echo ""
+fi
+
 echo ""
 print_step "Configuration complete. Starting installation..."
 echo ""
@@ -299,6 +320,20 @@ if [ ${#MISSING_EXTS[@]} -gt 0 ]; then
 fi
 
 print_success "PHP extensions verified."
+
+# --- SQL Server driver for CMS sync ---
+print_step "Installing SQL Server PDO driver (for CMS sync)..."
+CURRENT_PHP_VER=$(php -r "echo PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION;" 2>/dev/null)
+apt-get install -y -qq "php${CURRENT_PHP_VER}-sybase" > /dev/null 2>&1 || \
+    apt-get install -y -qq php-sybase > /dev/null 2>&1 || true
+
+if php -m 2>/dev/null | grep -qi 'pdo_dblib\|pdo_sqlsrv'; then
+    print_success "SQL Server PDO driver installed (CMS sync ready)."
+else
+    print_warn "No SQL Server PDO driver found (pdo_dblib or pdo_sqlsrv)."
+    print_warn "CMS sync will not work until one is installed."
+    print_info "See: https://learn.microsoft.com/en-us/sql/connect/php/installation-tutorial-linux-mac"
+fi
 
 # --- Other utilities ---
 print_step "Installing additional utilities..."
@@ -447,6 +482,15 @@ return [
         'email'   => '',
         'emergency_phone' => 'CHEMTREC: (800) 424-9300',
         'website' => '',
+    ],
+
+    // CMS (MSSQL) database connection for formula/item sync
+    'cms_db' => [
+        'host'     => '${CMS_DB_HOST}',
+        'port'     => ${CMS_DB_PORT:-1433},
+        'name'     => '${CMS_DB_NAME:-CMS}',
+        'user'     => '${CMS_DB_USER}',
+        'password' => '${CMS_DB_PASS}',
     ],
 
     'federal_data' => [
@@ -772,7 +816,10 @@ echo "  1. Log in at http://$SERVER_NAME and go to Admin > Settings."
 echo "  2. Verify or update the Server URL / IP Address."
 echo "  3. Configure your company information and upload logos."
 echo "  4. Create user accounts for your team."
-echo "  5. Start adding raw materials with CAS constituents."
+echo "  5. Go to CMS Import to sync finished goods and formulas"
+echo "     from your CMS database."
+echo "  6. Work through the incomplete raw materials checklist"
+echo "     to add CAS constituents and supplier SDS PDFs."
 echo ""
 echo -e "${YELLOW}To change the server IP later:${NC}"
 echo "  - Log in as admin and go to Admin > Settings."

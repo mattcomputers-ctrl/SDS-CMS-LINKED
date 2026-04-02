@@ -243,6 +243,12 @@ class App
         $router->get('/private-label/{id}/download',       'PrivateLabelController@download');
         $router->get('/private-label/{id}/preview',        'PrivateLabelController@preview');
 
+        // ── CMS Import ───────────────────────────────────────────
+        $router->get('/cms-import',              'CMSImportController@index');
+        $router->post('/cms-import/preview',     'CMSImportController@preview');
+        $router->post('/cms-import/import',      'CMSImportController@import');
+        $router->get('/cms-import/incomplete',   'CMSImportController@incomplete');
+
         // ── GHS Labels ────────────────────────────────────────────
         $router->get('/labels',           'LabelController@index');
         $router->post('/labels/generate', 'LabelController@generate');

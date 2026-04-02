@@ -125,6 +125,27 @@ ADMIN_DISPLAY="${ADMIN_DISPLAY:-$ADMIN_USER}"
 read -rp "Timezone [America/New_York]: " TIMEZONE
 TIMEZONE="${TIMEZONE:-America/New_York}"
 
+# CMS (MSSQL) Database — for formula/item sync
+echo ""
+echo "CMS Database Connection (SQL Server on your network):"
+echo "This connects to your CMS system to sync finished goods and formulas."
+echo "You can skip this now and configure it later in config/config.php."
+echo ""
+read -rp "CMS SQL Server hostname or IP [skip]: " CMS_DB_HOST
+CMS_DB_HOST="${CMS_DB_HOST:-}"
+
+if [ -n "$CMS_DB_HOST" ]; then
+    read -rp "CMS SQL Server port [1433]: " CMS_DB_PORT
+    CMS_DB_PORT="${CMS_DB_PORT:-1433}"
+
+    read -rp "CMS database name [CMS]: " CMS_DB_NAME
+    CMS_DB_NAME="${CMS_DB_NAME:-CMS}"
+
+    read -rp "CMS database user: " CMS_DB_USER
+    read -rp "CMS database password: " -s CMS_DB_PASS
+    echo ""
+fi
+
 echo ""
 print_step "Configuration complete. Starting installation..."
 echo ""
@@ -141,7 +162,16 @@ print_step "Installing PHP extensions and utilities..."
 apt-get install -y -qq \
     php-cli php-mysql php-mbstring php-xml php-curl php-zip \
     php-gd php-intl php-fileinfo php-bcmath \
+    php-sybase \
     unzip curl git > /dev/null 2>&1
+
+# php-sybase provides pdo_dblib for SQL Server (CMS sync)
+# On systems where php-sybase is unavailable, install php-sqlsrv instead
+if ! php -m 2>/dev/null | grep -qi 'pdo_dblib\|pdo_sqlsrv'; then
+    print_warn "No SQL Server PDO driver found (pdo_dblib or pdo_sqlsrv)."
+    print_warn "CMS sync will not work until one is installed."
+    print_info "See: https://learn.microsoft.com/en-us/sql/connect/php/installation-tutorial-linux-mac"
+fi
 
 # Enable required Apache modules
 print_step "Enabling Apache modules..."
@@ -285,6 +315,15 @@ return [
         'email'   => '',
         'emergency_phone' => 'CHEMTREC: (800) 424-9300',
         'website' => '',
+    ],
+
+    // CMS (MSSQL) database connection for formula/item sync
+    'cms_db' => [
+        'host'     => '${CMS_DB_HOST}',
+        'port'     => ${CMS_DB_PORT:-1433},
+        'name'     => '${CMS_DB_NAME:-CMS}',
+        'user'     => '${CMS_DB_USER}',
+        'password' => '${CMS_DB_PASS}',
     ],
 
     'federal_data' => [
@@ -598,8 +637,10 @@ echo "  1. Log in at http://$SERVER_NAME and go to Admin > Settings"
 echo "     to configure your company information."
 echo "  2. Upload your company logo and login page logo."
 echo "  3. Create user accounts for your team."
-echo "  4. Start adding raw materials with CAS constituents."
-echo "  5. Upload supplier SDS PDFs for each raw material."
+echo "  4. Go to CMS Import to sync finished goods and formulas"
+echo "     from your CMS database."
+echo "  5. Work through the incomplete raw materials checklist"
+echo "     to add CAS constituents and supplier SDS PDFs."
 echo ""
 echo -e "${YELLOW}Security notes:${NC}"
 echo "  - The database password has been saved to: $CONFIG_FILE"

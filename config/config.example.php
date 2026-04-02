@@ -57,6 +57,15 @@ return [
         'website' => 'https://www.yourinkcompany.com',
     ],
 
+    // CMS (MSSQL) database connection for formula/item import
+    'cms_db' => [
+        'host'     => '192.168.1.100',
+        'port'     => 1433,
+        'name'     => 'CMS',
+        'user'     => 'cms_reader',
+        'password' => 'CHANGE_ME',
+    ],
+
     'federal_data' => [
         'pubchem' => [
             'base_url'  => 'https://pubchem.ncbi.nlm.nih.gov/rest/pug',

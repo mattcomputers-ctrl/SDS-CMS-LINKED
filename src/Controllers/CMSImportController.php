@@ -53,7 +53,7 @@ class CMSImportController
      */
     public function preview(): void
     {
-        CSRF::validate();
+        CSRF::validateRequest();
 
         if (!can_edit('cms_import')) {
             $_SESSION['_flash']['error'] = 'You do not have permission to import items.';
@@ -79,7 +79,7 @@ class CMSImportController
      */
     public function import(): void
     {
-        CSRF::validate();
+        CSRF::validateRequest();
 
         if (!can_edit('cms_import')) {
             $_SESSION['_flash']['error'] = 'You do not have permission to import items.';

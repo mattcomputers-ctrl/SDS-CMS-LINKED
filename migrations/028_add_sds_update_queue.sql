@@ -26,4 +26,6 @@ CREATE TABLE IF NOT EXISTS `sds_update_queue` (
     CONSTRAINT `fk_suq_resolved_by` FOREIGN KEY (`resolved_by`) REFERENCES `users`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+INSERT IGNORE INTO `schema_migrations` (`version`) VALUES ('028_add_sds_update_queue');
+
 SET FOREIGN_KEY_CHECKS = 1;

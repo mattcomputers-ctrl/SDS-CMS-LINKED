@@ -20,3 +20,5 @@ CREATE TABLE IF NOT EXISTS `cms_import_log` (
     INDEX `idx_cms_import_by` (`imported_by`),
     UNIQUE INDEX `idx_cms_import_unique_entity` (`entity_type`, `entity_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO `schema_migrations` (`version`) VALUES ('029_add_cms_import_log');

@@ -106,9 +106,11 @@ class CMSImportService
                 ing.Item AS ingredient_item_pk,
                 ing.ItemCode AS ingredient_code,
                 ing.Description AS ingredient_description,
-                ing.CostingRecipe AS ingredient_costing_recipe
+                ing.CostingRecipe AS ingredient_costing_recipe,
+                ing_r.RecipeNumber AS ingredient_recipe_number
              FROM CMS.dbo.RecipeDetail rd
              JOIN CMS.dbo.Item ing ON rd.Item = ing.Item
+             LEFT JOIN CMS.dbo.Recipe ing_r ON ing.CostingRecipe = ing_r.Recipe
              WHERE rd.Recipe = ? AND rd.Context = 'UI'
              ORDER BY rd.Line",
             [$cmsRecipePk]
@@ -156,7 +158,7 @@ class CMSImportService
             $ingredients = $this->getRecipeIngredients((int) $item['cms_recipe_pk']);
 
             foreach ($ingredients as $ing) {
-                if ($ing['ingredient_costing_recipe'] !== null) {
+                if ($this->isFinishedGoodIngredient($ing)) {
                     continue; // This is a FG sub-component, not a RM
                 }
 
@@ -301,14 +303,35 @@ class CMSImportService
         $rmMap = [];
         $processed = [];
 
+        // Collect all CMS recipe PKs to scan — top-level items AND FG sub-components
+        $recipesToScan = [];
         foreach ($items as $item) {
-            $ingredients = $this->getRecipeIngredients((int) $item['cms_recipe_pk']);
+            $recipesToScan[] = (int) $item['cms_recipe_pk'];
+        }
+
+        // Also walk FG sub-component recipes recursively to find all leaf RMs
+        $scannedRecipes = [];
+        while (!empty($recipesToScan)) {
+            $recipePk = array_shift($recipesToScan);
+
+            if (isset($scannedRecipes[$recipePk])) {
+                continue;
+            }
+            $scannedRecipes[$recipePk] = true;
+
+            $ingredients = $this->getRecipeIngredients($recipePk);
 
             foreach ($ingredients as $ing) {
-                if ($ing['ingredient_costing_recipe'] !== null) {
+                if ($this->isFinishedGoodIngredient($ing)) {
+                    // This is a FG sub-component — queue its recipe for scanning too
+                    $subRecipePk = (int) $ing['ingredient_costing_recipe'];
+                    if (!isset($scannedRecipes[$subRecipePk])) {
+                        $recipesToScan[] = $subRecipePk;
+                    }
                     continue;
                 }
 
+                // This is a raw material
                 $code = $ing['ingredient_code'];
 
                 if (isset($processed[$code])) {
@@ -444,7 +467,7 @@ class CMSImportService
         $sortOrder = 1;
 
         foreach ($ingredients as $ing) {
-            $isSubComponent = ($ing['ingredient_costing_recipe'] !== null);
+            $isSubComponent = ($this->isFinishedGoodIngredient($ing));
             $ingCode = $ing['ingredient_code'];
             $pct = round((float) $ing['QtyReqd'] * 100, 4);
 
@@ -558,6 +581,24 @@ class CMSImportService
                 'imported_by'       => $userId,
             ]);
         }
+    }
+
+    /**
+     * Determine if a recipe ingredient is a true finished good sub-component.
+     *
+     * An ingredient is only a FG if it has a CostingRecipe whose RecipeNumber
+     * contains a dot (versioned formula like "E1202.03"). Ingredients whose
+     * CostingRecipe points to a pack extension (like "2AB0200-10") are treated
+     * as raw materials instead.
+     */
+    private function isFinishedGoodIngredient(array $ing): bool
+    {
+        if ($ing['ingredient_costing_recipe'] === null) {
+            return false;
+        }
+
+        $recipeNumber = $ing['ingredient_recipe_number'] ?? '';
+        return str_contains($recipeNumber, '.');
     }
 
     private function getExistingRawMaterialCodes(): array

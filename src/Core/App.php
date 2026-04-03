@@ -180,6 +180,7 @@ class App
         $router->get('/finished-goods',            'FinishedGoodController@index');
         $router->get('/finished-goods/create',     'FinishedGoodController@create');
         $router->post('/finished-goods',           'FinishedGoodController@store');
+        $router->get('/finished-goods/component-lookup', 'FinishedGoodController@componentLookup');
         $router->get('/finished-goods/{id}/edit',  'FinishedGoodController@edit');
         $router->post('/finished-goods/{id}',      'FinishedGoodController@update');
 

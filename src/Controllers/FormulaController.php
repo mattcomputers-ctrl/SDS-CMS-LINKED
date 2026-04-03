@@ -44,22 +44,10 @@ class FormulaController
 
         $formula = Formula::findCurrentByFinishedGood((int) $finished_good_id);
 
-        // Get all raw materials for the dropdown
-        $rawMaterials = RawMaterial::all(['per_page' => 999, 'sort' => 'internal_code', 'dir' => 'asc']);
-
-        // Get all finished goods for the dropdown (exclude self to prevent direct self-reference)
-        $allFinishedGoods = FinishedGood::all(['per_page' => 999, 'sort' => 'product_code', 'dir' => 'asc']);
-        $finishedGoods = array_filter($allFinishedGoods, function ($item) use ($finished_good_id) {
-            return (int) $item['id'] !== (int) $finished_good_id;
-        });
-        $finishedGoods = array_values($finishedGoods);
-
         view('formulas/edit', [
             'pageTitle'     => 'Edit Formula: ' . $fg['product_code'],
             'finishedGood'  => $fg,
             'formula'       => $formula,
-            'rawMaterials'  => $rawMaterials,
-            'finishedGoods' => $finishedGoods,
         ]);
     }
 
@@ -77,44 +65,44 @@ class FormulaController
             redirect('/finished-goods');
         }
 
-        // Parse formula lines from POST
-        $lineTypes = $_POST['line_type'] ?? [];
-        $rmIds     = $_POST['raw_material_id'] ?? [];
-        $fgIds     = $_POST['finished_good_component_id'] ?? [];
-        $pcts      = $_POST['pct'] ?? [];
-        $lines     = [];
-
-        foreach ($lineTypes as $i => $type) {
-            $pct = (float) ($pcts[$i] ?? 0);
-            if ($pct <= 0) {
-                continue;
-            }
-
-            $line = [
-                'pct'        => $pct,
-                'sort_order' => $i + 1,
-            ];
-
-            if ($type === 'finished_good') {
-                $fgCompId = (int) ($fgIds[$i] ?? 0);
-                if ($fgCompId <= 0) {
-                    continue;
-                }
-                $line['finished_good_component_id'] = $fgCompId;
-            } else {
-                $rmId = (int) ($rmIds[$i] ?? 0);
-                if ($rmId <= 0) {
-                    continue;
-                }
-                $line['raw_material_id'] = $rmId;
-            }
-
-            $lines[] = $line;
-        }
-
         $notes = trim($_POST['notes'] ?? '');
 
         try {
+            // Parse formula lines from POST — look up codes to resolve IDs
+            $codes = $_POST['component_code'] ?? [];
+            $pcts  = $_POST['pct'] ?? [];
+            $lines = [];
+
+            foreach ($codes as $i => $code) {
+                $code = trim($code);
+                $pct  = (float) ($pcts[$i] ?? 0);
+
+                if ($code === '' || $pct <= 0) {
+                    continue;
+                }
+
+                $line = [
+                    'pct'        => $pct,
+                    'sort_order' => $i + 1,
+                ];
+
+                $rm = RawMaterial::findByCode($code);
+                if ($rm) {
+                    $line['raw_material_id'] = (int) $rm['id'];
+                    $lines[] = $line;
+                    continue;
+                }
+
+                $fg = FinishedGood::findByProductCode($code);
+                if ($fg) {
+                    $line['finished_good_component_id'] = (int) $fg['id'];
+                    $lines[] = $line;
+                    continue;
+                }
+
+                throw new \InvalidArgumentException("Component code '{$code}' not found.");
+            }
+
             $formulaId = Formula::create(
                 (int) $finished_good_id,
                 $lines,

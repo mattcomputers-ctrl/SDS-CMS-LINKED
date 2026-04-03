@@ -100,45 +100,36 @@ $selfId = $isEdit ? (int) $item['id'] : 0;
 
         <table class="table" id="formulaLinesTable">
             <thead>
-                <tr><th>#</th><th>Component</th><th>Weight %</th><th></th></tr>
+                <tr><th>#</th><th>Component Code</th><th>Description</th><th>Weight %</th><th></th></tr>
             </thead>
             <tbody>
             <?php
             if (empty($lines)) {
-                $lines = [['raw_material_id' => '', 'finished_good_component_id' => '', 'pct' => '', 'line_type' => 'raw_material']];
+                $lines = [['component_code' => '', 'pct' => '', 'component_description' => '']];
             }
             foreach ($lines as $i => $line):
-                $lineType = $line['line_type'] ?? 'raw_material';
-                $selectedValue = '';
-                if ($lineType === 'finished_good' && !empty($line['finished_good_component_id'])) {
-                    $selectedValue = 'fg_' . (int) $line['finished_good_component_id'];
-                } elseif (!empty($line['raw_material_id'])) {
-                    $selectedValue = 'rm_' . (int) $line['raw_material_id'];
+                // Resolve component code and description from existing formula lines
+                $componentCode = $line['component_code'] ?? '';
+                $componentDesc = $line['component_description'] ?? '';
+                if ($componentCode === '') {
+                    if (!empty($line['internal_code'])) {
+                        $componentCode = $line['internal_code'];
+                        $componentDesc = $line['supplier_product_name'] ?? '';
+                    } elseif (!empty($line['component_product_code'])) {
+                        $componentCode = $line['component_product_code'];
+                        $componentDesc = $line['component_description'] ?? '';
+                    }
                 }
             ?>
                 <tr class="formula-line">
                     <td><?= $i + 1 ?></td>
                     <td>
-                        <input type="hidden" name="line_type[<?= $i ?>]" class="line-type-hidden" value="<?= e($lineType) ?>">
-                        <input type="hidden" name="raw_material_id[<?= $i ?>]" class="rm-id-hidden" value="<?= $lineType === 'raw_material' ? (int) ($line['raw_material_id'] ?? 0) : '' ?>">
-                        <input type="hidden" name="finished_good_component_id[<?= $i ?>]" class="fg-id-hidden" value="<?= $lineType === 'finished_good' ? (int) ($line['finished_good_component_id'] ?? 0) : '' ?>">
-                        <select class="searchable-select component-select" data-index="<?= $i ?>">
-                            <option value="">— Select —</option>
-                            <optgroup label="Raw Materials">
-                                <?php foreach ($rawMaterials as $rm): ?>
-                                    <option value="rm_<?= (int) $rm['id'] ?>" data-type="raw_material" data-id="<?= (int) $rm['id'] ?>" <?= $selectedValue === 'rm_' . (int) $rm['id'] ? 'selected' : '' ?>>
-                                        <?= e($rm['internal_code']) ?> — <?= e($rm['supplier_product_name'] ?: $rm['supplier']) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </optgroup>
-                            <optgroup label="Finished Goods">
-                                <?php foreach ($finishedGoods as $fg): ?>
-                                    <option value="fg_<?= (int) $fg['id'] ?>" data-type="finished_good" data-id="<?= (int) $fg['id'] ?>" <?= $selectedValue === 'fg_' . (int) $fg['id'] ? 'selected' : '' ?>>
-                                        <?= e($fg['product_code']) ?> — <?= e($fg['description']) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </optgroup>
-                        </select>
+                        <input type="text" name="component_code[<?= $i ?>]" value="<?= e($componentCode) ?>"
+                               class="input-sm component-code" placeholder="e.g. VEC3218"
+                               autocomplete="off" spellcheck="false">
+                    </td>
+                    <td>
+                        <span class="component-desc"><?= e($componentDesc) ?></span>
                     </td>
                     <td><input type="number" name="pct[<?= $i ?>]" value="<?= e((string) ($line['pct'] ?? '')) ?>" step="0.0001" min="0" max="100" class="input-sm formula-pct"></td>
                     <td><button type="button" class="btn btn-sm btn-danger remove-line">X</button></td>
@@ -147,7 +138,7 @@ $selfId = $isEdit ? (int) $item['id'] : 0;
             </tbody>
             <tfoot>
                 <tr>
-                    <th colspan="2" style="text-align: right;">Total:</th>
+                    <th colspan="3" style="text-align: right;">Total:</th>
                     <th id="totalPct">0.00%</th>
                     <th></th>
                 </tr>
@@ -176,36 +167,41 @@ $selfId = $isEdit ? (int) $item['id'] : 0;
 </div>
 
 <script>
-var componentOptions = [];
-<?php foreach ($rawMaterials as $rm): ?>
-componentOptions.push({value: 'rm_<?= (int) $rm['id'] ?>', type: 'raw_material', id: <?= (int) $rm['id'] ?>, label: <?= json_encode($rm['internal_code'] . ' — ' . ($rm['supplier_product_name'] ?: $rm['supplier'])) ?>, group: 'Raw Materials'});
-<?php endforeach; ?>
-<?php foreach ($finishedGoods as $fg): ?>
-componentOptions.push({value: 'fg_<?= (int) $fg['id'] ?>', type: 'finished_good', id: <?= (int) $fg['id'] ?>, label: <?= json_encode($fg['product_code'] . ' — ' . $fg['description']) ?>, group: 'Finished Goods'});
-<?php endforeach; ?>
+var lookupTimers = {};
 
-function escHtml(str) {
-    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
+function lookupComponent(input) {
+    var code = input.value.trim();
+    var row = input.closest('tr');
+    var descSpan = row.querySelector('.component-desc');
 
-function syncHiddenFields(selectEl) {
-    var row = selectEl.closest('tr');
-    var opt = selectEl.options[selectEl.selectedIndex];
-    var lineTypeInput = row.querySelector('.line-type-hidden');
-    var rmIdInput = row.querySelector('.rm-id-hidden');
-    var fgIdInput = row.querySelector('.fg-id-hidden');
-
-    if (opt && opt.value) {
-        var type = opt.getAttribute('data-type');
-        var id = opt.getAttribute('data-id');
-        lineTypeInput.value = type;
-        rmIdInput.value = (type === 'raw_material') ? id : '';
-        fgIdInput.value = (type === 'finished_good') ? id : '';
-    } else {
-        lineTypeInput.value = 'raw_material';
-        rmIdInput.value = '';
-        fgIdInput.value = '';
+    if (code === '') {
+        descSpan.textContent = '';
+        descSpan.style.color = '';
+        return;
     }
+
+    // Debounce: wait 300ms after typing stops
+    var key = input.name;
+    clearTimeout(lookupTimers[key]);
+    lookupTimers[key] = setTimeout(function() {
+        fetch('/finished-goods/component-lookup?code=' + encodeURIComponent(code))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.found) {
+                    descSpan.textContent = data.description;
+                    descSpan.style.color = '';
+                    input.style.borderColor = '';
+                } else {
+                    descSpan.textContent = 'Not found';
+                    descSpan.style.color = '#dc3545';
+                    input.style.borderColor = '#dc3545';
+                }
+            })
+            .catch(function() {
+                descSpan.textContent = 'Lookup error';
+                descSpan.style.color = '#dc3545';
+            });
+    }, 300);
 }
 
 function updateTotal() {
@@ -219,44 +215,28 @@ function updateTotal() {
     el.style.fontWeight = Math.abs(total - 100) > 0.1 ? 'bold' : '';
 }
 
+function escHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 document.getElementById('addLine').addEventListener('click', function() {
     var tbody = document.querySelector('#formulaLinesTable tbody');
     var idx = tbody.querySelectorAll('.formula-line').length;
     var tr = document.createElement('tr');
     tr.className = 'formula-line';
 
-    var options = '<option value="">— Select —</option>';
-    var currentGroup = '';
-    componentOptions.forEach(function(c) {
-        if (c.group !== currentGroup) {
-            if (currentGroup) options += '</optgroup>';
-            options += '<optgroup label="' + escHtml(c.group) + '">';
-            currentGroup = c.group;
-        }
-        options += '<option value="' + c.value + '" data-type="' + c.type + '" data-id="' + c.id + '">' + escHtml(c.label) + '</option>';
-    });
-    if (currentGroup) options += '</optgroup>';
-
     tr.innerHTML = '<td>' + (idx + 1) + '</td>' +
-        '<td>' +
-            '<input type="hidden" name="line_type[' + idx + ']" class="line-type-hidden" value="raw_material">' +
-            '<input type="hidden" name="raw_material_id[' + idx + ']" class="rm-id-hidden" value="">' +
-            '<input type="hidden" name="finished_good_component_id[' + idx + ']" class="fg-id-hidden" value="">' +
-            '<select class="searchable-select component-select" data-index="' + idx + '">' + options + '</select>' +
-        '</td>' +
+        '<td><input type="text" name="component_code[' + idx + ']" class="input-sm component-code" placeholder="e.g. VEC3218" autocomplete="off" spellcheck="false"></td>' +
+        '<td><span class="component-desc"></span></td>' +
         '<td><input type="number" name="pct[' + idx + ']" step="0.0001" min="0" max="100" class="input-sm formula-pct"></td>' +
         '<td><button type="button" class="btn btn-sm btn-danger remove-line">X</button></td>';
     tbody.appendChild(tr);
+    tr.querySelector('.component-code').focus();
 });
 
 document.addEventListener('input', function(e) {
     if (e.target.classList.contains('formula-pct')) updateTotal();
-});
-
-document.addEventListener('change', function(e) {
-    if (e.target.classList.contains('component-select')) {
-        syncHiddenFields(e.target);
-    }
+    if (e.target.classList.contains('component-code')) lookupComponent(e.target);
 });
 
 document.addEventListener('click', function(e) {
@@ -265,6 +245,13 @@ document.addEventListener('click', function(e) {
             e.target.closest('tr').remove();
             updateTotal();
         }
+    }
+});
+
+// Run initial lookups for pre-populated codes that don't have descriptions yet
+document.querySelectorAll('.component-code').forEach(function(input) {
+    if (input.value.trim() !== '' && input.closest('tr').querySelector('.component-desc').textContent.trim() === '') {
+        lookupComponent(input);
     }
 });
 

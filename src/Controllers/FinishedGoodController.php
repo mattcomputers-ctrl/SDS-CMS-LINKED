@@ -48,9 +48,6 @@ class FinishedGoodController
         $families       = $this->loadProductFamilies();
         $physicalStates = $this->loadPhysicalStates();
         $colorOptions   = $this->loadColorOptions();
-        $rawMaterials   = RawMaterial::all(['per_page' => 999, 'sort' => 'internal_code', 'dir' => 'asc']);
-        $finishedGoods  = FinishedGood::all(['per_page' => 999, 'sort' => 'product_code', 'dir' => 'asc']);
-
         // Pre-fill with default recommended use / restrictions from settings
         $defaults = $this->loadDefaultUseSettings();
 
@@ -69,8 +66,6 @@ class FinishedGoodController
             'families'       => $families,
             'physicalStates' => $physicalStates,
             'colorOptions'   => $colorOptions,
-            'rawMaterials'   => $rawMaterials,
-            'finishedGoods'  => $finishedGoods,
             'formula'        => $formula,
         ]);
     }
@@ -126,14 +121,7 @@ class FinishedGoodController
         $families       = $this->loadProductFamilies();
         $physicalStates = $this->loadPhysicalStates();
         $colorOptions   = $this->loadColorOptions();
-        $rawMaterials   = RawMaterial::all(['per_page' => 999, 'sort' => 'internal_code', 'dir' => 'asc']);
         $formula        = Formula::findCurrentByFinishedGood((int) $id);
-
-        // Get all finished goods for the dropdown (exclude self)
-        $allFinishedGoods = FinishedGood::all(['per_page' => 999, 'sort' => 'product_code', 'dir' => 'asc']);
-        $finishedGoods = array_values(array_filter($allFinishedGoods, function ($item) use ($id) {
-            return (int) $item['id'] !== (int) $id;
-        }));
 
         view('finished-goods/form', [
             'pageTitle'      => 'Edit: ' . $item['product_code'],
@@ -142,8 +130,6 @@ class FinishedGoodController
             'families'       => $families,
             'physicalStates' => $physicalStates,
             'colorOptions'   => $colorOptions,
-            'rawMaterials'   => $rawMaterials,
-            'finishedGoods'  => $finishedGoods,
             'formula'        => $formula,
         ]);
     }
@@ -193,17 +179,60 @@ class FinishedGoodController
      * Parse formula lines from POST into an array suitable for Formula::create().
      * Returns empty array if no valid lines were provided.
      */
+    /**
+     * AJAX endpoint: look up a component code and return its type, ID, and description.
+     * GET /finished-goods/component-lookup?code=XXX
+     */
+    public function componentLookup(): void
+    {
+        header('Content-Type: application/json');
+
+        $code = trim($_GET['code'] ?? '');
+        if ($code === '') {
+            echo json_encode(['found' => false]);
+            return;
+        }
+
+        // Check raw materials first
+        $rm = RawMaterial::findByCode($code);
+        if ($rm) {
+            echo json_encode([
+                'found'       => true,
+                'type'        => 'raw_material',
+                'id'          => (int) $rm['id'],
+                'code'        => $rm['internal_code'],
+                'description' => $rm['supplier_product_name'] ?: $rm['supplier'] ?: '',
+            ]);
+            return;
+        }
+
+        // Check finished goods
+        $fg = FinishedGood::findByProductCode($code);
+        if ($fg) {
+            echo json_encode([
+                'found'       => true,
+                'type'        => 'finished_good',
+                'id'          => (int) $fg['id'],
+                'code'        => $fg['product_code'],
+                'description' => $fg['description'] ?? '',
+            ]);
+            return;
+        }
+
+        echo json_encode(['found' => false]);
+    }
+
     private function parseFormulaLines(): array
     {
-        $lineTypes = $_POST['line_type'] ?? [];
-        $rmIds     = $_POST['raw_material_id'] ?? [];
-        $fgIds     = $_POST['finished_good_component_id'] ?? [];
-        $pcts      = $_POST['pct'] ?? [];
-        $lines     = [];
+        $codes = $_POST['component_code'] ?? [];
+        $pcts  = $_POST['pct'] ?? [];
+        $lines = [];
 
-        foreach ($lineTypes as $i => $type) {
-            $pct = (float) ($pcts[$i] ?? 0);
-            if ($pct <= 0) {
+        foreach ($codes as $i => $code) {
+            $code = trim($code);
+            $pct  = (float) ($pcts[$i] ?? 0);
+
+            if ($code === '' || $pct <= 0) {
                 continue;
             }
 
@@ -212,21 +241,22 @@ class FinishedGoodController
                 'sort_order' => $i + 1,
             ];
 
-            if ($type === 'finished_good') {
-                $fgCompId = (int) ($fgIds[$i] ?? 0);
-                if ($fgCompId <= 0) {
-                    continue;
-                }
-                $line['finished_good_component_id'] = $fgCompId;
-            } else {
-                $rmId = (int) ($rmIds[$i] ?? 0);
-                if ($rmId <= 0) {
-                    continue;
-                }
-                $line['raw_material_id'] = $rmId;
+            // Look up the code — try raw material first, then finished good
+            $rm = RawMaterial::findByCode($code);
+            if ($rm) {
+                $line['raw_material_id'] = (int) $rm['id'];
+                $lines[] = $line;
+                continue;
             }
 
-            $lines[] = $line;
+            $fg = FinishedGood::findByProductCode($code);
+            if ($fg) {
+                $line['finished_good_component_id'] = (int) $fg['id'];
+                $lines[] = $line;
+                continue;
+            }
+
+            throw new \InvalidArgumentException("Component code '{$code}' not found as a raw material or finished good.");
         }
 
         return $lines;
@@ -259,11 +289,9 @@ class FinishedGoodController
     private function captureFormulaPost(): array
     {
         return [
-            'line_type'                  => $_POST['line_type'] ?? [],
-            'raw_material_id'            => $_POST['raw_material_id'] ?? [],
-            'finished_good_component_id' => $_POST['finished_good_component_id'] ?? [],
-            'pct'                        => $_POST['pct'] ?? [],
-            'formula_notes'              => $_POST['formula_notes'] ?? '',
+            'component_code' => $_POST['component_code'] ?? [],
+            'pct'            => $_POST['pct'] ?? [],
+            'formula_notes'  => $_POST['formula_notes'] ?? '',
         ];
     }
 
@@ -274,17 +302,13 @@ class FinishedGoodController
     private function rebuildFormulaFromFlash(array $oldFormula): array
     {
         $lines = [];
-        $lineTypes = $oldFormula['line_type'] ?? [];
-        $rmIds     = $oldFormula['raw_material_id'] ?? [];
-        $fgIds     = $oldFormula['finished_good_component_id'] ?? [];
-        $pcts      = $oldFormula['pct'] ?? [];
+        $codes = $oldFormula['component_code'] ?? [];
+        $pcts  = $oldFormula['pct'] ?? [];
 
-        foreach ($lineTypes as $i => $type) {
+        foreach ($codes as $i => $code) {
             $lines[] = [
-                'line_type'                  => $type,
-                'raw_material_id'            => $rmIds[$i] ?? '',
-                'finished_good_component_id' => $fgIds[$i] ?? '',
-                'pct'                        => $pcts[$i] ?? '',
+                'component_code' => $code,
+                'pct'            => $pcts[$i] ?? '',
             ];
         }
 

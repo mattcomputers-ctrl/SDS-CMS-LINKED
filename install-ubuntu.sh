@@ -414,6 +414,10 @@ chmod -R 755 "$INSTALL_DIR"
 chmod -R 775 public/uploads
 chmod -R 775 public/generated-pdfs
 chmod -R 775 storage
+# Protect config file (contains database passwords)
+if [ -f "$INSTALL_DIR/config/config.php" ]; then
+    chmod 640 "$INSTALL_DIR/config/config.php"
+fi
 
 print_success "Application files ready."
 
@@ -423,6 +427,11 @@ print_success "Application files ready."
 print_header "Step 5: Creating Configuration"
 
 CONFIG_FILE="$INSTALL_DIR/config/config.php"
+
+if [ -f "$CONFIG_FILE" ]; then
+    print_warn "Configuration file already exists. Skipping to preserve manual edits."
+    print_info "Delete $CONFIG_FILE and re-run the installer to regenerate it."
+else
 
 cat > "$CONFIG_FILE" << CONFIGEOF
 <?php
@@ -528,6 +537,8 @@ chown www-data:www-data "$CONFIG_FILE"
 
 print_success "Configuration file created."
 
+fi  # end config file creation
+
 # ============================================================
 # Step 6: Set up the database
 # ============================================================
@@ -605,7 +616,7 @@ fi
 
 # Create admin user
 print_step "Creating admin user..."
-ADMIN_HASH=$(php -r "echo password_hash('$ADMIN_PASS', PASSWORD_ARGON2ID);")
+ADMIN_HASH=$(php -r 'echo password_hash($argv[1], PASSWORD_ARGON2ID);' -- "$ADMIN_PASS")
 mariadb $MYSQL_AUTH "$DB_NAME" << ADMINEOF
 INSERT INTO users (username, email, password_hash, display_name, is_active)
 VALUES ('$ADMIN_USER', NULL, '$ADMIN_HASH', '$ADMIN_DISPLAY', 1)

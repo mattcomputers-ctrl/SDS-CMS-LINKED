@@ -577,6 +577,20 @@ print_success "Cron jobs installed for www-data."
 print_info "  Daily:   Housekeeping           (4:00 AM)"
 
 # ============================================================
+# Step 9b: Final permission fix
+# ============================================================
+print_step "Applying final file permissions..."
+chown -R www-data:www-data "$INSTALL_DIR"
+chmod -R 755 "$INSTALL_DIR"
+chmod -R 775 "$INSTALL_DIR/public/uploads"
+chmod -R 775 "$INSTALL_DIR/public/generated-pdfs"
+chmod -R 775 "$INSTALL_DIR/storage"
+if [ -f "$INSTALL_DIR/config/config.php" ]; then
+    chmod 640 "$INSTALL_DIR/config/config.php"
+fi
+print_success "File permissions applied."
+
+# ============================================================
 # Step 10: Final Verification
 # ============================================================
 print_header "Step 10: Final Verification"

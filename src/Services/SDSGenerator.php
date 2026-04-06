@@ -1914,9 +1914,8 @@ class SDSGenerator
     /**
      * Analyse SNUR (Significant New Use Rule) applicability for the formula.
      *
-     * Checks each CAS number in the composition against:
-     * 1. The snur_list table (centrally managed SNUR CAS numbers)
-     * 2. Manual is_snur flags on raw materials
+     * Checks each CAS number in the composition against the snur_list table
+     * (centrally managed SNUR CAS numbers, maintained via Admin > SNUR List).
      *
      * @return array{has_snur: bool, listed_chemicals: array}
      */
@@ -1962,38 +1961,6 @@ class SDSGenerator
                 'description'       => $row['description'] ?? '',
                 'source'            => 'snur_list',
             ];
-        }
-
-        // 2. Check raw materials with is_snur flag
-        $formulaLines = $calcResult['formula']['lines'] ?? [];
-        $rmIds = array_filter(array_column($formulaLines, 'raw_material_id'));
-        if (!empty($rmIds)) {
-            $rmPlaceholders = implode(',', array_fill(0, count($rmIds), '?'));
-            $snurRms = $db->fetchAll(
-                "SELECT rm.id, rm.internal_code, rm.snur_description, rmc.cas_number, rmc.chemical_name
-                 FROM raw_materials rm
-                 LEFT JOIN raw_material_constituents rmc ON rmc.raw_material_id = rm.id
-                 WHERE rm.id IN ({$rmPlaceholders}) AND rm.is_snur = 1",
-                $rmIds
-            );
-
-            // Track CAS numbers already found via snur_list to avoid duplicates
-            $alreadyListed = array_column($listedChemicals, 'cas_number');
-
-            foreach ($snurRms as $row) {
-                $cas = $row['cas_number'] ?? '';
-                if ($cas !== '' && !in_array($cas, $alreadyListed, true)) {
-                    $listedChemicals[] = [
-                        'cas_number'        => $cas,
-                        'chemical_name'     => $row['chemical_name'] ?? '',
-                        'concentration_pct' => $casPctMap[$cas] ?? 0,
-                        'rule_citation'     => '',
-                        'description'       => $row['snur_description'] ?? '',
-                        'source'            => 'manual',
-                    ];
-                    $alreadyListed[] = $cas;
-                }
-            }
         }
 
         return [

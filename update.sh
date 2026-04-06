@@ -250,6 +250,37 @@ else
     print_success "German language already configured."
 fi
 
+# Add cms_db section if not already present
+print_step "Checking CMS database configuration..."
+HAS_CMS=$(php -r "\$c = require '$INSTALL_DIR/config/config.php'; echo isset(\$c['cms_db']) ? 'yes' : 'no';" 2>/dev/null)
+
+if [ "$HAS_CMS" = "no" ]; then
+    print_step "Adding cms_db configuration section..."
+    php -r "
+        \$file = '$INSTALL_DIR/config/config.php';
+        \$content = file_get_contents(\$file);
+        // Add cms_db section before the federal_data section
+        \$cmsBlock = \"\\n    // CMS (MSSQL) database connection for formula/item sync\\n\" .
+                     \"    'cms_db' => [\\n\" .
+                     \"        'host'     => '',\\n\" .
+                     \"        'port'     => 1433,\\n\" .
+                     \"        'name'     => 'CMS',\\n\" .
+                     \"        'user'     => '',\\n\" .
+                     \"        'password' => '',\\n\" .
+                     \"    ],\\n\";
+        \$content = preg_replace(
+            \"/(\\s*'federal_data')/\",
+            \$cmsBlock . '\${1}',
+            \$content,
+            1
+        );
+        file_put_contents(\$file, \$content);
+    " 2>/dev/null
+    print_success "cms_db section added to config (edit config.php to set CMS connection details)."
+else
+    print_success "CMS database already configured."
+fi
+
 # Add publish_workers if not already present
 print_step "Checking publish_workers configuration..."
 HAS_PW=$(php -r "\$c = require '$INSTALL_DIR/config/config.php'; echo isset(\$c['sds']['publish_workers']) ? 'yes' : 'no';" 2>/dev/null)

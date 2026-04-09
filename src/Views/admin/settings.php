@@ -157,7 +157,7 @@
         <p class="text-muted mb-1">Controls how often the CMS sync runs and how much shipment history to import.</p>
         <div class="form-grid-2col">
             <div class="form-group"><label>Sync Interval (hours)</label><input type="number" name="cms_sync__interval_hours" min="1" step="1" value="<?= e($settings['cms_sync.interval_hours'] ?? '1') ?>"><small class="text-muted">How often the CMS sync runs (default: every 1 hour)</small></div>
-            <div class="form-group"><label>Shipment History (days)</label><input type="number" name="cms_sync__shipment_days" min="1" step="1" value="<?= e($settings['cms_sync.shipment_days'] ?? '90') ?>"><small class="text-muted">How many days of shipment history to import from CMS</small></div>
+            <div class="form-group"><label>Shipment History (days)</label><input type="number" name="cms_sync__shipment_days" min="1" step="1" value="<?= e($settings['cms_sync.shipment_days'] ?? '1095') ?>"><small class="text-muted">How many days of shipment history to import from CMS</small></div>
         </div>
 
         <h2>Maintenance</h2>

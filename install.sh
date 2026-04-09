@@ -336,7 +336,7 @@ return [
     ],
 
     'cms_sync' => [
-        'shipment_days' => 90,
+        'shipment_days' => 1095,
     ],
 
     'mail' => [

@@ -250,30 +250,35 @@ class CMSImportService
     {
         $fgMap = [];
 
+        // Pre-load all existing FG product codes in one query
+        $existingFgs = [];
+        $rows = $this->db->fetchAll("SELECT id, product_code FROM finished_goods");
+        foreach ($rows as $row) {
+            $existingFgs[$row['product_code']] = (int) $row['id'];
+        }
+
         foreach ($items as $item) {
             $code = $item['ItemCode'];
 
-            // If it already exists in SDS (regardless of status), map it
+            // If it already exists in SDS (from import log), map it
             if ($item['sds_entity_id'] !== null) {
                 $fgMap[$code] = $item['sds_entity_id'];
                 $results['fg_skipped'][] = $code;
                 continue;
             }
 
-            // Also check by product_code in case it was manually created
-            $existing = FinishedGood::findByProductCode($code);
-            if ($existing) {
-                $fgMap[$code] = (int) $existing['id'];
+            // Check pre-loaded map in case it was manually created
+            if (isset($existingFgs[$code])) {
+                $fgMap[$code] = $existingFgs[$code];
                 $results['fg_skipped'][] = $code;
 
-                // Create an import log entry so future runs can track the recipe
                 $this->upsertImportLog(
                     $code,
                     (int) $item['cms_item_pk'],
                     $item['RecipeNumber'],
                     (int) $item['cms_recipe_pk'],
                     'finished_good',
-                    (int) $existing['id'],
+                    $existingFgs[$code],
                     $userId
                 );
                 continue;
@@ -316,6 +321,13 @@ class CMSImportService
         $rmMap = [];
         $processed = [];
 
+        // Pre-load all existing RM codes in one query
+        $existingRms = [];
+        $rmRows = $this->db->fetchAll("SELECT id, internal_code FROM raw_materials");
+        foreach ($rmRows as $rmRow) {
+            $existingRms[$rmRow['internal_code']] = (int) $rmRow['id'];
+        }
+
         // Collect all CMS recipe PKs to scan — top-level items AND FG sub-components
         $recipesToScan = [];
         foreach ($items as $item) {
@@ -336,7 +348,6 @@ class CMSImportService
 
             foreach ($ingredients as $ing) {
                 if ($this->isFinishedGoodIngredient($ing)) {
-                    // This is a FG sub-component — queue its recipe for scanning too
                     $subRecipePk = (int) $ing['ingredient_costing_recipe'];
                     if (!isset($scannedRecipes[$subRecipePk])) {
                         $recipesToScan[] = $subRecipePk;
@@ -344,7 +355,6 @@ class CMSImportService
                     continue;
                 }
 
-                // This is a raw material
                 $code = $ing['ingredient_code'];
 
                 if (isset($processed[$code])) {
@@ -352,9 +362,9 @@ class CMSImportService
                 }
                 $processed[$code] = true;
 
-                $existing = RawMaterial::findByCode($code);
-                if ($existing) {
-                    $rmMap[$code] = (int) $existing['id'];
+                // Check pre-loaded map instead of individual query
+                if (isset($existingRms[$code])) {
+                    $rmMap[$code] = $existingRms[$code];
                     $results['rm_skipped'][] = $code;
                     continue;
                 }
@@ -557,49 +567,54 @@ class CMSImportService
             return;
         }
 
-        $created = 0;
-        $updated = 0;
+        // Batch upsert using INSERT ... ON DUPLICATE KEY UPDATE
+        $pdo = $this->db->getPdo();
+        $batchSize = 500;
+        $total = 0;
 
-        foreach ($aliases as $row) {
-            $customerCode = trim($row['alias_code']);
-            $description  = trim($row['alias_description'] ?? '');
-            $internalCode = trim($row['inventory_code']);
+        for ($offset = 0; $offset < count($aliases); $offset += $batchSize) {
+            $batch = array_slice($aliases, $offset, $batchSize);
+            $placeholders = [];
+            $params = [];
 
-            if ($customerCode === '' || $internalCode === '') {
+            foreach ($batch as $row) {
+                $customerCode = trim($row['alias_code']);
+                $description  = trim($row['alias_description'] ?? '');
+                $internalCode = trim($row['inventory_code']);
+
+                if ($customerCode === '' || $internalCode === '') {
+                    continue;
+                }
+
+                $internalCodeBase = str_contains($internalCode, '-')
+                    ? substr($internalCode, 0, strpos($internalCode, '-'))
+                    : $internalCode;
+
+                $placeholders[] = '(?, ?, ?, ?)';
+                $params[] = $customerCode;
+                $params[] = $description;
+                $params[] = $internalCode;
+                $params[] = $internalCodeBase;
+            }
+
+            if (empty($placeholders)) {
                 continue;
             }
 
-            // Strip pack extension from internal code (everything after first dash)
-            $internalCodeBase = (str_contains($internalCode, '-'))
-                ? substr($internalCode, 0, strpos($internalCode, '-'))
-                : $internalCode;
+            $sql = "INSERT INTO `aliases` (`customer_code`, `description`, `internal_code`, `internal_code_base`)
+                    VALUES " . implode(', ', $placeholders) . "
+                    ON DUPLICATE KEY UPDATE
+                        `description` = VALUES(`description`),
+                        `internal_code` = VALUES(`internal_code`),
+                        `internal_code_base` = VALUES(`internal_code_base`)";
 
-            // Upsert: check if alias already exists by customer_code
-            $existing = $this->db->fetch(
-                "SELECT id FROM aliases WHERE customer_code = ?",
-                [$customerCode]
-            );
-
-            if ($existing) {
-                $this->db->update('aliases', [
-                    'description'        => $description,
-                    'internal_code'      => $internalCode,
-                    'internal_code_base' => $internalCodeBase,
-                ], 'id = ?', [(int) $existing['id']]);
-                $updated++;
-            } else {
-                $this->db->insert('aliases', [
-                    'customer_code'      => $customerCode,
-                    'description'        => $description,
-                    'internal_code'      => $internalCode,
-                    'internal_code_base' => $internalCodeBase,
-                ]);
-                $created++;
-            }
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            $total += count($placeholders);
         }
 
-        $results['aliases_created'] = $created;
-        $results['aliases_updated'] = $updated;
+        $results['aliases_created'] = $total;
+        $results['aliases_updated'] = 0;
     }
 
     /* ------------------------------------------------------------------
@@ -613,7 +628,7 @@ class CMSImportService
     private function importShipments(array &$results): void
     {
         $daysRow = $this->db->fetch("SELECT `value` FROM settings WHERE `key` = 'cms_sync.shipment_days'");
-        $days = (int) ($daysRow['value'] ?? 90);
+        $days = (int) ($daysRow['value'] ?? 1095);
 
         try {
             $shipments = $this->cms->fetchAll(
@@ -632,49 +647,62 @@ class CMSImportService
             return;
         }
 
-        $imported = 0;
+        // Batch upsert using INSERT ... ON DUPLICATE KEY UPDATE
+        $pdo = $this->db->getPdo();
+        $batchSize = 500;
+        $total = 0;
+        $cols = ['bill_to','ship_to','ship_to_name','date_shipped','item_code','item_description',
+                 'item_name','item_name_description','qty_shipped','invoice_number','order_number','cms_changeset'];
+        $colList = '`' . implode('`, `', $cols) . '`';
+        $updateParts = [];
+        foreach ($cols as $c) {
+            if ($c !== 'cms_changeset') { // don't update the dedup key
+                $updateParts[] = "`{$c}` = VALUES(`{$c}`)";
+            }
+        }
+        $updateSql = implode(', ', $updateParts);
 
-        foreach ($shipments as $row) {
-            $changeSet   = $row['ChangeSet'] ?? null;
-            $itemCode    = trim($row['ItemCode'] ?? '');
-            $dateShipped = $row['DateShipped'] ?? null;
+        for ($offset = 0; $offset < count($shipments); $offset += $batchSize) {
+            $batch = array_slice($shipments, $offset, $batchSize);
+            $placeholders = [];
+            $params = [];
 
-            if ($itemCode === '' || $dateShipped === null) {
+            foreach ($batch as $row) {
+                $itemCode    = trim($row['ItemCode'] ?? '');
+                $dateShipped = $row['DateShipped'] ?? null;
+                if ($itemCode === '' || $dateShipped === null) {
+                    continue;
+                }
+
+                $placeholders[] = '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+                $params[] = trim($row['BillTo'] ?? '');
+                $params[] = trim($row['ShipTo'] ?? '');
+                $params[] = trim($row['ShipToName'] ?? '');
+                $params[] = $dateShipped;
+                $params[] = $itemCode;
+                $params[] = trim($row['ItemDescription'] ?? '');
+                $params[] = trim($row['ItemName'] ?? '');
+                $params[] = trim($row['ItemNameDescription'] ?? '');
+                $params[] = (float) ($row['QtyShipped'] ?? 0);
+                $params[] = trim($row['TransDocument'] ?? '');
+                $params[] = $row['Ordr'] !== null ? (string) $row['Ordr'] : null;
+                $params[] = $row['ChangeSet'] ?? null;
+            }
+
+            if (empty($placeholders)) {
                 continue;
             }
 
-            // Upsert using composite dedup key (changeset + item_code + date)
-            $existing = $this->db->fetch(
-                "SELECT id FROM shipment_detail
-                 WHERE cms_changeset = ? AND item_code = ? AND date_shipped = ?",
-                [$changeSet, $itemCode, $dateShipped]
-            );
+            $sql = "INSERT INTO `shipment_detail` ({$colList})
+                    VALUES " . implode(', ', $placeholders) . "
+                    ON DUPLICATE KEY UPDATE {$updateSql}";
 
-            $data = [
-                'bill_to'               => trim($row['BillTo'] ?? ''),
-                'ship_to'               => trim($row['ShipTo'] ?? ''),
-                'ship_to_name'          => trim($row['ShipToName'] ?? ''),
-                'date_shipped'          => $dateShipped,
-                'item_code'             => $itemCode,
-                'item_description'      => trim($row['ItemDescription'] ?? ''),
-                'item_name'             => trim($row['ItemName'] ?? ''),
-                'item_name_description' => trim($row['ItemNameDescription'] ?? ''),
-                'qty_shipped'           => (float) ($row['QtyShipped'] ?? 0),
-                'invoice_number'        => trim($row['TransDocument'] ?? ''),
-                'order_number'          => $row['Ordr'] !== null ? (string) $row['Ordr'] : null,
-                'cms_changeset'         => $changeSet,
-            ];
-
-            if ($existing) {
-                $this->db->update('shipment_detail', $data, 'id = ?', [(int) $existing['id']]);
-            } else {
-                $this->db->insert('shipment_detail', $data);
-            }
-
-            $imported++;
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            $total += count($placeholders);
         }
 
-        $results['shipments_imported'] = $imported;
+        $results['shipments_imported'] = $total;
     }
 
     /* ------------------------------------------------------------------

@@ -314,7 +314,7 @@ if [ "$HAS_CMS_SYNC" = "no" ]; then
         \$file = '$INSTALL_DIR/config/config.php';
         \$content = file_get_contents(\$file);
         \$syncBlock = \"\\n    'cms_sync' => [\\n\" .
-                      \"        'shipment_days' => 90,\\n\" .
+                      \"        'shipment_days' => 1095,\\n\" .
                       \"    ],\\n\";
         \$content = preg_replace(
             \"/(\\s*'federal_data')/\",

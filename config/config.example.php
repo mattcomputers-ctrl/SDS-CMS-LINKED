@@ -79,7 +79,7 @@ return [
 
     // CMS sync settings
     'cms_sync' => [
-        'shipment_days' => 90,  // how many days of shipment history to import
+        'shipment_days' => 1095,  // 3 years  // how many days of shipment history to import
     ],
 
     'federal_data' => [

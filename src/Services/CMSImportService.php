@@ -213,6 +213,7 @@ class CMSImportService
             'aliases_created'       => 0,
             'aliases_updated'       => 0,
             'shipments_imported'    => 0,
+            'customers_created'     => 0,
             'errors'                => [],
             'incomplete_materials'  => [],
         ];
@@ -234,6 +235,9 @@ class CMSImportService
 
         // Phase 6: Import shipment data from CMS
         $this->importShipments($results);
+
+        // Phase 7: Auto-create customers from shipment Ship To codes
+        $this->autoCreateCustomers($results);
 
         return $results;
     }
@@ -671,6 +675,41 @@ class CMSImportService
         }
 
         $results['shipments_imported'] = $imported;
+    }
+
+    /* ------------------------------------------------------------------
+     *  Phase 7: Auto-Create Customers
+     * ----------------------------------------------------------------*/
+
+    /**
+     * Create customer records for any Ship To codes found in shipment_detail
+     * that don't already exist in the customers table.
+     * Regulatory email is left blank — admin fills it in via Customer Manager.
+     */
+    private function autoCreateCustomers(array &$results): void
+    {
+        $newCustomers = $this->db->fetchAll(
+            "SELECT DISTINCT sd.ship_to, sd.ship_to_name
+             FROM shipment_detail sd
+             LEFT JOIN customers c ON c.ship_to = sd.ship_to
+             WHERE c.id IS NULL
+               AND sd.ship_to IS NOT NULL AND sd.ship_to != ''"
+        );
+
+        $created = 0;
+        foreach ($newCustomers as $row) {
+            try {
+                $this->db->insert('customers', [
+                    'ship_to'      => $row['ship_to'],
+                    'ship_to_name' => $row['ship_to_name'] ?? '',
+                ]);
+                $created++;
+            } catch (\Throwable $e) {
+                // Skip duplicates (race condition safe)
+            }
+        }
+
+        $results['customers_created'] = $created;
     }
 
     /* ------------------------------------------------------------------

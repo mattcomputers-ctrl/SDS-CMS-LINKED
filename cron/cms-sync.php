@@ -72,6 +72,7 @@ try {
     echo "  Formulas:        " . $results['formulas_created'] . " created, " . $results['formulas_updated'] . " updated, " . $results['formulas_skipped'] . " skipped\n";
     echo "  Aliases:         " . ($results['aliases_created'] ?? 0) . " created, " . ($results['aliases_updated'] ?? 0) . " updated\n";
     echo "  Shipments:       " . ($results['shipments_imported'] ?? 0) . " imported\n";
+    echo "  Customers:       " . ($results['customers_created'] ?? 0) . " created\n";
 
     if (!empty($results['errors'])) {
         echo "  Errors (" . count($results['errors']) . "):\n";

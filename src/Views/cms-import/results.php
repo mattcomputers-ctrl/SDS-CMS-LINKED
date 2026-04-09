@@ -45,6 +45,10 @@
                 <td><strong>Shipment records imported</strong></td>
                 <td><span class="badge badge-success"><?= number_format((int) ($results['shipments_imported'] ?? 0)) ?></span></td>
             </tr>
+            <tr>
+                <td><strong>Customers created</strong></td>
+                <td><span class="badge badge-success"><?= (int) ($results['customers_created'] ?? 0) ?></span></td>
+            </tr>
         </tbody>
     </table>
 </div>

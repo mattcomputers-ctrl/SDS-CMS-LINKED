@@ -120,11 +120,15 @@ class Customer
             throw new \RuntimeException("A customer with Ship To '{$shipTo}' already exists.");
         }
 
+        // Build languages from checkbox array or comma-separated string
+        $languages = self::normalizeLanguages($data['sds_languages'] ?? 'en');
+
         return (int) $db->insert('customers', [
             'ship_to'          => $shipTo,
             'ship_to_name'     => trim($data['ship_to_name'] ?? ''),
             'regulatory_email' => trim($data['regulatory_email'] ?? '') ?: null,
             'sds_send_mode'    => $data['sds_send_mode'] ?? 'osha',
+            'sds_languages'    => $languages,
             'is_active'        => isset($data['is_active']) ? (int) $data['is_active'] : 1,
         ]);
     }
@@ -133,7 +137,7 @@ class Customer
     {
         $db = Database::getInstance();
 
-        $allowed = ['ship_to', 'ship_to_name', 'regulatory_email', 'sds_send_mode', 'is_active'];
+        $allowed = ['ship_to', 'ship_to_name', 'regulatory_email', 'sds_send_mode', 'sds_languages', 'is_active'];
         $updateData = [];
 
         foreach ($allowed as $col) {
@@ -141,6 +145,9 @@ class Customer
                 $val = is_string($data[$col]) ? trim($data[$col]) : $data[$col];
                 if ($col === 'regulatory_email' && $val === '') {
                     $val = null;
+                }
+                if ($col === 'sds_languages') {
+                    $val = self::normalizeLanguages($val);
                 }
                 $updateData[$col] = $val;
             }
@@ -156,5 +163,36 @@ class Customer
     public static function delete(int $id): int
     {
         return Database::getInstance()->delete('customers', 'id = ?', [$id]);
+    }
+
+    /**
+     * Normalize language input (array of checkboxes or comma-separated string)
+     * into a sorted, comma-separated string. Defaults to 'en' if empty.
+     */
+    public static function normalizeLanguages(mixed $input): string
+    {
+        $valid = ['en', 'es', 'fr', 'de'];
+
+        if (is_array($input)) {
+            $langs = $input;
+        } else {
+            $langs = array_map('trim', explode(',', (string) $input));
+        }
+
+        $langs = array_filter($langs, fn($l) => in_array($l, $valid, true));
+        $langs = array_unique($langs);
+        sort($langs);
+
+        return !empty($langs) ? implode(',', $langs) : 'en';
+    }
+
+    /**
+     * Get the language codes for a customer as an array.
+     */
+    public static function getLanguages(array $customer): array
+    {
+        return array_filter(
+            array_map('trim', explode(',', $customer['sds_languages'] ?? 'en'))
+        );
     }
 }

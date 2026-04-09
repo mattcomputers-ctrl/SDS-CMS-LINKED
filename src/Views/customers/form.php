@@ -48,6 +48,21 @@ $action = $isEdit ? '/customers/' . (int) $item['id'] : '/customers';
                 </select>
             </div>
             <div class="form-group">
+                <label>SDS Languages</label>
+                <small class="text-muted" style="display: block; margin-bottom: 4px;">Select which language(s) of SDS to send to this customer.</small>
+                <?php
+                $currentLangs = array_map('trim', explode(',', old('sds_languages', $item['sds_languages'] ?? 'en')));
+                $langOptions = ['en' => 'English', 'es' => 'Spanish', 'fr' => 'French', 'de' => 'German'];
+                foreach ($langOptions as $code => $name):
+                ?>
+                <label style="display: inline-block; margin-right: 12px; font-weight: normal;">
+                    <input type="checkbox" name="sds_languages[]" value="<?= e($code) ?>"
+                        <?= in_array($code, $currentLangs) ? 'checked' : '' ?>>
+                    <?= e($name) ?>
+                </label>
+                <?php endforeach; ?>
+            </div>
+            <div class="form-group">
                 <label for="is_active">Status</label>
                 <select id="is_active" name="is_active">
                     <option value="1" <?= ((int) old('is_active', (string) ($item['is_active'] ?? 1))) === 1 ? 'selected' : '' ?>>Active</option>

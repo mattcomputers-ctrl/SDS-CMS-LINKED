@@ -450,63 +450,108 @@ class SDSAutoSendService
         }
 
         $basePath = App::basePath();
-        $pdfPath = $basePath . '/' . ltrim($sdsVersion['pdf_path'] ?? '', '/');
+        $languages = \SDS\Models\Customer::getLanguages($customer);
+        $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $itemIdentifier);
 
-        // If item is an alias and we have a non-alias SDS, generate alias PDF on the fly
-        $tempPdf = null;
         $alias = $this->db->fetch(
             "SELECT * FROM aliases WHERE customer_code = ? LIMIT 1",
             [$itemIdentifier]
         );
 
-        if ($alias && empty($sdsVersion['alias_id'])) {
-            $snapshot = json_decode($sdsVersion['snapshot_json'] ?? '{}', true);
-            if ($snapshot) {
-                $snapshot = SDSGenerator::createAliasVariant(
-                    $snapshot,
-                    $alias['customer_code'],
-                    $alias['description']
+        // Collect PDF attachments for each requested language
+        $attachments = [];
+        $tempFiles = [];
+        $logVersionId = (int) $sdsVersion['id'];
+
+        foreach ($languages as $lang) {
+            // Find the published SDS for this language
+            $langVersion = null;
+            if ($alias) {
+                $langVersion = $this->db->fetch(
+                    "SELECT * FROM sds_versions
+                     WHERE alias_id = ? AND language = ? AND status = 'published' AND is_deleted = 0
+                     ORDER BY version DESC LIMIT 1",
+                    [(int) $alias['id'], $lang]
                 );
-                $tempPdf = tempnam(sys_get_temp_dir(), 'sds_send_') . '.pdf';
-                $pdfService = new PDFService();
-                $pdfService->generateToFile($snapshot, $tempPdf);
-                $pdfPath = $tempPdf;
             }
+            if (!$langVersion) {
+                $langVersion = $this->db->fetch(
+                    "SELECT * FROM sds_versions
+                     WHERE finished_good_id = ? AND alias_id IS NULL AND language = ? AND status = 'published' AND is_deleted = 0
+                     ORDER BY version DESC LIMIT 1",
+                    [(int) $fg['id'], $lang]
+                );
+            }
+
+            if (!$langVersion) {
+                continue;
+            }
+
+            $pdfPath = $basePath . '/' . ltrim($langVersion['pdf_path'] ?? '', '/');
+
+            // If alias and SDS is non-alias, generate alias PDF on the fly
+            if ($alias && empty($langVersion['alias_id'])) {
+                $snapshot = json_decode($langVersion['snapshot_json'] ?? '{}', true);
+                if ($snapshot) {
+                    $snapshot = SDSGenerator::createAliasVariant(
+                        $snapshot,
+                        $alias['customer_code'],
+                        $alias['description']
+                    );
+                    $tempPdf = tempnam(sys_get_temp_dir(), 'sds_send_') . '.pdf';
+                    $pdfService = new PDFService();
+                    $pdfService->generateToFile($snapshot, $tempPdf);
+                    $pdfPath = $tempPdf;
+                    $tempFiles[] = $tempPdf;
+                }
+            }
+
+            if (!file_exists($pdfPath)) {
+                continue;
+            }
+
+            $langSuffix = ($lang !== 'en') ? '_' . strtoupper($lang) : '';
+            $attachments[] = ['path' => $pdfPath, 'name' => $safeCode . '_SDS' . $langSuffix . '.pdf'];
+        }
+
+        if (empty($attachments)) {
+            // Clean up temps
+            foreach ($tempFiles as $f) { @unlink($f); }
+            throw new \RuntimeException("No published SDS PDFs found for '{$itemIdentifier}'");
         }
 
         $companyName = App::config('company.name', 'SDS System');
         $subject = "Safety Data Sheet: {$itemIdentifier}" . ($itemDescription ? " — {$itemDescription}" : '');
+
+        $langCount = count($attachments);
+        $langNote = $langCount > 1 ? "<p>{$langCount} language(s) attached.</p>" : '';
 
         $body = "<p>Please find attached the Safety Data Sheet (SDS) for:</p>"
             . "<p><strong>{$itemIdentifier}</strong>"
             . ($itemDescription ? " — " . htmlspecialchars($itemDescription) : '')
             . "</p>"
             . ($shipmentDate ? "<p>Shipment date: " . htmlspecialchars($shipmentDate) . "</p>" : '')
+            . $langNote
             . "<p>This SDS is provided in accordance with OSHA Hazard Communication Standard 29 CFR 1910.1200.</p>"
             . "<p>— {$companyName}</p>";
-
-        $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $itemIdentifier);
-        $attachName = $safeCode . '_SDS.pdf';
 
         MailService::send(
             $customer['regulatory_email'],
             $subject,
             $body,
-            [['path' => $pdfPath, 'name' => $attachName]]
+            $attachments
         );
 
-        // Clean up temp PDF
-        if ($tempPdf !== null) {
-            @unlink($tempPdf);
-        }
+        // Clean up temp PDFs
+        foreach ($tempFiles as $f) { @unlink($f); }
 
         // Log the send
         $this->db->insert('sds_send_log', [
             'customer_id'      => (int) $customer['id'],
             'finished_good_id' => (int) $fg['id'],
             'item_identifier'  => $itemIdentifier,
-            'sds_version_id'   => (int) $sdsVersion['id'],
-            'language'         => 'en',
+            'sds_version_id'   => $logVersionId,
+            'language'         => implode(',', $languages),
             'shipment_date'    => $shipmentDate,
         ]);
     }

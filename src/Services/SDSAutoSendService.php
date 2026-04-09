@@ -283,6 +283,14 @@ class SDSAutoSendService
             $customerMap[$cust['ship_to']] = $cust;
         }
 
+        // Pre-load FG map for performance
+        $fgCache = [];
+
+        // Group shipment lines into orders: key = "customer_id::order_number::date"
+        // Each order collects its items that need SDS sent
+        $orders = [];
+        $orderQueued = []; // track orders with queued items
+
         foreach ($shipments as $row) {
             $shipTo = $row['ship_to'] ?? '';
             $customer = $customerMap[$shipTo] ?? null;
@@ -292,14 +300,9 @@ class SDSAutoSendService
                 continue;
             }
 
-            // Determine item identifier (alias or item code)
             $itemName = (!empty($row['item_name']) && $row['item_name'] !== $row['item_code'])
                 ? $row['item_name']
                 : $row['item_code'];
-
-            $itemDesc = (!empty($row['item_name']) && $row['item_name'] !== $row['item_code'])
-                ? ($row['item_name_description'] ?? '')
-                : ($row['item_description'] ?? '');
 
             // Resolve to finished good
             $fgProductCode = $this->resolveToProductCode($itemName);
@@ -308,7 +311,10 @@ class SDSAutoSendService
                 continue;
             }
 
-            $fg = FinishedGood::findByProductCode($fgProductCode);
+            if (!isset($fgCache[$fgProductCode])) {
+                $fgCache[$fgProductCode] = FinishedGood::findByProductCode($fgProductCode);
+            }
+            $fg = $fgCache[$fgProductCode];
             if ($fg === null) {
                 $results['skipped']++;
                 continue;
@@ -320,11 +326,10 @@ class SDSAutoSendService
                 continue;
             }
 
-            // Find the latest published SDS for this item
+            // Find or auto-publish SDS
             $sdsVersion = $this->getLatestPublishedSds((int) $fg['id'], $itemName);
 
             if ($sdsVersion === null) {
-                // No published SDS — check if we can publish
                 if ($this->canAutoPublish((int) $fg['id'])) {
                     try {
                         $this->publishSds((int) $fg['id'], 'Auto-published for shipment');
@@ -337,18 +342,48 @@ class SDSAutoSendService
             }
 
             if ($sdsVersion === null) {
-                // Can't publish — queue for regulatory review
                 $this->queueForReview($customer, $row, 'SDS not available — missing raw material data or CAS determination');
                 $results['queued']++;
                 continue;
             }
 
-            // Generate PDF and send email
+            // Group by order: customer + order_number + shipment date
+            $orderKey = $customer['id'] . '::' . ($row['order_number'] ?? '') . '::' . ($row['date_shipped'] ?? '');
+
+            if (!isset($orders[$orderKey])) {
+                $orders[$orderKey] = [
+                    'customer'      => $customer,
+                    'order_number'  => $row['order_number'] ?? '',
+                    'date_shipped'  => $row['date_shipped'] ?? '',
+                    'items'         => [],
+                ];
+            }
+
+            // Deduplicate: don't add the same item identifier twice to an order
+            $alreadyInOrder = false;
+            foreach ($orders[$orderKey]['items'] as $existing) {
+                if ($existing['item_identifier'] === $itemName) {
+                    $alreadyInOrder = true;
+                    break;
+                }
+            }
+
+            if (!$alreadyInOrder) {
+                $orders[$orderKey]['items'][] = [
+                    'item_identifier' => $itemName,
+                    'fg'              => $fg,
+                    'sds_version'     => $sdsVersion,
+                ];
+            }
+        }
+
+        // Send one email per order with all PDFs attached
+        foreach ($orders as $order) {
             try {
-                $this->sendSdsEmail($customer, $fg, $sdsVersion, $itemName, $itemDesc, $row['date_shipped']);
+                $this->sendOrderEmail($order['customer'], $order['items'], $order['date_shipped']);
                 $results['emails_sent']++;
             } catch (\Throwable $e) {
-                $results['errors'][] = "Send to {$customer['ship_to']}: " . $e->getMessage();
+                $results['errors'][] = "Send to {$order['customer']['ship_to']}: " . $e->getMessage();
             }
         }
     }
@@ -437,103 +472,109 @@ class SDSAutoSendService
     /**
      * Send an SDS email to a customer's regulatory contact.
      */
-    private function sendSdsEmail(
-        array $customer,
-        array $fg,
-        array $sdsVersion,
-        string $itemIdentifier,
-        string $itemDescription,
-        ?string $shipmentDate
-    ): void {
+    /**
+     * Send one email per order with all SDS PDFs for that order attached.
+     *
+     * @param array $customer  Customer record
+     * @param array $items     Array of ['item_identifier', 'fg', 'sds_version']
+     * @param string|null $shipmentDate
+     */
+    private function sendOrderEmail(array $customer, array $items, ?string $shipmentDate): void
+    {
         if (!MailService::isConfigured()) {
             throw new \RuntimeException('Mail not configured');
         }
 
         $basePath = App::basePath();
         $languages = \SDS\Models\Customer::getLanguages($customer);
-        $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $itemIdentifier);
+        $pdfService = new PDFService();
 
-        $alias = $this->db->fetch(
-            "SELECT * FROM aliases WHERE customer_code = ? LIMIT 1",
-            [$itemIdentifier]
-        );
-
-        // Collect PDF attachments for each requested language
         $attachments = [];
         $tempFiles = [];
-        $logVersionId = (int) $sdsVersion['id'];
+        $seenAttachNames = [];
 
-        foreach ($languages as $lang) {
-            // Find the published SDS for this language
-            $langVersion = null;
-            if ($alias) {
-                $langVersion = $this->db->fetch(
-                    "SELECT * FROM sds_versions
-                     WHERE alias_id = ? AND language = ? AND status = 'published' AND is_deleted = 0
-                     ORDER BY version DESC LIMIT 1",
-                    [(int) $alias['id'], $lang]
-                );
-            }
-            if (!$langVersion) {
-                $langVersion = $this->db->fetch(
-                    "SELECT * FROM sds_versions
-                     WHERE finished_good_id = ? AND alias_id IS NULL AND language = ? AND status = 'published' AND is_deleted = 0
-                     ORDER BY version DESC LIMIT 1",
-                    [(int) $fg['id'], $lang]
-                );
-            }
+        // For each item in the order, collect PDFs in all requested languages
+        foreach ($items as $orderItem) {
+            $itemIdentifier = $orderItem['item_identifier'];
+            $fg = $orderItem['fg'];
+            $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $itemIdentifier);
 
-            if (!$langVersion) {
-                continue;
-            }
+            $alias = $this->db->fetch(
+                "SELECT * FROM aliases WHERE customer_code = ? LIMIT 1",
+                [$itemIdentifier]
+            );
 
-            $pdfPath = $basePath . '/' . ltrim($langVersion['pdf_path'] ?? '', '/');
-
-            // If alias and SDS is non-alias, generate alias PDF on the fly
-            if ($alias && empty($langVersion['alias_id'])) {
-                $snapshot = json_decode($langVersion['snapshot_json'] ?? '{}', true);
-                if ($snapshot) {
-                    $snapshot = SDSGenerator::createAliasVariant(
-                        $snapshot,
-                        $alias['customer_code'],
-                        $alias['description']
+            foreach ($languages as $lang) {
+                $langVersion = null;
+                if ($alias) {
+                    $langVersion = $this->db->fetch(
+                        "SELECT * FROM sds_versions
+                         WHERE alias_id = ? AND language = ? AND status = 'published' AND is_deleted = 0
+                         ORDER BY version DESC LIMIT 1",
+                        [(int) $alias['id'], $lang]
                     );
-                    $tempPdf = tempnam(sys_get_temp_dir(), 'sds_send_') . '.pdf';
-                    $pdfService = new PDFService();
-                    $pdfService->generateToFile($snapshot, $tempPdf);
-                    $pdfPath = $tempPdf;
-                    $tempFiles[] = $tempPdf;
                 }
-            }
+                if (!$langVersion) {
+                    $langVersion = $this->db->fetch(
+                        "SELECT * FROM sds_versions
+                         WHERE finished_good_id = ? AND alias_id IS NULL AND language = ? AND status = 'published' AND is_deleted = 0
+                         ORDER BY version DESC LIMIT 1",
+                        [(int) $fg['id'], $lang]
+                    );
+                }
 
-            if (!file_exists($pdfPath)) {
-                continue;
-            }
+                if (!$langVersion) {
+                    continue;
+                }
 
-            $langSuffix = ($lang !== 'en') ? '_' . strtoupper($lang) : '';
-            $attachments[] = ['path' => $pdfPath, 'name' => $safeCode . '_SDS' . $langSuffix . '.pdf'];
+                $pdfPath = $basePath . '/' . ltrim($langVersion['pdf_path'] ?? '', '/');
+
+                // If alias and SDS is non-alias, generate alias PDF on the fly
+                if ($alias && empty($langVersion['alias_id'])) {
+                    $snapshot = json_decode($langVersion['snapshot_json'] ?? '{}', true);
+                    if ($snapshot) {
+                        $snapshot = SDSGenerator::createAliasVariant(
+                            $snapshot,
+                            $alias['customer_code'],
+                            $alias['description']
+                        );
+                        $tempPdf = tempnam(sys_get_temp_dir(), 'sds_send_') . '.pdf';
+                        $pdfService->generateToFile($snapshot, $tempPdf);
+                        $pdfPath = $tempPdf;
+                        $tempFiles[] = $tempPdf;
+                    }
+                }
+
+                if (!file_exists($pdfPath)) {
+                    continue;
+                }
+
+                $langSuffix = ($lang !== 'en') ? '_' . strtoupper($lang) : '';
+                $attachName = $safeCode . '_SDS' . $langSuffix . '.pdf';
+
+                // Deduplicate attachments (same item in multiple shipment lines)
+                if (isset($seenAttachNames[$attachName])) {
+                    continue;
+                }
+                $seenAttachNames[$attachName] = true;
+
+                $attachments[] = ['path' => $pdfPath, 'name' => $attachName];
+            }
         }
 
         if (empty($attachments)) {
-            // Clean up temps
             foreach ($tempFiles as $f) { @unlink($f); }
-            throw new \RuntimeException("No published SDS PDFs found for '{$itemIdentifier}'");
+            return; // Nothing to send for this order
         }
 
-        $companyName = App::config('company.name', 'SDS System');
-        $subject = "Safety Data Sheet: {$itemIdentifier}" . ($itemDescription ? " — {$itemDescription}" : '');
+        // Build email
+        $companyName = $this->getCompanyName();
 
-        $langCount = count($attachments);
-        $langNote = $langCount > 1 ? "<p>{$langCount} language(s) attached.</p>" : '';
+        $subject = 'Safety Data Sheets';
 
-        $body = "<p>Please find attached the Safety Data Sheet (SDS) for:</p>"
-            . "<p><strong>{$itemIdentifier}</strong>"
-            . ($itemDescription ? " — " . htmlspecialchars($itemDescription) : '')
-            . "</p>"
-            . ($shipmentDate ? "<p>Shipment date: " . htmlspecialchars($shipmentDate) . "</p>" : '')
-            . $langNote
-            . "<p>This SDS is provided in accordance with OSHA Hazard Communication Standard 29 CFR 1910.1200.</p>"
-            . "<p>— {$companyName}</p>";
+        $body = "<p>Hello,</p>"
+            . "<p>Please see attached for Safety Data Sheets from \"{$companyName}\".</p>"
+            . "<p>Best regards,<br>Regulatory Team<br>\"{$companyName}\"</p>";
 
         MailService::send(
             $customer['regulatory_email'],
@@ -545,15 +586,26 @@ class SDSAutoSendService
         // Clean up temp PDFs
         foreach ($tempFiles as $f) { @unlink($f); }
 
-        // Log the send
-        $this->db->insert('sds_send_log', [
-            'customer_id'      => (int) $customer['id'],
-            'finished_good_id' => (int) $fg['id'],
-            'item_identifier'  => $itemIdentifier,
-            'sds_version_id'   => $logVersionId,
-            'language'         => implode(',', $languages),
-            'shipment_date'    => $shipmentDate,
-        ]);
+        // Log the send — one entry per item
+        foreach ($items as $orderItem) {
+            $this->db->insert('sds_send_log', [
+                'customer_id'      => (int) $customer['id'],
+                'finished_good_id' => (int) $orderItem['fg']['id'],
+                'item_identifier'  => $orderItem['item_identifier'],
+                'sds_version_id'   => (int) $orderItem['sds_version']['id'],
+                'language'         => implode(',', $languages),
+                'shipment_date'    => $shipmentDate,
+            ]);
+        }
+    }
+
+    /**
+     * Get the company name from admin settings.
+     */
+    private function getCompanyName(): string
+    {
+        $row = $this->db->fetch("SELECT `value` FROM settings WHERE `key` = 'company.name'");
+        return $row['value'] ?? App::config('company.name', 'SDS System');
     }
 
     /* ------------------------------------------------------------------

@@ -255,16 +255,14 @@ class SDSSendQueueController
             }
         }
 
-        $companyName = \SDS\Core\App::config('company.name', 'SDS System');
-        $subject = "Safety Data Sheet: {$itemIdentifier}" . ($itemDesc ? " — {$itemDesc}" : '');
+        $companyRow = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'company.name'");
+        $companyName = $companyRow['value'] ?? \SDS\Core\App::config('company.name', 'SDS System');
 
-        $body = "<p>Please find attached the Safety Data Sheet (SDS) for:</p>"
-            . "<p><strong>{$itemIdentifier}</strong>"
-            . ($itemDesc ? " — " . htmlspecialchars($itemDesc) : '')
-            . "</p>"
-            . ($queueItem['shipment_date'] ? "<p>Shipment date: " . htmlspecialchars($queueItem['shipment_date']) . "</p>" : '')
-            . "<p>This SDS is provided in accordance with OSHA Hazard Communication Standard 29 CFR 1910.1200.</p>"
-            . "<p>— {$companyName}</p>";
+        $subject = 'Safety Data Sheets';
+
+        $body = "<p>Hello,</p>"
+            . "<p>Please see attached for Safety Data Sheets from \"{$companyName}\".</p>"
+            . "<p>Best regards,<br>Regulatory Team<br>\"{$companyName}\"</p>";
 
         $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $itemIdentifier);
 

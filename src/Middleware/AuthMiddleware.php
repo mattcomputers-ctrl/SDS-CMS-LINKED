@@ -61,6 +61,8 @@ class AuthMiddleware
         '/bulk-publish'          => 'bulk_publish',
         '/bulk-export'           => 'bulk_export',
         '/cms-import'            => 'cms_import',
+        '/customers'             => 'customers',
+        '/sds-send-queue'        => 'sds_send_queue',
         '/raw-materials'         => 'raw_materials',
         '/finished-goods'        => 'finished_goods',
         '/lookup'                => 'fg_sds_lookup',

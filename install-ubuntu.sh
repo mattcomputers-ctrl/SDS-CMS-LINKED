@@ -506,6 +506,16 @@ return [
         'shipment_days' => 90,
     ],
 
+    'mail' => [
+        'smtp_host'     => '',
+        'smtp_port'     => 587,
+        'smtp_user'     => '',
+        'smtp_password' => '',
+        'smtp_secure'   => 'tls',
+        'from_address'  => 'sds@company.com',
+        'from_name'     => 'SDS System',
+    ],
+
     'federal_data' => [
         'pubchem' => [
             'base_url'  => 'https://pubchem.ncbi.nlm.nih.gov/rest/pug',

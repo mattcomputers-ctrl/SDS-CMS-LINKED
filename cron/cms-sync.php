@@ -19,6 +19,8 @@ require __DIR__ . '/../vendor/autoload.php';
 use SDS\Core\App;
 use SDS\Services\CMSDatabase;
 use SDS\Services\CMSImportService;
+use SDS\Services\SDSAutoSendService;
+use SDS\Services\MailService;
 
 $start = microtime(true);
 $timestamp = date('Y-m-d H:i:s');
@@ -57,6 +59,25 @@ try {
 
     if (!empty($results['incomplete_materials'])) {
         echo "  Incomplete RMs:  " . count($results['incomplete_materials']) . " need details\n";
+    }
+
+    // Auto-publish and auto-send SDS
+    if (MailService::isConfigured()) {
+        echo "\n[" . date('Y-m-d H:i:s') . "] Auto-publish & send starting...\n";
+        $autoSend = new SDSAutoSendService();
+        $sendResults = $autoSend->processNewShipments();
+        echo "  Auto-published:  " . ($sendResults['auto_published'] ?? 0) . "\n";
+        echo "  Emails sent:     " . ($sendResults['emails_sent'] ?? 0) . "\n";
+        echo "  Queued:          " . ($sendResults['queued'] ?? 0) . "\n";
+        echo "  Skipped:         " . ($sendResults['skipped'] ?? 0) . "\n";
+        if (!empty($sendResults['errors'])) {
+            echo "  Send errors (" . count($sendResults['errors']) . "):\n";
+            foreach ($sendResults['errors'] as $err) {
+                echo "    - {$err}\n";
+            }
+        }
+    } else {
+        echo "\n  Mail not configured — skipping auto-send.\n";
     }
 
 } catch (\Throwable $e) {

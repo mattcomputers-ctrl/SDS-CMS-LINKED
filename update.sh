@@ -328,6 +328,37 @@ else
     print_success "cms_sync already configured."
 fi
 
+# Add mail section if not already present
+print_step "Checking mail configuration..."
+HAS_MAIL=$(php -r "\$c = require '$INSTALL_DIR/config/config.php'; echo isset(\$c['mail']) ? 'yes' : 'no';" 2>/dev/null)
+
+if [ "$HAS_MAIL" = "no" ]; then
+    print_step "Adding mail (SMTP) configuration section..."
+    php -r "
+        \$file = '$INSTALL_DIR/config/config.php';
+        \$content = file_get_contents(\$file);
+        \$mailBlock = \"\\n    'mail' => [\\n\" .
+                      \"        'smtp_host'     => '',\\n\" .
+                      \"        'smtp_port'     => 587,\\n\" .
+                      \"        'smtp_user'     => '',\\n\" .
+                      \"        'smtp_password' => '',\\n\" .
+                      \"        'smtp_secure'   => 'tls',\\n\" .
+                      \"        'from_address'  => 'sds@company.com',\\n\" .
+                      \"        'from_name'     => 'SDS System',\\n\" .
+                      \"    ],\\n\";
+        \$content = preg_replace(
+            \"/(\\s*'federal_data')/\",
+            \$mailBlock . '\${1}',
+            \$content,
+            1
+        );
+        file_put_contents(\$file, \$content);
+    " 2>/dev/null
+    print_success "mail section added to config (edit config.php to set SMTP details)."
+else
+    print_success "mail already configured."
+fi
+
 # ============================================================
 # Step 5: Update PHP Dependencies
 # ============================================================

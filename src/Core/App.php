@@ -223,6 +223,20 @@ class App
         $router->post('/manufacturers/{id}',               'ManufacturerController@update');
         $router->post('/manufacturers/{id}/delete',        'ManufacturerController@delete');
 
+        // ── Customers ────────────────────────────────────────────
+        $router->get('/customers',                'CustomerController@index');
+        $router->get('/customers/create',         'CustomerController@create');
+        $router->post('/customers',               'CustomerController@store');
+        $router->get('/customers/{id}/edit',      'CustomerController@edit');
+        $router->post('/customers/{id}',          'CustomerController@update');
+        $router->post('/customers/{id}/delete',   'CustomerController@delete');
+
+        // ── SDS Send Queue ──────────────────────────────────────
+        $router->get('/sds-send-queue',                'SDSSendQueueController@index');
+        $router->post('/sds-send-queue/{id}/send',     'SDSSendQueueController@send');
+        $router->post('/sds-send-queue/send-customer', 'SDSSendQueueController@sendForCustomer');
+        $router->post('/sds-send-queue/{id}/dismiss',  'SDSSendQueueController@dismiss');
+
         // ── SDS Update Required ─────────────────────────────────
         $router->get('/sds-updates',                           'SDSUpdateController@index');
         $router->post('/sds-updates/scan',                     'SDSUpdateController@scan');

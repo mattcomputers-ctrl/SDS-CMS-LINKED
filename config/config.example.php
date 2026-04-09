@@ -66,6 +66,17 @@ return [
         'password' => 'CHANGE_ME',
     ],
 
+    // SMTP email settings (for auto-send SDS)
+    'mail' => [
+        'smtp_host'     => '',
+        'smtp_port'     => 587,
+        'smtp_user'     => '',
+        'smtp_password' => '',
+        'smtp_secure'   => 'tls',
+        'from_address'  => 'sds@company.com',
+        'from_name'     => 'SDS System',
+    ],
+
     // CMS sync settings
     'cms_sync' => [
         'shipment_days' => 90,  // how many days of shipment history to import

@@ -50,6 +50,14 @@
                     <?php if (can_read('sds_updates')): ?>
                     <li><a href="/sds-updates" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/sds-updates') ? 'active' : '' ?>"><span class="menu-icon">&#9888;</span> SDS Update Required</a></li>
                     <?php endif; ?>
+                    <?php if (can_read('sds_send_queue')): ?>
+                    <li><a href="/sds-send-queue" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/sds-send-queue') ? 'active' : '' ?>"><span class="menu-icon">&#128233;</span> SDS Send Queue</a></li>
+                    <?php endif; ?>
+
+                    <li class="sidebar-section-label">Customers</li>
+                    <?php if (can_read('customers')): ?>
+                    <li><a href="/customers" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/customers') ? 'active' : '' ?>"><span class="menu-icon">&#128101;</span> Customers</a></li>
+                    <?php endif; ?>
 
                     <li class="sidebar-section-label">Private Label</li>
                     <?php if (can_read('manufacturers')): ?>

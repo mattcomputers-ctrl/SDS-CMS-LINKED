@@ -41,6 +41,8 @@ class PermissionService
         'private_label'      => 'Private Label SDS',
         'sds_updates'        => 'SDS Update Required',
         'cms_import'         => 'CMS Import',
+        'customers'          => 'Customers',
+        'sds_send_queue'     => 'SDS Send Queue',
     ];
 
     /**

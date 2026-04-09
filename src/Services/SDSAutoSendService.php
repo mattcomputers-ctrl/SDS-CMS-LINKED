@@ -570,11 +570,8 @@ class SDSAutoSendService
         // Build email
         $companyName = $this->getCompanyName();
 
-        $subject = 'Safety Data Sheets';
-
-        $body = "<p>Hello,</p>"
-            . "<p>Please see attached for Safety Data Sheets from \"{$companyName}\".</p>"
-            . "<p>Best regards,<br>Regulatory Team<br>\"{$companyName}\"</p>";
+        $subject = $this->getEmailSubject();
+        $body = $this->getEmailBody($companyName);
 
         MailService::send(
             $customer['regulatory_email'],
@@ -606,6 +603,28 @@ class SDSAutoSendService
     {
         $row = $this->db->fetch("SELECT `value` FROM settings WHERE `key` = 'company.name'");
         return $row['value'] ?? App::config('company.name', 'SDS System');
+    }
+
+    private function getEmailSubject(): string
+    {
+        $row = $this->db->fetch("SELECT `value` FROM settings WHERE `key` = 'mail.sds_subject'");
+        return !empty($row['value']) ? $row['value'] : 'Safety Data Sheets';
+    }
+
+    private function getEmailBody(string $companyName): string
+    {
+        $row = $this->db->fetch("SELECT `value` FROM settings WHERE `key` = 'mail.sds_body'");
+
+        if (!empty($row['value'])) {
+            $text = str_replace('{company_name}', htmlspecialchars($companyName), $row['value']);
+            // Convert line breaks to HTML
+            return '<p>' . nl2br(htmlspecialchars_decode($text)) . '</p>';
+        }
+
+        // Default
+        return "<p>Hello,</p>"
+            . "<p>Please see attached for Safety Data Sheets from \"{$companyName}\".</p>"
+            . "<p>Best regards,<br>Regulatory Team<br>\"{$companyName}\"</p>";
     }
 
     /* ------------------------------------------------------------------

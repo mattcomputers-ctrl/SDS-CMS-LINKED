@@ -151,6 +151,15 @@
             </div>
             <div class="form-group"><label>From Address</label><input type="email" name="mail__from_address" value="<?= e($settings['mail.from_address'] ?? '') ?>" placeholder="sds@company.com"></div>
             <div class="form-group"><label>From Name</label><input type="text" name="mail__from_name" value="<?= e($settings['mail.from_name'] ?? 'SDS System') ?>"></div>
+            <div class="form-group full-width">
+                <label>Email Subject</label>
+                <input type="text" name="mail__sds_subject" value="<?= e($settings['mail.sds_subject'] ?? 'Safety Data Sheets') ?>">
+            </div>
+            <div class="form-group full-width">
+                <label>Email Body</label>
+                <textarea name="mail__sds_body" rows="5" style="font-family: monospace;"><?= e($settings['mail.sds_body'] ?? "Hello,\nPlease see attached for Safety Data Sheets from \"{company_name}\".\n\nBest regards,\nRegulatory Team\n\"{company_name}\"") ?></textarea>
+                <small class="text-muted">Use <code>{company_name}</code> to insert the manufacturer name. Line breaks are preserved.</small>
+            </div>
         </div>
 
         <h2>CMS Sync Schedule</h2>

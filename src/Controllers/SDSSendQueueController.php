@@ -258,11 +258,18 @@ class SDSSendQueueController
         $companyRow = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'company.name'");
         $companyName = $companyRow['value'] ?? \SDS\Core\App::config('company.name', 'SDS System');
 
-        $subject = 'Safety Data Sheets';
+        $subjectRow = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'mail.sds_subject'");
+        $subject = !empty($subjectRow['value']) ? $subjectRow['value'] : 'Safety Data Sheets';
 
-        $body = "<p>Hello,</p>"
-            . "<p>Please see attached for Safety Data Sheets from \"{$companyName}\".</p>"
-            . "<p>Best regards,<br>Regulatory Team<br>\"{$companyName}\"</p>";
+        $bodyRow = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'mail.sds_body'");
+        if (!empty($bodyRow['value'])) {
+            $bodyText = str_replace('{company_name}', htmlspecialchars($companyName), $bodyRow['value']);
+            $body = '<p>' . nl2br(htmlspecialchars_decode($bodyText)) . '</p>';
+        } else {
+            $body = "<p>Hello,</p>"
+                . "<p>Please see attached for Safety Data Sheets from \"{$companyName}\".</p>"
+                . "<p>Best regards,<br>Regulatory Team<br>\"{$companyName}\"</p>";
+        }
 
         $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $itemIdentifier);
 

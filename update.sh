@@ -150,7 +150,8 @@ else
     if [ -n "$MYSQL_ROOT_PASS" ]; then
         MYSQL_AUTH="-u root -p$MYSQL_ROOT_PASS"
     else
-        MYSQL_AUTH="-u root"
+        # Socket auth — no -u flag needed when running as OS root
+        MYSQL_AUTH=""
     fi
 
     if ! $MYSQL_CMD $MYSQL_AUTH -e "SELECT 1" "$DB_NAME" > /dev/null 2>&1; then
@@ -416,8 +417,11 @@ for migration in "$INSTALL_DIR"/migrations/*.sql; do
 
         if [ "$APPLIED" = "0" ]; then
             print_step "  Applying $MIGRATION_NAME..."
-            $MYSQL_CMD $MYSQL_AUTH "$DB_NAME" < "$migration"
-            MIGRATIONS_APPLIED=$((MIGRATIONS_APPLIED + 1))
+            if $MYSQL_CMD $MYSQL_AUTH "$DB_NAME" < "$migration" 2>&1; then
+                MIGRATIONS_APPLIED=$((MIGRATIONS_APPLIED + 1))
+            else
+                print_error "  Failed to apply $MIGRATION_NAME"
+            fi
         else
             MIGRATIONS_SKIPPED=$((MIGRATIONS_SKIPPED + 1))
         fi

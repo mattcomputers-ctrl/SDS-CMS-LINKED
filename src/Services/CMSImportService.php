@@ -608,7 +608,8 @@ class CMSImportService
      */
     private function importShipments(array &$results): void
     {
-        $days = (int) (\SDS\Core\App::config('cms_sync.shipment_days', 90));
+        $daysRow = $this->db->fetch("SELECT `value` FROM settings WHERE `key` = 'cms_sync.shipment_days'");
+        $days = (int) ($daysRow['value'] ?? 90);
 
         try {
             $shipments = $this->cms->fetchAll(

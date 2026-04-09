@@ -134,6 +134,32 @@
             <textarea name="sds__report_disclaimer" rows="4" style="font-size: 0.9rem;"><?= e($settings['sds.report_disclaimer'] ?? '') ?></textarea>
         </div>
 
+        <h2>SMTP Email Configuration</h2>
+        <p class="text-muted mb-1">Configure SMTP for automated SDS email delivery to customer regulatory contacts.</p>
+        <div class="form-grid-2col">
+            <div class="form-group"><label>SMTP Host</label><input type="text" name="mail__smtp_host" value="<?= e($settings['mail.smtp_host'] ?? '') ?>" placeholder="smtp.company.com"></div>
+            <div class="form-group"><label>SMTP Port</label><input type="number" name="mail__smtp_port" value="<?= e($settings['mail.smtp_port'] ?? '587') ?>"></div>
+            <div class="form-group"><label>SMTP Username</label><input type="text" name="mail__smtp_user" value="<?= e($settings['mail.smtp_user'] ?? '') ?>"></div>
+            <div class="form-group"><label>SMTP Password</label><input type="password" name="mail__smtp_password" value="<?= e($settings['mail.smtp_password'] ?? '') ?>"></div>
+            <div class="form-group">
+                <label>Encryption</label>
+                <select name="mail__smtp_secure">
+                    <option value="tls" <?= ($settings['mail.smtp_secure'] ?? 'tls') === 'tls' ? 'selected' : '' ?>>TLS (port 587)</option>
+                    <option value="ssl" <?= ($settings['mail.smtp_secure'] ?? '') === 'ssl' ? 'selected' : '' ?>>SSL (port 465)</option>
+                    <option value="" <?= ($settings['mail.smtp_secure'] ?? 'tls') === '' ? 'selected' : '' ?>>None</option>
+                </select>
+            </div>
+            <div class="form-group"><label>From Address</label><input type="email" name="mail__from_address" value="<?= e($settings['mail.from_address'] ?? '') ?>" placeholder="sds@company.com"></div>
+            <div class="form-group"><label>From Name</label><input type="text" name="mail__from_name" value="<?= e($settings['mail.from_name'] ?? 'SDS System') ?>"></div>
+        </div>
+
+        <h2>CMS Sync Schedule</h2>
+        <p class="text-muted mb-1">Controls how often the CMS sync runs and how much shipment history to import.</p>
+        <div class="form-grid-2col">
+            <div class="form-group"><label>Sync Interval (hours)</label><input type="number" name="cms_sync__interval_hours" min="1" step="1" value="<?= e($settings['cms_sync.interval_hours'] ?? '1') ?>"><small class="text-muted">How often the CMS sync runs (default: every 1 hour)</small></div>
+            <div class="form-group"><label>Shipment History (days)</label><input type="number" name="cms_sync__shipment_days" min="1" step="1" value="<?= e($settings['cms_sync.shipment_days'] ?? '90') ?>"><small class="text-muted">How many days of shipment history to import from CMS</small></div>
+        </div>
+
         <h2>Maintenance</h2>
         <div class="form-grid-2col">
             <div class="form-group"><label>Audit Log Retention (days)</label><input type="number" name="cron__log_retention_days" value="<?= e($settings['cron.log_retention_days'] ?? '365') ?>"></div>

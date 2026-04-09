@@ -6,22 +6,18 @@ namespace SDS\Services;
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception as MailException;
-use SDS\Core\App;
+use SDS\Core\Database;
 
 /**
  * MailService — SMTP email wrapper using PHPMailer.
+ *
+ * SMTP settings are read from the database settings table (mail.*)
+ * which is configured via Admin > Settings in the web interface.
  */
 class MailService
 {
     /**
      * Send an email with optional file attachments.
-     *
-     * @param string|array $to          Recipient email(s)
-     * @param string       $subject     Email subject
-     * @param string       $body        HTML body
-     * @param array        $attachments Array of file paths to attach
-     * @return bool        True on success
-     * @throws \RuntimeException on configuration or send failure
      */
     public static function send(
         string|array $to,
@@ -29,10 +25,10 @@ class MailService
         string $body,
         array $attachments = []
     ): bool {
-        $config = App::config('mail');
+        $config = self::getMailConfig();
 
-        if (!$config || empty($config['smtp_host'])) {
-            throw new \RuntimeException('Mail not configured. Add a mail section to config/config.php.');
+        if (empty($config['smtp_host'])) {
+            throw new \RuntimeException('Mail not configured. Set SMTP details in Admin > Settings.');
         }
 
         $mail = new PHPMailer(true);
@@ -54,13 +50,11 @@ class MailService
                 $config['from_name'] ?? 'SDS System'
             );
 
-            // Recipients
             $recipients = is_array($to) ? $to : [$to];
             foreach ($recipients as $addr) {
                 $mail->addAddress(trim($addr));
             }
 
-            // Attachments
             foreach ($attachments as $path) {
                 if (is_array($path)) {
                     $mail->addAttachment($path['path'], $path['name'] ?? '');
@@ -83,12 +77,12 @@ class MailService
     }
 
     /**
-     * Check if mail is configured.
+     * Check if mail is configured (SMTP host is set in admin settings).
      */
     public static function isConfigured(): bool
     {
-        $config = App::config('mail');
-        return $config !== null && !empty($config['smtp_host']);
+        $config = self::getMailConfig();
+        return !empty($config['smtp_host']);
     }
 
     /**
@@ -96,10 +90,26 @@ class MailService
      */
     public static function getRegulatoryEmails(): array
     {
-        $db = \SDS\Core\Database::getInstance();
-        $rows = $db->fetchAll(
+        $rows = Database::getInstance()->fetchAll(
             "SELECT email FROM users WHERE is_regulatory = 1 AND is_active = 1 AND email IS NOT NULL AND email != ''"
         );
         return array_column($rows, 'email');
+    }
+
+    /**
+     * Load mail settings from the database settings table.
+     */
+    private static function getMailConfig(): array
+    {
+        $db = Database::getInstance();
+        $rows = $db->fetchAll("SELECT `key`, `value` FROM settings WHERE `key` LIKE 'mail.%'");
+
+        $config = [];
+        foreach ($rows as $row) {
+            $key = str_replace('mail.', '', $row['key']);
+            $config[$key] = $row['value'];
+        }
+
+        return $config;
     }
 }

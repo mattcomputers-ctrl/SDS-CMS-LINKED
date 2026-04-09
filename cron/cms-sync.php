@@ -37,6 +37,29 @@ try {
         exit(0);
     }
 
+    // Check sync interval — skip if it hasn't been long enough since last run
+    $db = \SDS\Core\Database::getInstance();
+    $intervalRow = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'cms_sync.interval_hours'");
+    $intervalHours = (int) ($intervalRow['value'] ?? 1);
+
+    $lastRunRow = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'cms_sync.last_run_at'");
+    $lastRunAt = $lastRunRow['value'] ?? null;
+
+    if ($lastRunAt !== null && $intervalHours > 1) {
+        $nextRunAfter = strtotime($lastRunAt) + ($intervalHours * 3600);
+        if (time() < $nextRunAfter) {
+            echo "[{$timestamp}] Skipping — next sync after " . date('Y-m-d H:i:s', $nextRunAfter) . " (interval: {$intervalHours}h)\n";
+            exit(0);
+        }
+    }
+
+    // Record this run time
+    if ($lastRunRow) {
+        $db->update('settings', ['value' => $timestamp], '`key` = ?', ['cms_sync.last_run_at']);
+    } else {
+        $db->insert('settings', ['key' => 'cms_sync.last_run_at', 'value' => $timestamp]);
+    }
+
     $service = new CMSImportService();
     $results = $service->import(null); // null = system/cron user
 

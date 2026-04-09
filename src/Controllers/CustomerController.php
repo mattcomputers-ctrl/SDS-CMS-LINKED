@@ -74,10 +74,25 @@ class CustomerController
             redirect('/customers');
         }
 
+        // Load SDS send history for this customer
+        $db = \SDS\Core\Database::getInstance();
+        $sendHistory = $db->fetchAll(
+            "SELECT ssl.item_identifier, ssl.language, ssl.sent_at, ssl.shipment_date,
+                    sv.version AS sds_version, fg.product_code
+             FROM sds_send_log ssl
+             LEFT JOIN sds_versions sv ON sv.id = ssl.sds_version_id
+             LEFT JOIN finished_goods fg ON fg.id = ssl.finished_good_id
+             WHERE ssl.customer_id = ?
+             ORDER BY ssl.sent_at DESC
+             LIMIT 500",
+            [(int) $id]
+        );
+
         view('customers/form', [
-            'pageTitle' => 'Edit: ' . ($item['ship_to_name'] ?: $item['ship_to']),
-            'item'      => $item,
-            'mode'      => 'edit',
+            'pageTitle'   => 'Edit: ' . ($item['ship_to_name'] ?: $item['ship_to']),
+            'item'        => $item,
+            'mode'        => 'edit',
+            'sendHistory' => $sendHistory,
         ]);
     }
 

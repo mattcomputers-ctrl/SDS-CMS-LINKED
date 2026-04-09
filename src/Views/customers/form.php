@@ -84,4 +84,41 @@ $action = $isEdit ? '/customers/' . (int) $item['id'] : '/customers';
     </form>
 </div>
 
+<?php if ($isEdit && !empty($sendHistory)): ?>
+<div class="card" style="margin-top: 16px;">
+    <h3>SDS Send History</h3>
+    <p class="text-muted"><?= count($sendHistory) ?> record(s). This log proves compliance for regulatory audits.</p>
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Item</th>
+                <th>Product Code</th>
+                <th>SDS Version</th>
+                <th>Language(s)</th>
+                <th>Sent</th>
+                <th>Shipment Date</th>
+            </tr>
+        </thead>
+        <tbody>
+        <?php foreach ($sendHistory as $log): ?>
+            <tr>
+                <td><strong><?= e($log['item_identifier']) ?></strong></td>
+                <td><?= e($log['product_code'] ?? '—') ?></td>
+                <td>v<?= (int) ($log['sds_version'] ?? 0) ?></td>
+                <td><?= e(strtoupper($log['language'] ?? 'en')) ?></td>
+                <td><?= e($log['sent_at'] ?? '') ?></td>
+                <td><?= e($log['shipment_date'] ?? '—') ?></td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+</div>
+<?php elseif ($isEdit): ?>
+<div class="card" style="margin-top: 16px;">
+    <h3>SDS Send History</h3>
+    <p class="text-muted">No SDSs have been sent to this customer yet.</p>
+</div>
+<?php endif; ?>
+
 <?php include dirname(__DIR__) . '/layouts/footer.php'; ?>

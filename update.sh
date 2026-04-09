@@ -367,8 +367,8 @@ print_header "Step 5: Updating PHP Dependencies"
 
 cd "$INSTALL_DIR"
 
-print_step "Running composer install..."
-COMPOSER_ALLOW_SUPERUSER=1 composer install --no-dev --optimize-autoloader --quiet 2>/dev/null
+print_step "Running composer update..."
+COMPOSER_ALLOW_SUPERUSER=1 composer update --no-dev --optimize-autoloader 2>&1
 
 print_success "PHP dependencies updated."
 

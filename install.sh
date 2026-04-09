@@ -229,7 +229,7 @@ cd "$INSTALL_DIR"
 
 # Install PHP dependencies
 print_step "Installing PHP dependencies (Composer)..."
-COMPOSER_ALLOW_SUPERUSER=1 composer install --no-dev --optimize-autoloader --quiet 2>/dev/null
+COMPOSER_ALLOW_SUPERUSER=1 composer update --no-dev --optimize-autoloader 2>&1
 
 # Create required directories
 print_step "Creating required directories..."

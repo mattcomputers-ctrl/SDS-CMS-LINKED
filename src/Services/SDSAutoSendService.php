@@ -74,23 +74,59 @@ class SDSAutoSendService
     {
         $count = 0;
 
-        // 1. FGs with formulas but no published SDS, or where the formula
-        //    was updated after the last published SDS
+        // 1. FGs with formulas where:
+        //    - No published SDS exists, OR
+        //    - Formula was updated after last publish, OR
+        //    - Any upstream raw material was updated after last publish, OR
+        //    - Any CAS determination was updated after last publish
         $candidates = $this->db->fetchAll(
-            "SELECT fg.id, fg.product_code, f.id AS formula_id, f.created_at AS formula_date,
+            "SELECT fg.id, fg.product_code,
+                    f.created_at AS formula_date,
                     (SELECT MAX(sv.published_at) FROM sds_versions sv
                      WHERE sv.finished_good_id = fg.id AND sv.status = 'published' AND sv.is_deleted = 0
-                    ) AS last_published_at
+                    ) AS last_published_at,
+                    (SELECT MAX(rm.updated_at) FROM formula_lines fl2
+                     JOIN raw_materials rm ON rm.id = fl2.raw_material_id
+                     WHERE fl2.formula_id = f.id
+                    ) AS rm_updated_at,
+                    (SELECT MAX(rmc.updated_at) FROM formula_lines fl3
+                     JOIN raw_material_constituents rmc ON rmc.raw_material_id = fl3.raw_material_id
+                     WHERE fl3.formula_id = f.id
+                    ) AS constituents_updated_at,
+                    (SELECT MAX(cpd.updated_at) FROM competent_person_determinations cpd
+                     WHERE cpd.is_active = 1
+                     AND cpd.cas_number IN (
+                         SELECT rmc2.cas_number FROM formula_lines fl4
+                         JOIN raw_material_constituents rmc2 ON rmc2.raw_material_id = fl4.raw_material_id
+                         WHERE fl4.formula_id = f.id
+                     )
+                    ) AS cpd_updated_at
              FROM finished_goods fg
              JOIN formulas f ON f.finished_good_id = fg.id AND f.is_current = 1
              WHERE fg.is_active = 1
-             HAVING last_published_at IS NULL OR last_published_at < formula_date"
+             HAVING last_published_at IS NULL
+                 OR last_published_at < formula_date
+                 OR last_published_at < rm_updated_at
+                 OR last_published_at < constituents_updated_at
+                 OR last_published_at < cpd_updated_at"
         );
 
         foreach ($candidates as $candidate) {
             if ($this->canAutoPublish((int) $candidate['id'])) {
+                $reason = 'Auto-published by CMS sync';
+                if ($candidate['last_published_at'] !== null) {
+                    if ($candidate['formula_date'] > $candidate['last_published_at']) {
+                        $reason = 'Auto-republished: formula updated';
+                    } elseif (($candidate['constituents_updated_at'] ?? '') > $candidate['last_published_at']) {
+                        $reason = 'Auto-republished: raw material constituents updated';
+                    } elseif (($candidate['rm_updated_at'] ?? '') > $candidate['last_published_at']) {
+                        $reason = 'Auto-republished: raw material data updated';
+                    } elseif (($candidate['cpd_updated_at'] ?? '') > $candidate['last_published_at']) {
+                        $reason = 'Auto-republished: CAS determination updated';
+                    }
+                }
                 try {
-                    $this->publishSds((int) $candidate['id'], 'Auto-published by CMS sync');
+                    $this->publishSds((int) $candidate['id'], $reason);
                     $count++;
                 } catch (\Throwable $e) {
                     // Silently skip — will be caught on next run or manual publish

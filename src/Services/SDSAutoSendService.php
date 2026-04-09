@@ -74,8 +74,8 @@ class SDSAutoSendService
     {
         $count = 0;
 
-        // Find FGs with formulas but no published SDS, or where the formula
-        // was updated after the last published SDS
+        // 1. FGs with formulas but no published SDS, or where the formula
+        //    was updated after the last published SDS
         $candidates = $this->db->fetchAll(
             "SELECT fg.id, fg.product_code, f.id AS formula_id, f.created_at AS formula_date,
                     (SELECT MAX(sv.published_at) FROM sds_versions sv
@@ -95,6 +95,92 @@ class SDSAutoSendService
                 } catch (\Throwable $e) {
                     // Silently skip — will be caught on next run or manual publish
                 }
+            }
+        }
+
+        // 2. New aliases for FGs that already have a published SDS but the
+        //    alias doesn't have its own published version yet
+        $newAliases = $this->db->fetchAll(
+            "SELECT a.id AS alias_id, a.customer_code, a.description, a.internal_code_base,
+                    fg.id AS fg_id, fg.product_code
+             FROM aliases a
+             JOIN finished_goods fg ON fg.product_code = a.internal_code_base
+             WHERE EXISTS (
+                 SELECT 1 FROM sds_versions sv
+                 WHERE sv.finished_good_id = fg.id AND sv.alias_id IS NULL
+                   AND sv.status = 'published' AND sv.is_deleted = 0
+             )
+             AND NOT EXISTS (
+                 SELECT 1 FROM sds_versions sv2
+                 WHERE sv2.alias_id = a.id AND sv2.status = 'published' AND sv2.is_deleted = 0
+             )"
+        );
+
+        foreach ($newAliases as $aliasRow) {
+            try {
+                // Get the base FG's latest published SDS data per language
+                $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
+                $pdfService = new PDFService();
+                $pdfDir = App::basePath() . '/public/generated-pdfs';
+
+                $aliasLastVer = $this->db->fetch(
+                    "SELECT MAX(version) AS max_ver FROM sds_versions WHERE alias_id = ?",
+                    [(int) $aliasRow['alias_id']]
+                );
+                $aliasNextVer = ((int) ($aliasLastVer['max_ver'] ?? 0)) + 1;
+                $now = date('Y-m-d H:i:s');
+
+                $published = false;
+                foreach ($languages as $lang) {
+                    $baseSds = $this->db->fetch(
+                        "SELECT snapshot_json FROM sds_versions
+                         WHERE finished_good_id = ? AND alias_id IS NULL AND language = ?
+                           AND status = 'published' AND is_deleted = 0
+                         ORDER BY version DESC LIMIT 1",
+                        [(int) $aliasRow['fg_id'], $lang]
+                    );
+
+                    if (!$baseSds || empty($baseSds['snapshot_json'])) {
+                        continue;
+                    }
+
+                    $sdsData = json_decode($baseSds['snapshot_json'], true);
+                    if (!$sdsData) {
+                        continue;
+                    }
+
+                    $aliasData = SDSGenerator::createAliasVariant(
+                        $sdsData,
+                        $aliasRow['customer_code'],
+                        $aliasRow['description']
+                    );
+
+                    $filename = preg_replace('/[^a-zA-Z0-9_-]/', '_', $aliasRow['customer_code'])
+                        . '_SDS_' . $lang . '_' . date('Ymd_His') . '.pdf';
+                    $pdfPath = $pdfDir . '/' . $filename;
+                    $pdfService->generateToFile($aliasData, $pdfPath);
+
+                    $this->db->insert('sds_versions', [
+                        'finished_good_id' => (int) $aliasRow['fg_id'],
+                        'alias_id'         => (int) $aliasRow['alias_id'],
+                        'language'         => $lang,
+                        'version'          => $aliasNextVer,
+                        'status'           => 'published',
+                        'effective_date'   => date('Y-m-d'),
+                        'published_at'     => $now,
+                        'snapshot_json'    => json_encode($aliasData, JSON_UNESCAPED_UNICODE),
+                        'pdf_path'         => 'public/generated-pdfs/' . $filename,
+                        'change_summary'   => 'Auto-published for new alias',
+                    ]);
+
+                    $published = true;
+                }
+
+                if ($published) {
+                    $count++;
+                }
+            } catch (\Throwable $e) {
+                // Skip — will retry next run
             }
         }
 

@@ -619,9 +619,8 @@ class CMSImportService
                  FROM CMS.dbo.ShipmentDetails sd
                  LEFT JOIN CMS.dbo.Item inv_item ON inv_item.ItemCode = sd.ItemCode
                  LEFT JOIN CMS.dbo.Item alias_item ON alias_item.ItemCode = sd.ItemName
-                 WHERE sd.DateShipped >= DATEADD(day, -?, GETDATE())
-                 ORDER BY sd.DateShipped DESC",
-                [$days]
+                 WHERE sd.DateShipped >= DATEADD(day, -{$days}, GETDATE())
+                 ORDER BY sd.DateShipped DESC"
             );
         } catch (\Throwable $e) {
             $results['errors'][] = 'Shipment import failed: ' . $e->getMessage();

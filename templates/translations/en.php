@@ -281,7 +281,7 @@ return [
         'osha_status'           => 'OSHA Status',
         'tsca_status'           => 'TSCA Status',
         'sara_313_title'        => 'SARA 313 / TRI Reporting',
-        'hap_title'             => 'Clean Air Act Section 112(b) — Hazardous Air Pollutants (HAPs)',
+        'hap_title'             => 'EPA HAPs',
         'hap_triggering'        => 'Triggering HAP Chemical',
         'hap_wt_pct'            => 'Wt% in Formula',
         'hap_total'             => 'Total HAP Content',

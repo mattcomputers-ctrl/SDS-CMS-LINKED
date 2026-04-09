@@ -339,6 +339,7 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                     </tfoot>
                 </table>
             <?php elseif (isset($hap['has_haps'])): ?>
+                <h4 style="margin-top: 1rem;"><?= e($l('hap_title')) ?></h4>
                 <p><?= e($l('hap_none')) ?></p>
             <?php endif; ?>
 

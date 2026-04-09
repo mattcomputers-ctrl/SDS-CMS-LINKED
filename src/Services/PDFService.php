@@ -712,6 +712,8 @@ class PDFService
             $pdf->SetFont('helvetica', '', 8);
             $pdf->Ln(2);
         } elseif (isset($hap['has_haps'])) {
+            $pdf->SetFont('helvetica', 'B', 9);
+            $pdf->Cell(0, 5, $this->label('hap_title') . ':', 0, 1);
             $pdf->SetFont('helvetica', '', 8);
             $pdf->MultiCell(0, 4, $this->label('hap_none'), 0, 'L');
             $pdf->Ln(2);

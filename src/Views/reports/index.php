@@ -1,38 +1,35 @@
 <?php include dirname(__DIR__) . '/layouts/main.php'; ?>
 
 <div class="grid-2col" style="margin-bottom: 1rem;">
-    <!-- Aliases Info -->
+    <!-- Data Status -->
     <div class="card">
-        <h2 class="card-title">1. Product Aliases</h2>
-        <p class="text-muted" style="margin-bottom: 0.75rem;">Aliases link customer-facing codes to internal product codes. Manage aliases on the <a href="/aliases">Aliases page</a>.</p>
+        <h2 class="card-title">Data Status</h2>
         <?php if ($aliasCount > 0): ?>
-            <div class="alert alert-success"><?= (int) $aliasCount ?> alias(es) stored in the system.</div>
+            <div class="alert alert-success"><?= (int) $aliasCount ?> alias(es) synced from CMS.</div>
         <?php else: ?>
-            <div class="alert" style="background: #fff3cd; color: #856404; border: 1px solid #ffc107; padding: 0.5rem; border-radius: 4px;">No aliases uploaded yet. <a href="/aliases">Upload aliases</a> to enable SDS export by alias.</div>
+            <div class="alert" style="background: #fff3cd; color: #856404; border: 1px solid #ffc107; padding: 0.5rem; border-radius: 4px;">No aliases synced yet. Run a <a href="/cms-import">CMS Import</a> to sync aliases.</div>
+        <?php endif; ?>
+        <?php if ($hasShippingData): ?>
+            <div class="alert alert-success"><?= number_format($shippingCount) ?> shipment record(s) in the system.</div>
+        <?php else: ?>
+            <div class="alert" style="background: #fff3cd; color: #856404; border: 1px solid #ffc107; padding: 0.5rem; border-radius: 4px;">No shipment data yet. Run a <a href="/cms-import">CMS Import</a> to sync shipments.</div>
+        <?php endif; ?>
+        <?php if ($lastSync): ?>
+            <p class="text-muted">Last sync: <?= e($lastSync) ?></p>
         <?php endif; ?>
     </div>
 
-    <!-- Upload Shipping Detail -->
+    <!-- Spacer or info -->
     <div class="card">
-        <h2 class="card-title">2. Upload Shipping Detail (CSV)</h2>
-        <p class="text-muted" style="margin-bottom: 0.75rem;">CSV must contain <strong>Bill To</strong>, <strong>Ship To</strong>, <strong>Ship To Name</strong>, <strong>Date Shipped</strong>, <strong>Item Name</strong>, and <strong>Qty Shipped</strong> columns.</p>
-        <?php if ($hasShippingData): ?>
-            <div class="alert alert-success"><?= (int) $shippingCount ?> shipping record(s) loaded.</div>
-        <?php endif; ?>
-        <form method="POST" action="/reports/upload-shipping" enctype="multipart/form-data">
-            <?= csrf_field() ?>
-            <div class="form-group">
-                <input type="file" name="shipping_file" accept=".csv,.txt" class="form-control" required>
-            </div>
-            <button type="submit" class="btn btn-primary" style="margin-top: 0.5rem;">Upload Shipping Detail</button>
-        </form>
+        <h2 class="card-title">About</h2>
+        <p class="text-muted">Aliases and shipment data are automatically synced from the CMS database. Use <a href="/cms-import">CMS Import</a> to sync manually, or wait for the next scheduled sync.</p>
     </div>
 </div>
 
 <?php if ($hasShippingData): ?>
 <!-- Generate Report -->
 <div class="card" style="margin-bottom: 1rem;">
-    <h2 class="card-title">3. Generate HAP / VOC Report</h2>
+    <h2 class="card-title">Generate HAP / VOC Report</h2>
     <p class="text-muted" style="margin-bottom: 0.75rem;">SDS exports will use aliases to match item names. A list of missing items (not yet in the SDS system) will be included when applicable.</p>
     <form id="reportForm">
         <input type="hidden" name="_csrf_token" value="<?= e(\SDS\Core\CSRF::token()) ?>">
@@ -85,20 +82,6 @@
 </div>
 <?php endif; ?>
 
-<!-- Clear Data -->
-<div class="card">
-    <div style="display: flex; align-items: center; justify-content: space-between;">
-        <div>
-            <h2 class="card-title" style="margin-bottom: 0.25rem;">Clear Report Data</h2>
-            <p class="text-muted">Remove all uploaded data from this session. Data is also automatically cleared on logout.</p>
-        </div>
-        <form method="POST" action="/reports/clear">
-            <?= csrf_field() ?>
-            <button type="submit" class="btn btn-danger" onclick="return confirm('Clear all uploaded report data?');">Clear Data</button>
-        </form>
-    </div>
-</div>
-
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     var fieldSelect = document.getElementById('customer_field');
@@ -121,7 +104,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Export SDS dropdown
     var exportBtn = document.getElementById('exportSdsBtn');
     var exportMenu = document.getElementById('exportSdsMenu');
     var exportForm = document.getElementById('reportForm');
@@ -133,14 +115,12 @@ document.addEventListener('DOMContentLoaded', function() {
             exportMenu.style.display = exportMenu.style.display === 'none' ? 'block' : 'none';
         });
 
-        // Close menu when clicking outside
         document.addEventListener('click', function(e) {
             if (!exportBtn.contains(e.target) && !exportMenu.contains(e.target)) {
                 exportMenu.style.display = 'none';
             }
         });
 
-        // Handle menu option clicks
         var options = exportMenu.querySelectorAll('.export-sds-option');
         options.forEach(function(opt) {
             opt.addEventListener('mouseenter', function() {

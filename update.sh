@@ -303,6 +303,31 @@ else
     print_success "publish_workers already configured."
 fi
 
+# Add cms_sync section if not already present
+print_step "Checking cms_sync configuration..."
+HAS_CMS_SYNC=$(php -r "\$c = require '$INSTALL_DIR/config/config.php'; echo isset(\$c['cms_sync']) ? 'yes' : 'no';" 2>/dev/null)
+
+if [ "$HAS_CMS_SYNC" = "no" ]; then
+    print_step "Adding cms_sync configuration section..."
+    php -r "
+        \$file = '$INSTALL_DIR/config/config.php';
+        \$content = file_get_contents(\$file);
+        \$syncBlock = \"\\n    'cms_sync' => [\\n\" .
+                      \"        'shipment_days' => 90,\\n\" .
+                      \"    ],\\n\";
+        \$content = preg_replace(
+            \"/(\\s*'federal_data')/\",
+            \$syncBlock . '\${1}',
+            \$content,
+            1
+        );
+        file_put_contents(\$file, \$content);
+    " 2>/dev/null
+    print_success "cms_sync section added to config."
+else
+    print_success "cms_sync already configured."
+fi
+
 # ============================================================
 # Step 5: Update PHP Dependencies
 # ============================================================
@@ -506,6 +531,18 @@ elif systemctl is-active --quiet httpd; then
     print_success "httpd restarted."
 else
     print_warn "Could not detect Apache service. You may need to restart it manually."
+fi
+
+# ============================================================
+# Step 11b: Ensure CMS sync cron job exists
+# ============================================================
+print_step "Checking CMS sync cron job..."
+if crontab -u www-data -l 2>/dev/null | grep -q 'cms-sync'; then
+    print_success "CMS sync cron job already installed."
+else
+    print_step "Installing CMS sync cron job (hourly)..."
+    ( crontab -u www-data -l 2>/dev/null; echo "# CMS Sync: import items, formulas, aliases, shipments from CMS (hourly)"; echo "7 * * * * cd $INSTALL_DIR && /usr/bin/php cron/cms-sync.php >> storage/logs/cms-sync.log 2>&1" ) | crontab -u www-data - 2>/dev/null
+    print_success "CMS sync cron job installed."
 fi
 
 # ============================================================

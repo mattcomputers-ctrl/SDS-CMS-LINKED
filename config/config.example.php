@@ -66,6 +66,11 @@ return [
         'password' => 'CHANGE_ME',
     ],
 
+    // CMS sync settings
+    'cms_sync' => [
+        'shipment_days' => 90,  // how many days of shipment history to import
+    ],
+
     'federal_data' => [
         'pubchem' => [
             'base_url'  => 'https://pubchem.ncbi.nlm.nih.gov/rest/pug',

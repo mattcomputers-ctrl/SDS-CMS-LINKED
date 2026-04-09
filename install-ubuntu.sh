@@ -502,6 +502,10 @@ return [
         'password' => '${CMS_DB_PASS}',
     ],
 
+    'cms_sync' => [
+        'shipment_days' => 90,
+    ],
+
     'federal_data' => [
         'pubchem' => [
             'base_url'  => 'https://pubchem.ncbi.nlm.nih.gov/rest/pug',
@@ -742,16 +746,19 @@ print_header "Step 9: Setting Up Cron Jobs"
 
 print_step "Installing crontab for www-data..."
 
-# Build cron entries (federal data refresh removed — run manually via scripts/refresh-federal-data.php)
+# Build cron entries
 CRON_ENTRIES="# SDS System — Automated maintenance tasks
 # Housekeeping: purge old logs, temp files (daily, 4:00 AM)
-0 4 * * * cd $INSTALL_DIR && /usr/bin/php cron/housekeeping.php >> storage/logs/cron-housekeeping.log 2>&1"
+0 4 * * * cd $INSTALL_DIR && /usr/bin/php cron/housekeeping.php >> storage/logs/cron-housekeeping.log 2>&1
+# CMS Sync: import items, formulas, aliases, shipments from CMS (hourly)
+7 * * * * cd $INSTALL_DIR && /usr/bin/php cron/cms-sync.php >> storage/logs/cms-sync.log 2>&1"
 
 # Merge with any existing www-data crontab
-( crontab -u www-data -l 2>/dev/null | grep -v 'SDS System' | grep -v 'refresh-federal' | grep -v 'refresh-sara' | grep -v 'housekeeping'; echo "$CRON_ENTRIES" ) | crontab -u www-data - 2>/dev/null
+( crontab -u www-data -l 2>/dev/null | grep -v 'SDS System' | grep -v 'refresh-federal' | grep -v 'refresh-sara' | grep -v 'housekeeping' | grep -v 'cms-sync'; echo "$CRON_ENTRIES" ) | crontab -u www-data - 2>/dev/null
 
 print_success "Cron jobs installed for www-data."
-print_info "  Daily:   Housekeeping           (4:00 AM)"
+print_info "  Hourly:  CMS Sync               (:07 past each hour)"
+print_info "  Daily:   Housekeeping            (4:00 AM)"
 
 # ============================================================
 # Step 10: Firewall (UFW)

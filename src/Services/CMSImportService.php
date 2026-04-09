@@ -210,6 +210,9 @@ class CMSImportService
             'formulas_skipped'      => 0,
             'rm_created'            => [],
             'rm_skipped'            => [],
+            'aliases_created'       => 0,
+            'aliases_updated'       => 0,
+            'shipments_imported'    => 0,
             'errors'                => [],
             'incomplete_materials'  => [],
         ];
@@ -225,6 +228,12 @@ class CMSImportService
 
         // Phase 4: Identify incomplete raw materials
         $results['incomplete_materials'] = $this->getIncompleteRawMaterials();
+
+        // Phase 5: Import aliases from CMS
+        $this->importAliases($results);
+
+        // Phase 6: Import shipment data from CMS
+        $this->importShipments($results);
 
         return $results;
     }
@@ -517,6 +526,151 @@ class CMSImportService
              WHERE rmc.id IS NULL
              ORDER BY rm.internal_code"
         );
+    }
+
+    /* ------------------------------------------------------------------
+     *  Phase 5: Import Aliases
+     * ----------------------------------------------------------------*/
+
+    /**
+     * Import aliases from CMS Item table (ReplacedBy self-join).
+     * Alias ItemCode → customer_code, parent ItemCode → internal_code_base.
+     */
+    private function importAliases(array &$results): void
+    {
+        try {
+            $aliases = $this->cms->fetchAll(
+                "SELECT alias.ItemCode AS alias_code,
+                        alias.Description AS alias_description,
+                        inv.ItemCode AS inventory_code
+                 FROM CMS.dbo.Item alias
+                 JOIN CMS.dbo.Item inv ON alias.ReplacedBy = inv.Item
+                 WHERE alias.ReplacedBy IS NOT NULL
+                 ORDER BY alias.ItemCode"
+            );
+        } catch (\Throwable $e) {
+            $results['errors'][] = 'Alias import failed: ' . $e->getMessage();
+            return;
+        }
+
+        $created = 0;
+        $updated = 0;
+
+        foreach ($aliases as $row) {
+            $customerCode = trim($row['alias_code']);
+            $description  = trim($row['alias_description'] ?? '');
+            $internalCode = trim($row['inventory_code']);
+
+            if ($customerCode === '' || $internalCode === '') {
+                continue;
+            }
+
+            // Strip pack extension from internal code (everything after first dash)
+            $internalCodeBase = (str_contains($internalCode, '-'))
+                ? substr($internalCode, 0, strpos($internalCode, '-'))
+                : $internalCode;
+
+            // Upsert: check if alias already exists by customer_code
+            $existing = $this->db->fetch(
+                "SELECT id FROM aliases WHERE customer_code = ?",
+                [$customerCode]
+            );
+
+            if ($existing) {
+                $this->db->update('aliases', [
+                    'description'        => $description,
+                    'internal_code'      => $internalCode,
+                    'internal_code_base' => $internalCodeBase,
+                ], 'id = ?', [(int) $existing['id']]);
+                $updated++;
+            } else {
+                $this->db->insert('aliases', [
+                    'customer_code'      => $customerCode,
+                    'description'        => $description,
+                    'internal_code'      => $internalCode,
+                    'internal_code_base' => $internalCodeBase,
+                ]);
+                $created++;
+            }
+        }
+
+        $results['aliases_created'] = $created;
+        $results['aliases_updated'] = $updated;
+    }
+
+    /* ------------------------------------------------------------------
+     *  Phase 6: Import Shipments
+     * ----------------------------------------------------------------*/
+
+    /**
+     * Import shipment data from CMS ShipmentDetails view.
+     * Uses a configurable lookback window (default 90 days).
+     */
+    private function importShipments(array &$results): void
+    {
+        $days = (int) (\SDS\Core\App::config('cms_sync.shipment_days', 90));
+
+        try {
+            $shipments = $this->cms->fetchAll(
+                "SELECT sd.BillTo, sd.ShipTo, sd.ShipToName, sd.DateShipped,
+                        sd.ItemCode, inv_item.Description AS ItemDescription,
+                        sd.ItemName, alias_item.Description AS ItemNameDescription,
+                        sd.QtyShipped, sd.TransDocument, sd.Ordr, sd.ChangeSet
+                 FROM CMS.dbo.ShipmentDetails sd
+                 LEFT JOIN CMS.dbo.Item inv_item ON inv_item.ItemCode = sd.ItemCode
+                 LEFT JOIN CMS.dbo.Item alias_item ON alias_item.ItemCode = sd.ItemName
+                 WHERE sd.DateShipped >= DATEADD(day, -?, GETDATE())
+                 ORDER BY sd.DateShipped DESC",
+                [$days]
+            );
+        } catch (\Throwable $e) {
+            $results['errors'][] = 'Shipment import failed: ' . $e->getMessage();
+            return;
+        }
+
+        $imported = 0;
+
+        foreach ($shipments as $row) {
+            $changeSet   = $row['ChangeSet'] ?? null;
+            $itemCode    = trim($row['ItemCode'] ?? '');
+            $dateShipped = $row['DateShipped'] ?? null;
+
+            if ($itemCode === '' || $dateShipped === null) {
+                continue;
+            }
+
+            // Upsert using composite dedup key (changeset + item_code + date)
+            $existing = $this->db->fetch(
+                "SELECT id FROM shipment_detail
+                 WHERE cms_changeset = ? AND item_code = ? AND date_shipped = ?",
+                [$changeSet, $itemCode, $dateShipped]
+            );
+
+            $data = [
+                'bill_to'               => trim($row['BillTo'] ?? ''),
+                'ship_to'               => trim($row['ShipTo'] ?? ''),
+                'ship_to_name'          => trim($row['ShipToName'] ?? ''),
+                'date_shipped'          => $dateShipped,
+                'item_code'             => $itemCode,
+                'item_description'      => trim($row['ItemDescription'] ?? ''),
+                'item_name'             => trim($row['ItemName'] ?? ''),
+                'item_name_description' => trim($row['ItemNameDescription'] ?? ''),
+                'qty_shipped'           => (float) ($row['QtyShipped'] ?? 0),
+                'invoice_number'        => trim($row['TransDocument'] ?? ''),
+                'order_number'          => $row['Ordr'] !== null ? (string) $row['Ordr'] : null,
+                'cms_changeset'         => $changeSet,
+            ];
+
+            if ($existing) {
+                $this->db->update('shipment_detail', $data, 'id = ?', [(int) $existing['id']]);
+            } else {
+                $this->db->insert('shipment_detail', $data);
+            }
+
+            $imported++;
+        }
+
+        $results['shipments_imported'] = $imported;
     }
 
     /* ------------------------------------------------------------------

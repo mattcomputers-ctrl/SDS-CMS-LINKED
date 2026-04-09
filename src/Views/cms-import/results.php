@@ -33,6 +33,18 @@
                 <td><strong>Raw materials skipped (already existed)</strong></td>
                 <td><span class="badge badge-muted"><?= count($results['rm_skipped']) ?></span></td>
             </tr>
+            <tr>
+                <td><strong>Aliases created</strong></td>
+                <td><span class="badge badge-success"><?= (int) ($results['aliases_created'] ?? 0) ?></span></td>
+            </tr>
+            <tr>
+                <td><strong>Aliases updated</strong></td>
+                <td><span class="badge badge-muted"><?= (int) ($results['aliases_updated'] ?? 0) ?></span></td>
+            </tr>
+            <tr>
+                <td><strong>Shipment records imported</strong></td>
+                <td><span class="badge badge-success"><?= number_format((int) ($results['shipments_imported'] ?? 0)) ?></span></td>
+            </tr>
         </tbody>
     </table>
 </div>

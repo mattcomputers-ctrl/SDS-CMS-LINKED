@@ -156,19 +156,13 @@ class App
 
         // ── HAP / VOC Reporting ─────────────────────────────────────────
         $router->get('/reports',                 'ReportController@index');
-        $router->post('/reports/upload-items',   'ReportController@uploadItemNames');
-        $router->post('/reports/upload-shipping', 'ReportController@uploadShippingDetail');
         $router->post('/reports/generate',       'ReportController@generate');
         $router->post('/reports/generate-pdf',   'ReportController@generatePdf');
         $router->post('/reports/export-sds',     'ReportController@exportShippedSds');
-        $router->post('/reports/clear',          'ReportController@clear');
         $router->get('/reports/customers',       'ReportController@customers');
 
-        // ── Product Aliases ──────────────────────────────────────────────
+        // ── Product Aliases (read-only — synced from CMS) ───────────────
         $router->get('/aliases',                 'AliasController@index');
-        $router->post('/aliases/upload',         'AliasController@upload');
-        $router->post('/aliases/{id}/delete',    'AliasController@delete');
-        $router->post('/aliases/delete-all',     'AliasController@deleteAll');
 
         // ── SDS Book (plant lookup) ────────────────────────────────────
         $router->get('/sds-book',                         'SDSBookController@index');

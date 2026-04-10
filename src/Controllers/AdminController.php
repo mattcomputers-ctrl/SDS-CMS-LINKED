@@ -1327,7 +1327,7 @@ class AdminController
         $ftpConfig = BackupService::getFtpConfig();
 
         view('admin/backups', [
-            'pageTitle' => 'Backup &amp; Restore',
+            'pageTitle' => 'Backup & Restore',
             'backups'   => $backups,
             'sections'  => $sections,
             'ftpConfig' => $ftpConfig,
@@ -1356,6 +1356,34 @@ class AdminController
             $_SESSION['_flash']['success'] = "Backup created: {$result['filename']} ({$sizeStr})";
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = 'Backup failed: ' . $e->getMessage();
+        }
+
+        redirect('/admin/backups');
+    }
+
+    public function uploadBackup(): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+
+        $notes = trim($_POST['notes'] ?? '') ?: null;
+
+        try {
+            $file = $_FILES['backup_file'] ?? null;
+            if (!$file) {
+                throw new \RuntimeException('No file was uploaded.');
+            }
+
+            $result = BackupService::importUploadedFile($file, $notes);
+            AuditService::log('backup', (string) $result['id'], 'upload', [
+                'filename' => $result['filename'],
+                'size'     => $result['file_size'],
+            ]);
+
+            $sizeStr = self::formatBytes($result['file_size']);
+            $_SESSION['_flash']['success'] = "Backup uploaded: {$result['filename']} ({$sizeStr}). You can now restore it from the list below.";
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error'] = 'Upload failed: ' . $e->getMessage();
         }
 
         redirect('/admin/backups');

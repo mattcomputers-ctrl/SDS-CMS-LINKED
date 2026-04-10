@@ -366,6 +366,122 @@ class BackupService
     }
 
     /**
+     * Import an uploaded backup file into the system.
+     *
+     * Validates the file is a valid SDS system backup (.tar.gz containing
+     * manifest.json and database.sql), moves it to the backups directory,
+     * and registers it in the backups table so it can be restored.
+     *
+     * @param array $file  The $_FILES upload entry
+     * @param string|null $notes
+     * @param int|null $userId
+     * @return array  ['id', 'filename', 'file_size', 'path']
+     * @throws \RuntimeException on validation or processing failure
+     */
+    public static function importUploadedFile(array $file, ?string $notes = null, ?int $userId = null): array
+    {
+        if (empty($file) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            throw new \RuntimeException('No file uploaded or upload failed.');
+        }
+
+        $maxSize = 500 * 1024 * 1024; // 500 MB
+        if ($file['size'] > $maxSize) {
+            throw new \RuntimeException('Backup file too large (max 500 MB).');
+        }
+
+        // Validate extension
+        $originalName = $file['name'] ?? '';
+        if (!preg_match('/\.tar\.gz$/i', $originalName) && !preg_match('/\.tgz$/i', $originalName)) {
+            throw new \RuntimeException('Backup file must be a .tar.gz archive.');
+        }
+
+        // Validate MIME type
+        $finfo = new \finfo(FILEINFO_MIME_TYPE);
+        $mime = $finfo->file($file['tmp_name']);
+        if (!in_array($mime, ['application/gzip', 'application/x-gzip', 'application/x-tar'], true)) {
+            throw new \RuntimeException("Invalid file type: {$mime}. Expected gzip archive.");
+        }
+
+        // Extract to temp directory to validate contents
+        $tmpDir = sys_get_temp_dir() . '/sds_backup_import_' . bin2hex(random_bytes(4));
+        mkdir($tmpDir, 0755, true);
+
+        try {
+            // Copy the uploaded file so tar can read it (move_uploaded_file may not
+            // work on arbitrary paths depending on open_basedir)
+            $tmpArchive = $tmpDir . '/upload.tar.gz';
+            if (!move_uploaded_file($file['tmp_name'], $tmpArchive)) {
+                throw new \RuntimeException('Failed to store uploaded file.');
+            }
+
+            // Extract
+            $extractDir = $tmpDir . '/extract';
+            mkdir($extractDir, 0755, true);
+            $cmd = 'tar -xzf ' . escapeshellarg($tmpArchive)
+                 . ' -C ' . escapeshellarg($extractDir) . ' 2>&1';
+            exec($cmd, $output, $rc);
+            if ($rc !== 0) {
+                throw new \RuntimeException('Archive extraction failed: ' . implode("\n", $output));
+            }
+
+            // Validate manifest.json and database.sql exist
+            $manifestPath = $extractDir . '/manifest.json';
+            $sqlPath      = $extractDir . '/database.sql';
+
+            if (!file_exists($manifestPath)) {
+                throw new \RuntimeException('Invalid backup: manifest.json not found.');
+            }
+            if (!file_exists($sqlPath)) {
+                throw new \RuntimeException('Invalid backup: database.sql not found.');
+            }
+
+            $manifest = json_decode(file_get_contents($manifestPath), true);
+            if (!is_array($manifest) || empty($manifest['type'])) {
+                throw new \RuntimeException('Invalid backup: manifest.json is malformed.');
+            }
+
+            $type = $manifest['type'];
+            $validTypes = array_merge(['full'], array_keys(self::SECTIONS));
+            if (!in_array($type, $validTypes, true)) {
+                throw new \RuntimeException("Invalid backup type: {$type}");
+            }
+
+            // Move archive to the backups directory with a unique filename
+            $dir = self::backupDir();
+            $ts = date('Ymd_His');
+            $filename = "sds_backup_{$type}_{$ts}_imported.tar.gz";
+            $destPath = $dir . '/' . $filename;
+
+            if (!copy($tmpArchive, $destPath)) {
+                throw new \RuntimeException('Failed to save backup file.');
+            }
+
+            $fileSize = filesize($destPath);
+
+            // Record in database
+            $db = Database::getInstance();
+            $uid = $userId ?? (function_exists('current_user_id') ? current_user_id() : null);
+            $id = $db->insert('backups', [
+                'filename'    => $filename,
+                'backup_type' => $type,
+                'file_size'   => $fileSize,
+                'tables_json' => json_encode($manifest['tables'] ?? ['*']),
+                'notes'       => $notes ? trim($notes) : 'Imported from upload: ' . $originalName,
+                'created_by'  => $uid,
+            ]);
+
+            return [
+                'id'        => (int) $id,
+                'filename'  => $filename,
+                'file_size' => $fileSize,
+                'path'      => $destPath,
+            ];
+        } finally {
+            self::removeDir($tmpDir);
+        }
+    }
+
+    /**
      * List all backups.
      */
     public static function listAll(): array

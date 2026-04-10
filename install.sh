@@ -537,10 +537,10 @@ cat > "$APACHE_CONF" << APACHEEOF
     </DirectoryMatch>
 
     # PHP settings
-    php_value upload_max_filesize 25M
-    php_value post_max_size 30M
-    php_value max_execution_time 120
-    php_value memory_limit 256M
+    php_value upload_max_filesize 512M
+    php_value post_max_size 520M
+    php_value max_execution_time 600
+    php_value memory_limit 512M
 
     ErrorLog \${APACHE_LOG_DIR}/sds-system-error.log
     CustomLog \${APACHE_LOG_DIR}/sds-system-access.log combined
@@ -559,10 +559,10 @@ if [ -n "$PHP_INI" ]; then
     # Also update the Apache PHP ini
     APACHE_PHP_INI=$(echo "$PHP_INI" | sed 's/cli/apache2/')
     if [ -f "$APACHE_PHP_INI" ]; then
-        sed -i 's/upload_max_filesize = .*/upload_max_filesize = 25M/' "$APACHE_PHP_INI" 2>/dev/null || true
-        sed -i 's/post_max_size = .*/post_max_size = 30M/' "$APACHE_PHP_INI" 2>/dev/null || true
-        sed -i 's/max_execution_time = .*/max_execution_time = 120/' "$APACHE_PHP_INI" 2>/dev/null || true
-        sed -i 's/memory_limit = .*/memory_limit = 256M/' "$APACHE_PHP_INI" 2>/dev/null || true
+        sed -i 's/upload_max_filesize = .*/upload_max_filesize = 512M/' "$APACHE_PHP_INI" 2>/dev/null || true
+        sed -i 's/post_max_size = .*/post_max_size = 520M/' "$APACHE_PHP_INI" 2>/dev/null || true
+        sed -i 's/max_execution_time = .*/max_execution_time = 600/' "$APACHE_PHP_INI" 2>/dev/null || true
+        sed -i 's/memory_limit = .*/memory_limit = 512M/' "$APACHE_PHP_INI" 2>/dev/null || true
     fi
 fi
 

@@ -33,6 +33,31 @@
     </form>
 </div>
 
+<div class="card" style="margin-top: 1.5rem;">
+    <h2>Upload Backup File</h2>
+    <p class="text-muted mb-1">Upload a previously downloaded backup file (.tar.gz) to restore from. After upload, you can restore it from the list below.</p>
+
+    <form method="POST" action="/admin/backups/upload" enctype="multipart/form-data">
+        <?= csrf_field() ?>
+
+        <div class="form-grid-2col">
+            <div class="form-group">
+                <label>Backup File</label>
+                <input type="file" name="backup_file" accept=".tar.gz,.tgz,application/gzip,application/x-gzip" required>
+                <small class="text-muted">Must be a valid SDS System backup archive (.tar.gz, max 500 MB)</small>
+            </div>
+            <div class="form-group">
+                <label>Notes (optional)</label>
+                <input type="text" name="notes" placeholder="e.g. Restored from off-site backup">
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Upload Backup</button>
+        </div>
+    </form>
+</div>
+
 <!-- Scheduled Backup & FTP Settings -->
 <div class="card" style="margin-top: 1.5rem;">
     <h2>Scheduled Backups &amp; FTP</h2>

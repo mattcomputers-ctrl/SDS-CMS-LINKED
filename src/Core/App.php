@@ -312,6 +312,7 @@ class App
             // Backup & Restore
             $r->get('/backups',                   'AdminController@backups');
             $r->post('/backups/create',           'AdminController@createBackup');
+            $r->post('/backups/upload',           'AdminController@uploadBackup');
             $r->post('/backups/{id}/restore',     'AdminController@restoreBackup');
             $r->post('/backups/{id}/delete',      'AdminController@deleteBackup');
             $r->get('/backups/{id}/download',     'AdminController@downloadBackup');

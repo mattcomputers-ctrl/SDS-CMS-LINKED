@@ -549,11 +549,11 @@ if [ -n "$PHP_INI" ]; then
     for ini in "$PHP_INI" "$APACHE_PHP_INI"; do
         if [ -f "$ini" ]; then
             CURRENT=$(grep -E '^upload_max_filesize' "$ini" 2>/dev/null | head -1 | awk -F= '{print $2}' | tr -d ' ')
-            if [ "$CURRENT" != "512M" ]; then
-                sed -i 's/upload_max_filesize = .*/upload_max_filesize = 512M/' "$ini" 2>/dev/null || true
-                sed -i 's/post_max_size = .*/post_max_size = 520M/' "$ini" 2>/dev/null || true
-                sed -i 's/max_execution_time = .*/max_execution_time = 600/' "$ini" 2>/dev/null || true
-                sed -i 's/memory_limit = .*/memory_limit = 512M/' "$ini" 2>/dev/null || true
+            if [ "$CURRENT" != "4096M" ]; then
+                sed -i 's/upload_max_filesize = .*/upload_max_filesize = 4096M/' "$ini" 2>/dev/null || true
+                sed -i 's/post_max_size = .*/post_max_size = 4200M/' "$ini" 2>/dev/null || true
+                sed -i 's/max_execution_time = .*/max_execution_time = 1800/' "$ini" 2>/dev/null || true
+                sed -i 's/memory_limit = .*/memory_limit = 2048M/' "$ini" 2>/dev/null || true
             fi
         fi
     done
@@ -561,13 +561,13 @@ if [ -n "$PHP_INI" ]; then
     # Also update the Apache vhost conf if it has php_value directives
     APACHE_CONF="/etc/apache2/sites-available/sds-system.conf"
     if [ -f "$APACHE_CONF" ] && grep -q 'upload_max_filesize' "$APACHE_CONF"; then
-        sed -i 's/php_value upload_max_filesize .*/php_value upload_max_filesize 512M/' "$APACHE_CONF" 2>/dev/null || true
-        sed -i 's/php_value post_max_size .*/php_value post_max_size 520M/' "$APACHE_CONF" 2>/dev/null || true
-        sed -i 's/php_value max_execution_time .*/php_value max_execution_time 600/' "$APACHE_CONF" 2>/dev/null || true
-        sed -i 's/php_value memory_limit .*/php_value memory_limit 512M/' "$APACHE_CONF" 2>/dev/null || true
+        sed -i 's/php_value upload_max_filesize .*/php_value upload_max_filesize 4096M/' "$APACHE_CONF" 2>/dev/null || true
+        sed -i 's/php_value post_max_size .*/php_value post_max_size 4200M/' "$APACHE_CONF" 2>/dev/null || true
+        sed -i 's/php_value max_execution_time .*/php_value max_execution_time 1800/' "$APACHE_CONF" 2>/dev/null || true
+        sed -i 's/php_value memory_limit .*/php_value memory_limit 2048M/' "$APACHE_CONF" 2>/dev/null || true
     fi
 fi
-print_success "PHP upload limits set to 512M (required for backup uploads)."
+print_success "PHP upload limits set to 4GB (required for backup uploads)."
 
 # ============================================================
 # Step 10: Clear application cache

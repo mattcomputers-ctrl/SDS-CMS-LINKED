@@ -44,7 +44,7 @@
             <div class="form-group">
                 <label>Backup File</label>
                 <input type="file" name="backup_file" accept=".tar.gz,.tgz,application/gzip,application/x-gzip" required>
-                <small class="text-muted">Must be a valid SDS System backup archive (.tar.gz, max 500 MB)</small>
+                <small class="text-muted">Must be a valid SDS System backup archive (.tar.gz, max 4 GB)</small>
             </div>
             <div class="form-group">
                 <label>Notes (optional)</label>

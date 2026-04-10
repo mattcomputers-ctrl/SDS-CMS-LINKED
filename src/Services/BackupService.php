@@ -384,9 +384,9 @@ class BackupService
             throw new \RuntimeException('No file uploaded or upload failed.');
         }
 
-        $maxSize = 500 * 1024 * 1024; // 500 MB
+        $maxSize = 4 * 1024 * 1024 * 1024; // 4 GB
         if ($file['size'] > $maxSize) {
-            throw new \RuntimeException('Backup file too large (max 500 MB).');
+            throw new \RuntimeException('Backup file too large (max 4 GB).');
         }
 
         // Validate extension

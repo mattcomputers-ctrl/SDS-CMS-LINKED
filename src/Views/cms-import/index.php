@@ -1,5 +1,56 @@
 <?php include dirname(__DIR__) . '/layouts/main.php'; ?>
 
+<!-- Last Sync & Shipment Stats -->
+<div class="card" style="margin-bottom: 16px;">
+    <h3>Last Sync</h3>
+    <table class="table" style="max-width: 600px;">
+        <tbody>
+            <tr>
+                <td>Completed</td>
+                <td>
+                    <?php if (!empty($syncInfo['last_completed_at'])): ?>
+                        <strong><?= e($syncInfo['last_completed_at']) ?></strong>
+                        <?php if (!empty($syncInfo['last_trigger'])): ?>
+                            <span class="text-muted">
+                                (<?= e($syncInfo['last_trigger']) ?><?php if (($syncInfo['last_trigger'] ?? '') === 'manual' && !empty($syncInfo['last_triggered_by'])): ?> by <?= e($syncInfo['last_triggered_by']) ?><?php endif; ?>)
+                            </span>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <span class="text-muted">Never</span>
+                    <?php endif; ?>
+                </td>
+            </tr>
+            <tr>
+                <td>Total shipments in system</td>
+                <td><strong><?= number_format((int) ($syncInfo['shipment_count'] ?? 0)) ?></strong></td>
+            </tr>
+            <tr>
+                <td>Most recent shipment</td>
+                <td>
+                    <?php if (!empty($syncInfo['recent_date'])): ?>
+                        <strong><?= e($syncInfo['recent_date']) ?></strong>
+                    <?php else: ?>
+                        <span class="text-muted">—</span>
+                    <?php endif; ?>
+                </td>
+            </tr>
+            <tr>
+                <td>Most recent Ship To</td>
+                <td>
+                    <?php if (!empty($syncInfo['recent_ship_to'])): ?>
+                        <strong><?= e($syncInfo['recent_ship_to']) ?></strong>
+                        <?php if (!empty($syncInfo['recent_ship_name'])): ?>
+                            <span class="text-muted"> — <?= e($syncInfo['recent_ship_name']) ?></span>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <span class="text-muted">—</span>
+                    <?php endif; ?>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
 <?php if (!$configured): ?>
     <div class="alert alert-warning">
         <strong>CMS database not configured.</strong>

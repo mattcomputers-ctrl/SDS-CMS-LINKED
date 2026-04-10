@@ -239,7 +239,42 @@ class CMSImportService
         // Phase 7: Auto-create customers from shipment Ship To codes
         $this->autoCreateCustomers($results);
 
+        // Record import completion metadata
+        $this->recordImportCompletion($userId);
+
         return $results;
+    }
+
+    /**
+     * Record when the import completed and who/what triggered it.
+     * Cron invokes with $userId = null → trigger is "cron".
+     * Web UI invokes with current user ID → trigger is "manual".
+     */
+    private function recordImportCompletion(?int $userId): void
+    {
+        $now = date('Y-m-d H:i:s');
+        $trigger = $userId === null ? 'cron' : 'manual';
+
+        $userName = 'cron';
+        if ($userId !== null) {
+            $user = $this->db->fetch("SELECT display_name, username FROM users WHERE id = ?", [$userId]);
+            if ($user) {
+                $userName = $user['display_name'] ?: $user['username'];
+            }
+        }
+
+        foreach ([
+            'cms_sync.last_completed_at' => $now,
+            'cms_sync.last_trigger'      => $trigger,
+            'cms_sync.last_triggered_by' => $userName,
+        ] as $key => $val) {
+            $existing = $this->db->fetch("SELECT `key` FROM settings WHERE `key` = ?", [$key]);
+            if ($existing) {
+                $this->db->update('settings', ['value' => $val], "`key` = ?", [$key]);
+            } else {
+                $this->db->insert('settings', ['key' => $key, 'value' => $val]);
+            }
+        }
     }
 
     /* ------------------------------------------------------------------

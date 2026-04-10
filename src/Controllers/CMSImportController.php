@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace SDS\Controllers;
 
 use SDS\Core\CSRF;
+use SDS\Core\Database;
 use SDS\Services\CMSDatabase;
 use SDS\Services\CMSImportService;
 
@@ -20,12 +21,15 @@ class CMSImportController
             redirect('/');
         }
 
+        $syncInfo = $this->getSyncInfo();
+
         if (!CMSDatabase::isConfigured()) {
             view('cms-import/index', [
                 'pageTitle'     => 'CMS Formula Import',
                 'configured'    => false,
                 'items'         => [],
                 'incomplete'    => [],
+                'syncInfo'      => $syncInfo,
             ]);
             return;
         }
@@ -45,7 +49,43 @@ class CMSImportController
             'configured'    => true,
             'items'         => $items,
             'incomplete'    => $incomplete,
+            'syncInfo'      => $syncInfo,
         ]);
+    }
+
+    /**
+     * Gather last sync info and shipment stats for the index page.
+     */
+    private function getSyncInfo(): array
+    {
+        $db = Database::getInstance();
+
+        $rows = $db->fetchAll(
+            "SELECT `key`, `value` FROM settings
+             WHERE `key` IN ('cms_sync.last_completed_at', 'cms_sync.last_trigger', 'cms_sync.last_triggered_by')"
+        );
+        $settings = [];
+        foreach ($rows as $row) {
+            $settings[$row['key']] = $row['value'];
+        }
+
+        $countRow = $db->fetch("SELECT COUNT(*) AS cnt FROM shipment_detail");
+        $recentRow = $db->fetch(
+            "SELECT date_shipped, ship_to, ship_to_name
+             FROM shipment_detail
+             WHERE date_shipped IS NOT NULL
+             ORDER BY date_shipped DESC LIMIT 1"
+        );
+
+        return [
+            'last_completed_at' => $settings['cms_sync.last_completed_at'] ?? null,
+            'last_trigger'      => $settings['cms_sync.last_trigger'] ?? null,
+            'last_triggered_by' => $settings['cms_sync.last_triggered_by'] ?? null,
+            'shipment_count'    => (int) ($countRow['cnt'] ?? 0),
+            'recent_date'       => $recentRow['date_shipped'] ?? null,
+            'recent_ship_to'    => $recentRow['ship_to'] ?? null,
+            'recent_ship_name'  => $recentRow['ship_to_name'] ?? null,
+        ];
     }
 
     /**

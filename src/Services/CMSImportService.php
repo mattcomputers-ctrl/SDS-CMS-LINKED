@@ -685,10 +685,17 @@ class CMSImportService
 
     /**
      * Get raw materials imported from CMS that have no constituents saved.
+     *
+     * Each row is augmented with:
+     *   fg_direct_count — # of current formulas that reference the RM directly
+     *   fg_total_count  — # of finished goods whose formula tree contains the RM
+     *                     (transitive through any depth of FG sub-components)
+     *
+     * Sorted by fg_total_count DESC so the most-impactful raws surface first.
      */
     public function getIncompleteRawMaterials(): array
     {
-        return $this->db->fetchAll(
+        $rows = $this->db->fetchAll(
             "SELECT rm.id, rm.internal_code, rm.supplier_product_name, rm.created_at,
                     cil.cms_item_code
              FROM raw_materials rm
@@ -697,6 +704,113 @@ class CMSImportService
              WHERE rmc.id IS NULL
              ORDER BY rm.internal_code"
         );
+
+        if (empty($rows)) {
+            return $rows;
+        }
+
+        // ── Direct usage: count distinct current formulas that reference each RM ──
+        $directCounts = [];
+        foreach ($this->db->fetchAll(
+            "SELECT fl.raw_material_id, COUNT(DISTINCT f.finished_good_id) AS cnt
+             FROM formula_lines fl
+             JOIN formulas f ON f.id = fl.formula_id AND f.is_current = 1
+             WHERE fl.raw_material_id IS NOT NULL
+             GROUP BY fl.raw_material_id"
+        ) as $r) {
+            $directCounts[(int) $r['raw_material_id']] = (int) $r['cnt'];
+        }
+
+        // ── Transitive usage: count distinct FGs whose entire formula tree
+        //    (through any depth of finished_good_component_id nesting)
+        //    includes each RM. Build the reverse-dependency map in memory.
+
+        // formula_id → list of { rm: int|null, fg: int|null }
+        $linesByFormula = [];
+        foreach ($this->db->fetchAll(
+            "SELECT formula_id, raw_material_id, finished_good_component_id FROM formula_lines"
+        ) as $r) {
+            $linesByFormula[(int) $r['formula_id']][] = [
+                'rm' => $r['raw_material_id'] !== null ? (int) $r['raw_material_id'] : null,
+                'fg' => $r['finished_good_component_id'] !== null ? (int) $r['finished_good_component_id'] : null,
+            ];
+        }
+
+        // finished_good_id → current formula_id
+        $fgToFormulaId = [];
+        foreach ($this->db->fetchAll(
+            "SELECT id, finished_good_id FROM formulas WHERE is_current = 1"
+        ) as $r) {
+            $fgToFormulaId[(int) $r['finished_good_id']] = (int) $r['id'];
+        }
+
+        // Active FGs we want to count (top-level products, not every intermediate FG)
+        $activeFgs = $this->db->fetchAll(
+            "SELECT id FROM finished_goods WHERE is_active = 1"
+        );
+
+        // For each active FG, walk its formula tree once and collect the
+        // set of raw_material_ids it transitively touches. Then increment
+        // a per-RM counter for every RM seen.
+        $cache = [];  // formula_id → set of RM ids
+        $walk = function (int $formulaId, array $visited) use (&$walk, $linesByFormula, $fgToFormulaId, &$cache) {
+            if (isset($cache[$formulaId])) {
+                return $cache[$formulaId];
+            }
+            if (isset($visited[$formulaId])) {
+                return [];  // cycle guard
+            }
+            $visited[$formulaId] = true;
+
+            $rms = [];
+            foreach ($linesByFormula[$formulaId] ?? [] as $line) {
+                if ($line['rm'] !== null) {
+                    $rms[$line['rm']] = true;
+                } elseif ($line['fg'] !== null) {
+                    $subFormulaId = $fgToFormulaId[$line['fg']] ?? null;
+                    if ($subFormulaId !== null) {
+                        foreach ($walk($subFormulaId, $visited) as $rmId => $_) {
+                            $rms[$rmId] = true;
+                        }
+                    }
+                }
+            }
+
+            $cache[$formulaId] = $rms;
+            return $rms;
+        };
+
+        $totalCounts = [];
+        foreach ($activeFgs as $fg) {
+            $formulaId = $fgToFormulaId[(int) $fg['id']] ?? null;
+            if ($formulaId === null) {
+                continue;
+            }
+            $rmSet = $walk($formulaId, []);
+            foreach (array_keys($rmSet) as $rmId) {
+                $totalCounts[$rmId] = ($totalCounts[$rmId] ?? 0) + 1;
+            }
+        }
+
+        // Attach counts to each row and sort.
+        foreach ($rows as &$row) {
+            $rmId = (int) $row['id'];
+            $row['fg_direct_count'] = $directCounts[$rmId] ?? 0;
+            $row['fg_total_count']  = $totalCounts[$rmId]  ?? 0;
+        }
+        unset($row);
+
+        usort($rows, function (array $a, array $b): int {
+            if ($a['fg_total_count'] !== $b['fg_total_count']) {
+                return $b['fg_total_count'] <=> $a['fg_total_count'];
+            }
+            if ($a['fg_direct_count'] !== $b['fg_direct_count']) {
+                return $b['fg_direct_count'] <=> $a['fg_direct_count'];
+            }
+            return strcmp($a['internal_code'], $b['internal_code']);
+        });
+
+        return $rows;
     }
 
     /* ------------------------------------------------------------------

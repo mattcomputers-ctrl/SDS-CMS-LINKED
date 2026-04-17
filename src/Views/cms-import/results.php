@@ -71,13 +71,15 @@
 <?php if (!empty($results['incomplete_materials'])): ?>
 <div class="card">
     <h3>Raw Materials Needing Details</h3>
-    <p class="text-muted">These raw materials were imported but have no constituents saved yet. Add their CAS composition and supplier SDS to complete them.</p>
+    <p class="text-muted">These raw materials were imported but have no constituents saved yet. Sorted by the number of finished goods that depend on them — highest impact first.</p>
 
     <table class="table">
         <thead>
             <tr>
                 <th>Internal Code</th>
                 <th>Product Name</th>
+                <th title="Finished goods whose formula tree transitively contains this raw material">FGs Using</th>
+                <th title="Finished goods that reference this raw material directly in their formula">Direct</th>
                 <th>Imported</th>
                 <th>Actions</th>
             </tr>
@@ -87,6 +89,8 @@
             <tr>
                 <td><strong><?= e($rm['internal_code']) ?></strong></td>
                 <td><?= e($rm['supplier_product_name'] ?? '—') ?></td>
+                <td><strong><?= (int) ($rm['fg_total_count'] ?? 0) ?></strong></td>
+                <td><span class="text-muted"><?= (int) ($rm['fg_direct_count'] ?? 0) ?></span></td>
                 <td><?= e($rm['created_at'] ?? '') ?></td>
                 <td>
                     <a href="/raw-materials/<?= (int) $rm['id'] ?>/edit" class="btn btn-sm btn-primary">Add Details</a>

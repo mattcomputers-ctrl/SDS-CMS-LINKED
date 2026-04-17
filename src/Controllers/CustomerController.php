@@ -76,14 +76,18 @@ class CustomerController
 
         // Load SDS send history for this customer
         $db = \SDS\Core\Database::getInstance();
+        // NOTE: alias is `slog` (not `ssl`) — MariaDB interprets `ssl` as a
+        // reserved keyword tied to SSL connection syntax and throws a parse
+        // error when it appears as a table alias immediately after the table
+        // name on some versions.
         $sendHistory = $db->fetchAll(
-            "SELECT ssl.item_identifier, ssl.language, ssl.sent_at, ssl.shipment_date,
+            "SELECT slog.item_identifier, slog.language, slog.sent_at, slog.shipment_date,
                     sv.version AS sds_version, fg.product_code
-             FROM sds_send_log ssl
-             LEFT JOIN sds_versions sv ON sv.id = ssl.sds_version_id
-             LEFT JOIN finished_goods fg ON fg.id = ssl.finished_good_id
-             WHERE ssl.customer_id = ?
-             ORDER BY ssl.sent_at DESC
+             FROM sds_send_log slog
+             LEFT JOIN sds_versions sv ON sv.id = slog.sds_version_id
+             LEFT JOIN finished_goods fg ON fg.id = slog.finished_good_id
+             WHERE slog.customer_id = ?
+             ORDER BY slog.sent_at DESC
              LIMIT 500",
             [(int) $id]
         );

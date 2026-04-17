@@ -523,10 +523,11 @@ class SDSAutoSendService
 
         // Find the last send for this customer + item
         $lastSend = $this->db->fetch(
-            "SELECT ssl.sent_at, ssl.sds_version_id
-             FROM sds_send_log ssl
-             WHERE ssl.customer_id = ? AND ssl.item_identifier = ?
-             ORDER BY ssl.sent_at DESC LIMIT 1",
+            // Alias `slog` (not `ssl`) — MariaDB parses `ssl` as a keyword
+            "SELECT slog.sent_at, slog.sds_version_id
+             FROM sds_send_log slog
+             WHERE slog.customer_id = ? AND slog.item_identifier = ?
+             ORDER BY slog.sent_at DESC LIMIT 1",
             [(int) $customer['id'], $itemIdentifier]
         );
 

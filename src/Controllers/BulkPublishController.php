@@ -157,18 +157,31 @@ class BulkPublishController
             INNER JOIN formulas f ON f.finished_good_id = fg.id AND f.is_current = 1
             WHERE fg.is_active = 1
               AND NOT EXISTS (
-                  -- Rule 1: fail if ANY raw material in the formula lacks a user edit
+                  -- Rule 1: fail if ANY raw material in the formula lacks a user edit.
+                  -- An RM counts as user-reviewed if EITHER:
+                  --   (a) It has an audit_log entry with a real user_id (direct edit), OR
+                  --   (b) Any of its constituent CAS numbers has an active
+                  --       competent_person_determinations row (creating or updating a
+                  --       CAS determination implicitly reviews every RM that uses that CAS).
                   SELECT 1
                   FROM formula_lines fl
                   JOIN raw_materials rm ON rm.id = fl.raw_material_id
-                  LEFT JOIN audit_log a
-                         ON a.entity_type = 'raw_material'
-                        AND a.entity_id   = rm.id
-                        AND a.user_id IS NOT NULL
                   WHERE fl.formula_id = f.id
                     AND fl.raw_material_id IS NOT NULL
-                  GROUP BY rm.id
-                  HAVING COUNT(a.id) = 0
+                    AND NOT EXISTS (
+                        SELECT 1 FROM audit_log a
+                        WHERE a.entity_type = 'raw_material'
+                          AND a.entity_id   = rm.id
+                          AND a.user_id IS NOT NULL
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM raw_material_constituents rmc
+                        JOIN competent_person_determinations cpd
+                             ON cpd.cas_number = rmc.cas_number
+                            AND cpd.is_active = 1
+                        WHERE rmc.raw_material_id = rm.id
+                    )
               )
               AND (
                   -- Rule 2: SDS is stale OR has never been published.

@@ -172,34 +172,19 @@ class ExportController
                       AND sv.is_deleted = 0"
         );
 
-        // Check for existing export
-        $exportDir = App::basePath() . self::EXPORT_DIR;
-        $existingExport = null;
-        if (is_dir($exportDir)) {
-            foreach (glob($exportDir . '/SDS_Export_*.zip') as $file) {
-                $age = time() - filemtime($file);
-                if ($age < self::EXPORT_TTL_SECONDS) {
-                    $existingExport = [
-                        'filename' => basename($file),
-                        'size'     => self::formatBytes((int) filesize($file)),
-                        'created'  => date('m/d/Y h:i A', filemtime($file)),
-                        'expires_in' => self::formatDuration(self::EXPORT_TTL_SECONDS - $age),
-                    ];
-                    break;
-                }
-            }
-        }
-
         view('admin/export', [
-            'pageTitle'      => 'Bulk SDS Export',
-            'fgCount'        => (int) ($stats['fg_count'] ?? 0),
-            'pdfCount'       => (int) ($stats['pdf_count'] ?? 0),
-            'existingExport' => $existingExport,
+            'pageTitle' => 'Bulk SDS Export',
+            'fgCount'   => (int) ($stats['fg_count'] ?? 0),
+            'pdfCount'  => (int) ($stats['pdf_count'] ?? 0),
         ]);
     }
 
+    /** Max files per ZIP — keeps below ~14k open-handle limit at ZipArchive::close(). */
+    public const MAX_FILES_PER_ZIP = 10000;
+
     /**
-     * POST /admin/export/start — Begin export, returns JSON with progress token.
+     * POST /bulk-export/start — spawn one worker per supported language.
+     * Each worker writes its own ZIP(s) and per-language progress file.
      */
     public function startExport(): void
     {
@@ -209,153 +194,125 @@ class ExportController
         }
         CSRF::validateRequest();
 
-        $db = Database::getInstance();
+        $db       = Database::getInstance();
         $basePath = App::basePath();
-
-        // Count total published PDFs for progress tracking
-        $countRow = $db->fetch(
-            "SELECT COUNT(*) AS cnt
-             FROM sds_versions sv
-             INNER JOIN (
-                 SELECT finished_good_id, language, MAX(version) AS max_ver
-                 FROM sds_versions
-                 WHERE status = 'published' AND is_deleted = 0
-                   AND pdf_path IS NOT NULL AND pdf_path != ''
-                 GROUP BY finished_good_id, language
-             ) latest ON sv.finished_good_id = latest.finished_good_id
-                      AND sv.language = latest.language
-                      AND sv.version = latest.max_ver
-                      AND sv.status = 'published'
-                      AND sv.is_deleted = 0"
-        );
-        $totalFiles = (int) ($countRow['cnt'] ?? 0);
-
-        if ($totalFiles === 0) {
-            $this->jsonResponse(['error' => 'No published SDS PDFs found to export.']);
-            return;
-        }
-
-        // Create export directory
         $exportDir = $basePath . self::EXPORT_DIR;
         if (!is_dir($exportDir)) {
             mkdir($exportDir, 0755, true);
         }
-
-        // Clean up old exports
         self::cleanupExpiredExports($exportDir);
 
-        // Create progress file
-        $token = bin2hex(random_bytes(8));
-        $progressFile = $exportDir . '/progress_' . $token . '.json';
-        $zipFile = $exportDir . '/SDS_Export_' . date('Y-m-d_His') . '.zip';
-
-        $this->writeProgress($progressFile, 0, $totalFiles, 'Starting export...');
-
-        // Flush JSON response immediately so the browser can start polling
-        $this->jsonResponse([
-            'token'      => $token,
-            'totalFiles' => $totalFiles,
-        ]);
-
-        // Close the connection so the browser gets the response
-        if (function_exists('fastcgi_finish_request')) {
-            fastcgi_finish_request();
-        }
-
-        // Now build the ZIP in the background
-        $zip = new \ZipArchive();
-        if ($zip->open($zipFile, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
-            $this->writeProgress($progressFile, 0, $totalFiles, 'Failed to create ZIP.', true);
-            return;
-        }
-
-        $addedFiles = 0;
-        $seen = [];
-        $processed = 0;
-        $lastId = 0;
-
-        // Paginate through SDS versions to avoid loading all rows at once
-        while (true) {
-            $versions = $db->fetchAll(
-                "SELECT sv.id, sv.version, sv.language, sv.pdf_path, fg.product_code
+        // Count PDFs per language so the view can render initial totals
+        $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
+        $perLangTotals = [];
+        $grandTotal    = 0;
+        foreach ($languages as $lang) {
+            $row = $db->fetch(
+                "SELECT COUNT(*) AS cnt
                  FROM sds_versions sv
-                 JOIN finished_goods fg ON fg.id = sv.finished_good_id
                  INNER JOIN (
                      SELECT finished_good_id, language, MAX(version) AS max_ver
                      FROM sds_versions
                      WHERE status = 'published' AND is_deleted = 0
                        AND pdf_path IS NOT NULL AND pdf_path != ''
+                       AND language = ?
                      GROUP BY finished_good_id, language
                  ) latest ON sv.finished_good_id = latest.finished_good_id
                           AND sv.language = latest.language
                           AND sv.version = latest.max_ver
                           AND sv.status = 'published'
-                          AND sv.is_deleted = 0
-                 WHERE sv.id > ?
-                 ORDER BY sv.id ASC
-                 LIMIT " . self::EXPORT_QUERY_PAGE_SIZE,
-                [$lastId]
+                          AND sv.is_deleted = 0",
+                [$lang]
             );
-
-            if (empty($versions)) {
-                break;
-            }
-
-            foreach ($versions as $v) {
-                $lastId = (int) $v['id'];
-                $processed++;
-                $pdfFullPath = $basePath . '/' . ltrim($v['pdf_path'], '/');
-
-                if (!file_exists($pdfFullPath)) {
-                    $this->writeProgress($progressFile, $processed, $totalFiles,
-                        'Skipped: ' . $v['product_code'] . ' (' . strtoupper($v['language']) . ') — file missing');
-                    continue;
-                }
-
-                $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $v['product_code']);
-                $zipName = $safeCode . '-SDS' . $v['version'];
-
-                if (strtolower($v['language']) !== 'en') {
-                    $zipName .= '_' . strtoupper($v['language']);
-                }
-
-                $zipName .= '.pdf';
-
-                if (isset($seen[$zipName])) {
-                    continue;
-                }
-                $seen[$zipName] = true;
-
-                $zip->addFile($pdfFullPath, $zipName);
-                $addedFiles++;
-
-                $this->writeProgress($progressFile, $processed, $totalFiles,
-                    'Added: ' . $v['product_code'] . ' (' . strtoupper($v['language']) . ')');
-            }
+            $perLangTotals[$lang] = (int) ($row['cnt'] ?? 0);
+            $grandTotal          += $perLangTotals[$lang];
         }
 
-        $zip->close();
-
-        if ($addedFiles === 0) {
-            @unlink($zipFile);
-            $this->writeProgress($progressFile, $totalFiles, $totalFiles,
-                'No SDS PDF files found on disk.', true);
+        if ($grandTotal === 0) {
+            $this->jsonResponse(['error' => 'No published SDS PDFs found to export.']);
             return;
         }
 
-        // Write final progress with download info
-        $this->writeProgress($progressFile, $totalFiles, $totalFiles,
-            'Export complete! ' . $addedFiles . ' PDFs packaged.',
-            false, basename($zipFile), self::formatBytes((int) filesize($zipFile)));
+        $token     = bin2hex(random_bytes(8));
+        $timestamp = date('Y-m-d_His');
 
-        AuditService::log('sds_export', '0', 'create', [
-            'files' => $addedFiles,
-            'size'  => filesize($zipFile),
+        // Pre-seed each language's progress file so the poller sees work immediately
+        $progressFiles = [];
+        foreach ($languages as $lang) {
+            $pf = $exportDir . '/progress_' . $token . '_' . $lang . '.json';
+            file_put_contents($pf, json_encode([
+                'language'     => $lang,
+                'progress'     => 0,
+                'total'        => $perLangTotals[$lang],
+                'parts'        => [],
+                'current_part' => 1,
+                'message'      => $perLangTotals[$lang] > 0 ? 'Queued...' : 'No PDFs for this language',
+                'done'         => $perLangTotals[$lang] === 0,
+                'error'        => false,
+            ]), LOCK_EX);
+            $progressFiles[$lang] = $pf;
+        }
+
+        // Master manifest so the progress endpoint knows which languages belong to this token
+        file_put_contents(
+            $exportDir . '/manifest_' . $token . '.json',
+            json_encode([
+                'token'      => $token,
+                'timestamp'  => $timestamp,
+                'languages'  => $languages,
+                'totals'     => $perLangTotals,
+                'grandTotal' => $grandTotal,
+            ]),
+            LOCK_EX
+        );
+
+        $this->jsonResponse([
+            'token'      => $token,
+            'totalFiles' => $grandTotal,
+            'languages'  => $languages,
+            'totals'     => $perLangTotals,
+        ]);
+
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        }
+
+        // Spawn one worker per language (skip languages with 0 files)
+        $workerScript = $basePath . '/scripts/export-worker.php';
+        $phpBin       = php_cli_binary();
+
+        foreach ($languages as $lang) {
+            if ($perLangTotals[$lang] === 0) {
+                continue;
+            }
+            $logFile = $exportDir . '/worker_' . $token . '_' . $lang . '.log';
+            $cmd = sprintf(
+                '%s %s %s %s %s %s > %s 2>&1 &',
+                escapeshellarg($phpBin),
+                escapeshellarg($workerScript),
+                escapeshellarg($token),
+                escapeshellarg($lang),
+                escapeshellarg($progressFiles[$lang]),
+                escapeshellarg($timestamp),
+                escapeshellarg($logFile)
+            );
+            exec($cmd);
+        }
+
+        AuditService::log('sds_export', '0', 'start', [
+            'token'      => $token,
+            'grandTotal' => $grandTotal,
         ]);
     }
 
     /**
-     * GET /admin/export/progress/{token} — Return current progress as JSON.
+     * GET /bulk-export/progress/{token} — Aggregate per-language progress.
+     *
+     * Response shape:
+     *   {
+     *     token, grandTotal, totalProcessed, percent, complete,
+     *     languages: { en: { progress, total, parts: [...], done, error, message }, ... }
+     *   }
      */
     public function exportProgress(string $token): void
     {
@@ -365,15 +322,72 @@ class ExportController
         }
 
         $token = preg_replace('/[^a-f0-9]/', '', $token);
-        $progressFile = App::basePath() . self::EXPORT_DIR . '/progress_' . $token . '.json';
+        $dir   = App::basePath() . self::EXPORT_DIR;
 
-        if (!file_exists($progressFile)) {
+        // Prefer the new manifest format; fall back to legacy single-file progress for compatibility
+        $manifestFile = $dir . '/manifest_' . $token . '.json';
+        if (!file_exists($manifestFile)) {
+            // Legacy single-file progress (used by old callers before the rewrite)
+            $legacyFile = $dir . '/progress_' . $token . '.json';
+            if (file_exists($legacyFile)) {
+                $data = json_decode(file_get_contents($legacyFile), true);
+                $this->jsonResponse($data ?: ['error' => 'Invalid progress data.']);
+                return;
+            }
             $this->jsonResponse(['error' => 'Export not found.'], 404);
             return;
         }
 
-        $data = json_decode(file_get_contents($progressFile), true);
-        $this->jsonResponse($data ?: ['error' => 'Invalid progress data.']);
+        $manifest = json_decode(file_get_contents($manifestFile), true);
+        if (!is_array($manifest)) {
+            $this->jsonResponse(['error' => 'Invalid manifest.'], 500);
+            return;
+        }
+
+        $languages = $manifest['languages'] ?? [];
+        $grandTotal = (int) ($manifest['grandTotal'] ?? 0);
+        $totalProcessed = 0;
+        $allDone = true;
+        $anyError = false;
+        $langStates = [];
+
+        foreach ($languages as $lang) {
+            $pf = $dir . '/progress_' . $token . '_' . $lang . '.json';
+            if (!file_exists($pf)) {
+                $langStates[$lang] = [
+                    'language' => $lang,
+                    'progress' => 0,
+                    'total'    => $manifest['totals'][$lang] ?? 0,
+                    'parts'    => [],
+                    'done'     => false,
+                    'error'    => false,
+                    'message'  => 'Starting...',
+                ];
+                $allDone = false;
+                continue;
+            }
+            $data = json_decode(file_get_contents($pf), true) ?: [];
+            $langStates[$lang] = $data;
+            $totalProcessed   += (int) ($data['progress'] ?? 0);
+            if (empty($data['done'])) {
+                $allDone = false;
+            }
+            if (!empty($data['error'])) {
+                $anyError = true;
+            }
+        }
+
+        $percent = $grandTotal > 0 ? round(($totalProcessed / $grandTotal) * 100, 1) : 0;
+
+        $this->jsonResponse([
+            'token'          => $token,
+            'grandTotal'     => $grandTotal,
+            'totalProcessed' => $totalProcessed,
+            'percent'        => $percent,
+            'complete'       => $allDone,
+            'error'          => $anyError,
+            'languages'      => $langStates,
+        ]);
     }
 
     /**

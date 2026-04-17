@@ -1,8 +1,8 @@
 <?php include dirname(__DIR__) . '/layouts/main.php'; ?>
 
-<p class="text-muted mb-1">Export the most recent published SDS (all languages) for every finished good as a downloadable ZIP file. Exports are automatically deleted after 2 hours to save disk space.</p>
+<p class="text-muted mb-1">Export the most recent published SDS (all languages) for every finished good as downloadable ZIP files — one per language. Large languages are automatically split into numbered parts (<?= (int) \SDS\Controllers\ExportController::MAX_FILES_PER_ZIP ?> files per ZIP max). Exports are automatically deleted after 2 hours to save disk space.</p>
 
-<div class="card" style="max-width: 700px;">
+<div class="card" style="max-width: 900px;">
     <h2>Export Summary</h2>
     <table class="table table-sm" style="max-width: 400px;">
         <tr><td><strong>Finished Goods with SDSs:</strong></td><td><?= (int) $fgCount ?></td></tr>
@@ -13,46 +13,34 @@
         <p class="text-muted">No published SDS PDFs are available to export.</p>
     <?php else: ?>
 
-        <?php if ($existingExport): ?>
-            <div class="alert alert-success" style="margin-bottom: 1rem;">
-                <strong>Previous export available:</strong>
-                <?= e($existingExport['filename']) ?> (<?= e($existingExport['size']) ?>)
-                — created <?= e($existingExport['created']) ?>
-                — expires in <?= e($existingExport['expires_in']) ?>
-                <br>
-                <a href="/bulk-export/download/<?= e($existingExport['filename']) ?>" class="btn btn-sm btn-primary" style="margin-top: 0.5rem;">Download Previous Export</a>
-            </div>
-        <?php endif; ?>
-
         <form id="export-form" style="margin-top: 1rem;">
             <?= csrf_field() ?>
             <button type="submit" class="btn btn-primary" id="start-export-btn">Generate New Export</button>
         </form>
 
-        <!-- Progress bar area (hidden initially) -->
+        <!-- Overall progress -->
         <div id="export-progress" style="display: none; margin-top: 1.5rem;">
             <div style="margin-bottom: 0.5rem;">
-                <strong>Export Progress</strong>
+                <strong>Overall Progress</strong>
                 <span id="progress-pct" style="float: right;">0%</span>
             </div>
-            <div style="background: #e9ecef; border-radius: 4px; overflow: hidden; height: 24px; position: relative;">
+            <div style="background: #e9ecef; border-radius: 4px; overflow: hidden; height: 24px;">
                 <div id="progress-bar" style="background: #003366; height: 100%; width: 0%; transition: width 0.3s ease; border-radius: 4px;"></div>
             </div>
             <p id="progress-message" class="text-muted" style="margin-top: 0.5rem; font-size: 0.85rem;">Preparing...</p>
+
+            <!-- Per-language progress panels, injected by JS -->
+            <div id="lang-panels" style="margin-top: 1rem;"></div>
         </div>
 
-        <!-- Download area (hidden until complete) -->
+        <!-- All Complete banner -->
         <div id="export-complete" style="display: none; margin-top: 1.5rem;">
             <div class="alert alert-success">
-                <strong>Export Ready!</strong>
-                <span id="complete-message"></span>
-                <br>
-                <a href="#" id="download-link" class="btn btn-primary" style="margin-top: 0.5rem;">Download ZIP</a>
-                <span id="complete-size" class="text-muted" style="margin-left: 0.5rem;"></span>
+                <strong>All exports ready!</strong> See the download links per language above.
             </div>
         </div>
 
-        <!-- Error area (hidden unless error) -->
+        <!-- Error area -->
         <div id="export-error" style="display: none; margin-top: 1.5rem;">
             <div class="alert alert-danger">
                 <strong>Export Failed:</strong> <span id="error-message"></span>
@@ -72,14 +60,49 @@
     var barEl      = document.getElementById('progress-bar');
     var pctEl      = document.getElementById('progress-pct');
     var msgEl      = document.getElementById('progress-message');
+    var langPanels = document.getElementById('lang-panels');
     var completeEl = document.getElementById('export-complete');
-    var completeMsgEl = document.getElementById('complete-message');
-    var downloadLink  = document.getElementById('download-link');
-    var completeSizeEl = document.getElementById('complete-size');
     var errorEl    = document.getElementById('export-error');
     var errorMsgEl = document.getElementById('error-message');
 
     if (!form) return;
+
+    var langPanelRefs = {}; // { en: { container, bar, status, links } }
+
+    function ensurePanel(lang, total) {
+        if (langPanelRefs[lang]) return langPanelRefs[lang];
+
+        var container = document.createElement('div');
+        container.style.cssText = 'margin-top: 0.75rem; padding: 0.6rem 0.75rem; background: #f6f8fa; border-radius: 4px;';
+
+        var header = document.createElement('div');
+        header.style.cssText = 'display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 4px;';
+        header.innerHTML = '<strong>' + lang.toUpperCase() + '</strong><span class="lang-status">0 / ' + total + '</span>';
+
+        var barWrap = document.createElement('div');
+        barWrap.style.cssText = 'background: #e9ecef; border-radius: 3px; overflow: hidden; height: 14px;';
+        var bar = document.createElement('div');
+        bar.style.cssText = 'background: #0069d9; height: 100%; width: 0%; transition: width 0.3s ease;';
+        barWrap.appendChild(bar);
+
+        var links = document.createElement('div');
+        links.style.cssText = 'margin-top: 6px; font-size: 0.85rem;';
+
+        container.appendChild(header);
+        container.appendChild(barWrap);
+        container.appendChild(links);
+        langPanels.appendChild(container);
+
+        var ref = {
+            container: container,
+            bar:       bar,
+            status:    header.querySelector('.lang-status'),
+            links:     links,
+            seenParts: {},
+        };
+        langPanelRefs[lang] = ref;
+        return ref;
+    }
 
     form.addEventListener('submit', function(e) {
         e.preventDefault();
@@ -88,6 +111,8 @@
         progressEl.style.display = 'block';
         completeEl.style.display = 'none';
         errorEl.style.display    = 'none';
+        langPanels.innerHTML     = '';
+        langPanelRefs            = {};
 
         var formData = new FormData(form);
 
@@ -101,6 +126,10 @@
                 showError(data.error);
                 return;
             }
+            // Pre-create panels in the order returned by the server
+            (data.languages || []).forEach(function(lang) {
+                ensurePanel(lang, (data.totals && data.totals[lang]) || 0);
+            });
             pollProgress(data.token);
         })
         .catch(function(err) {
@@ -113,44 +142,72 @@
             fetch('/bulk-export/progress/' + token)
             .then(function(res) { return res.json(); })
             .then(function(data) {
-                if (data.error && !data.total) {
+                if (data.error && !data.grandTotal) {
                     clearInterval(interval);
-                    showError(data.error);
+                    showError(data.error || 'Export not found.');
                     return;
                 }
 
                 var pct = data.percent || 0;
                 barEl.style.width = pct + '%';
                 pctEl.textContent = pct + '%';
-                msgEl.textContent = data.message || 'Processing...';
+                msgEl.textContent = 'Processed ' + (data.totalProcessed || 0) +
+                                   ' / ' + (data.grandTotal || 0) + ' PDFs.';
+
+                // Update per-language panels
+                Object.keys(data.languages || {}).forEach(function(lang) {
+                    var state = data.languages[lang];
+                    var ref   = ensurePanel(lang, state.total || 0);
+
+                    var langPct = state.total > 0 ? Math.round((state.progress / state.total) * 1000) / 10 : 0;
+                    ref.bar.style.width = langPct + '%';
+                    if (state.done) {
+                        ref.bar.style.background = state.error ? '#dc3545' : '#28a745';
+                    }
+
+                    var statusText = (state.progress || 0) + ' / ' + (state.total || 0);
+                    if (state.message) statusText += ' — ' + state.message;
+                    ref.status.textContent = statusText;
+
+                    // Append any new parts as download links
+                    (state.parts || []).forEach(function(part) {
+                        if (ref.seenParts[part.filename]) return;
+                        ref.seenParts[part.filename] = true;
+                        var a = document.createElement('a');
+                        a.href = '/bulk-export/download/' + encodeURIComponent(part.filename);
+                        a.textContent = part.filename;
+                        a.className = 'btn btn-sm btn-primary';
+                        a.style.marginRight = '6px';
+                        a.style.marginTop = '4px';
+                        var sizeTxt = part.size >= 1048576
+                            ? (part.size / 1048576).toFixed(1) + ' MB'
+                            : (part.size / 1024).toFixed(0) + ' KB';
+                        var sz = document.createElement('span');
+                        sz.className = 'text-muted';
+                        sz.style.fontSize = '0.8rem';
+                        sz.textContent = ' (' + sizeTxt + ')';
+                        ref.links.appendChild(a);
+                        ref.links.appendChild(sz);
+                        ref.links.appendChild(document.createElement('br'));
+                    });
+                });
 
                 if (data.complete) {
                     clearInterval(interval);
                     barEl.style.width = '100%';
-                    barEl.style.background = '#28a745';
+                    barEl.style.background = data.error ? '#dc3545' : '#28a745';
                     pctEl.textContent = '100%';
-
-                    if (data.downloadFile) {
-                        completeMsgEl.textContent = data.message;
-                        downloadLink.href = '/bulk-export/download/' + data.downloadFile;
-                        completeSizeEl.textContent = data.fileSize ? '(' + data.fileSize + ')' : '';
+                    if (!data.error) {
                         completeEl.style.display = 'block';
-
-                        // Auto-trigger the download
-                        window.location.href = downloadLink.href;
                     }
-
                     btn.disabled = false;
                     btn.textContent = 'Generate New Export';
-                } else if (data.error) {
-                    clearInterval(interval);
-                    showError(data.message || 'Export failed.');
                 }
             })
             .catch(function() {
-                // Network blip — keep polling
+                // transient network blip; keep polling
             });
-        }, 500);
+        }, 800);
     }
 
     function showError(msg) {

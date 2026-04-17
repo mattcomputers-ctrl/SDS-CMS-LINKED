@@ -86,10 +86,18 @@ class RawMaterialController
         }
 
         try {
-            // Handle SDS file upload
+            // Handle SDS file upload. Date Received is required when an
+            // SDS file is uploaded — reject before we create the record.
             $sdsInfo = $this->handleSdsUpload();
+            $dateReceived = trim($_POST['sds_date_received'] ?? '');
+            if ($sdsInfo !== null && $dateReceived === '') {
+                throw new \InvalidArgumentException(
+                    'Date Received is required when uploading an SDS.'
+                );
+            }
             if ($sdsInfo !== null) {
-                $data['supplier_sds_path'] = $sdsInfo['path'];
+                $data['supplier_sds_path']      = $sdsInfo['path'];
+                $data['sds_last_confirmed_at']  = $dateReceived;
             }
 
             $id = RawMaterial::create($data);
@@ -103,7 +111,8 @@ class RawMaterialController
                     $sdsInfo['original_name'],
                     $sdsInfo['size'],
                     null,
-                    current_user_id()
+                    current_user_id(),
+                    $dateReceived !== '' ? $dateReceived : null
                 );
             }
 
@@ -182,19 +191,29 @@ class RawMaterialController
         }
 
         try {
-            // Handle SDS file upload — always adds to history, never removes old
+            // Handle SDS file upload — always adds to history, never removes old.
+            // Date Received is required when an SDS file is uploaded.
             $sdsInfo = $this->handleSdsUpload();
-            if ($sdsInfo !== null) {
-                $data['supplier_sds_path'] = $sdsInfo['path'];
+            $dateReceived = trim($_POST['sds_date_received'] ?? '');
+            if ($sdsInfo !== null && $dateReceived === '') {
+                throw new \InvalidArgumentException(
+                    'Date Received is required when uploading an SDS.'
+                );
+            }
 
-                // Add to SDS history
+            if ($sdsInfo !== null) {
+                $data['supplier_sds_path']     = $sdsInfo['path'];
+                $data['sds_last_confirmed_at'] = $dateReceived;
+
+                // Add to SDS history (addSds will also update sds_last_confirmed_at)
                 RawMaterial::addSds(
                     (int) $id,
                     $sdsInfo['path'],
                     $sdsInfo['original_name'],
                     $sdsInfo['size'],
                     trim($data['sds_notes'] ?? '') ?: null,
-                    current_user_id()
+                    current_user_id(),
+                    $dateReceived !== '' ? $dateReceived : null
                 );
             }
 
@@ -241,6 +260,33 @@ class RawMaterialController
         }
 
         redirect('/raw-materials');
+    }
+
+    /**
+     * POST /raw-materials/{id}/confirm-sds-current
+     *
+     * Marks the existing supplier SDS as still current without requiring
+     * a re-upload. Advances sds_last_confirmed_at to today; the PDF's
+     * uploaded_at and sds_date_received stay unchanged so there's still
+     * an audit trail of the original age.
+     */
+    public function confirmSdsCurrent(string $id): void
+    {
+        if (!can_edit('raw_materials')) {
+            $_SESSION['_flash']['error'] = 'Permission denied.';
+            redirect('/raw-materials');
+        }
+
+        CSRF::validateRequest();
+
+        $today = date('Y-m-d');
+        RawMaterial::update((int) $id, ['sds_last_confirmed_at' => $today]);
+        AuditService::log('raw_material', $id, 'sds_confirmed_current', [
+            'sds_last_confirmed_at' => $today,
+        ]);
+
+        $_SESSION['_flash']['success'] = 'Supplier SDS marked as still current.';
+        redirect('/raw-materials/' . (int) $id . '/edit');
     }
 
     /**

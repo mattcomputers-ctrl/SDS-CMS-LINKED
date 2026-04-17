@@ -169,6 +169,12 @@
             <div class="form-group"><label>Shipment History (days)</label><input type="number" name="cms_sync__shipment_days" min="1" step="1" value="<?= e($settings['cms_sync.shipment_days'] ?? '1095') ?>"><small class="text-muted">How many days of shipment history to import from CMS</small></div>
         </div>
 
+        <h2>Raw Material SDS Staleness</h2>
+        <p class="text-muted mb-1">Controls the threshold used by the <a href="/stale-rm-sds">Stale RM SDS</a> page. Raw materials whose supplier SDS hasn't been confirmed current within this window are surfaced for vendor follow-up.</p>
+        <div class="form-grid-2col">
+            <div class="form-group"><label>Stale Threshold (days)</label><input type="number" name="sds__rm_stale_days" min="1" step="1" value="<?= e($settings['sds.rm_stale_days'] ?? '1095') ?>"><small class="text-muted">Default 1095 (3 years). RMs exceeding this are flagged as stale.</small></div>
+        </div>
+
         <h2>Maintenance</h2>
         <div class="form-grid-2col">
             <div class="form-group"><label>Audit Log Retention (days)</label><input type="number" name="cron__log_retention_days" value="<?= e($settings['cron.log_retention_days'] ?? '365') ?>"></div>

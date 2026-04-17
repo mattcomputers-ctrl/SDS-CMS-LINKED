@@ -53,6 +53,9 @@
                     <?php if (can_read('sds_send_queue')): ?>
                     <li><a href="/sds-send-queue" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/sds-send-queue') ? 'active' : '' ?>"><span class="menu-icon">&#128233;</span> SDS Send Queue</a></li>
                     <?php endif; ?>
+                    <?php if (can_read('stale_rm_sds')): ?>
+                    <li><a href="/stale-rm-sds" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/stale-rm-sds') ? 'active' : '' ?>"><span class="menu-icon">&#9201;</span> Stale RM SDS</a></li>
+                    <?php endif; ?>
 
                     <li class="sidebar-section-label">Customers</li>
                     <?php if (can_read('customers')): ?>

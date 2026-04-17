@@ -43,6 +43,7 @@ class PermissionService
         'cms_import'         => 'CMS Import',
         'customers'          => 'Customers',
         'sds_send_queue'     => 'SDS Send Queue',
+        'stale_rm_sds'       => 'Stale RM SDS',
     ];
 
     /**

@@ -237,6 +237,10 @@ class App
         $router->post('/sds-send-queue/send-customer', 'SDSSendQueueController@sendForCustomer');
         $router->post('/sds-send-queue/{id}/dismiss',  'SDSSendQueueController@dismiss');
 
+        // ── Stale RM SDS ──────────────────────────────────────
+        $router->get('/stale-rm-sds',                                   'StaleRmSdsController@index');
+        $router->post('/raw-materials/{id}/confirm-sds-current',        'RawMaterialController@confirmSdsCurrent');
+
         // ── SDS Update Required ─────────────────────────────────
         $router->get('/sds-updates',                           'SDSUpdateController@index');
         $router->post('/sds-updates/scan',                     'SDSUpdateController@scan');

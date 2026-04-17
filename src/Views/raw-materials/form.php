@@ -54,11 +54,34 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                 <input type="file" id="supplier_sds" name="supplier_sds" accept=".pdf,application/pdf">
                 <small class="text-muted">Upload the supplier's Safety Data Sheet (PDF, max 20 MB). Previous SDS files are preserved in history below.</small>
             </div>
-            <div class="form-group full-width">
+            <div class="form-group">
+                <label for="sds_date_received">Date Received from Supplier <span class="text-muted">(required when uploading)</span></label>
+                <input type="date" id="sds_date_received" name="sds_date_received" max="<?= e(date('Y-m-d')) ?>">
+                <small class="text-muted">The revision/receipt date printed on the supplier SDS. Separate from the upload date.</small>
+            </div>
+            <div class="form-group">
                 <label for="sds_notes">SDS Upload Notes (optional)</label>
                 <input type="text" id="sds_notes" name="sds_notes" placeholder="e.g., Revised 2024, new formulation...">
             </div>
         </div>
+
+        <?php if ($isEdit && !empty($item['sds_last_confirmed_at'])): ?>
+            <?php
+                $daysSince = (int) ((time() - strtotime($item['sds_last_confirmed_at'])) / 86400);
+            ?>
+            <div class="card" style="margin-top: 0.5rem; padding: 0.5rem 0.75rem; background: #f0f4f8;">
+                <strong>Last confirmed current:</strong>
+                <?= e($item['sds_last_confirmed_at']) ?>
+                <span class="text-muted">(<?= $daysSince ?> day<?= $daysSince === 1 ? '' : 's' ?> ago)</span>
+                <form method="POST" action="/raw-materials/<?= (int) $item['id'] ?>/confirm-sds-current" style="display: inline; margin-left: 0.75rem;">
+                    <?= csrf_field() ?>
+                    <button type="submit" class="btn btn-sm btn-outline"
+                            title="Use when the vendor confirms the existing SDS is still current — advances the confirmation date without requiring a re-upload.">
+                        Supplier Confirmed Current
+                    </button>
+                </form>
+            </div>
+        <?php endif; ?>
 
         <?php if ($isEdit && !empty($sdsHistory)): ?>
         <!-- SDS History -->
@@ -71,7 +94,8 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                     <th>Size</th>
                     <th>Notes</th>
                     <th>Uploaded By</th>
-                    <th>Date</th>
+                    <th>Upload Date</th>
+                    <th>Date Received</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -84,6 +108,7 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                     <td><?= e($sds['notes'] ?? '') ?: '<span class="text-muted">—</span>' ?></td>
                     <td><?= e($sds['uploaded_by_name'] ?? '—') ?></td>
                     <td><?= format_date($sds['uploaded_at'], 'm/d/Y H:i') ?></td>
+                    <td><?= !empty($sds['sds_date_received']) ? e($sds['sds_date_received']) : '<span class="text-muted">—</span>' ?></td>
                     <td>
                         <a href="/raw-materials/sds-version/<?= (int) $sds['id'] ?>" target="_blank" class="btn btn-sm">View</a>
                     </td>

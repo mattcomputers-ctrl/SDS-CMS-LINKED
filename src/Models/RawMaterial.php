@@ -299,6 +299,7 @@ class RawMaterial
             'is_prop65', 'prop65_chemical_name', 'prop65_toxicity_types', 'prop65_data', 'haps_data',
             'is_snur', 'snur_description',
             'hazardous_no_cas', 'manual_hazard_json',
+            'sds_last_confirmed_at',
         ];
 
         // Numeric columns that must be null instead of empty string
@@ -471,8 +472,15 @@ class RawMaterial
      *
      * @return int  New raw_material_sds ID.
      */
-    public static function addSds(int $rmId, string $filePath, string $originalFilename, ?int $fileSize, ?string $notes, ?int $userId): int
-    {
+    public static function addSds(
+        int $rmId,
+        string $filePath,
+        string $originalFilename,
+        ?int $fileSize,
+        ?string $notes,
+        ?int $userId,
+        ?string $dateReceived = null
+    ): int {
         $db = Database::getInstance();
 
         $id = (int) $db->insert('raw_material_sds', [
@@ -482,10 +490,17 @@ class RawMaterial
             'file_size'         => $fileSize,
             'notes'             => $notes,
             'uploaded_by'       => $userId,
+            'sds_date_received' => $dateReceived,
         ]);
 
-        // Also update the legacy supplier_sds_path to point to the newest SDS
-        $db->update('raw_materials', ['supplier_sds_path' => $filePath], 'id = ?', [$rmId]);
+        // Also update the legacy supplier_sds_path pointer + bump the RM's
+        // last-confirmed date to this upload's received date (uploading a
+        // new SDS counts as a confirmation).
+        $rmUpdate = ['supplier_sds_path' => $filePath];
+        if ($dateReceived !== null && $dateReceived !== '') {
+            $rmUpdate['sds_last_confirmed_at'] = $dateReceived;
+        }
+        $db->update('raw_materials', $rmUpdate, 'id = ?', [$rmId]);
 
         return $id;
     }

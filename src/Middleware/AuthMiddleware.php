@@ -63,6 +63,7 @@ class AuthMiddleware
         '/cms-import'            => 'cms_import',
         '/customers'             => 'customers',
         '/sds-send-queue'        => 'sds_send_queue',
+        '/stale-rm-sds'          => 'stale_rm_sds',
         '/raw-materials'         => 'raw_materials',
         '/finished-goods'        => 'finished_goods',
         '/lookup'                => 'fg_sds_lookup',

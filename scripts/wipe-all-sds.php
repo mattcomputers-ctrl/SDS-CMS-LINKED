@@ -96,6 +96,22 @@ echo "Proceeding with live wipe...\n\n";
 $basePath   = App::basePath();
 $pdfDeleted = 0;
 $pdfMissing = 0;
+$pdfFailed  = 0;
+$pdfDir     = $basePath . '/public/generated-pdfs';
+
+// Pre-flight: verify we can write to the PDF directory. If not, PHP's
+// unlink() will silently fail on every file. Bail out early with a
+// clear message rather than leaving dangling files after the DB wipe.
+if (!is_writable($pdfDir)) {
+    $user = function_exists('posix_geteuid') ? posix_getpwuid(posix_geteuid())['name'] : 'unknown';
+    fwrite(STDERR, "\n[ERROR] Cannot write to {$pdfDir}\n");
+    fwrite(STDERR, "Current process user: {$user}\n");
+    fwrite(STDERR, "Re-run as root or fix ownership first:\n");
+    fwrite(STDERR, "  sudo chown -R www-data:www-data {$pdfDir}\n");
+    fwrite(STDERR, "  sudo chmod 775 {$pdfDir}\n\n");
+    fwrite(STDERR, "Aborting before DB wipe — no changes made.\n");
+    exit(1);
+}
 
 foreach ($pdfFiles as $row) {
     $rel = ltrim((string) $row['pdf_path'], '/');
@@ -107,15 +123,23 @@ foreach ($pdfFiles as $row) {
         if (@unlink($full)) {
             $pdfDeleted++;
         } else {
+            $pdfFailed++;
             fwrite(STDERR, "  [warn] could not delete {$full}\n");
         }
     } else {
         $pdfMissing++;
     }
 }
+
 echo "PDF files removed:    {$pdfDeleted}\n";
 if ($pdfMissing > 0) {
     echo "PDF files missing:    {$pdfMissing}  (not on disk — skipped)\n";
+}
+if ($pdfFailed > 0) {
+    fwrite(STDERR, "\n[ERROR] {$pdfFailed} PDF file(s) could not be deleted (likely permission).\n");
+    fwrite(STDERR, "Aborting before DB wipe — no changes made to database.\n");
+    fwrite(STDERR, "Fix ownership on /public/generated-pdfs and re-run.\n\n");
+    exit(1);
 }
 
 // ── 2. Clear sds_send_log references (no FK cascade on this table) ──

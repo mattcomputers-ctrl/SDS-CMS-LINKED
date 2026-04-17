@@ -89,15 +89,17 @@ class BulkPublishController
 
         $db = Database::getInstance();
 
-        // Count active finished goods that have a current formula
+        // Only publish for FGs whose entire formula is built from raw materials
+        // that a user has touched (any audit_log entry with a real user_id).
+        // Raw materials that are purely CMS-imported — with no user edits —
+        // are considered "unverified" and block the FG from bulk publish.
+        $eligibleSql = self::eligibleFinishedGoodsSubquery();
+
         $stats = $db->fetch(
-            "SELECT COUNT(DISTINCT fg.id) AS fg_count
-             FROM finished_goods fg
-             INNER JOIN formulas f ON f.finished_good_id = fg.id AND f.is_current = 1
-             WHERE fg.is_active = 1"
+            "SELECT COUNT(*) AS fg_count FROM ({$eligibleSql}) elig"
         );
 
-        // Count unique aliases (by base customer code) per finished good, then sum.
+        // Count unique aliases (by base customer code) for eligible FGs only.
         $aliasStats = $db->fetch(
             "SELECT COALESCE(SUM(sub.alias_cnt), 0) AS alias_count
              FROM (
@@ -105,10 +107,18 @@ class BulkPublishController
                         COUNT(DISTINCT SUBSTRING_INDEX(a.customer_code, '-', 1)) AS alias_cnt
                  FROM aliases a
                  INNER JOIN finished_goods fg ON fg.product_code = a.internal_code_base
-                 INNER JOIN formulas f ON f.finished_good_id = fg.id AND f.is_current = 1
-                 WHERE fg.is_active = 1
+                 INNER JOIN ({$eligibleSql}) elig ON elig.id = fg.id
                  GROUP BY fg.id
              ) sub"
+        );
+
+        // Also count the FGs that are currently blocked (for transparency).
+        $blockedRow = $db->fetch(
+            "SELECT COUNT(DISTINCT fg.id) AS blocked_count
+             FROM finished_goods fg
+             INNER JOIN formulas f ON f.finished_good_id = fg.id AND f.is_current = 1
+             LEFT JOIN ({$eligibleSql}) elig ON elig.id = fg.id
+             WHERE fg.is_active = 1 AND elig.id IS NULL"
         );
 
         $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
@@ -116,10 +126,95 @@ class BulkPublishController
         view('admin/bulk-publish', [
             'pageTitle'           => 'Bulk SDS Publish',
             'fgCount'             => (int) ($stats['fg_count'] ?? 0),
+            'blockedCount'        => (int) ($blockedRow['blocked_count'] ?? 0),
             'aliasCount'          => (int) ($aliasStats['alias_count'] ?? 0),
             'langCount'           => count($languages),
             'languages'           => $languages,
         ]);
+    }
+
+    /**
+     * SQL subquery returning the set of finished_good IDs that bulk-publish
+     * should process. A FG is eligible only when:
+     *
+     *   1. EVERY raw material in its current formula has at least one
+     *      audit_log entry with a real user_id (review requirement).
+     *   2. AND it doesn't already have an up-to-date published SDS —
+     *      i.e. there's no published sds_versions row whose published_at
+     *      is newer than all upstream changes (formula update, raw
+     *      material update, constituent update, and CAS determination
+     *      update). Same "stale detection" logic used by auto-publish.
+     *
+     * Freshly-imported RMs that no user has touched block their FG.
+     * FGs that already have a fresh SDS are skipped to avoid republishing
+     * identical content.
+     */
+    private static function eligibleFinishedGoodsSubquery(): string
+    {
+        return "
+            SELECT fg.id, fg.product_code
+            FROM finished_goods fg
+            INNER JOIN formulas f ON f.finished_good_id = fg.id AND f.is_current = 1
+            WHERE fg.is_active = 1
+              AND NOT EXISTS (
+                  -- Rule 1: fail if ANY raw material in the formula lacks a user edit
+                  SELECT 1
+                  FROM formula_lines fl
+                  JOIN raw_materials rm ON rm.id = fl.raw_material_id
+                  LEFT JOIN audit_log a
+                         ON a.entity_type = 'raw_material'
+                        AND a.entity_id   = rm.id
+                        AND a.user_id IS NOT NULL
+                  WHERE fl.formula_id = f.id
+                    AND fl.raw_material_id IS NOT NULL
+                  GROUP BY rm.id
+                  HAVING COUNT(a.id) = 0
+              )
+              AND (
+                  -- Rule 2: SDS is stale OR has never been published.
+                  -- Compute the latest upstream change timestamp and the
+                  -- latest non-alias published SDS timestamp; publish if
+                  -- upstream is newer (or there is no published SDS yet).
+                  SELECT MAX(sv.published_at)
+                  FROM sds_versions sv
+                  WHERE sv.finished_good_id = fg.id
+                    AND sv.alias_id IS NULL
+                    AND sv.status = 'published'
+                    AND sv.is_deleted = 0
+              ) IS NULL
+              OR (
+                  SELECT MAX(sv.published_at)
+                  FROM sds_versions sv
+                  WHERE sv.finished_good_id = fg.id
+                    AND sv.alias_id IS NULL
+                    AND sv.status = 'published'
+                    AND sv.is_deleted = 0
+              ) < GREATEST(
+                  f.created_at,
+                  COALESCE((
+                      SELECT MAX(rm2.updated_at)
+                      FROM formula_lines fl2
+                      JOIN raw_materials rm2 ON rm2.id = fl2.raw_material_id
+                      WHERE fl2.formula_id = f.id
+                  ), f.created_at),
+                  COALESCE((
+                      SELECT MAX(rmc.updated_at)
+                      FROM formula_lines fl3
+                      JOIN raw_material_constituents rmc ON rmc.raw_material_id = fl3.raw_material_id
+                      WHERE fl3.formula_id = f.id
+                  ), f.created_at),
+                  COALESCE((
+                      SELECT MAX(cpd.updated_at)
+                      FROM competent_person_determinations cpd
+                      WHERE cpd.is_active = 1
+                        AND cpd.cas_number IN (
+                            SELECT rmc2.cas_number FROM formula_lines fl4
+                            JOIN raw_material_constituents rmc2 ON rmc2.raw_material_id = fl4.raw_material_id
+                            WHERE fl4.formula_id = f.id
+                        )
+                  ), f.created_at)
+              )
+        ";
     }
 
     /**
@@ -138,17 +233,17 @@ class BulkPublishController
 
         $db = Database::getInstance();
 
-        // Get all active finished goods that have a current formula
+        // Only publish for FGs whose formulas contain raw materials that
+        // have ALL been touched by a user. FGs with even one unreviewed
+        // (CMS-only) RM are held back until a user verifies them.
+        $eligibleSql = self::eligibleFinishedGoodsSubquery();
         $finishedGoods = $db->fetchAll(
-            "SELECT DISTINCT fg.id, fg.product_code
-             FROM finished_goods fg
-             INNER JOIN formulas f ON f.finished_good_id = fg.id AND f.is_current = 1
-             WHERE fg.is_active = 1
-             ORDER BY fg.product_code ASC"
+            "SELECT id, product_code FROM ({$eligibleSql}) elig
+             ORDER BY product_code ASC"
         );
 
         if (empty($finishedGoods)) {
-            $this->jsonResponse(['error' => 'No active finished goods with formulas found.']);
+            $this->jsonResponse(['error' => 'No eligible finished goods to publish. Every raw material in the formula must have been reviewed/edited by a user at least once (any audit_log entry qualifies).']);
             return;
         }
 

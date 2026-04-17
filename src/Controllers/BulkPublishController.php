@@ -89,145 +89,246 @@ class BulkPublishController
 
         $db = Database::getInstance();
 
-        // Only publish for FGs whose entire formula is built from raw materials
-        // that a user has touched (any audit_log entry with a real user_id).
-        // Raw materials that are purely CMS-imported — with no user edits —
-        // are considered "unverified" and block the FG from bulk publish.
-        $eligibleSql = self::eligibleFinishedGoodsSubquery();
+        // Compute eligible FGs with full recursion through FG sub-components.
+        // Rule 1: every upstream raw material (through any depth of FG nesting)
+        //         must have been reviewed by a user OR covered by an active CAS
+        //         determination on one of its constituents.
+        // Rule 2: the FG's most recent non-alias published SDS must be older
+        //         than the newest upstream change (formula, raw material,
+        //         constituent, or CAS determination) — otherwise skipped.
+        $eligibility = self::computeEligibleFinishedGoods($db);
+        $eligibleFgs = $eligibility['eligible'];
+        $blockedFgs  = $eligibility['blocked'];
 
-        $stats = $db->fetch(
-            "SELECT COUNT(*) AS fg_count FROM ({$eligibleSql}) elig"
-        );
-
-        // Count unique aliases (by base customer code) for eligible FGs only.
-        $aliasStats = $db->fetch(
-            "SELECT COALESCE(SUM(sub.alias_cnt), 0) AS alias_count
-             FROM (
-                 SELECT fg.id,
-                        COUNT(DISTINCT SUBSTRING_INDEX(a.customer_code, '-', 1)) AS alias_cnt
-                 FROM aliases a
-                 INNER JOIN finished_goods fg ON fg.product_code = a.internal_code_base
-                 INNER JOIN ({$eligibleSql}) elig ON elig.id = fg.id
-                 GROUP BY fg.id
-             ) sub"
-        );
-
-        // Also count the FGs that are currently blocked (for transparency).
-        $blockedRow = $db->fetch(
-            "SELECT COUNT(DISTINCT fg.id) AS blocked_count
-             FROM finished_goods fg
-             INNER JOIN formulas f ON f.finished_good_id = fg.id AND f.is_current = 1
-             LEFT JOIN ({$eligibleSql}) elig ON elig.id = fg.id
-             WHERE fg.is_active = 1 AND elig.id IS NULL"
-        );
+        // Count unique aliases (by base customer code) across eligible FGs only.
+        $aliasCount = 0;
+        if (!empty($eligibleFgs)) {
+            $eligibleIds = array_column($eligibleFgs, 'id');
+            $placeholders = implode(',', array_fill(0, count($eligibleIds), '?'));
+            $aliasStats = $db->fetch(
+                "SELECT COALESCE(SUM(sub.alias_cnt), 0) AS alias_count
+                 FROM (
+                     SELECT fg.id,
+                            COUNT(DISTINCT SUBSTRING_INDEX(a.customer_code, '-', 1)) AS alias_cnt
+                     FROM aliases a
+                     INNER JOIN finished_goods fg ON fg.product_code = a.internal_code_base
+                     WHERE fg.id IN ({$placeholders})
+                     GROUP BY fg.id
+                 ) sub",
+                $eligibleIds
+            );
+            $aliasCount = (int) ($aliasStats['alias_count'] ?? 0);
+        }
 
         $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
 
         view('admin/bulk-publish', [
             'pageTitle'           => 'Bulk SDS Publish',
-            'fgCount'             => (int) ($stats['fg_count'] ?? 0),
-            'blockedCount'        => (int) ($blockedRow['blocked_count'] ?? 0),
-            'aliasCount'          => (int) ($aliasStats['alias_count'] ?? 0),
+            'fgCount'             => count($eligibleFgs),
+            'blockedCount'        => count($blockedFgs),
+            'aliasCount'          => $aliasCount,
             'langCount'           => count($languages),
             'languages'           => $languages,
         ]);
     }
 
     /**
-     * SQL subquery returning the set of finished_good IDs that bulk-publish
-     * should process. A FG is eligible only when:
+     * Compute the set of finished goods that bulk-publish should process.
      *
-     *   1. EVERY raw material in its current formula has at least one
-     *      audit_log entry with a real user_id (review requirement).
-     *   2. AND it doesn't already have an up-to-date published SDS —
-     *      i.e. there's no published sds_versions row whose published_at
-     *      is newer than all upstream changes (formula update, raw
-     *      material update, constituent update, and CAS determination
-     *      update). Same "stale detection" logic used by auto-publish.
+     * Walks the formula tree recursively through FG sub-components so that
+     * nested intermediates are checked, not just top-level raw materials.
+     * A finished good is eligible only when:
      *
-     * Freshly-imported RMs that no user has touched block their FG.
-     * FGs that already have a fresh SDS are skipped to avoid republishing
-     * identical content.
+     *   1. EVERY raw material in the transitive closure of its formula tree
+     *      is user-reviewed. An RM counts as reviewed if either:
+     *        (a) it has an audit_log entry with a real user_id, OR
+     *        (b) an active competent_person_determinations row exists for
+     *            any of its constituent CAS numbers.
+     *   2. The FG's latest non-alias published SDS is older than the most
+     *      recent upstream change (formula created_at, raw material
+     *      updated_at, constituent updated_at, or active CPD updated_at)
+     *      — OR the FG has no published SDS yet.
+     *
+     * All data is batch-loaded up front; recursion runs in memory with
+     * cycle detection and per-formula memoization.
+     *
+     * @return array{eligible: array<int,array{id:int,product_code:string}>,
+     *               blocked:  array<int,array{id:int,product_code:string}>}
      */
-    private static function eligibleFinishedGoodsSubquery(): string
+    private static function computeEligibleFinishedGoods(Database $db): array
     {
-        return "
-            SELECT fg.id, fg.product_code
-            FROM finished_goods fg
-            INNER JOIN formulas f ON f.finished_good_id = fg.id AND f.is_current = 1
-            WHERE fg.is_active = 1
-              AND NOT EXISTS (
-                  -- Rule 1: fail if ANY raw material in the formula lacks a user edit.
-                  -- An RM counts as user-reviewed if EITHER:
-                  --   (a) It has an audit_log entry with a real user_id (direct edit), OR
-                  --   (b) Any of its constituent CAS numbers has an active
-                  --       competent_person_determinations row (creating or updating a
-                  --       CAS determination implicitly reviews every RM that uses that CAS).
-                  SELECT 1
-                  FROM formula_lines fl
-                  JOIN raw_materials rm ON rm.id = fl.raw_material_id
-                  WHERE fl.formula_id = f.id
-                    AND fl.raw_material_id IS NOT NULL
-                    AND NOT EXISTS (
-                        SELECT 1 FROM audit_log a
-                        WHERE a.entity_type = 'raw_material'
-                          AND a.entity_id   = rm.id
-                          AND a.user_id IS NOT NULL
-                    )
-                    AND NOT EXISTS (
-                        SELECT 1
-                        FROM raw_material_constituents rmc
-                        JOIN competent_person_determinations cpd
-                             ON cpd.cas_number = rmc.cas_number
-                            AND cpd.is_active = 1
-                        WHERE rmc.raw_material_id = rm.id
-                    )
-              )
-              AND (
-                  -- Rule 2: SDS is stale OR has never been published.
-                  -- Compute the latest upstream change timestamp and the
-                  -- latest non-alias published SDS timestamp; publish if
-                  -- upstream is newer (or there is no published SDS yet).
-                  SELECT MAX(sv.published_at)
-                  FROM sds_versions sv
-                  WHERE sv.finished_good_id = fg.id
-                    AND sv.alias_id IS NULL
-                    AND sv.status = 'published'
-                    AND sv.is_deleted = 0
-              ) IS NULL
-              OR (
-                  SELECT MAX(sv.published_at)
-                  FROM sds_versions sv
-                  WHERE sv.finished_good_id = fg.id
-                    AND sv.alias_id IS NULL
-                    AND sv.status = 'published'
-                    AND sv.is_deleted = 0
-              ) < GREATEST(
-                  f.created_at,
-                  COALESCE((
-                      SELECT MAX(rm2.updated_at)
-                      FROM formula_lines fl2
-                      JOIN raw_materials rm2 ON rm2.id = fl2.raw_material_id
-                      WHERE fl2.formula_id = f.id
-                  ), f.created_at),
-                  COALESCE((
-                      SELECT MAX(rmc.updated_at)
-                      FROM formula_lines fl3
-                      JOIN raw_material_constituents rmc ON rmc.raw_material_id = fl3.raw_material_id
-                      WHERE fl3.formula_id = f.id
-                  ), f.created_at),
-                  COALESCE((
-                      SELECT MAX(cpd.updated_at)
-                      FROM competent_person_determinations cpd
-                      WHERE cpd.is_active = 1
-                        AND cpd.cas_number IN (
-                            SELECT rmc2.cas_number FROM formula_lines fl4
-                            JOIN raw_material_constituents rmc2 ON rmc2.raw_material_id = fl4.raw_material_id
-                            WHERE fl4.formula_id = f.id
-                        )
-                  ), f.created_at)
-              )
-        ";
+        // All active FGs with a current formula — the candidate set.
+        $fgs = $db->fetchAll(
+            "SELECT fg.id, fg.product_code, f.id AS formula_id, f.created_at
+             FROM finished_goods fg
+             INNER JOIN formulas f ON f.finished_good_id = fg.id AND f.is_current = 1
+             WHERE fg.is_active = 1
+             ORDER BY fg.product_code ASC"
+        );
+
+        if (empty($fgs)) {
+            return ['eligible' => [], 'blocked' => []];
+        }
+
+        // ── Batch-load every table needed for the recursion & rule checks ──
+
+        // formula_id → list of lines (raw_material_id OR finished_good_component_id)
+        $linesByFormula = [];
+        foreach ($db->fetchAll(
+            "SELECT formula_id, raw_material_id, finished_good_component_id FROM formula_lines"
+        ) as $r) {
+            $linesByFormula[(int) $r['formula_id']][] = [
+                'rm' => $r['raw_material_id'] !== null ? (int) $r['raw_material_id'] : null,
+                'fg' => $r['finished_good_component_id'] !== null ? (int) $r['finished_good_component_id'] : null,
+            ];
+        }
+
+        // finished_good_id → current formula_id (for recursion into sub-components)
+        $fgToFormulaId       = [];
+        $formulaCreatedAt    = [];
+        foreach ($db->fetchAll("SELECT id, finished_good_id, created_at FROM formulas WHERE is_current = 1") as $r) {
+            $fgToFormulaId[(int) $r['finished_good_id']] = (int) $r['id'];
+            $formulaCreatedAt[(int) $r['id']]            = $r['created_at'];
+        }
+
+        // Reviewed RM ids (Rule 1)
+        $reviewedRms = [];
+        foreach ($db->fetchAll(
+            "SELECT DISTINCT entity_id
+             FROM audit_log
+             WHERE entity_type = 'raw_material' AND user_id IS NOT NULL"
+        ) as $r) {
+            $reviewedRms[(int) $r['entity_id']] = true;
+        }
+        foreach ($db->fetchAll(
+            "SELECT DISTINCT rmc.raw_material_id
+             FROM raw_material_constituents rmc
+             INNER JOIN competent_person_determinations cpd
+                 ON cpd.cas_number = rmc.cas_number AND cpd.is_active = 1"
+        ) as $r) {
+            $reviewedRms[(int) $r['raw_material_id']] = true;
+        }
+
+        // Per-RM max upstream timestamp = MAX(rm.updated_at, constituents.updated_at, CPDs.updated_at)
+        $rmMaxUpstream = [];
+        foreach ($db->fetchAll("SELECT id, updated_at FROM raw_materials") as $r) {
+            $rmMaxUpstream[(int) $r['id']] = $r['updated_at'];
+        }
+        foreach ($db->fetchAll(
+            "SELECT raw_material_id, MAX(updated_at) AS max_upd
+             FROM raw_material_constituents GROUP BY raw_material_id"
+        ) as $r) {
+            $rmId = (int) $r['raw_material_id'];
+            if (!isset($rmMaxUpstream[$rmId]) || $r['max_upd'] > $rmMaxUpstream[$rmId]) {
+                $rmMaxUpstream[$rmId] = $r['max_upd'];
+            }
+        }
+        $cpdByCas = [];
+        foreach ($db->fetchAll(
+            "SELECT cas_number, MAX(updated_at) AS max_upd
+             FROM competent_person_determinations WHERE is_active = 1
+             GROUP BY cas_number"
+        ) as $r) {
+            $cpdByCas[$r['cas_number']] = $r['max_upd'];
+        }
+        if (!empty($cpdByCas)) {
+            foreach ($db->fetchAll("SELECT raw_material_id, cas_number FROM raw_material_constituents") as $r) {
+                $cpdTs = $cpdByCas[$r['cas_number']] ?? null;
+                if ($cpdTs === null) {
+                    continue;
+                }
+                $rmId = (int) $r['raw_material_id'];
+                if (!isset($rmMaxUpstream[$rmId]) || $cpdTs > $rmMaxUpstream[$rmId]) {
+                    $rmMaxUpstream[$rmId] = $cpdTs;
+                }
+            }
+        }
+
+        // Last published SDS timestamp per FG (non-alias, published, not deleted)
+        $lastPublishedByFg = [];
+        foreach ($db->fetchAll(
+            "SELECT finished_good_id, MAX(published_at) AS last
+             FROM sds_versions
+             WHERE status = 'published' AND is_deleted = 0 AND alias_id IS NULL
+             GROUP BY finished_good_id"
+        ) as $r) {
+            $lastPublishedByFg[(int) $r['finished_good_id']] = $r['last'];
+        }
+
+        // ── Recursive walker (memoized) returning upstream RM set + max formula timestamp ──
+        $cache = [];
+        $walk = function (int $formulaId, array $visited) use (&$walk, $linesByFormula, $fgToFormulaId, $formulaCreatedAt, &$cache) {
+            if (isset($cache[$formulaId])) {
+                return $cache[$formulaId];
+            }
+            if (isset($visited[$formulaId])) {
+                // Cycle guard — return an empty contribution
+                return ['rms' => [], 'max_ts' => null];
+            }
+            $visited[$formulaId] = true;
+
+            $rms   = [];
+            $maxTs = $formulaCreatedAt[$formulaId] ?? null;
+
+            foreach ($linesByFormula[$formulaId] ?? [] as $line) {
+                if ($line['rm'] !== null) {
+                    $rms[$line['rm']] = true;
+                } elseif ($line['fg'] !== null) {
+                    $subFormulaId = $fgToFormulaId[$line['fg']] ?? null;
+                    if ($subFormulaId !== null) {
+                        $sub = $walk($subFormulaId, $visited);
+                        foreach ($sub['rms'] as $rmId => $_) {
+                            $rms[$rmId] = true;
+                        }
+                        if ($sub['max_ts'] !== null && ($maxTs === null || $sub['max_ts'] > $maxTs)) {
+                            $maxTs = $sub['max_ts'];
+                        }
+                    }
+                }
+            }
+
+            $cache[$formulaId] = ['rms' => $rms, 'max_ts' => $maxTs];
+            return $cache[$formulaId];
+        };
+
+        // ── Evaluate each FG against the two rules ──
+        $eligible = [];
+        $blocked  = [];
+
+        foreach ($fgs as $fg) {
+            $result      = $walk((int) $fg['formula_id'], []);
+            $upstreamRms = $result['rms'];
+            $maxTs       = $result['max_ts'];
+
+            // Rule 1: every upstream RM must be reviewed
+            $allReviewed = true;
+            foreach ($upstreamRms as $rmId => $_) {
+                if (!isset($reviewedRms[$rmId])) {
+                    $allReviewed = false;
+                    break;
+                }
+                if (isset($rmMaxUpstream[$rmId]) && ($maxTs === null || $rmMaxUpstream[$rmId] > $maxTs)) {
+                    $maxTs = $rmMaxUpstream[$rmId];
+                }
+            }
+
+            $entry = ['id' => (int) $fg['id'], 'product_code' => $fg['product_code']];
+
+            if (!$allReviewed) {
+                $blocked[] = $entry;
+                continue;
+            }
+
+            // Rule 2: skip FGs whose SDS is still fresh
+            $lastPub = $lastPublishedByFg[(int) $fg['id']] ?? null;
+            if ($lastPub !== null && $maxTs !== null && $lastPub >= $maxTs) {
+                continue;
+            }
+
+            $eligible[] = $entry;
+        }
+
+        return ['eligible' => $eligible, 'blocked' => $blocked];
     }
 
     /**
@@ -246,17 +347,13 @@ class BulkPublishController
 
         $db = Database::getInstance();
 
-        // Only publish for FGs whose formulas contain raw materials that
-        // have ALL been touched by a user. FGs with even one unreviewed
-        // (CMS-only) RM are held back until a user verifies them.
-        $eligibleSql = self::eligibleFinishedGoodsSubquery();
-        $finishedGoods = $db->fetchAll(
-            "SELECT id, product_code FROM ({$eligibleSql}) elig
-             ORDER BY product_code ASC"
-        );
+        // Compute eligible FGs with full recursion through FG sub-components.
+        // See computeEligibleFinishedGoods() for the full rule set.
+        $eligibility = self::computeEligibleFinishedGoods($db);
+        $finishedGoods = $eligibility['eligible'];
 
         if (empty($finishedGoods)) {
-            $this->jsonResponse(['error' => 'No eligible finished goods to publish. Every raw material in the formula must have been reviewed/edited by a user at least once (any audit_log entry qualifies).']);
+            $this->jsonResponse(['error' => 'No eligible finished goods to publish. Every raw material in the formula (through all FG sub-components) must have been reviewed by a user, or have an active CAS determination on one of its constituents. If a finished good already has an up-to-date SDS, it is also skipped.']);
             return;
         }
 

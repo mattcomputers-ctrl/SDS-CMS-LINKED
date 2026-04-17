@@ -490,8 +490,19 @@ class SDSGenerator
 
     private function section3(array $composition, array $hazardResult, array $overrides): array
     {
-        // Only disclose CAS numbers that are classified as hazardous
+        // Disclose CAS numbers that are either classified as hazardous
+        // OR have an exposure limit on file. OSHA HazCom requires
+        // Section 3 disclosure for any constituent with an exposure
+        // limit even if it doesn't trigger a GHS category.
         $hazardousCas = array_flip($hazardResult['hazardous_cas'] ?? []);
+
+        $casWithExposureLimit = [];
+        foreach ($hazardResult['exposure_limits'] ?? [] as $el) {
+            $limCas = $el['cas_number'] ?? '';
+            if ($limCas !== '') {
+                $casWithExposureLimit[$limCas] = true;
+            }
+        }
 
         $disclosed      = [];
         $tradeSecretBuckets = []; // group trade secrets by description
@@ -505,8 +516,12 @@ class SDSGenerator
                 continue;
             }
 
-            // Must be hazardous and above disclosure threshold
-            if ($cas === '' || !isset($hazardousCas[$cas]) || $conc < 0.1) {
+            // Must be disclosable and above disclosure threshold.
+            // Disclosable = classified as hazardous OR has an exposure limit.
+            if ($cas === '' || $conc < 0.1) {
+                continue;
+            }
+            if (!isset($hazardousCas[$cas]) && !isset($casWithExposureLimit[$cas])) {
                 continue;
             }
 

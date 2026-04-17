@@ -695,6 +695,12 @@ class CMSImportService
      */
     public function getIncompleteRawMaterials(): array
     {
+        // An RM is "incomplete" when it has been imported from CMS but:
+        //   - has no constituents, AND
+        //   - is not flagged trade-secret (hazardous_no_cas = 0), AND
+        //   - has never been saved by a user (no audit_log entry with a
+        //     real user_id — that covers the case where the user reviewed
+        //     the RM and determined it legitimately has no hazards).
         $rows = $this->db->fetchAll(
             "SELECT rm.id, rm.internal_code, rm.supplier_product_name, rm.created_at,
                     cil.cms_item_code
@@ -702,6 +708,13 @@ class CMSImportService
              INNER JOIN cms_import_log cil ON cil.entity_type = 'raw_material' AND cil.entity_id = rm.id
              LEFT JOIN raw_material_constituents rmc ON rmc.raw_material_id = rm.id
              WHERE rmc.id IS NULL
+               AND (rm.hazardous_no_cas IS NULL OR rm.hazardous_no_cas = 0)
+               AND NOT EXISTS (
+                   SELECT 1 FROM audit_log a
+                    WHERE a.entity_type = 'raw_material'
+                      AND a.entity_id   = rm.id
+                      AND a.user_id IS NOT NULL
+               )
              ORDER BY rm.internal_code"
         );
 

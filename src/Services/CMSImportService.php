@@ -210,6 +210,7 @@ class CMSImportService
             'formulas_skipped'      => 0,
             'rm_created'            => [],
             'rm_skipped'            => [],
+            'rm_refreshed'          => 0,
             'aliases_created'       => 0,
             'aliases_updated'       => 0,
             'shipments_imported'    => 0,
@@ -223,6 +224,9 @@ class CMSImportService
 
         // Phase 2: Collect and create all raw materials
         $rmMap = $this->importRawMaterials($items, $userId, $results);
+
+        // Phase 2b: Refresh RM metadata (description, preferred supplier, Their Code)
+        $this->refreshRawMaterialMetadata($results);
 
         // Phase 3: Create or update formulas
         $this->importFormulas($items, $fgMap, $rmMap, $userId, $results);
@@ -431,6 +435,124 @@ class CMSImportService
         }
 
         return $rmMap;
+    }
+
+    /* ------------------------------------------------------------------
+     *  Phase 2b: Refresh RM metadata from CMS
+     *  Pulls Item.Description, preferred Supplier (Entities.EntityName),
+     *  and "Their Code" from the most recent PriceVersion for that
+     *  preferred vendor. Batch-upserts into raw_materials keyed by id.
+     * ----------------------------------------------------------------*/
+
+    private function refreshRawMaterialMetadata(array &$results): void
+    {
+        $rows = $this->db->fetchAll("SELECT id, internal_code FROM raw_materials");
+        if (empty($rows)) {
+            return;
+        }
+
+        $idByCode = [];
+        foreach ($rows as $r) {
+            $idByCode[$r['internal_code']] = (int) $r['id'];
+        }
+        $codes = array_keys($idByCode);
+
+        // Chunked CMS queries (SQL Server can handle thousands but we'll chunk to 500)
+        $itemInfo        = [];  // code => ['description' => ..., 'supplier' => ...]
+        $theirCodeByCode = [];  // code => 'EntityItemCode'
+
+        foreach (array_chunk($codes, 500) as $chunk) {
+            $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+
+            // Query 1: description + preferred vendor name
+            try {
+                $descRows = $this->cms->fetchAll(
+                    "SELECT i.ItemCode,
+                            i.Description,
+                            es.EntityName AS SupplierName
+                     FROM CMS.dbo.Item i
+                     LEFT JOIN CMS.dbo.Entity   e  ON e.Entity      = i.Supplier
+                     LEFT JOIN CMS.dbo.Entities es ON es.EntityCode = e.EntityCode
+                     WHERE i.ItemCode IN ({$placeholders})",
+                    $chunk
+                );
+                foreach ($descRows as $dr) {
+                    $itemInfo[$dr['ItemCode']] = [
+                        'description' => $dr['Description'] ?? null,
+                        'supplier'    => $dr['SupplierName'] ?? null,
+                    ];
+                }
+            } catch (\Throwable $e) {
+                $results['errors'][] = 'RM metadata (description/supplier) failed: ' . $e->getMessage();
+                return;
+            }
+
+            // Query 2: Their Code scoped to preferred vendor, ordered newest first.
+            // PHP picks first row per InvItemCode (alphabetical Their Code tiebreak).
+            try {
+                $priceRows = $this->cms->fetchAll(
+                    "SELECT inv.ItemCode       AS InvItemCode,
+                            pd.EntityItemCode  AS TheirCode
+                     FROM CMS.dbo.Item inv
+                     JOIN CMS.dbo.PriceDetail pd ON pd.InvItem = inv.Item
+                     JOIN CMS.dbo.PriceVersion pv ON pv.PriceVersion = pd.PriceVersion
+                     WHERE inv.Supplier IS NOT NULL
+                       AND pv.Entity = inv.Supplier
+                       AND inv.ItemCode IN ({$placeholders})
+                       AND pd.EntityItemCode IS NOT NULL
+                       AND pd.EntityItemCode != ''
+                     ORDER BY inv.ItemCode ASC,
+                              pv.EffectiveDate DESC,
+                              pv.Version DESC,
+                              pd.EntityItemCode ASC",
+                    $chunk
+                );
+                foreach ($priceRows as $pr) {
+                    // Keep only the first row seen per code (deterministic by ORDER BY)
+                    $code = $pr['InvItemCode'];
+                    if (!isset($theirCodeByCode[$code])) {
+                        $theirCodeByCode[$code] = $pr['TheirCode'];
+                    }
+                }
+            } catch (\Throwable $e) {
+                $results['errors'][] = 'RM metadata (Their Code) failed: ' . $e->getMessage();
+                return;
+            }
+        }
+
+        // Update each raw material in a single transaction. ~500 UPDATEs
+        // is still sub-second on local MySQL.
+        $pdo = $this->db->getPdo();
+        $stmt = $pdo->prepare(
+            "UPDATE `raw_materials`
+             SET `supplier` = ?,
+                 `supplier_product_name` = ?,
+                 `supplier_product_code` = ?
+             WHERE `id` = ?"
+        );
+
+        $pdo->beginTransaction();
+        try {
+            $total = 0;
+            foreach ($idByCode as $code => $rmId) {
+                $info  = $itemInfo[$code]        ?? ['description' => null, 'supplier' => null];
+                $their = $theirCodeByCode[$code] ?? null;
+
+                // Fall back to empty string for NOT NULL columns, NULL for the new column
+                $stmt->execute([
+                    $info['supplier']    ?? '',
+                    $info['description'] ?? '',
+                    $their,
+                    $rmId,
+                ]);
+                $total++;
+            }
+            $pdo->commit();
+            $results['rm_refreshed'] = $total;
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            $results['errors'][] = 'RM metadata update failed: ' . $e->getMessage();
+        }
     }
 
     /* ------------------------------------------------------------------

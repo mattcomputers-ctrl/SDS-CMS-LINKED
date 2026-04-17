@@ -218,6 +218,7 @@ class RawMaterial
             'internal_code'         => $code,
             'supplier'              => trim($data['supplier'] ?? ''),
             'supplier_product_name' => trim($data['supplier_product_name'] ?? ''),
+            'supplier_product_code' => $strOrNull('supplier_product_code'),
             'supplier_sds_path'     => $data['supplier_sds_path'] ?? null,
             'voc_wt'                => $numOrNull('voc_wt'),
             'voc_less_than_one'     => !empty($data['voc_less_than_one']) ? 1 : 0,
@@ -243,6 +244,8 @@ class RawMaterial
             'haps_data'             => $strOrNull('haps_data'),
             'is_snur'               => !empty($data['is_snur']) ? 1 : 0,
             'snur_description'      => $strOrNull('snur_description'),
+            'hazardous_no_cas'      => !empty($data['hazardous_no_cas']) ? 1 : 0,
+            'manual_hazard_json'    => $data['manual_hazard_json'] ?? null,
             'created_by'            => $data['created_by'] ?? null,
         ];
 
@@ -288,13 +291,14 @@ class RawMaterial
         }
 
         $allowed = [
-            'internal_code', 'supplier', 'supplier_product_name', 'supplier_sds_path',
+            'internal_code', 'supplier', 'supplier_product_name', 'supplier_product_code', 'supplier_sds_path',
             'voc_wt', 'voc_less_than_one', 'exempt_voc_wt', 'water_wt',
             'specific_gravity', 'density', 'density_units', 'temp_ref_c',
             'solids_wt', 'solids_vol', 'flash_point_c', 'flash_point_greater_than',
             'physical_state', 'solubility', 'appearance', 'odor', 'notes',
             'is_prop65', 'prop65_chemical_name', 'prop65_toxicity_types', 'prop65_data', 'haps_data',
             'is_snur', 'snur_description',
+            'hazardous_no_cas', 'manual_hazard_json',
         ];
 
         // Numeric columns that must be null instead of empty string

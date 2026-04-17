@@ -282,7 +282,7 @@ class Formula
         $formulaRow = $db->fetch("SELECT finished_good_id FROM formulas WHERE id = ?", [$formulaId]);
         $thisFgId = $formulaRow ? (int) $formulaRow['finished_good_id'] : 0;
 
-        // --- Raw material lines: same as before ---
+        // --- Raw material lines: expand CAS constituents (skip trade-secret RMs) ---
         $rows = $db->fetchAll(
             "SELECT fl.raw_material_id, fl.pct AS line_pct,
                     rm.internal_code,
@@ -293,7 +293,9 @@ class Formula
              FROM formula_lines fl
              JOIN raw_materials rm ON rm.id = fl.raw_material_id
              JOIN raw_material_constituents rmc ON rmc.raw_material_id = fl.raw_material_id
-             WHERE fl.formula_id = ? AND fl.raw_material_id IS NOT NULL
+             WHERE fl.formula_id = ?
+               AND fl.raw_material_id IS NOT NULL
+               AND (rm.hazardous_no_cas IS NULL OR rm.hazardous_no_cas = 0)
              ORDER BY fl.sort_order, rmc.sort_order",
             [$formulaId]
         );
@@ -337,6 +339,59 @@ class Formula
                 'pct_in_rm'       => $constituentPct,
                 'pct_in_formula'  => $contribution,
             ];
+        }
+
+        // --- Trade-secret RMs: emit a single synthetic "Trade Secret" bucket ---
+        // These RMs have no CAS constituents; the vendor disclosed GHS
+        // classifications only. All trade-secret contributions across the
+        // formula aggregate into one row so Section 3 shows a single line.
+        $tsRmRows = $db->fetchAll(
+            "SELECT fl.raw_material_id, fl.pct AS line_pct,
+                    rm.internal_code, rm.manual_hazard_json
+             FROM formula_lines fl
+             JOIN raw_materials rm ON rm.id = fl.raw_material_id
+             WHERE fl.formula_id = ?
+               AND fl.raw_material_id IS NOT NULL
+               AND rm.hazardous_no_cas = 1",
+            [$formulaId]
+        );
+
+        if (!empty($tsRmRows)) {
+            $tsKey = 'TRADE_SECRET';
+            $casBuckets[$tsKey] = [
+                // Sentinel value — matches HazardEngine's hazardousCas key and
+                // passes Section 3's disclosure check without colliding with
+                // any real CAS number format.
+                'cas_number'               => 'TRADE_SECRET',
+                'chemical_name'            => 'Trade Secret',
+                'concentration_pct'        => 0.0,
+                'is_trade_secret'          => true,
+                'is_non_hazardous'         => false,
+                'trade_secret_description' => 'Trade Secret',
+                'manual_hazard_json'       => [],
+                'contributing_materials'    => [],
+            ];
+
+            foreach ($tsRmRows as $row) {
+                $contribution = $scaleFactor * (float) $row['line_pct'];
+                $casBuckets[$tsKey]['concentration_pct'] += $contribution;
+
+                if (!empty($row['manual_hazard_json'])) {
+                    $decoded = is_string($row['manual_hazard_json'])
+                        ? json_decode($row['manual_hazard_json'], true)
+                        : $row['manual_hazard_json'];
+                    if (is_array($decoded)) {
+                        $casBuckets[$tsKey]['manual_hazard_json'][] = $decoded;
+                    }
+                }
+
+                $casBuckets[$tsKey]['contributing_materials'][] = [
+                    'raw_material_id' => (int) $row['raw_material_id'],
+                    'internal_code'   => $row['internal_code'],
+                    'pct_in_rm'       => 100.0,
+                    'pct_in_formula'  => $contribution,
+                ];
+            }
         }
 
         // --- Finished good component lines: recursive expansion ---

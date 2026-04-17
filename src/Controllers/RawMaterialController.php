@@ -64,6 +64,7 @@ class RawMaterialController
         // Process checkbox fields (unchecked = not in POST)
         $data['voc_less_than_one'] = !empty($data['voc_less_than_one']) ? 1 : 0;
         $data['flash_point_greater_than'] = !empty($data['flash_point_greater_than']) ? 1 : 0;
+        $data['hazardous_no_cas'] = !empty($data['hazardous_no_cas']) && (int) $data['hazardous_no_cas'] === 1 ? 1 : 0;
 
         // Build HAPs data JSON from form arrays
         $data['haps_data'] = $this->buildHapsJson();
@@ -72,6 +73,17 @@ class RawMaterialController
         $prop65Json = $this->buildProp65Json();
         $data['prop65_data'] = $prop65Json;
         $data['is_prop65'] = ($prop65Json !== null) ? 1 : 0;
+
+        // If trade-secret mode: build manual hazard JSON via shared helper;
+        // otherwise clear any prior value so the two data paths stay mutually exclusive.
+        if ($data['hazardous_no_cas']) {
+            $data['manual_hazard_json'] = json_encode(
+                \SDS\Services\GHSHelper::buildDeterminationJson($_POST),
+                JSON_UNESCAPED_UNICODE
+            );
+        } else {
+            $data['manual_hazard_json'] = null;
+        }
 
         try {
             // Handle SDS file upload
@@ -95,8 +107,10 @@ class RawMaterialController
                 );
             }
 
-            // Save constituents if provided
-            $this->saveConstituentsFromPost($id);
+            // Save constituents only if this RM is NOT in trade-secret mode
+            if (!$data['hazardous_no_cas']) {
+                $this->saveConstituentsFromPost($id);
+            }
 
             $_SESSION['_flash']['success'] = 'Raw material created successfully.';
             redirect('/raw-materials');
@@ -147,6 +161,7 @@ class RawMaterialController
         // Process checkbox fields (unchecked = not in POST)
         $data['voc_less_than_one'] = !empty($data['voc_less_than_one']) ? 1 : 0;
         $data['flash_point_greater_than'] = !empty($data['flash_point_greater_than']) ? 1 : 0;
+        $data['hazardous_no_cas'] = !empty($data['hazardous_no_cas']) && (int) $data['hazardous_no_cas'] === 1 ? 1 : 0;
 
         // Build HAPs data JSON from form arrays
         $data['haps_data'] = $this->buildHapsJson();
@@ -155,6 +170,16 @@ class RawMaterialController
         $prop65Json = $this->buildProp65Json();
         $data['prop65_data'] = $prop65Json;
         $data['is_prop65'] = ($prop65Json !== null) ? 1 : 0;
+
+        // Trade-secret mode is mutually exclusive with CAS constituents.
+        if ($data['hazardous_no_cas']) {
+            $data['manual_hazard_json'] = json_encode(
+                \SDS\Services\GHSHelper::buildDeterminationJson($_POST),
+                JSON_UNESCAPED_UNICODE
+            );
+        } else {
+            $data['manual_hazard_json'] = null;
+        }
 
         try {
             // Handle SDS file upload — always adds to history, never removes old
@@ -177,8 +202,18 @@ class RawMaterialController
             RawMaterial::update((int) $id, $data);
             AuditService::log('raw_material', $id, 'update', $diff);
 
-            // Save constituents
-            $this->saveConstituentsFromPost((int) $id);
+            if ($data['hazardous_no_cas']) {
+                // In trade-secret mode: remove any existing constituents so
+                // the two data paths stay mutually exclusive.
+                \SDS\Core\Database::getInstance()->delete(
+                    'raw_material_constituents',
+                    'raw_material_id = ?',
+                    [(int) $id]
+                );
+            } else {
+                // Normal mode: save constituents from POST.
+                $this->saveConstituentsFromPost((int) $id);
+            }
 
             $_SESSION['_flash']['success'] = 'Raw material updated.';
         } catch (\Throwable $e) {

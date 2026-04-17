@@ -139,6 +139,65 @@ class HazardEngine
                 continue;
             }
 
+            // --- Trade-secret row: no CAS, manual hazard JSON(s) attached ---
+            // The composition row was synthesized by Formula::getExpandedComposition
+            // for one or more raw materials flagged `hazardous_no_cas = 1`.
+            // Merge each contributing RM's hazard JSON the same way a CPD would.
+            if (!empty($component['manual_hazard_json']) && is_array($component['manual_hazard_json'])) {
+                $hasHazards = false;
+                foreach ($component['manual_hazard_json'] as $detJson) {
+                    if (!is_array($detJson) || empty($detJson)) {
+                        continue;
+                    }
+                    $parsed = $this->parseDeterminationStructure(
+                        $detJson,
+                        $cas,        // '' for trade-secret rows
+                        $name,       // 'Trade Secret'
+                        $conc,
+                        'manual (trade secret)'
+                    );
+
+                    if (empty($parsed['h_statements']) && empty($parsed['hazard_classes'])) {
+                        continue;
+                    }
+                    $hasHazards = true;
+
+                    foreach ($parsed['h_statements'] as $code => $stmt) {
+                        $allHStmts[$code] = $stmt;
+                    }
+                    foreach ($parsed['p_statements'] as $code => $stmt) {
+                        $allPStmts[$code] = $stmt;
+                    }
+                    foreach ($parsed['pictograms'] as $p) {
+                        $allPictograms[$p] = true;
+                    }
+                    if ($parsed['signal_word'] !== null) {
+                        $curPri = self::SIGNAL_HIERARCHY[$signalWord] ?? 0;
+                        $newPri = self::SIGNAL_HIERARCHY[$parsed['signal_word']] ?? 0;
+                        if ($newPri > $curPri) {
+                            $signalWord = $parsed['signal_word'];
+                        }
+                    }
+                    foreach ($parsed['hazard_classes'] as $hcEntry) {
+                        $allHClasses[] = $hcEntry;
+                    }
+                    foreach ($parsed['exposure_limits'] as $el) {
+                        $exposureLimits[] = $el;
+                    }
+                }
+
+                if ($hasHazards) {
+                    // Section 3 uses 'TRADE_SECRET' as the CAS key so grouping by
+                    // trade_secret_description collapses multiple contributions.
+                    $hazardousCas['TRADE_SECRET'] = true;
+                    $this->traceStep('trade_secret_applied', 'Trade-secret RMs contributed manual GHS classifications', [
+                        'concentration_pct' => $conc,
+                        'rm_count'          => count($component['manual_hazard_json']),
+                    ]);
+                }
+                continue; // Skip the CAS-based path — no CAS to look up
+            }
+
             // Look up hazard data from pre-fetched batch results
             $hazardData = $hazardByCas[$cas] ?? [];
 
@@ -544,6 +603,24 @@ class HazardEngine
             return null;
         }
 
+        return $this->parseDeterminationStructure($det, $cas, $name, $conc, 'CAS determination');
+    }
+
+    /**
+     * Parse a determination JSON structure (same shape as
+     * competent_person_determinations.determination_json OR the
+     * raw_materials.manual_hazard_json column) into a normalized
+     * hazard contribution suitable for merging into classify() output.
+     *
+     * @param array  $det    Decoded determination JSON
+     * @param string $cas    The CAS number (or '' for trade-secret rows)
+     * @param string $name   Chemical name (or 'Trade Secret')
+     * @param float  $conc   Concentration percent in the composition
+     * @param string $source Label for the `source` field on hazard_classes
+     * @return array  Same shape as applyCASDetermination() return value
+     */
+    private function parseDeterminationStructure(array $det, string $cas, string $name, float $conc, string $source): array
+    {
         // Parse H-statements
         $hStmts = [];
         $hRaw = array_filter(array_map('trim', explode(',', $det['h_statements'] ?? '')));
@@ -570,7 +647,6 @@ class HazardEngine
         $selectedHazards = json_decode($det['selected_hazards'] ?? '[]', true) ?: [];
 
         if (!empty($selectedHazards)) {
-            // Use structured keys like "Flammable Liquids - Category 3"
             foreach ($selectedHazards as $key) {
                 if (isset($ghsData[$key])) {
                     $entry = $ghsData[$key];
@@ -581,12 +657,11 @@ class HazardEngine
                         'chemical'          => $name,
                         'concentration_pct' => $conc,
                         'cutoff_pct'        => 0,
-                        'source'            => 'CAS determination',
+                        'source'            => $source,
                     ];
                 }
             }
         } else {
-            // Fallback: parse from comma-separated hazard_classes string
             $classRaw = array_filter(array_map('trim', explode(',', $det['hazard_classes'] ?? '')));
             foreach ($classRaw as $classStr) {
                 $hazardClasses[] = [
@@ -596,7 +671,7 @@ class HazardEngine
                     'chemical'          => $name,
                     'concentration_pct' => $conc,
                     'cutoff_pct'        => 0,
-                    'source'            => 'CAS determination',
+                    'source'            => $source,
                 ];
             }
         }
@@ -616,7 +691,7 @@ class HazardEngine
                 'value'             => $el['value'] ?? '',
                 'units'             => $el['units'] ?? 'mg/m3',
                 'notes'             => $el['notes'] ?? '',
-                'source'            => 'CAS determination',
+                'source'            => $source,
             ];
         }
 

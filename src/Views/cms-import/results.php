@@ -34,6 +34,10 @@
                 <td><span class="badge badge-muted"><?= count($results['rm_skipped']) ?></span></td>
             </tr>
             <tr>
+                <td><strong>Raw materials refreshed (description / supplier / code)</strong></td>
+                <td><span class="badge badge-muted"><?= number_format((int) ($results['rm_refreshed'] ?? 0)) ?></span></td>
+            </tr>
+            <tr>
                 <td><strong>Aliases created</strong></td>
                 <td><span class="badge badge-success"><?= (int) ($results['aliases_created'] ?? 0) ?></span></td>
             </tr>

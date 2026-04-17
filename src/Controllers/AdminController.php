@@ -917,100 +917,13 @@ class AdminController
     }
 
     /**
-     * Build the determination JSON from checkbox-based form submission.
-     *
-     * Merges auto-populated codes (from hazard statement selections) with
-     * manually selected H/P codes, resolves signal word and pictograms,
-     * and includes exposure limit data.
+     * Build the determination JSON from the admin's CAS determination form.
+     * Thin wrapper around the shared GHSHelper — delegates merging of
+     * H/P/pictogram/signal-word data from $_POST.
      */
     private function buildDeterminationJson(): array
     {
-        // Selected hazard classifications (checkbox keys)
-        $selectedHazards = json_decode($_POST['selected_hazards_json'] ?? '[]', true) ?: [];
-
-        // Resolve auto-populated data from GHS hazard data
-        $ghsData = \SDS\Services\GHSHazardData::all();
-        $autoHCodes = [];
-        $autoPCodes = [];
-        $autoPictograms = [];
-        $autoSignalWord = null;
-        $hazardClasses = [];
-        $signalHierarchy = ['Danger' => 2, 'Warning' => 1];
-
-        foreach ($selectedHazards as $key) {
-            if (!isset($ghsData[$key])) {
-                continue;
-            }
-            $entry = $ghsData[$key];
-            $hazardClasses[] = $entry['class'] . ' ' . $entry['category'];
-
-            foreach ($entry['h_codes'] as $code) {
-                $autoHCodes[$code] = true;
-            }
-            foreach ($entry['p_codes'] as $code) {
-                $autoPCodes[$code] = true;
-            }
-            foreach ($entry['pictograms'] as $pic) {
-                $autoPictograms[$pic] = true;
-            }
-            if ($entry['signal_word'] !== null) {
-                $newPri = $signalHierarchy[$entry['signal_word']] ?? 0;
-                $curPri = $autoSignalWord ? ($signalHierarchy[$autoSignalWord] ?? 0) : 0;
-                if ($newPri > $curPri) {
-                    $autoSignalWord = $entry['signal_word'];
-                }
-            }
-        }
-
-        // Manually selected H/P codes
-        $manualHCodes = $_POST['h_codes_manual'] ?? [];
-        $manualPCodes = $_POST['p_codes_manual'] ?? [];
-
-        // Merge auto + manual codes (de-duplicate)
-        $allHCodes = array_keys($autoHCodes);
-        foreach ($manualHCodes as $code) {
-            $code = trim($code);
-            if ($code !== '' && !in_array($code, $allHCodes, true)) {
-                $allHCodes[] = $code;
-            }
-        }
-        sort($allHCodes);
-
-        $allPCodes = array_keys($autoPCodes);
-        foreach ($manualPCodes as $code) {
-            $code = trim($code);
-            if ($code !== '' && !in_array($code, $allPCodes, true)) {
-                $allPCodes[] = $code;
-            }
-        }
-        sort($allPCodes);
-
-        // Apply pictogram precedence
-        $pictogramKeys = array_keys($autoPictograms);
-        if (in_array('GHS06', $pictogramKeys) || in_array('GHS05', $pictogramKeys)) {
-            $pictogramKeys = array_filter($pictogramKeys, fn($p) => $p !== 'GHS07');
-        }
-        sort($pictogramKeys);
-
-        // Signal word: manual override takes precedence
-        $signalWord = trim($_POST['signal_word'] ?? '');
-        if ($signalWord === '') {
-            $signalWord = $autoSignalWord ?? '';
-        }
-
-        // Exposure limits
-        $exposureLimits = json_decode($_POST['exposure_limits_json'] ?? '[]', true) ?: [];
-
-        return [
-            'selected_hazards' => json_encode($selectedHazards),
-            'hazard_classes'   => implode(', ', array_unique($hazardClasses)),
-            'signal_word'      => $signalWord,
-            'h_statements'     => implode(', ', $allHCodes),
-            'p_statements'     => implode(', ', $allPCodes),
-            'pictograms'       => implode(', ', $pictogramKeys),
-            'exposure_limits'  => json_encode($exposureLimits),
-            'basis'            => trim($_POST['basis'] ?? ''),
-        ];
+        return \SDS\Services\GHSHelper::buildDeterminationJson($_POST);
     }
 
     /* ------------------------------------------------------------------

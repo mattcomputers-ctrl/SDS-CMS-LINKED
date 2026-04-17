@@ -26,9 +26,17 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                        value="<?= e(old('supplier', $item['supplier'] ?? '')) ?>">
             </div>
             <div class="form-group full-width">
-                <label for="supplier_product_name">Supplier Product Name</label>
+                <label for="supplier_product_name">Product Description</label>
                 <input type="text" id="supplier_product_name" name="supplier_product_name"
                        value="<?= e(old('supplier_product_name', $item['supplier_product_name'] ?? '')) ?>">
+            </div>
+            <div class="form-group full-width">
+                <label for="supplier_product_code">Supplier Product Code</label>
+                <input type="text" id="supplier_product_code" name="supplier_product_code"
+                       value="<?= e(old('supplier_product_code', $item['supplier_product_code'] ?? '')) ?>">
+            </div>
+            <div class="form-group full-width">
+                <small class="text-muted">Supplier, Product Description, and Supplier Product Code are automatically populated from CMS on each sync. Manual edits will be overwritten when CMS has matching data.</small>
             </div>
         </div>
 
@@ -171,7 +179,71 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
             </div>
         </div>
 
+        <!-- Manual GHS Classifications (for trade-secret vendor materials) -->
+        <h3>Manual GHS Classifications</h3>
+        <p class="text-muted">Use this section only when the vendor SDS provides hazard classifications but does NOT disclose CAS numbers (trade secret). When enabled, this raw material has no CAS constituents, and its GHS classifications flow into downstream SDSs as a combined "Trade Secret" component.</p>
+
+        <div class="form-group">
+            <label style="display: inline-flex; align-items: center; gap: 6px;">
+                <input type="hidden" name="hazardous_no_cas" value="0">
+                <input type="checkbox" id="hazardous_no_cas" name="hazardous_no_cas" value="1"
+                       <?= !empty($item['hazardous_no_cas']) ? 'checked' : '' ?>>
+                <strong>Hazardous, but no CAS provided — use manual GHS classifications</strong>
+            </label>
+        </div>
+
+        <?php
+            $manualHazard = !empty($item['manual_hazard_json'])
+                ? (json_decode($item['manual_hazard_json'], true) ?: [])
+                : [];
+            $rmSelectedHazards = [];
+            if (!empty($manualHazard['selected_hazards'])) {
+                $rmSelectedHazards = is_string($manualHazard['selected_hazards'])
+                    ? (json_decode($manualHazard['selected_hazards'], true) ?: [])
+                    : $manualHazard['selected_hazards'];
+            }
+        ?>
+
+        <div id="manual-hazard-picker" style="display: <?= !empty($item['hazardous_no_cas']) ? 'block' : 'none' ?>; margin-top: 10px;">
+            <p class="text-muted">Check the hazard classifications that apply. Signal word, P statements, and pictograms are auto-derived on save.</p>
+
+            <div class="hazard-selection" style="max-height: 400px; overflow-y: auto; padding: 8px; border: 1px solid #e0e0e0; border-radius: 4px; background: #fafafa;">
+                <?php
+                $rmGrouped = \SDS\Services\GHSHazardData::groupedByClass();
+                foreach ($rmGrouped as $className => $entries):
+                ?>
+                <div class="hazard-class-group" style="margin-bottom: 8px;">
+                    <div style="font-weight: 600; border-bottom: 1px solid #ddd; padding: 4px 0; margin-bottom: 4px;"><?= e($className) ?></div>
+                    <?php foreach ($entries as $key => $entry): ?>
+                    <label style="display: block; padding: 2px 4px; font-size: 0.875rem;">
+                        <input type="checkbox" name="hazard_selections[]" value="<?= e($key) ?>"
+                               <?= in_array($key, $rmSelectedHazards, true) ? 'checked' : '' ?>>
+                        <strong><?= e($entry['category']) ?></strong>
+                        — <?= e(implode(', ', $entry['h_codes'])) ?>
+                        <?php if ($entry['signal_word']): ?>
+                            <em class="text-muted">(<?= e($entry['signal_word']) ?>)</em>
+                        <?php endif; ?>
+                    </label>
+                    <?php endforeach; ?>
+                </div>
+                <?php endforeach; ?>
+            </div>
+
+            <?php if (!empty($manualHazard['h_statements']) || !empty($manualHazard['pictograms'])): ?>
+            <div class="card" style="margin-top: 10px; background: #f8f9fa; padding: 8px;">
+                <strong>Currently Saved:</strong>
+                <div style="font-size: 0.875rem; margin-top: 4px;">
+                    <div><strong>Signal Word:</strong> <?= e($manualHazard['signal_word'] ?? '—') ?></div>
+                    <div><strong>H Statements:</strong> <?= e($manualHazard['h_statements'] ?? '—') ?></div>
+                    <div><strong>P Statements:</strong> <?= e($manualHazard['p_statements'] ?? '—') ?></div>
+                    <div><strong>Pictograms:</strong> <?= e($manualHazard['pictograms'] ?? '—') ?></div>
+                </div>
+            </div>
+            <?php endif; ?>
+        </div>
+
         <!-- CAS Constituents (inline) -->
+        <div id="cas-constituents-section" style="display: <?= !empty($item['hazardous_no_cas']) ? 'none' : 'block' ?>;">
         <h3>CAS Constituents</h3>
         <p class="text-muted">Enter the CAS numbers and concentrations from the supplier SDS. Chemical name will auto-populate when a valid CAS number is entered. Regulatory list membership and exposure limits are shown automatically.</p>
 
@@ -249,6 +321,7 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
         <div style="margin-bottom: 1.5rem;">
             <button type="button" id="addRow" class="btn btn-sm btn-outline">+ Add Row</button>
         </div>
+        </div><!-- /#cas-constituents-section -->
 
         <!-- Prop 65 Manual Marking -->
         <h3>California Proposition 65</h3>
@@ -406,6 +479,24 @@ function buildTsDescSelect(idx) {
     html += '</select>';
     return html;
 }
+
+// Toggle visibility of CAS constituents vs manual hazard picker
+(function() {
+    var checkbox = document.getElementById('hazardous_no_cas');
+    var picker   = document.getElementById('manual-hazard-picker');
+    var cas      = document.getElementById('cas-constituents-section');
+    if (checkbox && picker && cas) {
+        checkbox.addEventListener('change', function() {
+            if (this.checked) {
+                picker.style.display = 'block';
+                cas.style.display    = 'none';
+            } else {
+                picker.style.display = 'none';
+                cas.style.display    = 'block';
+            }
+        });
+    }
+})();
 
 // Add constituent row
 document.getElementById('addRow').addEventListener('click', function() {

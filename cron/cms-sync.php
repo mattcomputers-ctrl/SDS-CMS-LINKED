@@ -69,6 +69,7 @@ try {
     echo "[{$timestamp}] CMS Sync complete in {$elapsed}s:\n";
     echo "  Finished goods:  " . count($results['fg_created']) . " created, " . count($results['fg_skipped']) . " skipped\n";
     echo "  Raw materials:   " . count($results['rm_created']) . " created, " . count($results['rm_skipped']) . " skipped\n";
+    echo "  RM metadata:     " . ($results['rm_refreshed'] ?? 0) . " refreshed\n";
     echo "  Formulas:        " . $results['formulas_created'] . " created, " . $results['formulas_updated'] . " updated, " . $results['formulas_skipped'] . " skipped\n";
     echo "  Aliases:         " . ($results['aliases_created'] ?? 0) . " created, " . ($results['aliases_updated'] ?? 0) . " updated\n";
     echo "  Shipments:       " . ($results['shipments_imported'] ?? 0) . " imported\n";

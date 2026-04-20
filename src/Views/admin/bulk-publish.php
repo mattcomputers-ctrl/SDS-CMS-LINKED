@@ -136,8 +136,8 @@
             stopBtn.textContent = 'Stopping…';
 
             var fd = new FormData();
-            var csrf = document.querySelector('input[name="csrf_token"]');
-            if (csrf) fd.append('csrf_token', csrf.value);
+            var csrf = document.querySelector('input[name="_csrf_token"]');
+            if (csrf) fd.append('_csrf_token', csrf.value);
 
             fetch('/bulk-publish/stop/' + currentToken, {
                 method: 'POST',

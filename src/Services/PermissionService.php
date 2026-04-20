@@ -34,6 +34,7 @@ class PermissionService
         'sds'                => 'SDS Generation',
         'rm_mass_replace'    => 'RM Mass Replacement',
         'cas_determinations' => 'CAS Determinations',
+        'hazard_override'    => 'FG Hazard Override (competent person only)',
         'bulk_publish'       => 'Bulk SDS Publish',
         'bulk_export'        => 'Bulk SDS Export',
         'exempt_vocs'        => 'Exempt VOC Library',

@@ -166,7 +166,7 @@ $selfId = $isEdit ? (int) $item['id'] : 0;
     </form>
 </div>
 
-<?php if ($isEdit): ?>
+<?php if ($isEdit && can_edit('hazard_override')): ?>
 <?php
     $ovMode      = (string) ($item['hazard_override_mode']      ?? 'none');
     $ovRationale = (string) ($item['hazard_override_rationale'] ?? '');

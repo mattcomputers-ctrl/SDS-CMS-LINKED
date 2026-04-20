@@ -33,6 +33,7 @@
         <div id="publish-progress" style="display: none; margin-top: 1.5rem;">
             <div style="margin-bottom: 0.5rem;">
                 <strong>Publish Progress</strong>
+                <button type="button" id="stop-btn" class="btn btn-sm btn-danger" style="float: right; margin-left: 0.75rem;">Stop</button>
                 <span id="progress-pct" style="float: right;">0%</span>
             </div>
             <div style="background: #e9ecef; border-radius: 4px; overflow: hidden; height: 24px; position: relative;">
@@ -77,6 +78,7 @@
 
     var form           = document.getElementById('publish-form');
     var btn            = document.getElementById('start-btn');
+    var stopBtn        = document.getElementById('stop-btn');
     var progressEl     = document.getElementById('publish-progress');
     var barEl          = document.getElementById('progress-bar');
     var pctEl          = document.getElementById('progress-pct');
@@ -116,12 +118,46 @@
                 showError(data.error);
                 return;
             }
+            currentToken = data.token;
             pollProgress(data.token);
         })
         .catch(function(err) {
             showError('Network error: ' + err.message);
         });
     });
+
+    // Stop button — signals workers to finish their current item and exit.
+    var currentToken = null;
+    if (stopBtn) {
+        stopBtn.addEventListener('click', function() {
+            if (!currentToken) return;
+            if (!confirm('Stop this bulk publish? Already-published SDSs are kept; in-flight items finish and remaining items are cancelled.')) return;
+            stopBtn.disabled   = true;
+            stopBtn.textContent = 'Stopping…';
+
+            var fd = new FormData();
+            var csrf = document.querySelector('input[name="csrf_token"]');
+            if (csrf) fd.append('csrf_token', csrf.value);
+
+            fetch('/bulk-publish/stop/' + currentToken, {
+                method: 'POST',
+                body:   fd,
+            })
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                if (data.error) {
+                    alert('Stop failed: ' + data.error);
+                    stopBtn.disabled = false;
+                    stopBtn.textContent = 'Stop';
+                }
+            })
+            .catch(function(err) {
+                alert('Stop failed: ' + err.message);
+                stopBtn.disabled = false;
+                stopBtn.textContent = 'Stop';
+            });
+        });
+    }
 
     function pollProgress(token) {
         var interval = setInterval(function() {

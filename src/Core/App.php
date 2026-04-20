@@ -215,6 +215,7 @@ class App
         $router->get('/bulk-publish',                    'BulkPublishController@page');
         $router->post('/bulk-publish/start',             'BulkPublishController@start');
         $router->get('/bulk-publish/progress/{token}',   'BulkPublishController@progress');
+        $router->post('/bulk-publish/stop/{token}',      'BulkPublishController@stop');
 
         // ── Manufacturers ────────────────────────────────────────
         $router->get('/manufacturers',                     'ManufacturerController@index');

@@ -492,6 +492,41 @@ class BulkPublishController
         }
     }
 
+    /**
+     * POST /admin/bulk-publish/stop/{token} — signal all in-flight workers
+     * to stop after their current item. Writes a stop-flag file that every
+     * worker polls at the top of each iteration; on observing it the
+     * worker writes its final progress and exits cleanly.
+     *
+     * Already-completed items stay — this is a soft cancel, not a rollback.
+     */
+    public function stop(string $token): void
+    {
+        if (!can_edit('bulk_publish')) {
+            $this->jsonResponse(['error' => 'Forbidden'], 403);
+            return;
+        }
+        CSRF::validateRequest();
+
+        $token = preg_replace('/[^a-f0-9]/', '', $token);
+        if ($token === '') {
+            $this->jsonResponse(['error' => 'Invalid token.'], 400);
+            return;
+        }
+
+        $flagPath = App::basePath() . self::PROGRESS_DIR . '/publish_stop_' . $token . '.flag';
+        if (!is_dir(dirname($flagPath))) {
+            @mkdir(dirname($flagPath), 0755, true);
+        }
+        @file_put_contents($flagPath, date('c') . ' stop requested by user ' . (int) current_user_id() . "\n");
+
+        AuditService::log('sds_bulk_publish', $token, 'stop_requested', [
+            'user_id' => current_user_id(),
+        ]);
+
+        $this->jsonResponse(['stopped' => true]);
+    }
+
     /** Seconds without progress before we declare workers crashed. */
     private const STALL_TIMEOUT = 60;
 
@@ -604,12 +639,14 @@ class BulkPublishController
                 'worker_logs' => $workerLogs,
             ];
 
-            // Clean up progress/manifest files (keep logs when there were problems)
+            // Clean up progress/manifest/stop-flag files (keep logs when
+            // there were problems so operators can diagnose).
             foreach ($workerFiles as $wf) {
                 @unlink($wf);
             }
             @unlink($manifestFile);
             @unlink($manifest['master_file'] ?? '');
+            @unlink(App::basePath() . self::PROGRESS_DIR . '/publish_stop_' . $token . '.flag');
 
             // Clean up log files only if everything succeeded
             if (!$crashed && $totalFailed === 0) {

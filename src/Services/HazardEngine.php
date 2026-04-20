@@ -90,8 +90,21 @@ class HazardEngine
      *   The engine always applies pictogram precedence, consolidation,
      *   and PPE derivation on the merged result so downstream rendering
      *   sees a valid classification regardless of mode.
+     *
+     * v1.6-aquatic-summation-only: corrects a pre-refactor bug where
+     *   aquatic classes were able to trigger per-component via the 1 %
+     *   default cutoff fallback. GHS Annex I 4.1.3 specifies that
+     *   aquatic mixture classification is purely additive via the
+     *   M-factor-weighted summation formulas — there is no
+     *   "component-at-X% triggers mixture" rule. The per-component
+     *   trigger path is now skipped for aquatic classes, leaving
+     *   applyAquaticSummation() as the only classifier for GHS09
+     *   hazards. Net effect: some SDSs whose only aquatic exposure was
+     *   a single Cat 2/3 component above 1 % will now correctly not
+     *   classify as aquatic-hazardous unless the summation threshold
+     *   is met.
      */
-    public const ENGINE_VERSION = 'v1.5-fg-override';
+    public const ENGINE_VERSION = 'v1.6-aquatic-summation-only';
 
     /**
      * GHS summation thresholds per canonical class + category.
@@ -782,6 +795,18 @@ class HazardEngine
                         $mFactor['value'], $mFactor['source'],
                         'hazard_classification'
                     );
+                    // GHS Annex I 4.1.3: aquatic mixture classification is
+                    // purely summation-based with M-factor weighting. There
+                    // is no "single component at X% triggers mixture at this
+                    // category" rule for aquatic like there is for health
+                    // hazards — skip the per-component trigger path and let
+                    // applyAquaticSummation() be the only path that can
+                    // classify the mixture at an aquatic category.
+                    $this->traceStep('aquatic_per_component_skipped', "CAS {$cas} aquatic — per-component trigger skipped; summation-only per GHS 4.1.3", [
+                        'cas' => $cas, 'canonical' => $canonical, 'category' => $categoryCanon,
+                        'concentration' => $conc,
+                    ]);
+                    continue;
                 }
 
                 if ($conc >= $cutoff) {
@@ -2111,6 +2136,17 @@ class HazardEngine
                         $mFactor['value'], $mFactor['source'],
                         $source
                     );
+                    // Aquatic classification is summation-only per GHS 4.1.3.
+                    // Don't let the CPD's aquatic entries trigger a
+                    // per-component classification (which would bypass the
+                    // M-factor summation entirely) — flag triggered=false so
+                    // the summation pass is authoritative, and record the
+                    // skip in the trace for audit.
+                    $this->traceStep('aquatic_per_component_skipped', "CPD {$cas} aquatic — per-component trigger skipped; summation-only per GHS 4.1.3", [
+                        'cas' => $cas, 'canonical' => $canonical, 'category' => $categoryCanon,
+                        'concentration' => $conc, 'source' => $source,
+                    ]);
+                    continue;
                 }
 
                 if ($conc < $cutoff) {

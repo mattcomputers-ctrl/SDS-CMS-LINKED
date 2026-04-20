@@ -118,7 +118,18 @@ class GHSHelper
 
         $exposureLimits = json_decode($input['exposure_limits_json'] ?? '[]', true) ?: [];
 
-        return [
+        // Optional ATE (Phase 3c) and M-factor (Phase 4) fields. Empty
+        // strings are preserved as null so the engine's fallback logic
+        // (category-default ATEs, M=1.0 default) kicks in cleanly.
+        $ateFields = [
+            'ate_oral_mg_kg',
+            'ate_dermal_mg_kg',
+            'ate_inhalation_vapor_mg_l_4h',
+            'ate_inhalation_dust_mg_l_4h',
+            'm_factor_acute',
+            'm_factor_chronic',
+        ];
+        $result = [
             'selected_hazards' => json_encode($selectedHazards),
             'hazard_classes'   => implode(', ', array_unique($hazardClasses)),
             'signal_word'      => $signalWord,
@@ -128,5 +139,11 @@ class GHSHelper
             'exposure_limits'  => json_encode($exposureLimits),
             'basis'            => trim((string) ($input['basis'] ?? '')),
         ];
+        foreach ($ateFields as $field) {
+            $raw = $input[$field] ?? '';
+            if (is_string($raw)) $raw = trim($raw);
+            $result[$field] = ($raw === '' || $raw === null) ? null : (float) $raw;
+        }
+        return $result;
     }
 }

@@ -65,7 +65,26 @@ $baseDataCache = [];
 
 writeWorkerProgress($progressFile, $total, 0, 0, 0, [], false);
 
+// Stop-flag path: derived from the progress file name so every worker
+// polls the same marker regardless of which token/batch it is processing.
+//   .../publish_worker_{token}_{idx}.json  →  .../publish_stop_{token}.flag
+$stopFlagFile = null;
+if (preg_match('/publish_worker_([a-f0-9]+)_\d+\.json$/', $progressFile, $m)) {
+    $stopFlagFile = dirname($progressFile) . '/publish_stop_' . $m[1] . '.flag';
+}
+
 foreach ($workItems as $i => $item) {
+    // Poll the stop-flag file at the top of every work-item iteration.
+    // When the controller's stop() action creates this file, every worker
+    // observes it and exits cleanly without writing further PDFs — the
+    // already-written ones stay (they're complete) and the progress file
+    // is finalised so the UI can detect the stop and stop polling.
+    if ($stopFlagFile !== null && file_exists($stopFlagFile)) {
+        $errors[] = 'Worker stopped by user request after ' . ($published + $failed) . ' item(s).';
+        writeWorkerProgress($progressFile, $total, $published + $failed, $published, $failed, $errors, true);
+        exit(0);
+    }
+
     $fgId    = (int) $item['id'];
     $code    = $item['product_code'];
     $lang    = $item['language'];

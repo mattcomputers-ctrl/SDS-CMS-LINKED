@@ -273,6 +273,54 @@ $exposureLimits = json_decode($det['exposure_limits'] ?? ($old['exposure_limits_
             </div>
         </div>
 
+        <!-- ═══════════════ ATE + M-FACTOR (Phase 3c / 4) ═══════════════ -->
+        <h2 class="mt-2">Acute Toxicity (ATE) &amp; Aquatic M-Factors</h2>
+        <p class="text-muted">
+            Optional. Used by the hazard engine's mixture-classification logic.
+            Leave blank and the engine will fall back to GHS Table 3.1.2
+            category-default ATEs / M-factor = 1.
+        </p>
+        <div class="form-grid-2col">
+            <div class="form-group">
+                <label>Oral LD<sub>50</sub> (mg/kg)</label>
+                <input type="number" step="any" min="0" name="ate_oral_mg_kg"
+                       value="<?= e((string) ($det['ate_oral_mg_kg'] ?? ($old['ate_oral_mg_kg'] ?? ''))) ?>"
+                       placeholder="e.g. 1200">
+            </div>
+            <div class="form-group">
+                <label>Dermal LD<sub>50</sub> (mg/kg)</label>
+                <input type="number" step="any" min="0" name="ate_dermal_mg_kg"
+                       value="<?= e((string) ($det['ate_dermal_mg_kg'] ?? ($old['ate_dermal_mg_kg'] ?? ''))) ?>"
+                       placeholder="e.g. 2500">
+            </div>
+            <div class="form-group">
+                <label>Inhalation LC<sub>50</sub> vapour (mg/L · 4 h)</label>
+                <input type="number" step="any" min="0" name="ate_inhalation_vapor_mg_l_4h"
+                       value="<?= e((string) ($det['ate_inhalation_vapor_mg_l_4h'] ?? ($old['ate_inhalation_vapor_mg_l_4h'] ?? ''))) ?>"
+                       placeholder="e.g. 10.5">
+            </div>
+            <div class="form-group">
+                <label>Inhalation LC<sub>50</sub> dust/mist (mg/L · 4 h)</label>
+                <input type="number" step="any" min="0" name="ate_inhalation_dust_mg_l_4h"
+                       value="<?= e((string) ($det['ate_inhalation_dust_mg_l_4h'] ?? ($old['ate_inhalation_dust_mg_l_4h'] ?? ''))) ?>"
+                       placeholder="e.g. 1.2">
+            </div>
+            <div class="form-group">
+                <label>Aquatic acute M-factor</label>
+                <input type="number" step="any" min="0" name="m_factor_acute"
+                       value="<?= e((string) ($det['m_factor_acute'] ?? ($old['m_factor_acute'] ?? ''))) ?>"
+                       placeholder="e.g. 10, 100, 1000">
+                <small class="text-muted">Per CLP Annex VI Table 3.1. Default = 1.</small>
+            </div>
+            <div class="form-group">
+                <label>Aquatic chronic M-factor</label>
+                <input type="number" step="any" min="0" name="m_factor_chronic"
+                       value="<?= e((string) ($det['m_factor_chronic'] ?? ($old['m_factor_chronic'] ?? ''))) ?>"
+                       placeholder="e.g. 10, 100, 1000">
+                <small class="text-muted">Per CLP Annex VI Table 3.1. Default = 1.</small>
+            </div>
+        </div>
+
         <div class="form-group">
             <label>Rationale (required)</label>
             <textarea name="rationale_text" rows="5" required placeholder="Explain why this determination was made and what sources were consulted..."><?= e($item['rationale_text'] ?? ($old['rationale_text'] ?? '')) ?></textarea>

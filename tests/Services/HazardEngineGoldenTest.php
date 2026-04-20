@@ -954,9 +954,30 @@ try {
     assertContains('fg-null: H350 preserved with null override', hCodes($resultNull), 'H350');
 
     // ──────────────────────────────────────────────────────────────────
-    echo "\n[37] Phase 5 — engine version stamp is v1.5-fg-override.\n";
-    assertEquals('ENGINE_VERSION is v1.5-fg-override',
-        'v1.5-fg-override', \SDS\Services\HazardEngine::ENGINE_VERSION);
+    // v1.6 correction: aquatic never fires per-component (summation only)
+    // ──────────────────────────────────────────────────────────────────
+
+    echo "\n[37] v1.6 — Aquatic Cat 2 at 5 %% alone does NOT trigger (summation-only).\n";
+    // Previously: Cat 2 at 5 %% would clear the 1 %% default cutoff and
+    // fire per-component — wrong per GHS Annex I 4.1.3. Now: per-component
+    // trigger is skipped for aquatic, summation sum = 5 %% < 25 %%, no
+    // classification.
+    $seeded['aquatic_v16'] = seedClassification(
+        $db, '99999-70-0', 'Hazardous to the Aquatic Environment (Chronic)', 'Category 2',
+        ['H411'], ['P273'], ['GHS09'], null
+    );
+    $result = $engine->classify([
+        ['cas_number' => '99999-70-0', 'chemical_name' => 'Chronic Cat 2', 'concentration_pct' => 5.0],
+    ]);
+    assertNotContains('v16-aquatic: H411 absent (summation only)', hCodes($result), 'H411');
+    assertNotContains('v16-aquatic: GHS09 absent (summation only)', picts($result), 'GHS09');
+    assertContains('v16-aquatic: trace logs aquatic_per_component_skipped',
+        traceSteps($result), 'aquatic_per_component_skipped');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[38] engine version stamp is v1.6-aquatic-summation-only.\n";
+    assertEquals('ENGINE_VERSION is v1.6-aquatic-summation-only',
+        'v1.6-aquatic-summation-only', \SDS\Services\HazardEngine::ENGINE_VERSION);
 
 } catch (\Throwable $e) {
     echo "\n!!! EXCEPTION DURING TEST SUITE !!!\n";

@@ -1,0 +1,28 @@
+cas_number,m_factor_acute,m_factor_chronic,acute_category,chronic_category,source_note
+# Sample ECHA CLP Annex VI Table 3.1 M-factor entries.
+#
+# REPLACE THIS FILE with authoritative data from ECHA. The values below
+# are representative placeholders for common biocide / pigment / solvent
+# entries frequently seen in ink & coating catalogs, but should be
+# verified against the current CLP Annex VI Table 3.1 (download from
+# https://echa.europa.eu/information-on-chemicals/cl-inventory-database
+# before relying on them for SDS classification).
+#
+# Columns:
+#   cas_number         CAS Registry Number (with hyphens)
+#   m_factor_acute     Acute aquatic M-factor (1, 10, 100, 1000)
+#   m_factor_chronic   Chronic aquatic M-factor (1, 10, 100, 1000)
+#   acute_category     Category 1 (only category with M-factor in acute)
+#                      — leave blank if M-factor is chronic-only
+#   chronic_category   Category 1 typically; Cat 2/3 don't carry M-factors
+#                      — leave blank if M-factor is acute-only
+#   source_note        Free-text provenance ("ECHA Annex VI 2024-01", etc.)
+#
+# Lines starting with "#" are treated as comments and skipped.
+# Empty M-factor cells are treated as "not specified" (engine uses 1.0).
+#
+1317-38-0,10,10,Category 1,Category 1,example copper(II) oxide
+7758-99-8,10,10,Category 1,Category 1,example copper sulfate pentahydrate
+13463-41-7,100,100,Category 1,Category 1,example zinc pyrithione
+56-35-9,1000,1000,Category 1,Category 1,example tributyltin oxide
+26172-55-4,100,100,Category 1,Category 1,example CMIT (isothiazolinone)

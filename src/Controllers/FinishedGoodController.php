@@ -181,8 +181,15 @@ class FinishedGoodController
      */
     public function saveHazardOverride(string $id): void
     {
-        if (!can_edit('finished_goods')) {
-            redirect('/finished-goods');
+        // Hazard overrides require the dedicated 'hazard_override' permission
+        // — not plain FG edit access. These are competent-person decisions
+        // with real regulatory weight (OSHA HazCom 2012 29 CFR 1910.1200(d)
+        // requires classifications to be made by a qualified person).
+        // Grant this permission only to users who've been designated the
+        // SDS competent person.
+        if (!can_edit('hazard_override')) {
+            $_SESSION['_flash']['error'] = 'You do not have permission to set hazard overrides. Contact an administrator to grant the "FG Hazard Override" permission.';
+            redirect('/finished-goods/' . (int) $id . '/edit');
         }
         CSRF::validateRequest();
 

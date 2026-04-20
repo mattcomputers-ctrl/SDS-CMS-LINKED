@@ -700,7 +700,14 @@ class CMSImportService
         //   - is not flagged trade-secret (hazardous_no_cas = 0), AND
         //   - has never been saved by a user (no audit_log entry with a
         //     real user_id — that covers the case where the user reviewed
-        //     the RM and determined it legitimately has no hazards).
+        //     the RM and determined it legitimately has no hazards), AND
+        //   - isn't actually a packaged finished good that CMS imported as
+        //     a raw material. CMS treats every stocked code as an item, so
+        //     a pack variant like "E4404-3G" of a finished good "E4404"
+        //     lands in raw_materials; those should never appear on the
+        //     "needs info" list. Strip the pack extension (everything after
+        //     the first '-') and exclude rows whose base code matches any
+        //     finished_goods.product_code.
         $rows = $this->db->fetchAll(
             "SELECT rm.id, rm.internal_code, rm.supplier_product_name, rm.created_at,
                     cil.cms_item_code
@@ -714,6 +721,10 @@ class CMSImportService
                     WHERE a.entity_type = 'raw_material'
                       AND a.entity_id   = rm.id
                       AND a.user_id IS NOT NULL
+               )
+               AND NOT EXISTS (
+                   SELECT 1 FROM finished_goods fg
+                    WHERE fg.product_code = SUBSTRING_INDEX(rm.internal_code, '-', 1)
                )
              ORDER BY rm.internal_code"
         );

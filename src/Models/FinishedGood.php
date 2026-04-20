@@ -394,7 +394,18 @@ class FinishedGood
     {
         $db = Database::getInstance();
 
-        $where  = [];
+        // Only list aliases that actually have at least one published SDS —
+        // otherwise the lookup page shows "no SDS available" rows for every
+        // product whose formula hasn't been published yet, which isn't useful
+        // to operators hunting for a published document.
+        $publishedExists = 'EXISTS (
+                SELECT 1 FROM sds_versions sv_ex
+                 WHERE sv_ex.alias_id = %s.id
+                   AND sv_ex.status = \'published\'
+                   AND sv_ex.is_deleted = 0
+            )';
+
+        $where  = [sprintf($publishedExists, 'a')];
         $params = [];
 
         if ($searchTerm !== '') {
@@ -409,7 +420,7 @@ class FinishedGood
         $whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
         // Build a matching WHERE for the representative subquery (alias "a2")
-        $where2 = [];
+        $where2 = [sprintf($publishedExists, 'a2')];
         $params2 = [];
         if ($searchTerm !== '') {
             $where2[] = '(a2.customer_code LIKE ? OR a2.description LIKE ? OR SUBSTRING_INDEX(a2.customer_code, \'-\', 1) LIKE ?)';

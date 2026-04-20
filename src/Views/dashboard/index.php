@@ -1,75 +1,60 @@
 <?php include dirname(__DIR__) . '/layouts/main.php'; ?>
 
-<div class="stats-grid">
-    <div class="stat-card">
-        <div class="stat-value"><?= (int) $stats['raw_materials'] ?></div>
-        <div class="stat-label">Raw Materials</div>
-        <a href="/raw-materials" class="stat-link">View All</a>
+<div class="quick-find-grid">
+    <div class="card quick-find-card">
+        <h2 class="card-title">Find a Finished Good SDS</h2>
+        <p class="text-muted">Search by product code, description, or customer alias.</p>
+        <form method="GET" action="/lookup" class="quick-find-form">
+            <input type="text" name="q" placeholder="Product code or description…" autofocus
+                   autocomplete="off" spellcheck="false">
+            <button type="submit" class="btn btn-primary">Find SDS</button>
+        </form>
+        <p class="text-muted" style="margin-top: 0.75rem;">
+            <a href="/lookup">Browse all published SDSs</a>
+        </p>
     </div>
-    <div class="stat-card">
-        <div class="stat-value"><?= (int) $stats['finished_goods'] ?></div>
-        <div class="stat-label">Finished Goods</div>
-        <a href="/finished-goods" class="stat-link">View All</a>
-    </div>
-    <div class="stat-card">
-        <div class="stat-value"><?= (int) $stats['published_sds'] ?></div>
-        <div class="stat-label">Published SDS</div>
-        <a href="/lookup" class="stat-link">Lookup</a>
-    </div>
-    <div class="stat-card">
-        <div class="stat-value"><?= (int) $stats['users'] ?></div>
-        <div class="stat-label">Active Users</div>
-        <?php if (can_manage_users()): ?><a href="/admin/users" class="stat-link">Manage</a><?php endif; ?>
+
+    <div class="card quick-find-card">
+        <h2 class="card-title">Find a Raw Material SDS</h2>
+        <p class="text-muted">Search by internal code, supplier, or product name.</p>
+        <form method="GET" action="/raw-materials" class="quick-find-form">
+            <input type="text" name="search" placeholder="Internal code, supplier, or name…"
+                   autocomplete="off" spellcheck="false">
+            <button type="submit" class="btn btn-primary">Find RM</button>
+        </form>
+        <p class="text-muted" style="margin-top: 0.75rem;">
+            <a href="/raw-materials">Browse all raw materials</a>
+        </p>
     </div>
 </div>
 
-<div class="grid-2col">
-    <div class="card">
-        <h2 class="card-title">Recent SDS Activity</h2>
-        <?php if (empty($recentSDS)): ?>
-            <p class="text-muted">No SDS versions yet.</p>
-        <?php else: ?>
-            <table class="table table-sm">
-                <thead>
-                    <tr><th>Product</th><th>Version</th><th>Lang</th><th>Status</th><th>Date</th></tr>
-                </thead>
-                <tbody>
-                <?php foreach ($recentSDS as $sds): ?>
-                    <tr>
-                        <td><a href="/sds/<?= (int) $sds['finished_good_id'] ?>"><?= e($sds['product_code']) ?></a></td>
-                        <td>v<?= (int) $sds['version'] ?></td>
-                        <td><?= e($sds['language']) ?></td>
-                        <td><span class="badge badge-<?= $sds['status'] ?>"><?= e($sds['status']) ?></span></td>
-                        <td><?= format_date($sds['created_at'], 'm/d/Y H:i') ?></td>
-                    </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
-        <?php endif; ?>
-    </div>
-
-    <div class="card">
-        <h2 class="card-title">Recent Audit Activity</h2>
-        <?php if (empty($recentAudit)): ?>
-            <p class="text-muted">No audit entries yet.</p>
-        <?php else: ?>
-            <table class="table table-sm">
-                <thead>
-                    <tr><th>User</th><th>Action</th><th>Entity</th><th>Time</th></tr>
-                </thead>
-                <tbody>
-                <?php foreach ($recentAudit as $entry): ?>
-                    <tr>
-                        <td><?= e($entry['user_display_name'] ?? 'System') ?></td>
-                        <td><span class="badge"><?= e($entry['action']) ?></span></td>
-                        <td><?= e($entry['entity_type']) ?> #<?= e($entry['entity_id']) ?></td>
-                        <td><?= format_date($entry['timestamp'], 'm/d/Y H:i') ?></td>
-                    </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
-        <?php endif; ?>
-    </div>
-</div>
+<style>
+    .quick-find-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+        gap: 1.5rem;
+        max-width: 56rem;
+        margin: 2rem auto;
+    }
+    .quick-find-card {
+        padding: 1.5rem;
+    }
+    .quick-find-card .card-title {
+        margin-top: 0;
+    }
+    .quick-find-form {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+    }
+    .quick-find-form input[type="text"] {
+        flex: 1 1 auto;
+        font-size: 1rem;
+        padding: 0.5rem 0.75rem;
+    }
+    .quick-find-form button {
+        flex: 0 0 auto;
+    }
+</style>
 
 <?php include dirname(__DIR__) . '/layouts/footer.php'; ?>

@@ -23,6 +23,14 @@ use SDS\Core\Database;
  */
 class HazardEngine
 {
+    /**
+     * Ruleset identifier stamped onto every sds_generation_trace row.
+     * Bumped each time the engine's classification logic changes so audits
+     * can identify which version produced any given classification.
+     * See docs/hazard-engine-refactor-plan.md for the version timeline.
+     */
+    public const ENGINE_VERSION = 'v1.0-baseline';
+
     /** GHS concentration cut-offs for health hazards (simplified). */
     private const HEALTH_CUTOFFS = [
         'Acute Toxicity'                => ['Cat 1' => 0.1, 'Cat 2' => 0.1, 'Cat 3' => 0.1, 'Cat 4' => 1.0],

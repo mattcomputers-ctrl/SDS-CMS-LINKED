@@ -314,6 +314,7 @@ class SDSUpdateController
                     );
                     $db->insert('sds_generation_trace', [
                         'sds_version_id' => $versionId,
+                        'engine_version' => \SDS\Services\HazardEngine::ENGINE_VERSION,
                         'trace_json'     => json_encode($traceData, JSON_UNESCAPED_UNICODE),
                     ]);
                 }
@@ -614,6 +615,7 @@ class SDSUpdateController
                 );
                 $db->insert('sds_generation_trace', [
                     'sds_version_id' => $versionId,
+                    'engine_version' => \SDS\Services\HazardEngine::ENGINE_VERSION,
                     'trace_json'     => json_encode($traceData, JSON_UNESCAPED_UNICODE),
                 ]);
             }

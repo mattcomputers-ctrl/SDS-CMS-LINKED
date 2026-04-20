@@ -520,6 +520,24 @@ else
     print_warn "Seed data loader not found. Skipping."
 fi
 
+# ── Optional ECHA M-factor import ───────────────────────────
+# Imports CLP Annex VI Table 3.1 M-factor values into hazard_classifications
+# when seeds/echa_m_factors.csv exists (the .csv.example template is
+# ignored — operator must rename & populate before it takes effect).
+# Idempotent: re-runs every update, updates existing rows and creates
+# new ones as needed.
+ECHA_CSV="$INSTALL_DIR/seeds/echa_m_factors.csv"
+ECHA_SCRIPT="$INSTALL_DIR/scripts/import-echa-m-factors.php"
+if [ -f "$ECHA_CSV" ] && [ -f "$ECHA_SCRIPT" ]; then
+    print_step "Importing ECHA Annex VI M-factors from $ECHA_CSV..."
+    COMPOSER_ALLOW_SUPERUSER=1 php "$ECHA_SCRIPT" "$ECHA_CSV" --quiet
+    print_success "ECHA M-factors imported."
+elif [ -f "$INSTALL_DIR/seeds/echa_m_factors.csv.example" ] && [ ! -f "$ECHA_CSV" ]; then
+    print_info "ECHA M-factor CSV not found. Copy seeds/echa_m_factors.csv.example"
+    print_info "to seeds/echa_m_factors.csv and populate with values from ECHA"
+    print_info "CLP Annex VI Table 3.1 if your catalog needs aquatic M-factor data."
+fi
+
 # ============================================================
 # Step 9: Fix file permissions
 # ============================================================

@@ -832,23 +832,22 @@ try {
     assertNotContains('aquatic-below: no GHS09', picts($result), 'GHS09');
 
     // ──────────────────────────────────────────────────────────────────
-    echo "\n[32] Phase 4 — Chronic Cat 2 cross-category: 10 × M × Cat1 + Cat2 ≥ 25 %.\n";
-    // Cat 1 Chronic with M=10 at 0.2 % (contribution 10 × 10 × 0.2 = 20)
-    // + Cat 2 Chronic at 5 % (contribution 5)
-    // = 25 % → triggers Aquatic Chronic Cat 2 (H411).
+    echo "\n[32] Phase 4 — Chronic Cat 2 cross-category: 10 × M × Cat1 alone ≥ 25 %.\n";
+    // Single Aquatic Chronic Cat 1 CAS with M=10 at 0.3 %:
+    //   - per-component:  0.3 % < 1 % default → no direct trigger
+    //   - simple Cat 1 summation:  M × C = 10 × 0.3 = 3 < 25 → no
+    //   - cross-category Cat 2:    10 × M × C + 0 = 10 × 3 = 30 ≥ 25 → FIRES
+    // Leaves the Cat 2 bucket empty so the cross-category path is
+    // unambiguously the trigger — avoids the per-component hazard the
+    // previous seeded Cat 2 contributor at 5 % was introducing.
     $seeded['aquatic_chr1'] = seedClassification(
         $db, '99999-61-1', 'Hazardous to the Aquatic Environment (Chronic)', 'Category 1',
         ['H410'], ['P273'], ['GHS09'], 'Warning',
         null, null,
         ['m_factor_chronic' => 10.0]
     );
-    $seeded['aquatic_chr2'] = seedClassification(
-        $db, '99999-62-2', 'Hazardous to the Aquatic Environment (Chronic)', 'Category 2',
-        ['H411'], ['P273'], ['GHS09'], null
-    );
     $result = $engine->classify([
-        ['cas_number' => '99999-61-1', 'chemical_name' => 'Chronic Cat 1', 'concentration_pct' => 0.2],
-        ['cas_number' => '99999-62-2', 'chemical_name' => 'Chronic Cat 2', 'concentration_pct' => 5.0],
+        ['cas_number' => '99999-61-1', 'chemical_name' => 'Chronic Cat 1', 'concentration_pct' => 0.3],
     ]);
     assertContains('aquatic-chr2: trace logs aquatic_summation_triggered',
         traceSteps($result), 'aquatic_summation_triggered');

@@ -52,6 +52,7 @@ new \SDS\Core\App();
 
 use SDS\Core\Database;
 use SDS\Services\HazardEngine;
+use SDS\Services\HazardClassAliases;
 use SDS\Models\Formula;
 
 // --- Parse args ------------------------------------------------------------
@@ -201,10 +202,22 @@ function normalizeHazardClasses(array $classes): array
         $class = trim((string) ($hc['class'] ?? ''));
         $cat   = trim((string) ($hc['category'] ?? ''));
         if ($class === '') continue;
-        $out[] = $class . '|' . $cat;
+        // Compare by canonical code so translated / abbreviated forms collapse
+        // to the same identity across snapshot and engine-replay sides.
+        // Falls back to the raw display string if unmappable — keeps the diff
+        // visible without silently masking data issues.
+        $classCanonical = HazardClassAliases::normalize($class) ?? $class;
+        $catCanonical   = HazardClassAliases::normalizeCategory($cat);
+        $out[] = $classCanonical . '|' . $catCanonical;
     }
     sort($out);
     return array_values(array_unique($out));
+}
+
+/** Translation-safe signal word comparison. */
+function normalizeSignalForCompare(string $raw): string
+{
+    return HazardClassAliases::normalizeSignalWord($raw) ?? $raw;
 }
 
 /**
@@ -230,7 +243,7 @@ function snapshottedClassification(array $snapshot): array
         'h_statements'   => normalizeStatements($sec2['h_statements'] ?? []),
         'p_statements'   => normalizeStatements($sec2['p_statements'] ?? []),
         'hazard_classes' => normalizeHazardClasses($sec2['hazard_classes'] ?? []),
-        'signal_word'    => (string) ($sec2['signal_word'] ?? ''),
+        'signal_word'    => normalizeSignalForCompare((string) ($sec2['signal_word'] ?? '')),
     ];
 }
 
@@ -241,7 +254,7 @@ function recomputedClassification(array $engineResult): array
         'h_statements'   => normalizeStatements($engineResult['h_statements'] ?? []),
         'p_statements'   => normalizeStatements($engineResult['p_statements'] ?? []),
         'hazard_classes' => normalizeHazardClasses($engineResult['hazard_classes'] ?? []),
-        'signal_word'    => (string) ($engineResult['signal_word'] ?? ''),
+        'signal_word'    => normalizeSignalForCompare((string) ($engineResult['signal_word'] ?? '')),
     ];
 }
 

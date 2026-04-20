@@ -59,8 +59,18 @@ class HazardEngine
      *   Closes the gap where products with 1-5 % of Cat 1 skin
      *   corrosives previously escaped both Cat 1 and Cat 2 classification
      *   despite being legitimately hazardous per GHS rules.
+     *
+     * v1.3c-ate (Phase 3c): acute-toxicity mixture classification via
+     *   the GHS Annex I 3.1.3.6 ATE harmonic-mean formula. For each
+     *   of three routes (oral, dermal, inhalation) the engine computes
+     *   100 / ATE_mix = Σ(Ci / ATE_i), falls the result back through
+     *   the GHS Table 3.1.1 category ranges, and stamps the resulting
+     *   acute-toxicity category on the mixture. ATE_i comes from
+     *   vendor data when present, otherwise from the GHS Table 3.1.2
+     *   category-default conversion values. Every contributor's ATE
+     *   source (vendor / cpd / category_default) is logged in the trace.
      */
-    public const ENGINE_VERSION = 'v1.3b-cross-category';
+    public const ENGINE_VERSION = 'v1.3c-ate';
 
     /**
      * GHS summation thresholds per canonical class + category.
@@ -115,6 +125,109 @@ class HazardEngine
             'Cat 1' => 10.0,  // Full GHS rule also requires kinematic viscosity
                               // ≤ 20.5 mm²/s at 40 °C; not modelled here.
         ],
+    ];
+
+    /**
+     * GHS Table 3.1.2 category-default ATE values per route.
+     *
+     * Used by the ATE mixture calculation when a component is known to be
+     * acute-toxic at a given category but no vendor LD50/LC50 value is
+     * available. The engine resolves ATE_i in this order:
+     *
+     *   1. Explicit vendor value on hazard_classifications.ate_* (if present)
+     *   2. Explicit CPD value in determination_json.ate_*               (if present)
+     *   3. Category-default from this table                            (fallback)
+     *   4. Component skipped from the route's mixture calc
+     *
+     * Units: oral/dermal mg/kg; inhalation vapour & dust/mist mg/L over 4 h.
+     * Cat 5 has no GHS-defined default for dermal / inhalation — entries
+     * left out so callers know to skip those components from the calc.
+     */
+    private const CATEGORY_DEFAULT_ATES = [
+        'oral' => [
+            'Cat 1' => 0.5,
+            'Cat 2' => 5.0,
+            'Cat 3' => 100.0,
+            'Cat 4' => 500.0,
+            'Cat 5' => 2500.0,
+        ],
+        'dermal' => [
+            'Cat 1' => 5.0,
+            'Cat 2' => 50.0,
+            'Cat 3' => 300.0,
+            'Cat 4' => 1100.0,
+        ],
+        'inhalation_vapor' => [
+            'Cat 1' => 0.05,
+            'Cat 2' => 0.5,
+            'Cat 3' => 1.5,
+            'Cat 4' => 10.0,
+        ],
+        'inhalation_dust' => [
+            'Cat 1' => 0.005,
+            'Cat 2' => 0.05,
+            'Cat 3' => 0.5,
+            'Cat 4' => 1.5,
+        ],
+    ];
+
+    /**
+     * GHS Table 3.1.1 ATE → category ranges per route.
+     *
+     * Mapping (exclusive lower, inclusive upper bound):
+     *   ATE_mix ≤ upper → category whose upper is smallest satisfying bound.
+     *
+     * Iterate in order (Cat 1 first) and pick the first category where
+     * ATE_mix ≤ upper.
+     */
+    private const ATE_CATEGORY_RANGES = [
+        'oral' => [
+            ['category' => 'Cat 1', 'upper' => 5.0],
+            ['category' => 'Cat 2', 'upper' => 50.0],
+            ['category' => 'Cat 3', 'upper' => 300.0],
+            ['category' => 'Cat 4', 'upper' => 2000.0],
+            ['category' => 'Cat 5', 'upper' => 5000.0],
+        ],
+        'dermal' => [
+            ['category' => 'Cat 1', 'upper' => 50.0],
+            ['category' => 'Cat 2', 'upper' => 200.0],
+            ['category' => 'Cat 3', 'upper' => 1000.0],
+            ['category' => 'Cat 4', 'upper' => 2000.0],
+            ['category' => 'Cat 5', 'upper' => 5000.0],
+        ],
+        'inhalation_vapor' => [
+            ['category' => 'Cat 1', 'upper' => 0.5],
+            ['category' => 'Cat 2', 'upper' => 2.0],
+            ['category' => 'Cat 3', 'upper' => 10.0],
+            ['category' => 'Cat 4', 'upper' => 20.0],
+        ],
+        'inhalation_dust' => [
+            ['category' => 'Cat 1', 'upper' => 0.05],
+            ['category' => 'Cat 2', 'upper' => 0.5],
+            ['category' => 'Cat 3', 'upper' => 1.0],
+            ['category' => 'Cat 4', 'upper' => 5.0],
+        ],
+    ];
+
+    /**
+     * Canonical class code per ATE route.
+     */
+    private const ATE_ROUTE_TO_CANONICAL = [
+        'oral'             => GHSHazardClass::ACUTE_TOXICITY_ORAL,
+        'dermal'           => GHSHazardClass::ACUTE_TOXICITY_DERMAL,
+        'inhalation_vapor' => GHSHazardClass::ACUTE_TOXICITY_INHALATION,
+        'inhalation_dust'  => GHSHazardClass::ACUTE_TOXICITY_INHALATION,
+    ];
+
+    /**
+     * Column name (on hazard_classifications / field name in CPD JSON) per
+     * ATE route.
+     */
+    private const ATE_ROUTE_COLUMN = [
+        'oral'             => 'ate_oral_mg_kg',
+        'dermal'           => 'ate_dermal_mg_kg',
+        'inhalation_vapor' => 'ate_inhalation_vapor_mg_l_4h',
+        'inhalation_dust'  => 'ate_inhalation_dust_mg_l_4h',
     ];
 
     /**
@@ -240,6 +353,23 @@ class HazardEngine
     private array $summationBuffer = [];
 
     /**
+     * Per-classify() acute-toxicity mixture accumulator.
+     *
+     * Structure:
+     *   [route => [
+     *       ['cas' => ..., 'name' => ..., 'conc' => float,
+     *        'category' => ..., 'ate' => float|null,
+     *        'ate_source' => 'vendor'|'cpd'|'category_default'], …
+     *   ]]
+     *
+     * route ∈ {'oral', 'dermal', 'inhalation_vapor', 'inhalation_dust'}.
+     * applyATECalculation() consumes this after the main loop, plugs the
+     * contributors into the GHS Annex I 3.1.3.6 mixture formula, and
+     * classifies the mixture per-route.
+     */
+    private array $ateBuffer = [];
+
+    /**
      * Run hazard classification for a composition.
      *
      * @param  array $composition  From Formula::getExpandedComposition()
@@ -259,6 +389,7 @@ class HazardEngine
     {
         $this->trace = [];
         $this->summationBuffer = [];
+        $this->ateBuffer = [];
         $db = Database::getInstance();
 
         $allHClasses   = [];
@@ -503,6 +634,20 @@ class HazardEngine
                     'hazard_classification', $conc >= $cutoff
                 );
 
+                // Phase 3c: feed the ATE buffer for acute-toxicity routes.
+                // Acute tox contributes to the mixture calc regardless of
+                // per-component trigger, using explicit vendor ATE when
+                // present or category-defaults at resolve time.
+                $ateRoute = $this->canonicalToAteRoute($canonical);
+                if ($ateRoute !== null && $categoryCanon !== null && $categoryCanon !== '') {
+                    $explicitAte = $this->resolveExplicitAte($hc, $ateRoute);
+                    $this->addToAteBuffer(
+                        $ateRoute, $cas, $name, $conc, $categoryCanon,
+                        $explicitAte['value'], $explicitAte['source'],
+                        'hazard_classification'
+                    );
+                }
+
                 if ($conc >= $cutoff) {
                     // Mark CAS as hazardous only when a GHS category actually triggers
                     $hazardousCas[$cas] = true;
@@ -580,6 +725,15 @@ class HazardEngine
         // the summation threshold classifies the mixture, contributing default
         // H/P-codes / pictograms / signal word for that category.
         $this->applySummationRules(
+            $allHClasses, $allHStmts, $allPStmts, $allPictograms, $signalWord, $hazardousCas
+        );
+
+        // Phase 3c: acute-toxicity mixture classification via ATE harmonic mean.
+        // Runs per-route (oral, dermal, inhalation-vapour, inhalation-dust),
+        // using vendor / CPD ATE values when present and GHS Table 3.1.2
+        // category-default ATEs when not. Skipped per route when a
+        // per-component trigger already classified the mixture on that route.
+        $this->applyATECalculation(
             $allHClasses, $allHStmts, $allPStmts, $allPictograms, $signalWord, $hazardousCas
         );
 
@@ -779,6 +933,81 @@ class HazardEngine
         // the category is missing or unrecognised — matches pre-Phase-1 min()
         // fallback behaviour.
         return (float) min($categories);
+    }
+
+    /**
+     * Map a canonical acute-toxicity class code to its ATE route key.
+     * Returns null for non-acute-tox codes. The inhalation class defaults
+     * to the "vapor" route — ink & coatings catalogs are almost always
+     * liquid, so vapour is the correct scale; when dust/mist inhalation
+     * data is present on a row (via ate_inhalation_dust_mg_l_4h) we fall
+     * back to that route instead, route-aware below.
+     */
+    private function canonicalToAteRoute(?string $canonical): ?string
+    {
+        return match ($canonical) {
+            GHSHazardClass::ACUTE_TOXICITY_ORAL       => 'oral',
+            GHSHazardClass::ACUTE_TOXICITY_DERMAL     => 'dermal',
+            GHSHazardClass::ACUTE_TOXICITY_INHALATION => 'inhalation_vapor',
+            default                                   => null,
+        };
+    }
+
+    /**
+     * Pull an explicit ATE value out of a hazard_classifications row (or
+     * CPD determination JSON) for the given route. Returns
+     *   ['value' => float|null, 'source' => 'vendor'|'cpd'|'unknown']
+     * so the caller can feed the ATE buffer with accurate provenance.
+     *
+     * For the inhalation route we also probe the dust/mist column as a
+     * fallback — rare for ink/coatings catalogs but correct when present.
+     */
+    private function resolveExplicitAte(array $row, string $route, string $source = 'vendor'): array
+    {
+        $col = self::ATE_ROUTE_COLUMN[$route] ?? null;
+        if ($col !== null && isset($row[$col]) && $row[$col] !== null && $row[$col] !== '') {
+            return ['value' => (float) $row[$col], 'source' => $source];
+        }
+        return ['value' => null, 'source' => 'unknown'];
+    }
+
+    /**
+     * Record an acute-toxicity contribution into the ATE accumulator.
+     *
+     * Called for every component that carries an acute-toxicity
+     * classification — regardless of whether the per-component cutoff
+     * fired. The ATE mixture formula uses ALL acute-tox contributors,
+     * not just the ones that triggered individually.
+     *
+     * $ate values arrive pre-resolved:
+     *   null   — no explicit value; applyATECalculation falls back to
+     *            the GHS Table 3.1.2 category-default before inclusion
+     *   float  — explicit LD50/LC50 in the route's native units
+     *
+     * $ateSource is one of 'vendor', 'cpd', 'category_default'.
+     */
+    private function addToAteBuffer(
+        string $route,
+        string $cas,
+        string $name,
+        float $conc,
+        string $category,
+        ?float $ate,
+        string $ateSource,
+        string $source
+    ): void {
+        if (!isset(self::ATE_CATEGORY_RANGES[$route])) {
+            return;
+        }
+        $this->ateBuffer[$route][] = [
+            'cas'        => $cas,
+            'name'       => $name,
+            'conc'       => $conc,
+            'category'   => $category,
+            'ate'        => $ate,
+            'ate_source' => $ateSource,
+            'source'     => $source,
+        ];
     }
 
     /**
@@ -1003,6 +1232,161 @@ class HazardEngine
     }
 
     /**
+     * Phase 3c: compute the mixture's acute-toxicity category per route via
+     * the GHS Annex I 3.1.3.6 ATE harmonic-mean formula:
+     *
+     *     100 / ATE_mix  =  Σ ( C_i / ATE_i )
+     *
+     * Iterate the ateBuffer for each route; resolve any null ATE_i from
+     * the route's category-default table; skip components whose category
+     * has no route-appropriate default (Cat 5 inhalation, etc.); compute
+     * ATE_mix; look up the resulting category in ATE_CATEGORY_RANGES;
+     * stamp the mixture with that classification.
+     *
+     * Skips a route entirely if it's already classified (per-component
+     * trigger beat us to it) or if no contributors are available for
+     * that route.
+     */
+    private function applyATECalculation(
+        array &$allHClasses,
+        array &$allHStmts,
+        array &$allPStmts,
+        array &$allPictograms,
+        ?string &$signalWord,
+        array &$hazardousCas
+    ): void {
+        foreach (self::ATE_CATEGORY_RANGES as $route => $categoryRanges) {
+            $canonical   = self::ATE_ROUTE_TO_CANONICAL[$route] ?? null;
+            $contributors = $this->ateBuffer[$route] ?? [];
+            if ($canonical === null || empty($contributors)) {
+                continue;
+            }
+
+            // Resolve any null ATEs via category defaults; compute
+            // the running sum of Ci / ATE_i for the formula.
+            $reciprocalSum   = 0.0;
+            $usedContributors = [];
+            foreach ($contributors as $c) {
+                $ate = $c['ate'];
+                $ateSource = $c['ate_source'];
+                if ($ate === null) {
+                    $defaultAte = self::CATEGORY_DEFAULT_ATES[$route][$c['category']] ?? null;
+                    if ($defaultAte === null) {
+                        // No explicit ATE and no category default — skip,
+                        // but log so operators can see which components
+                        // were left out of the mixture calc.
+                        $this->traceStep('ate_contributor_skipped', "Component {$c['cas']} has no ATE and no default for {$route} {$c['category']}", [
+                            'cas' => $c['cas'], 'route' => $route, 'category' => $c['category'],
+                        ]);
+                        continue;
+                    }
+                    $ate = $defaultAte;
+                    $ateSource = 'category_default';
+                }
+                if ($ate <= 0) {
+                    continue;  // Degenerate value; skip to avoid divide-by-zero
+                }
+                $reciprocalSum += (float) $c['conc'] / $ate;
+                $usedContributors[] = array_merge($c, [
+                    'ate_resolved'        => $ate,
+                    'ate_source_resolved' => $ateSource,
+                ]);
+            }
+
+            if ($reciprocalSum <= 0) {
+                continue;
+            }
+
+            $ateMix = 100.0 / $reciprocalSum;
+
+            // Find the category whose upper bound ATE_mix falls into.
+            $mixCategory = null;
+            foreach ($categoryRanges as $range) {
+                if ($ateMix <= $range['upper']) {
+                    $mixCategory = $range['category'];
+                    break;
+                }
+            }
+            if ($mixCategory === null) {
+                // ATE_mix above the highest category's upper bound — not
+                // classified as acute-toxic by this route. Log the result
+                // for audit; move on.
+                $this->traceStep('ate_mixture_not_classified', "ATE mix {$ateMix} for {$route} exceeds all category upper bounds — not classified", [
+                    'route' => $route, 'ate_mix' => $ateMix,
+                ]);
+                continue;
+            }
+
+            if ($this->alreadyClassified($allHClasses, $canonical, $mixCategory)) {
+                // Per-component or earlier summation already classified
+                // at this (route, category) — don't duplicate.
+                continue;
+            }
+
+            $this->traceStep('ate_mixture_classified', "ATE mixture classified for {$route} at {$mixCategory}", [
+                'route'             => $route,
+                'canonical'         => $canonical,
+                'category'          => $mixCategory,
+                'ate_mix'           => $ateMix,
+                'reciprocal_sum'    => $reciprocalSum,
+                'contributor_count' => count($usedContributors),
+                'contributors'      => array_map(fn($c) => [
+                    'cas'        => $c['cas'],
+                    'conc'       => $c['conc'],
+                    'category'   => $c['category'],
+                    'ate'        => $c['ate_resolved'],
+                    'ate_source' => $c['ate_source_resolved'],
+                ], $usedContributors),
+            ]);
+
+            $defaults = $this->getDefaultsForClassCategory($canonical, $mixCategory);
+
+            $allHClasses[] = [
+                'class'              => GHSHazardClass::displayName($canonical),
+                'category'           => $defaults['category_display'] ?? $mixCategory,
+                'canonical'          => $canonical,
+                'category_canonical' => $mixCategory,
+                'cas'                => 'MIXTURE',
+                'chemical'           => 'Multiple components (ATE calculation)',
+                'concentration_pct'  => null,
+                'cutoff_pct'         => null,
+                'source'             => 'ate_mixture',
+                'ate_mix'            => $ateMix,
+                'route'              => $route,
+            ];
+
+            foreach ($defaults['h_codes'] as $hc) {
+                if (!isset($allHStmts[$hc])) {
+                    $allHStmts[$hc] = ['code' => $hc, 'text' => ''];
+                }
+            }
+            foreach ($defaults['p_codes'] as $pc) {
+                if (!isset($allPStmts[$pc])) {
+                    $allPStmts[$pc] = ['code' => $pc, 'text' => ''];
+                }
+            }
+            foreach ($defaults['pictograms'] as $pict) {
+                $allPictograms[$pict] = true;
+            }
+            if ($defaults['signal_word'] !== null) {
+                $curPri = self::SIGNAL_HIERARCHY[$signalWord] ?? 0;
+                $newPri = self::SIGNAL_HIERARCHY[$defaults['signal_word']] ?? 0;
+                if ($newPri > $curPri) {
+                    $signalWord = $defaults['signal_word'];
+                }
+            }
+
+            foreach ($usedContributors as $c) {
+                $casId = (string) $c['cas'];
+                if ($casId === '' || $casId === 'TRADE_SECRET') {
+                    continue;
+                }
+                $hazardousCas[$casId] = true;
+            }
+        }
+    }
+
+    /**
      * True if any existing $hazardClasses entry for the same canonical class
      * has a strictly more-severe category than $targetCategory. Used by the
      * cross-category summation pass to skip a Cat 2 firing when Cat 1 has
@@ -1190,6 +1574,20 @@ class HazardEngine
                     $canonical, $categoryCanon, $cas, $name, $conc,
                     $source, $conc >= $cutoff
                 );
+
+                // Phase 3c: feed the ATE buffer for acute-toxicity routes.
+                // CPDs may carry explicit LD50/LC50 values via the ate_*
+                // fields on determination_json; otherwise we fall back to
+                // GHS Table 3.1.2 category-defaults at resolve time.
+                $ateRoute = $this->canonicalToAteRoute($canonical);
+                if ($ateRoute !== null && $categoryCanon !== '') {
+                    $explicitAte = $this->resolveExplicitAte($det, $ateRoute, 'cpd');
+                    $this->addToAteBuffer(
+                        $ateRoute, $cas, $name, $conc, $categoryCanon,
+                        $explicitAte['value'], $explicitAte['source'],
+                        $source
+                    );
+                }
 
                 if ($conc < $cutoff) {
                     $this->traceStep('cpd_below_cutoff', "CPD {$cas} {$entry['class']} {$entry['category']} below cutoff", [

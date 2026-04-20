@@ -67,7 +67,8 @@ function seedClassification(
     array $pictograms,
     ?string $signalWord,
     ?string $classNameCanonical = null,
-    ?string $categoryCanonical = null
+    ?string $categoryCanonical = null,
+    array $ateValues = []
 ): array {
     $sourceId = $db->insert('hazard_source_records', [
         'cas_number'   => $cas,
@@ -92,6 +93,17 @@ function seedClassification(
     if (classificationColumnExists($db, 'class_name_canonical')) {
         $row['class_name_canonical'] = $classNameCanonical;
         $row['category_canonical']   = $categoryCanonical;
+    }
+    // Phase 3c: optional explicit ATE values. Only attach when migration 038
+    // has been applied; otherwise the INSERT would fail on unknown columns.
+    if (!empty($ateValues) && classificationColumnExists($db, 'ate_oral_mg_kg')) {
+        foreach (['ate_oral_mg_kg', 'ate_dermal_mg_kg',
+                  'ate_inhalation_vapor_mg_l_4h', 'ate_inhalation_dust_mg_l_4h',
+                  'ate_inhalation_gas_ppm_4h'] as $col) {
+            if (array_key_exists($col, $ateValues)) {
+                $row[$col] = $ateValues[$col];
+            }
+        }
     }
     $classId = $db->insert('hazard_classifications', $row);
     return ['source_id' => $sourceId, 'class_id' => $classId];
@@ -691,9 +703,95 @@ try {
         traceSteps($result), 'cross_category_summation_triggered');
 
     // ──────────────────────────────────────────────────────────────────
-    echo "\n[26] Phase 3b — engine version stamp is v1.3b-cross-category.\n";
-    assertEquals('ENGINE_VERSION is v1.3b-cross-category',
-        'v1.3b-cross-category', \SDS\Services\HazardEngine::ENGINE_VERSION);
+    // Phase 3c: ATE mixture classification
+    // ──────────────────────────────────────────────────────────────────
+
+    echo "\n[26] Phase 3c — Single Cat 1 Oral at 0.05% (sub-cutoff) → ATE yields Cat 4 mixture.\n";
+    // Per-component Cat 1 Oral cutoff is 0.1%. At 0.05% no per-component
+    // trigger. ATE: 0.05 / 0.5 (default Cat 1 oral ATE) = 0.1. ATE_mix =
+    // 100 / 0.1 = 1000 → falls in Cat 4 range (upper 2000).
+    $seeded['ate_cat1_oral'] = seedClassification(
+        $db, '99999-50-0', 'Acute Toxicity (Oral)', 'Category 1',
+        ['H300'], ['P264'], ['GHS06'], 'Danger'
+    );
+    $result = $engine->classify([
+        ['cas_number' => '99999-50-0', 'chemical_name' => 'Tox A', 'concentration_pct' => 0.05],
+    ]);
+    assertContains('ate-single: trace logs ate_mixture_classified',
+        traceSteps($result), 'ate_mixture_classified');
+    // GHSHazardData 'Acute Toxicity (Oral) - Category 4' has h_codes ['H302']
+    assertContains('ate-single: H302 from Cat 4 mixture', hCodes($result), 'H302');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[27] Phase 3c — Two sub-cutoff Cat 1 Oral components via ATE.\n";
+    // Two Cat 1 Oral CASes at 0.05% each. Neither triggers per-component.
+    // Reciprocal sum = 0.05/0.5 + 0.05/0.5 = 0.2. ATE_mix = 500 → Cat 4.
+    $seeded['ate_cat1_oral_b'] = seedClassification(
+        $db, '99999-51-1', 'Acute Toxicity (Oral)', 'Category 1',
+        ['H300'], ['P264'], ['GHS06'], 'Danger'
+    );
+    $result = $engine->classify([
+        ['cas_number' => '99999-50-0', 'chemical_name' => 'Tox A', 'concentration_pct' => 0.05],
+        ['cas_number' => '99999-51-1', 'chemical_name' => 'Tox B', 'concentration_pct' => 0.05],
+    ]);
+    assertContains('ate-two: trace logs ate_mixture_classified',
+        traceSteps($result), 'ate_mixture_classified');
+    assertContains('ate-two: H302 (Cat 4) from ATE mixture', hCodes($result), 'H302');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[28] Phase 3c — Explicit vendor ATE overrides category default.\n";
+    // Same two Cat 1 Oral CASes, but with EXPLICIT ATE values on the
+    // hazard_classifications rows. Explicit ATE 10 mg/kg (not the 0.5
+    // default). Reciprocal = 0.05/10 + 0.05/10 = 0.01. ATE_mix = 10,000.
+    // Above Cat 5's 5000 upper → NOT classified → trace logs
+    // ate_mixture_not_classified.
+    // (We have to seed fresh rows because the previous Cat 1 seeds have
+    // no explicit ATE; explicit-ATE path is tested with new CASes.)
+    $seeded['ate_explicit_a'] = seedClassification(
+        $db, '99999-52-2', 'Acute Toxicity (Oral)', 'Category 1',
+        ['H300'], ['P264'], ['GHS06'], 'Danger',
+        null, null,
+        ['ate_oral_mg_kg' => 10.0]
+    );
+    $seeded['ate_explicit_b'] = seedClassification(
+        $db, '99999-53-3', 'Acute Toxicity (Oral)', 'Category 1',
+        ['H300'], ['P264'], ['GHS06'], 'Danger',
+        null, null,
+        ['ate_oral_mg_kg' => 10.0]
+    );
+    $result = $engine->classify([
+        ['cas_number' => '99999-52-2', 'chemical_name' => 'Tox C', 'concentration_pct' => 0.05],
+        ['cas_number' => '99999-53-3', 'chemical_name' => 'Tox D', 'concentration_pct' => 0.05],
+    ]);
+    assertContains('ate-explicit: trace logs ate_mixture_not_classified (mix above all categories)',
+        traceSteps($result), 'ate_mixture_not_classified');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[29] Phase 3c — ATE skips when per-component already classified same (route, category).\n";
+    // Cat 1 Oral at 0.2% (above 0.1% Cat 1 per-component cutoff → Cat 1
+    // fires directly). ATE would compute 0.2/0.5 = 0.4, ATE_mix = 250 →
+    // Cat 3 range. alreadyClassified(Cat 1) is true so Cat 1 ATE entry
+    // wouldn't be generated; Cat 3 ATE entry IS different (category-wise)
+    // so it IS added. Consolidation keeps Cat 1 (most severe).
+    $result = $engine->classify([
+        ['cas_number' => '99999-50-0', 'chemical_name' => 'Tox A', 'concentration_pct' => 0.2],
+    ]);
+    // Cat 1 per-component fires → H300 present
+    assertContains('ate-percomp: H300 (Cat 1) from per-component', hCodes($result), 'H300');
+    // Final consolidated classes should contain Cat 1 (most severe wins)
+    $hasCat1 = false;
+    foreach ($result['hazard_classes'] as $hc) {
+        if (($hc['canonical'] ?? '') === \SDS\Services\GHSHazardClass::ACUTE_TOXICITY_ORAL
+            && ($hc['category_canonical'] ?? '') === 'Cat 1') {
+            $hasCat1 = true; break;
+        }
+    }
+    assertEquals('ate-percomp: Cat 1 retained after consolidation', true, $hasCat1);
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[30] Phase 3c — engine version stamp is v1.3c-ate.\n";
+    assertEquals('ENGINE_VERSION is v1.3c-ate',
+        'v1.3c-ate', \SDS\Services\HazardEngine::ENGINE_VERSION);
 
 } catch (\Throwable $e) {
     echo "\n!!! EXCEPTION DURING TEST SUITE !!!\n";

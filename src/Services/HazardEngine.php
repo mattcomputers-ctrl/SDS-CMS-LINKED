@@ -69,8 +69,18 @@ class HazardEngine
      *   vendor data when present, otherwise from the GHS Table 3.1.2
      *   category-default conversion values. Every contributor's ATE
      *   source (vendor / cpd / category_default) is logged in the trace.
+     *
+     * v1.4-aquatic-mfactor (Phase 4): aquatic-hazard summation with
+     *   M-factor weighting per GHS Annex I 4.1.3.5.5. Each aquatic
+     *   Cat 1 component contributes M × concentration to the mixture
+     *   summation, so an M=100 substance at 0.5 % weighs as much as a
+     *   standard Cat 1 substance at 50 %. Chronic categories 2 and 3
+     *   chain Cat 1 contributors through 10× and 100× weights per the
+     *   standard aquatic cross-category formulas. M-factors come from
+     *   hazard_classifications.m_factor_{acute,chronic} (vendor /
+     *   ECHA seed) or the CPD JSON; NULL is treated as 1.0 per GHS.
      */
-    public const ENGINE_VERSION = 'v1.3c-ate';
+    public const ENGINE_VERSION = 'v1.4-aquatic-mfactor';
 
     /**
      * GHS summation thresholds per canonical class + category.
@@ -217,6 +227,74 @@ class HazardEngine
         'dermal'           => GHSHazardClass::ACUTE_TOXICITY_DERMAL,
         'inhalation_vapor' => GHSHazardClass::ACUTE_TOXICITY_INHALATION,
         'inhalation_dust'  => GHSHazardClass::ACUTE_TOXICITY_INHALATION,
+    ];
+
+    /**
+     * GHS Annex I 4.1.3.5.5 aquatic-hazard summation rules with
+     * M-factor weighting. Each rule spells out per-category contributor
+     * weights and the common 25 % summation threshold.
+     *
+     * Aquatic Acute Cat 1:
+     *   Σ ( M_acute × C_Cat1 ) ≥ 25 %
+     *
+     * Aquatic Chronic Cat 1:
+     *   Σ ( M_chronic × C_Cat1 ) ≥ 25 %
+     *
+     * Aquatic Chronic Cat 2 (cross-category):
+     *   10 × Σ ( M_chronic × C_Cat1 )  +  Σ ( C_Cat2 )  ≥ 25 %
+     *
+     * Aquatic Chronic Cat 3 (cross-category):
+     *   100 × Σ ( M_chronic × C_Cat1 )  +  10 × Σ ( C_Cat2 )  +  Σ ( C_Cat3 )
+     *                                  ≥ 25 %
+     *
+     * Aquatic Chronic Cat 4 is not modelled — the GHS rule depends on
+     * solubility and degradability data not tracked in the current
+     * schema.
+     */
+    private const AQUATIC_SUMMATION_RULES = [
+        'acute' => [
+            'Cat 1' => [
+                'threshold'    => 25.0,
+                'contributors' => [
+                    ['category' => 'Cat 1', 'weight' => 1.0, 'use_m_factor' => true],
+                ],
+            ],
+        ],
+        'chronic' => [
+            'Cat 1' => [
+                'threshold'    => 25.0,
+                'contributors' => [
+                    ['category' => 'Cat 1', 'weight' => 1.0, 'use_m_factor' => true],
+                ],
+            ],
+            'Cat 2' => [
+                'threshold'    => 25.0,
+                'contributors' => [
+                    ['category' => 'Cat 1', 'weight' => 10.0,  'use_m_factor' => true],
+                    ['category' => 'Cat 2', 'weight' => 1.0,   'use_m_factor' => false],
+                ],
+            ],
+            'Cat 3' => [
+                'threshold'    => 25.0,
+                'contributors' => [
+                    ['category' => 'Cat 1', 'weight' => 100.0, 'use_m_factor' => true],
+                    ['category' => 'Cat 2', 'weight' => 10.0,  'use_m_factor' => false],
+                    ['category' => 'Cat 3', 'weight' => 1.0,   'use_m_factor' => false],
+                ],
+            ],
+        ],
+    ];
+
+    /** Maps aquatic "route" to its canonical class code. */
+    private const AQUATIC_ROUTE_TO_CANONICAL = [
+        'acute'   => GHSHazardClass::AQUATIC_ACUTE,
+        'chronic' => GHSHazardClass::AQUATIC_CHRONIC,
+    ];
+
+    /** DB column / CPD JSON field for M-factor per aquatic route. */
+    private const AQUATIC_M_FACTOR_COLUMN = [
+        'acute'   => 'm_factor_acute',
+        'chronic' => 'm_factor_chronic',
     ];
 
     /**
@@ -370,6 +448,23 @@ class HazardEngine
     private array $ateBuffer = [];
 
     /**
+     * Per-classify() aquatic-hazard accumulator.
+     *
+     * Structure:
+     *   [route => [
+     *       ['cas' => ..., 'name' => ..., 'conc' => float,
+     *        'category' => 'Cat 1'|'Cat 2'|'Cat 3',
+     *        'm_factor' => float, 'm_factor_source' => string,
+     *        'source' => 'hazard_classification'|'cpd'|'manual_trade_secret'], …
+     *   ]]
+     *
+     * route ∈ {'acute', 'chronic'}. applyAquaticSummation() consumes
+     * this after the main loop and fires aquatic mixture classifications
+     * via the GHS Annex I 4.1.3.5.5 weighted summation formulas.
+     */
+    private array $aquaticBuffer = [];
+
+    /**
      * Run hazard classification for a composition.
      *
      * @param  array $composition  From Formula::getExpandedComposition()
@@ -390,6 +485,7 @@ class HazardEngine
         $this->trace = [];
         $this->summationBuffer = [];
         $this->ateBuffer = [];
+        $this->aquaticBuffer = [];
         $db = Database::getInstance();
 
         $allHClasses   = [];
@@ -648,6 +744,17 @@ class HazardEngine
                     );
                 }
 
+                // Phase 4: feed the aquatic buffer with M-factor context.
+                $aquaticRoute = $this->canonicalToAquaticRoute($canonical);
+                if ($aquaticRoute !== null && $categoryCanon !== null && $categoryCanon !== '') {
+                    $mFactor = $this->resolveMFactor($hc, $aquaticRoute);
+                    $this->addToAquaticBuffer(
+                        $aquaticRoute, $cas, $name, $conc, $categoryCanon,
+                        $mFactor['value'], $mFactor['source'],
+                        'hazard_classification'
+                    );
+                }
+
                 if ($conc >= $cutoff) {
                     // Mark CAS as hazardous only when a GHS category actually triggers
                     $hazardousCas[$cas] = true;
@@ -734,6 +841,14 @@ class HazardEngine
         // category-default ATEs when not. Skipped per route when a
         // per-component trigger already classified the mixture on that route.
         $this->applyATECalculation(
+            $allHClasses, $allHStmts, $allPStmts, $allPictograms, $signalWord, $hazardousCas
+        );
+
+        // Phase 4: aquatic-hazard mixture classification with M-factor
+        // weighting. Each Cat 1 contributor's concentration is multiplied
+        // by its M-factor before summation; cross-category Cat 2/3 chronic
+        // rules chain Cat 1 through 10×/100× further multipliers.
+        $this->applyAquaticSummation(
             $allHClasses, $allHStmts, $allPStmts, $allPictograms, $signalWord, $hazardousCas
         );
 
@@ -933,6 +1048,68 @@ class HazardEngine
         // the category is missing or unrecognised — matches pre-Phase-1 min()
         // fallback behaviour.
         return (float) min($categories);
+    }
+
+    /**
+     * Map a canonical aquatic class code to its aquatic summation route key.
+     * Returns null for non-aquatic codes.
+     */
+    private function canonicalToAquaticRoute(?string $canonical): ?string
+    {
+        return match ($canonical) {
+            GHSHazardClass::AQUATIC_ACUTE   => 'acute',
+            GHSHazardClass::AQUATIC_CHRONIC => 'chronic',
+            default                         => null,
+        };
+    }
+
+    /**
+     * Pull the M-factor for the given aquatic route out of a
+     * hazard_classifications row or CPD determination-JSON array.
+     * Returns 1.0 and source='default' when no explicit value is present
+     * (per GHS Annex I 4.1.3.4 default).
+     */
+    private function resolveMFactor(array $row, string $route, string $source = 'vendor'): array
+    {
+        $col = self::AQUATIC_M_FACTOR_COLUMN[$route] ?? null;
+        if ($col !== null && isset($row[$col]) && $row[$col] !== null && $row[$col] !== '') {
+            $val = (float) $row[$col];
+            if ($val > 0) {
+                return ['value' => $val, 'source' => $source];
+            }
+        }
+        return ['value' => 1.0, 'source' => 'default'];
+    }
+
+    /**
+     * Record an aquatic-hazard contribution into the aquaticBuffer.
+     * Called for every component that carries an aquatic classification
+     * — regardless of whether the per-component cutoff fires. The
+     * summation formulas in GHS Annex I 4.1.3.5.5 weight contributors
+     * by M-factor, so every contributor participates.
+     */
+    private function addToAquaticBuffer(
+        string $route,
+        string $cas,
+        string $name,
+        float $conc,
+        string $category,
+        float $mFactor,
+        string $mFactorSource,
+        string $source
+    ): void {
+        if (!isset(self::AQUATIC_SUMMATION_RULES[$route])) {
+            return;
+        }
+        $this->aquaticBuffer[$route][] = [
+            'cas'             => $cas,
+            'name'            => $name,
+            'conc'            => $conc,
+            'category'        => $category,
+            'm_factor'        => $mFactor,
+            'm_factor_source' => $mFactorSource,
+            'source'          => $source,
+        ];
     }
 
     /**
@@ -1221,6 +1398,134 @@ class HazardEngine
                 }
 
                 foreach ($contributorRows as $c) {
+                    $casId = (string) $c['cas'];
+                    if ($casId === '' || $casId === 'TRADE_SECRET') {
+                        continue;
+                    }
+                    $hazardousCas[$casId] = true;
+                }
+            }
+        }
+    }
+
+    /**
+     * Phase 4: aquatic-hazard mixture classification per GHS Annex I
+     * 4.1.3.5.5. Iterates each route (acute / chronic), evaluates
+     * every AQUATIC_SUMMATION_RULES entry (Cat 1 for acute; Cat 1/2/3
+     * for chronic), and fires the mixture classification when the
+     * weighted summation meets the 25 % threshold.
+     *
+     * Weighting rules:
+     *   - Cat 1 contributors always carry M-factor weighting (M × C).
+     *   - Cat 2 / Cat 3 contributors use concentration only (M = 1).
+     *   - Cross-category rules (Cat 2 / Cat 3) apply an additional 10× or
+     *     100× multiplier to Cat 1 contributors per the standard GHS
+     *     aquatic-cross-category formulas.
+     *
+     * Skip conditions:
+     *   - A more-severe category for the same route is already
+     *     classified (prevents default statements from leaking).
+     *   - The target category itself is already classified.
+     */
+    private function applyAquaticSummation(
+        array &$allHClasses,
+        array &$allHStmts,
+        array &$allPStmts,
+        array &$allPictograms,
+        ?string &$signalWord,
+        array &$hazardousCas
+    ): void {
+        foreach (self::AQUATIC_SUMMATION_RULES as $route => $targetCategories) {
+            $canonical = self::AQUATIC_ROUTE_TO_CANONICAL[$route] ?? null;
+            if ($canonical === null) {
+                continue;
+            }
+            $contributors = $this->aquaticBuffer[$route] ?? [];
+            if (empty($contributors)) {
+                continue;
+            }
+
+            foreach ($targetCategories as $targetCategory => $rule) {
+                if ($this->moreSevereAlreadyClassified($allHClasses, $canonical, $targetCategory)) {
+                    continue;
+                }
+                if ($this->alreadyClassified($allHClasses, $canonical, $targetCategory)) {
+                    continue;
+                }
+
+                // Compute weighted sum across all contributor categories.
+                $weightedSum = 0.0;
+                $usedRows    = [];
+                foreach ($rule['contributors'] as $spec) {
+                    foreach ($contributors as $c) {
+                        if ($c['category'] !== $spec['category']) {
+                            continue;
+                        }
+                        $w = (float) $spec['weight'];
+                        $m = $spec['use_m_factor'] ? (float) $c['m_factor'] : 1.0;
+                        $contribution = (float) $c['conc'] * $w * $m;
+                        $weightedSum += $contribution;
+                        $usedRows[] = [
+                            'cas'              => $c['cas'],
+                            'source_category'  => $spec['category'],
+                            'conc'             => $c['conc'],
+                            'weight'           => $spec['weight'],
+                            'm_factor'         => $m,
+                            'm_factor_source'  => $c['m_factor_source'],
+                            'weighted_contrib' => $contribution,
+                        ];
+                    }
+                }
+
+                if ($weightedSum < $rule['threshold']) {
+                    continue;
+                }
+
+                $this->traceStep('aquatic_summation_triggered', "Aquatic {$route} {$targetCategory} summation fired", [
+                    'route'           => $route,
+                    'canonical'       => $canonical,
+                    'target_category' => $targetCategory,
+                    'weighted_sum'    => $weightedSum,
+                    'threshold'       => $rule['threshold'],
+                    'contributors'    => $usedRows,
+                ]);
+
+                $defaults = $this->getDefaultsForClassCategory($canonical, $targetCategory);
+
+                $allHClasses[] = [
+                    'class'              => GHSHazardClass::displayName($canonical),
+                    'category'           => $defaults['category_display'] ?? $targetCategory,
+                    'canonical'          => $canonical,
+                    'category_canonical' => $targetCategory,
+                    'cas'                => 'MIXTURE',
+                    'chemical'           => 'Multiple components (aquatic summation)',
+                    'concentration_pct'  => $weightedSum,
+                    'cutoff_pct'         => $rule['threshold'],
+                    'source'             => 'aquatic_summation',
+                ];
+
+                foreach ($defaults['h_codes'] as $hc) {
+                    if (!isset($allHStmts[$hc])) {
+                        $allHStmts[$hc] = ['code' => $hc, 'text' => ''];
+                    }
+                }
+                foreach ($defaults['p_codes'] as $pc) {
+                    if (!isset($allPStmts[$pc])) {
+                        $allPStmts[$pc] = ['code' => $pc, 'text' => ''];
+                    }
+                }
+                foreach ($defaults['pictograms'] as $pict) {
+                    $allPictograms[$pict] = true;
+                }
+                if ($defaults['signal_word'] !== null) {
+                    $curPri = self::SIGNAL_HIERARCHY[$signalWord] ?? 0;
+                    $newPri = self::SIGNAL_HIERARCHY[$defaults['signal_word']] ?? 0;
+                    if ($newPri > $curPri) {
+                        $signalWord = $defaults['signal_word'];
+                    }
+                }
+
+                foreach ($usedRows as $c) {
                     $casId = (string) $c['cas'];
                     if ($casId === '' || $casId === 'TRADE_SECRET') {
                         continue;
@@ -1599,6 +1904,18 @@ class HazardEngine
                     $this->addToAteBuffer(
                         $ateRoute, $cas, $name, $conc, $categoryCanon,
                         $explicitAte['value'], $explicitAte['source'],
+                        $source
+                    );
+                }
+
+                // Phase 4: feed the aquatic buffer for GHS09 routes. CPDs
+                // may carry explicit M-factors via the m_factor_* fields.
+                $aquaticRoute = $this->canonicalToAquaticRoute($canonical);
+                if ($aquaticRoute !== null && $categoryCanon !== '') {
+                    $mFactor = $this->resolveMFactor($det, $aquaticRoute, 'cpd');
+                    $this->addToAquaticBuffer(
+                        $aquaticRoute, $cas, $name, $conc, $categoryCanon,
+                        $mFactor['value'], $mFactor['source'],
                         $source
                     );
                 }

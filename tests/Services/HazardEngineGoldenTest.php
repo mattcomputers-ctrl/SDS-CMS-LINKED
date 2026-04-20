@@ -105,6 +105,15 @@ function seedClassification(
             }
         }
     }
+    // Phase 4: optional M-factor columns (co-located in $ateValues for
+    // a single optional payload arg).
+    if (!empty($ateValues) && classificationColumnExists($db, 'm_factor_acute')) {
+        foreach (['m_factor_acute', 'm_factor_chronic'] as $col) {
+            if (array_key_exists($col, $ateValues)) {
+                $row[$col] = $ateValues[$col];
+            }
+        }
+    }
     $classId = $db->insert('hazard_classifications', $row);
     return ['source_id' => $sourceId, 'class_id' => $classId];
 }
@@ -795,9 +804,80 @@ try {
     assertEquals('ate-dominated: Cat 1 retained after consolidation', true, $hasCat1);
 
     // ──────────────────────────────────────────────────────────────────
-    echo "\n[30] Phase 3c — engine version stamp is v1.3c-ate.\n";
-    assertEquals('ENGINE_VERSION is v1.3c-ate',
-        'v1.3c-ate', \SDS\Services\HazardEngine::ENGINE_VERSION);
+    // Phase 4: aquatic-hazard summation with M-factor weighting
+    // ──────────────────────────────────────────────────────────────────
+
+    echo "\n[30] Phase 4 — M=100 aquatic acute Cat 1 at 0.3 % triggers via M-weighted summation.\n";
+    // 0.3 % × M=100 = 30 % ≥ 25 % → fires Aquatic Acute Cat 1. Contributor
+    // is below the 1 % per-component cutoff, so only summation catches it.
+    $seeded['aquatic_m100'] = seedClassification(
+        $db, '99999-60-0', 'Hazardous to the Aquatic Environment (Acute)', 'Category 1',
+        ['H400'], ['P273'], ['GHS09'], 'Warning',
+        null, null,
+        ['m_factor_acute' => 100.0]
+    );
+    $result = $engine->classify([
+        ['cas_number' => '99999-60-0', 'chemical_name' => 'Aquatic Toxin', 'concentration_pct' => 0.3],
+    ]);
+    assertContains('aquatic-m100: GHS09 via aquatic summation', picts($result), 'GHS09');
+    assertContains('aquatic-m100: H400 via aquatic summation', hCodes($result), 'H400');
+    assertContains('aquatic-m100: trace logs aquatic_summation_triggered',
+        traceSteps($result), 'aquatic_summation_triggered');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[31] Phase 4 — Same M=100 substance at 0.1 % (weighted 10) does NOT trigger.\n";
+    $result = $engine->classify([
+        ['cas_number' => '99999-60-0', 'chemical_name' => 'Aquatic Toxin', 'concentration_pct' => 0.1],
+    ]);
+    assertNotContains('aquatic-below: no GHS09', picts($result), 'GHS09');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[32] Phase 4 — Chronic Cat 2 cross-category: 10 × M × Cat1 + Cat2 ≥ 25 %.\n";
+    // Cat 1 Chronic with M=10 at 0.2 % (contribution 10 × 10 × 0.2 = 20)
+    // + Cat 2 Chronic at 5 % (contribution 5)
+    // = 25 % → triggers Aquatic Chronic Cat 2 (H411).
+    $seeded['aquatic_chr1'] = seedClassification(
+        $db, '99999-61-1', 'Hazardous to the Aquatic Environment (Chronic)', 'Category 1',
+        ['H410'], ['P273'], ['GHS09'], 'Warning',
+        null, null,
+        ['m_factor_chronic' => 10.0]
+    );
+    $seeded['aquatic_chr2'] = seedClassification(
+        $db, '99999-62-2', 'Hazardous to the Aquatic Environment (Chronic)', 'Category 2',
+        ['H411'], ['P273'], ['GHS09'], null
+    );
+    $result = $engine->classify([
+        ['cas_number' => '99999-61-1', 'chemical_name' => 'Chronic Cat 1', 'concentration_pct' => 0.2],
+        ['cas_number' => '99999-62-2', 'chemical_name' => 'Chronic Cat 2', 'concentration_pct' => 5.0],
+    ]);
+    assertContains('aquatic-chr2: trace logs aquatic_summation_triggered',
+        traceSteps($result), 'aquatic_summation_triggered');
+    // GHSHazardData 'Hazardous to the Aquatic Environment (Chronic) - Category 2'
+    // carries H411 and GHS09.
+    assertContains('aquatic-chr2: H411 from Chronic Cat 2', hCodes($result), 'H411');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[33] Phase 4 — NULL M-factor defaults to 1.0 per GHS Annex I 4.1.3.4.\n";
+    // Two Cat 1 Acute contributors at 15 % each, no explicit M-factors.
+    // Default M=1 → weighted sum 15 + 15 = 30 ≥ 25 → triggers.
+    $seeded['aquatic_defm_a'] = seedClassification(
+        $db, '99999-63-3', 'Hazardous to the Aquatic Environment (Acute)', 'Category 1',
+        ['H400'], ['P273'], ['GHS09'], 'Warning'
+    );
+    $seeded['aquatic_defm_b'] = seedClassification(
+        $db, '99999-64-4', 'Hazardous to the Aquatic Environment (Acute)', 'Category 1',
+        ['H400'], ['P273'], ['GHS09'], 'Warning'
+    );
+    $result = $engine->classify([
+        ['cas_number' => '99999-63-3', 'chemical_name' => 'Defm A', 'concentration_pct' => 15.0],
+        ['cas_number' => '99999-64-4', 'chemical_name' => 'Defm B', 'concentration_pct' => 15.0],
+    ]);
+    assertContains('aquatic-defm: GHS09 via default-M summation', picts($result), 'GHS09');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[34] Phase 4 — engine version stamp is v1.4-aquatic-mfactor.\n";
+    assertEquals('ENGINE_VERSION is v1.4-aquatic-mfactor',
+        'v1.4-aquatic-mfactor', \SDS\Services\HazardEngine::ENGINE_VERSION);
 
 } catch (\Throwable $e) {
     echo "\n!!! EXCEPTION DURING TEST SUITE !!!\n";

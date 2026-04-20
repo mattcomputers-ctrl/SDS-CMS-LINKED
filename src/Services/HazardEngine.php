@@ -28,22 +28,36 @@ class HazardEngine
      * Bumped each time the engine's classification logic changes so audits
      * can identify which version produced any given classification.
      * See docs/hazard-engine-refactor-plan.md for the version timeline.
+     *
+     * v1.1-canonical-names (Phase 1): class names and categories are now
+     * normalised via HazardClassAliases. Cutoffs and precedence rules
+     * unchanged — behaviour-identical for every cleanly-normalised input.
      */
-    public const ENGINE_VERSION = 'v1.0-baseline';
+    public const ENGINE_VERSION = 'v1.1-canonical-names';
 
-    /** GHS concentration cut-offs for health hazards (simplified). */
+    /**
+     * GHS concentration cut-offs for health hazards, keyed by canonical
+     * GHSHazardClass code. Category keys match HazardClassAliases::normalizeCategory()
+     * output ("Cat 1", "Cat 2A", etc.) so lookups are exact equality — no
+     * more fuzzy stripos matching against display strings.
+     *
+     * Acute toxicity uses identical cutoffs for all three routes in Phase 1;
+     * per-route ATE-weighted summation arrives in Phase 3.
+     */
     private const HEALTH_CUTOFFS = [
-        'Acute Toxicity'                => ['Cat 1' => 0.1, 'Cat 2' => 0.1, 'Cat 3' => 0.1, 'Cat 4' => 1.0],
-        'Skin Corrosion/Irritation'     => ['Cat 1' => 1.0, 'Cat 2' => 10.0],
-        'Serious Eye Damage/Irritation' => ['Cat 1' => 1.0, 'Cat 2A' => 10.0],
-        'Skin Sensitization'            => ['Cat 1' => 0.1],
-        'Respiratory Sensitization'     => ['Cat 1' => 0.1],
-        'Germ Cell Mutagenicity'        => ['Cat 1' => 0.1, 'Cat 2' => 1.0],
-        'Carcinogenicity'               => ['Cat 1A' => 0.1, 'Cat 1B' => 0.1, 'Cat 2' => 0.1],
-        'Reproductive Toxicity'         => ['Cat 1' => 0.1, 'Cat 2' => 0.3],
-        'STOT Single Exposure'          => ['Cat 1' => 1.0, 'Cat 2' => 10.0, 'Cat 3' => 20.0],
-        'STOT Repeated Exposure'        => ['Cat 1' => 1.0, 'Cat 2' => 10.0],
-        'Aspiration Hazard'             => ['Cat 1' => 10.0],
+        GHSHazardClass::ACUTE_TOXICITY_ORAL       => ['Cat 1' => 0.1, 'Cat 2' => 0.1, 'Cat 3' => 0.1, 'Cat 4' => 1.0],
+        GHSHazardClass::ACUTE_TOXICITY_DERMAL     => ['Cat 1' => 0.1, 'Cat 2' => 0.1, 'Cat 3' => 0.1, 'Cat 4' => 1.0],
+        GHSHazardClass::ACUTE_TOXICITY_INHALATION => ['Cat 1' => 0.1, 'Cat 2' => 0.1, 'Cat 3' => 0.1, 'Cat 4' => 1.0],
+        GHSHazardClass::SKIN_CORROSION_IRRITATION => ['Cat 1' => 1.0, 'Cat 2' => 10.0],
+        GHSHazardClass::EYE_DAMAGE_IRRITATION     => ['Cat 1' => 1.0, 'Cat 2A' => 10.0],
+        GHSHazardClass::SKIN_SENSITIZATION        => ['Cat 1' => 0.1],
+        GHSHazardClass::RESPIRATORY_SENSITIZATION => ['Cat 1' => 0.1],
+        GHSHazardClass::GERM_CELL_MUTAGENICITY    => ['Cat 1' => 0.1, 'Cat 2' => 1.0],
+        GHSHazardClass::CARCINOGENICITY           => ['Cat 1A' => 0.1, 'Cat 1B' => 0.1, 'Cat 2' => 0.1],
+        GHSHazardClass::REPRODUCTIVE_TOXICITY     => ['Cat 1' => 0.1, 'Cat 2' => 0.3],
+        GHSHazardClass::STOT_SINGLE               => ['Cat 1' => 1.0, 'Cat 2' => 10.0, 'Cat 3' => 20.0],
+        GHSHazardClass::STOT_REPEATED             => ['Cat 1' => 1.0, 'Cat 2' => 10.0],
+        GHSHazardClass::ASPIRATION_HAZARD         => ['Cat 1' => 10.0],
     ];
 
     /** Signal word hierarchy. */
@@ -289,23 +303,43 @@ class HazardEngine
 
             // Process each hazard classification
             foreach ($hazardData as $hc) {
-                $className = $hc['class_name'];
-                $category  = $hc['category'];
+                $className = (string) ($hc['class_name'] ?? '');
+                $category  = (string) ($hc['category']   ?? '');
+
+                // Prefer pre-backfilled canonical columns; fall back to runtime
+                // normalisation for rows the backfill hasn't reached or that
+                // arrived via a non-DB source.
+                $canonical = $hc['class_name_canonical'] ?? null;
+                if ($canonical === null || $canonical === '') {
+                    $canonical = HazardClassAliases::normalize($className);
+                }
+                $categoryCanon = $hc['category_canonical'] ?? null;
+                if ($categoryCanon === null || $categoryCanon === '') {
+                    $categoryCanon = HazardClassAliases::normalizeCategory($category);
+                }
+
+                if ($canonical === null) {
+                    $this->traceStep('class_name_unmapped', "CAS {$cas} class_name '{$className}' not in alias table; using default cutoff", [
+                        'cas' => $cas, 'class_name' => $className, 'category' => $category,
+                    ]);
+                }
 
                 // Check against GHS concentration cutoffs
-                $cutoff = $this->getCutoff($className, $category);
+                $cutoff = $this->getCutoff($canonical ?? '', $categoryCanon);
 
                 if ($conc >= $cutoff) {
                     // Mark CAS as hazardous only when a GHS category actually triggers
                     $hazardousCas[$cas] = true;
 
                     $allHClasses[] = [
-                        'class'    => $className,
-                        'category' => $category,
-                        'cas'      => $cas,
-                        'chemical' => $name,
-                        'concentration_pct' => $conc,
-                        'cutoff_pct'        => $cutoff,
+                        'class'              => $className,
+                        'category'           => $category,
+                        'canonical'          => $canonical,
+                        'category_canonical' => $categoryCanon,
+                        'cas'                => $cas,
+                        'chemical'           => $name,
+                        'concentration_pct'  => $conc,
+                        'cutoff_pct'         => $cutoff,
                     ];
 
                     // Signal word
@@ -352,12 +386,14 @@ class HazardEngine
 
                     $this->traceStep('classified', "CAS {$cas} triggers {$className} {$category}", [
                         'cas' => $cas, 'class' => $className, 'category' => $category,
+                        'canonical' => $canonical, 'category_canonical' => $categoryCanon,
                         'concentration' => $conc, 'cutoff' => $cutoff,
                     ]);
                 } else {
                     $this->traceStep('below_cutoff', "CAS {$cas} below cutoff for {$className} {$category}", [
-                        'cas' => $cas, 'class' => $className, 'concentration' => $conc,
-                        'cutoff' => $cutoff,
+                        'cas' => $cas, 'class' => $className, 'category' => $category,
+                        'canonical' => $canonical, 'category_canonical' => $categoryCanon,
+                        'concentration' => $conc, 'cutoff' => $cutoff,
                     ]);
                 }
             }
@@ -531,34 +567,34 @@ class HazardEngine
     }
 
     /**
-     * Get the concentration cutoff for a hazard class and category.
+     * Get the concentration cutoff for a canonical hazard class code + category.
+     *
+     * Inputs are expected to be normalised via HazardClassAliases. Callers
+     * that hand in NULL / unknown-code inputs get the conservative 1%
+     * default — matches pre-Phase-1 behaviour for physical hazards and
+     * any unrecognised classification.
+     *
+     * @param string      $canonical  GHSHazardClass::* code (or '' / unknown)
+     * @param string|null $category   Canonicalised category ('Cat 1', 'Cat 2A', …)
      */
-    private function getCutoff(string $className, ?string $category): float
+    private function getCutoff(string $canonical, ?string $category): float
     {
-        // Try to match against known cutoffs
-        foreach (self::HEALTH_CUTOFFS as $class => $categories) {
-            if (stripos($className, $class) !== false || stripos($class, $className) !== false) {
-                if ($category !== null) {
-                    // Normalize category: "Category 2" -> "Cat 2"
-                    $normCat = preg_replace('/^Category\s*/i', 'Cat ', $category);
-                    foreach ($categories as $catKey => $cutoff) {
-                        if (strcasecmp($catKey, $normCat) === 0 || strcasecmp($catKey, $category) === 0) {
-                            return $cutoff;
-                        }
-                    }
-                }
-                // Return the highest (most conservative) cutoff for the class
-                return min($categories);
-            }
-        }
-
-        // Physical hazards (flammable, oxidizing, etc.) — apply if >= 1%
-        if (stripos($className, 'Flammable') !== false) {
+        if ($canonical === '' || !isset(self::HEALTH_CUTOFFS[$canonical])) {
+            // Physical / environmental / unknown canonical codes → 1% default.
+            // Preserves the pre-Phase-1 "Flammable and anything else lands at 1%"
+            // behaviour. Phase 2+ may tighten this per-class.
             return 1.0;
         }
 
-        // Default: 1% cutoff
-        return 1.0;
+        $categories = self::HEALTH_CUTOFFS[$canonical];
+        if ($category !== null && $category !== '' && isset($categories[$category])) {
+            return $categories[$category];
+        }
+
+        // Return the most conservative (smallest) cutoff for the class when
+        // the category is missing or unrecognised — matches pre-Phase-1 min()
+        // fallback behaviour.
+        return (float) min($categories);
     }
 
     /**
@@ -659,13 +695,15 @@ class HazardEngine
                 if (isset($ghsData[$key])) {
                     $entry = $ghsData[$key];
                     $hazardClasses[] = [
-                        'class'             => $entry['class'],
-                        'category'          => $entry['category'],
-                        'cas'               => $cas,
-                        'chemical'          => $name,
-                        'concentration_pct' => $conc,
-                        'cutoff_pct'        => 0,
-                        'source'            => $source,
+                        'class'              => $entry['class'],
+                        'category'           => $entry['category'],
+                        'canonical'          => HazardClassAliases::normalize($entry['class']),
+                        'category_canonical' => HazardClassAliases::normalizeCategory($entry['category']),
+                        'cas'                => $cas,
+                        'chemical'           => $name,
+                        'concentration_pct'  => $conc,
+                        'cutoff_pct'         => 0,
+                        'source'             => $source,
                     ];
                 }
             }
@@ -673,13 +711,15 @@ class HazardEngine
             $classRaw = array_filter(array_map('trim', explode(',', $det['hazard_classes'] ?? '')));
             foreach ($classRaw as $classStr) {
                 $hazardClasses[] = [
-                    'class'             => $classStr,
-                    'category'          => '',
-                    'cas'               => $cas,
-                    'chemical'          => $name,
-                    'concentration_pct' => $conc,
-                    'cutoff_pct'        => 0,
-                    'source'            => $source,
+                    'class'              => $classStr,
+                    'category'           => '',
+                    'canonical'          => HazardClassAliases::normalize($classStr),
+                    'category_canonical' => '',
+                    'cas'                => $cas,
+                    'chemical'           => $name,
+                    'concentration_pct'  => $conc,
+                    'cutoff_pct'         => 0,
+                    'source'             => $source,
                 ];
             }
         }

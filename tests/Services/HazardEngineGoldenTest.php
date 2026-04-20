@@ -65,7 +65,9 @@ function seedClassification(
     array $hStatements,
     array $pStatements,
     array $pictograms,
-    ?string $signalWord
+    ?string $signalWord,
+    ?string $classNameCanonical = null,
+    ?string $categoryCanonical = null
 ): array {
     $sourceId = $db->insert('hazard_source_records', [
         'cas_number'   => $cas,
@@ -74,7 +76,9 @@ function seedClassification(
         'payload_json' => json_encode(['test' => true]),
         'is_current'   => 1,
     ]);
-    $classId = $db->insert('hazard_classifications', [
+    // Only include canonical columns if migration 037 has been applied;
+    // otherwise the INSERT would fail on unknown columns.
+    $row = [
         'hazard_source_record_id' => $sourceId,
         'cas_number'              => $cas,
         'jurisdiction'            => 'US',
@@ -84,8 +88,26 @@ function seedClassification(
         'p_statements_json'       => json_encode($pStatements),
         'pictograms_json'         => json_encode($pictograms),
         'signal_word'             => $signalWord,
-    ]);
+    ];
+    if (classificationColumnExists($db, 'class_name_canonical')) {
+        $row['class_name_canonical'] = $classNameCanonical;
+        $row['category_canonical']   = $categoryCanonical;
+    }
+    $classId = $db->insert('hazard_classifications', $row);
     return ['source_id' => $sourceId, 'class_id' => $classId];
+}
+
+/** Cached check — migration 037 column presence. */
+function classificationColumnExists(Database $db, string $column): bool
+{
+    static $cache = [];
+    if (isset($cache[$column])) return $cache[$column];
+    $row = $db->fetch(
+        "SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'hazard_classifications' AND COLUMN_NAME = ?",
+        [$column]
+    );
+    return $cache[$column] = ((int) ($row['cnt'] ?? 0) > 0);
 }
 
 function teardown(Database $db, array $seededIds): void
@@ -323,6 +345,79 @@ try {
     ]);
     assertContains('at-cutoff: pictogram GHS08', picts($result), 'GHS08');
     assertContains('at-cutoff: H341', hCodes($result), 'H341');
+
+    // ──────────────────────────────────────────────────────────────────
+    // Phase 1: canonical-name refactor tests
+    // ──────────────────────────────────────────────────────────────────
+
+    echo "\n[11] Phase 1 — hazard_classes output entries carry 'canonical' field.\n";
+    $result = $engine->classify([
+        ['cas_number' => TEST_CAS['carc_1a'], 'chemical_name' => 'Test Carc', 'concentration_pct' => 0.5],
+    ]);
+    $hasCanonical = false;
+    foreach ($result['hazard_classes'] as $hc) {
+        if (!empty($hc['canonical']) && $hc['canonical'] === \SDS\Services\GHSHazardClass::CARCINOGENICITY) {
+            $hasCanonical = true;
+            break;
+        }
+    }
+    assertEquals('hazard_classes[].canonical present and correct', true, $hasCanonical);
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[12] Phase 1 — French class_name triggers via runtime normalization.\n";
+    // Seed a row with a French display name and NULL canonical columns. The
+    // engine should reverse-map "Cancérogénicité" -> "Carcinogenicity" ->
+    // GHSHazardClass::CARCINOGENICITY at runtime and trigger normally.
+    $seeded['french_carc'] = seedClassification(
+        $db, '99999-08-8', 'Cancérogénicité', 'Catégorie 1A',
+        ['H350'], ['P201'], ['GHS08'], 'Danger'
+    );
+    $result = $engine->classify([
+        ['cas_number' => '99999-08-8', 'chemical_name' => 'Test Carc FR', 'concentration_pct' => 0.5],
+    ]);
+    assertContains('fr-runtime: pictogram GHS08', picts($result), 'GHS08');
+    assertContains('fr-runtime: H350', hCodes($result), 'H350');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[13] Phase 1 — pre-filled canonical column used directly (fast path).\n";
+    if (classificationColumnExists($db, 'class_name_canonical')) {
+        // Seed a row with a deliberately-garbage class_name but a CORRECT
+        // class_name_canonical. The engine should use the canonical column
+        // directly and trigger, ignoring the nonsense display string.
+        $seeded['canon_only'] = seedClassification(
+            $db, '99999-09-9', 'Garbled Display String', 'nonsense category',
+            ['H350'], ['P201'], ['GHS08'], 'Danger',
+            \SDS\Services\GHSHazardClass::CARCINOGENICITY,
+            'Cat 1A'
+        );
+        $result = $engine->classify([
+            ['cas_number' => '99999-09-9', 'chemical_name' => 'Test Canon', 'concentration_pct' => 0.5],
+        ]);
+        assertContains('canon-path: pictogram GHS08', picts($result), 'GHS08');
+        assertContains('canon-path: H350', hCodes($result), 'H350');
+    } else {
+        echo "  SKIP  canonical column not present — migration 037 not applied. Skipping test 13.\n";
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[14] Phase 1 — unmappable class name falls through to default cutoff.\n";
+    // Seed with a class_name we deliberately have no alias for. Engine will
+    // log class_name_unmapped trace step and apply the 1% default cutoff.
+    $seeded['unmapped'] = seedClassification(
+        $db, '99999-10-0', 'Some Totally New Hazard Class 2099', 'Category 1',
+        ['H999'], [], ['GHS08'], 'Warning'
+    );
+    $result = $engine->classify([
+        ['cas_number' => '99999-10-0', 'chemical_name' => 'Test Unmapped', 'concentration_pct' => 5.0],
+    ]);
+    assertContains('unmapped: trace logs class_name_unmapped', traceSteps($result), 'class_name_unmapped');
+    // With 5% concentration >= 1% default cutoff, classification still fires
+    assertContains('unmapped: fires at >=1% default cutoff', hCodes($result), 'H999');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[15] Phase 1 — engine version stamp is bumped.\n";
+    assertEquals('ENGINE_VERSION is v1.1-canonical-names',
+        'v1.1-canonical-names', \SDS\Services\HazardEngine::ENGINE_VERSION);
 
 } catch (\Throwable $e) {
     echo "\n!!! EXCEPTION DURING TEST SUITE !!!\n";

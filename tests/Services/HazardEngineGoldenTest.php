@@ -478,11 +478,14 @@ try {
     // Skin Corr/Irrit Cat 1 cutoff = 1%, Cat 2 cutoff = 10%. At conc=5%:
     // only Cat 1 triggers; Cat 2 falls below its 10% threshold. Cat 1
     // carries H314 + GHS05; Cat 2 carries H315 + GHS07. Expect H314 +
-    // GHS05 present, H315 + GHS07 absent, cpd_below_cutoff trace for Cat 2.
+    // GHS05 present, cpd_below_cutoff trace for Cat 2.
+    // Note: GHSHazardData keys these separately as 'Skin Corrosion - …'
+    // and 'Skin Irritation - …' even though the 'class' field maps both
+    // to 'Skin Corrosion/Irritation'.
     $cpdIds[] = seedCpd($db, '99999-21-1', [
         'selected_hazards' => [
-            'Skin Corrosion/Irritation - Category 1',
-            'Skin Corrosion/Irritation - Category 2',
+            'Skin Corrosion - Category 1',
+            'Skin Irritation - Category 2',
         ],
         'h_statements'     => 'H314,H315',
         'p_statements'     => 'P260,P264',

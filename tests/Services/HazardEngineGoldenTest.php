@@ -616,9 +616,84 @@ try {
     assertContains('sum-cpd: summation_triggered in trace', traceSteps($result), 'summation_triggered');
 
     // ──────────────────────────────────────────────────────────────────
-    echo "\n[23] Phase 3 — engine version stamp is bumped to v1.3-summation.\n";
-    assertEquals('ENGINE_VERSION is v1.3-summation',
-        'v1.3-summation', \SDS\Services\HazardEngine::ENGINE_VERSION);
+    // Phase 3b: cross-category summation
+    // ──────────────────────────────────────────────────────────────────
+
+    echo "\n[23] Phase 3b — Cat 1 Skin Corr contributor counts 10× toward Cat 2 summation.\n";
+    // Seed two Cat 1 Skin Corrosion contributors. Neither alone reaches 1 %
+    // (per-component Cat 1 cutoff), and together they sum to 1 % which is
+    // below the 5 % Cat 1 summation threshold. But 10× weighting puts the
+    // Cat 2 cross-category sum at 10 % — the exact threshold — triggering
+    // a Cat 2 mixture classification (H315, GHS07).
+    $seeded['xcat_skin_a'] = seedClassification(
+        $db, '99999-40-0', 'Skin Corrosion/Irritation', 'Category 1',
+        ['H314'], ['P260'], ['GHS05'], 'Danger'
+    );
+    $seeded['xcat_skin_b'] = seedClassification(
+        $db, '99999-41-1', 'Skin Corrosion/Irritation', 'Category 1',
+        ['H314'], ['P260'], ['GHS05'], 'Danger'
+    );
+    $result = $engine->classify([
+        ['cas_number' => '99999-40-0', 'chemical_name' => 'Skin Corr A', 'concentration_pct' => 0.5],
+        ['cas_number' => '99999-41-1', 'chemical_name' => 'Skin Corr B', 'concentration_pct' => 0.5],
+    ]);
+    // Expect Cat 2 fired via cross-category summation → H315, GHS07
+    assertContains('xcat-skin: H315 (Cat 2) present', hCodes($result), 'H315');
+    assertContains('xcat-skin: trace logs cross_category_summation_triggered',
+        traceSteps($result), 'cross_category_summation_triggered');
+    // Cat 1 did NOT fire (1 % Cat 1 sum < 5 % summation threshold AND neither
+    // component individually reached 1 %)
+    assertNotContains('xcat-skin: H314 absent (Cat 1 did not fire)', hCodes($result), 'H314');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[24] Phase 3b — Cross-category skipped when Cat 1 already fires.\n";
+    // Same two CASes at 3 % and 3 % → Cat 1 sum 6 % > 5 % simple summation
+    // threshold → Cat 1 fires. Cross-category Cat 2 would also be above
+    // threshold (10×6 + 0 = 60 ≥ 10), but consolidation drops Cat 2 in
+    // favour of Cat 1 anyway, so the cross-category pass short-circuits.
+    $result = $engine->classify([
+        ['cas_number' => '99999-40-0', 'chemical_name' => 'Skin Corr A', 'concentration_pct' => 3.0],
+        ['cas_number' => '99999-41-1', 'chemical_name' => 'Skin Corr B', 'concentration_pct' => 3.0],
+    ]);
+    assertContains('xcat-skip: H314 (Cat 1) present', hCodes($result), 'H314');
+    // Cross-category should not have fired — Cat 1 is already there
+    assertNotContains('xcat-skip: cross_category_summation_triggered absent',
+        traceSteps($result), 'cross_category_summation_triggered');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[25] Phase 3b — STOT-SE cross-category: Cat 1 alone at 1 % triggers Cat 2.\n";
+    // A single STOT-SE Cat 1 contributor at exactly 1 %. Per-component Cat 1
+    // cutoff is 1.0 %, so 1.0 % hits it exactly — Cat 1 fires directly. To
+    // test the pure cross-category path we need the component below Cat 1
+    // cutoff: use 0.9 % → 10× = 9 % — NOT enough. Use 1.0 % Cat 1 + 1 %
+    // Cat 2 → 10 + 1 = 11 ≥ 10 → Cat 2 via cross-category. But Cat 1
+    // triggers directly at 1.0 %. Use 0.95 % Cat 1 only → 10× 0.95 = 9.5 <
+    // 10 → no trigger. So this cross-category rule is only reachable when
+    // a Cat 2 contributor exists too, or multiple Cat 1 contributors sum
+    // to ≥ 1 % without any single reaching 1 %. Test the latter:
+    $seeded['xcat_stot_a'] = seedClassification(
+        $db, '99999-42-2', 'STOT — Single Exposure', 'Category 1',
+        ['H370'], ['P260'], ['GHS08'], 'Danger'
+    );
+    $seeded['xcat_stot_b'] = seedClassification(
+        $db, '99999-43-3', 'STOT — Single Exposure', 'Category 1',
+        ['H370'], ['P260'], ['GHS08'], 'Danger'
+    );
+    // Two STOT-SE Cat 1 at 0.6 % each → Cat 1 sum 1.2 %, cross-cat 10×1.2 =
+    // 12 % ≥ 10 → Cat 2 fires. Cat 1 simple summation is 1.2 < 10, so
+    // Cat 1 doesn't fire.
+    $result = $engine->classify([
+        ['cas_number' => '99999-42-2', 'chemical_name' => 'STOT A', 'concentration_pct' => 0.6],
+        ['cas_number' => '99999-43-3', 'chemical_name' => 'STOT B', 'concentration_pct' => 0.6],
+    ]);
+    assertContains('xcat-stot: H371 or H370 via Cat 2 path', hCodes($result), 'H371');
+    assertContains('xcat-stot: trace logs cross_category_summation_triggered',
+        traceSteps($result), 'cross_category_summation_triggered');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[26] Phase 3b — engine version stamp is v1.3b-cross-category.\n";
+    assertEquals('ENGINE_VERSION is v1.3b-cross-category',
+        'v1.3b-cross-category', \SDS\Services\HazardEngine::ENGINE_VERSION);
 
 } catch (\Throwable $e) {
     echo "\n!!! EXCEPTION DURING TEST SUITE !!!\n";

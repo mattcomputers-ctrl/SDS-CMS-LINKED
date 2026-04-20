@@ -49,10 +49,18 @@ class HazardEngine
      *   0.12% and trigger Carcinogenicity Cat 1A). Applies to health
      *   hazards only in this phase — physical hazards are test-based,
      *   aquatic hazards need M-factors (Phase 4), acute toxicity needs
-     *   ATE formula (deferred to Phase 3b). Per-component triggers
-     *   still fire independently; summation is purely additive.
+     *   ATE formula (deferred). Per-component triggers still fire
+     *   independently; summation is purely additive.
+     *
+     * v1.3b-cross-category (Phase 3b): cross-category summation per
+     *   GHS Annex I 3.2.3 (Skin Corr/Irrit), 3.3.3 (Eye Dam/Irrit),
+     *   3.8.3 (STOT-SE), 3.9.3 (STOT-RE). Sub-threshold Cat 1
+     *   contributors count 10× toward Cat 2 (or Cat 2A) classification.
+     *   Closes the gap where products with 1-5 % of Cat 1 skin
+     *   corrosives previously escaped both Cat 1 and Cat 2 classification
+     *   despite being legitimately hazardous per GHS rules.
      */
-    public const ENGINE_VERSION = 'v1.3-summation';
+    public const ENGINE_VERSION = 'v1.3b-cross-category';
 
     /**
      * GHS summation thresholds per canonical class + category.
@@ -106,6 +114,66 @@ class HazardEngine
         GHSHazardClass::ASPIRATION_HAZARD => [
             'Cat 1' => 10.0,  // Full GHS rule also requires kinematic viscosity
                               // ≤ 20.5 mm²/s at 40 °C; not modelled here.
+        ],
+    ];
+
+    /**
+     * GHS cross-category summation rules (Phase 3b).
+     *
+     * A handful of hazard classes let sub-threshold Cat 1 contributors
+     * contribute to Cat 2 classification at a 10× weight. This is the
+     * rule that catches "a product with 1-5 % of Cat 1 skin corrosive"
+     * scenarios that would otherwise slip through both Cat 1 and Cat 2.
+     *
+     *   target_category triggers when
+     *     sum over contributors of (weight × concentration) ≥ threshold
+     *
+     * Applies to:
+     *   - Skin Corrosion/Irritation (GHS Annex I 3.2.3.3.2)
+     *   - Eye Damage/Irritation (GHS Annex I 3.3.3.3.2)
+     *   - STOT Single Exposure (GHS Annex I 3.8.3.4.5)
+     *   - STOT Repeated Exposure (GHS Annex I 3.9.3.4.5)
+     *
+     * Carcinogenicity, Mutagenicity, Reproductive Toxicity, Sensitisation,
+     * and Aspiration don't get cross-category treatment — their categories
+     * are hierarchically independent or single-category.
+     */
+    private const CROSS_CATEGORY_SUMMATION_RULES = [
+        GHSHazardClass::SKIN_CORROSION_IRRITATION => [
+            'Cat 2' => [
+                'threshold'    => 10.0,
+                'contributors' => [
+                    ['category' => 'Cat 1', 'weight' => 10.0],
+                    ['category' => 'Cat 2', 'weight' => 1.0],
+                ],
+            ],
+        ],
+        GHSHazardClass::EYE_DAMAGE_IRRITATION => [
+            'Cat 2A' => [
+                'threshold'    => 10.0,
+                'contributors' => [
+                    ['category' => 'Cat 1',  'weight' => 10.0],
+                    ['category' => 'Cat 2A', 'weight' => 1.0],
+                ],
+            ],
+        ],
+        GHSHazardClass::STOT_SINGLE => [
+            'Cat 2' => [
+                'threshold'    => 10.0,
+                'contributors' => [
+                    ['category' => 'Cat 1', 'weight' => 10.0],
+                    ['category' => 'Cat 2', 'weight' => 1.0],
+                ],
+            ],
+        ],
+        GHSHazardClass::STOT_REPEATED => [
+            'Cat 2' => [
+                'threshold'    => 10.0,
+                'contributors' => [
+                    ['category' => 'Cat 1', 'weight' => 10.0],
+                    ['category' => 'Cat 2', 'weight' => 1.0],
+                ],
+            ],
         ],
     ];
 
@@ -835,6 +903,124 @@ class HazardEngine
                 }
             }
         }
+
+        // Phase 3b: cross-category summation rules. A Cat 1 contributor
+        // counts 10× toward Cat 2 classification for certain classes
+        // (skin/eye corrosion/irritation, STOT-SE, STOT-RE). Run after
+        // the simple rules so alreadyClassified correctly sees any Cat 1
+        // that was just stamped by the simple path.
+        foreach (self::CROSS_CATEGORY_SUMMATION_RULES as $canonical => $targetCategories) {
+            foreach ($targetCategories as $targetCategory => $rule) {
+                // If a more-severe category is already classified for this
+                // class, Cat 2 would be dropped by consolidation anyway —
+                // skip the work.
+                if ($this->moreSevereAlreadyClassified($allHClasses, $canonical, $targetCategory)) {
+                    continue;
+                }
+
+                // Skip if the target category itself already fired (via
+                // per-component trigger or the simple summation pass).
+                if ($this->alreadyClassified($allHClasses, $canonical, $targetCategory)) {
+                    continue;
+                }
+
+                $weightedSum     = 0.0;
+                $contributorRows = [];
+                foreach ($rule['contributors'] as $contribSpec) {
+                    $bucket = $this->summationBuffer[$canonical][$contribSpec['category']] ?? [];
+                    foreach ($bucket as $c) {
+                        $contribution = (float) $c['conc'] * (float) $contribSpec['weight'];
+                        $weightedSum += $contribution;
+                        $contributorRows[] = [
+                            'cas'               => $c['cas'],
+                            'source_category'   => $contribSpec['category'],
+                            'source_conc'       => $c['conc'],
+                            'weight'            => $contribSpec['weight'],
+                            'weighted_contrib'  => $contribution,
+                        ];
+                    }
+                }
+
+                if ($weightedSum < $rule['threshold']) {
+                    continue;
+                }
+
+                $this->traceStep('cross_category_summation_triggered',
+                    "Cross-category summation fired for {$canonical} -> {$targetCategory}",
+                    [
+                        'canonical'         => $canonical,
+                        'target_category'   => $targetCategory,
+                        'weighted_sum'      => $weightedSum,
+                        'threshold'         => $rule['threshold'],
+                        'contributors'      => $contributorRows,
+                    ]
+                );
+
+                $defaults = $this->getDefaultsForClassCategory($canonical, $targetCategory);
+
+                $allHClasses[] = [
+                    'class'              => GHSHazardClass::displayName($canonical),
+                    'category'           => $defaults['category_display'] ?? $targetCategory,
+                    'canonical'          => $canonical,
+                    'category_canonical' => $targetCategory,
+                    'cas'                => 'MIXTURE',
+                    'chemical'           => 'Multiple components (cross-category summation)',
+                    'concentration_pct'  => $weightedSum,
+                    'cutoff_pct'         => $rule['threshold'],
+                    'source'             => 'cross_category_summation',
+                ];
+
+                foreach ($defaults['h_codes'] as $hc) {
+                    if (!isset($allHStmts[$hc])) {
+                        $allHStmts[$hc] = ['code' => $hc, 'text' => ''];
+                    }
+                }
+                foreach ($defaults['p_codes'] as $pc) {
+                    if (!isset($allPStmts[$pc])) {
+                        $allPStmts[$pc] = ['code' => $pc, 'text' => ''];
+                    }
+                }
+                foreach ($defaults['pictograms'] as $pict) {
+                    $allPictograms[$pict] = true;
+                }
+                if ($defaults['signal_word'] !== null) {
+                    $curPri = self::SIGNAL_HIERARCHY[$signalWord] ?? 0;
+                    $newPri = self::SIGNAL_HIERARCHY[$defaults['signal_word']] ?? 0;
+                    if ($newPri > $curPri) {
+                        $signalWord = $defaults['signal_word'];
+                    }
+                }
+
+                foreach ($contributorRows as $c) {
+                    $casId = (string) $c['cas'];
+                    if ($casId === '' || $casId === 'TRADE_SECRET') {
+                        continue;
+                    }
+                    $hazardousCas[$casId] = true;
+                }
+            }
+        }
+    }
+
+    /**
+     * True if any existing $hazardClasses entry for the same canonical class
+     * has a strictly more-severe category than $targetCategory. Used by the
+     * cross-category summation pass to skip a Cat 2 firing when Cat 1 has
+     * already been stamped — it would only be dropped in consolidation.
+     */
+    private function moreSevereAlreadyClassified(array $hazardClasses, string $canonical, string $targetCategory): bool
+    {
+        $targetSeverity = $this->categoryToSeverity($targetCategory);
+        foreach ($hazardClasses as $hc) {
+            if (($hc['canonical'] ?? null) !== $canonical) continue;
+            $cat = (string) ($hc['category_canonical'] ?? '');
+            if ($cat === '') continue;
+            $severity = $this->categoryToSeverity($cat);
+            if ($severity < $targetSeverity) {  // lower severity number = more severe
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -1238,9 +1424,11 @@ class HazardEngine
             return 999;
         }
 
-        // "Category 1 (1A/1B)" or "Category 1A" or "Category 1"
-        if (preg_match('/Category\s+(\d+)/i', $cat, $m)) {
-            $base = (int) $m[1] * 10; // Category 1 = 10, Category 2 = 20, etc.
+        // Accept both the GHSHazardData display form ("Category 1A") and
+        // the HazardClassAliases canonical form ("Cat 1A") so callers
+        // don't need to know which representation they're dealing with.
+        if (preg_match('/(?:Category|Cat\.?)\s+(\d+)/i', $cat, $m)) {
+            $base = (int) $m[1] * 10; // Cat 1 = 10, Cat 2 = 20, etc.
             // Sub-categories: 1A < 1B < 1C (more specific = slightly more severe)
             if (preg_match('/(\d+)([A-C])/i', $cat, $sub)) {
                 $base += ord(strtoupper($sub[2])) - ord('A'); // A=0, B=1, C=2

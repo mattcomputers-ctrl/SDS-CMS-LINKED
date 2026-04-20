@@ -30,10 +30,18 @@ class HazardEngine
      * See docs/hazard-engine-refactor-plan.md for the version timeline.
      *
      * v1.1-canonical-names (Phase 1): class names and categories are now
-     * normalised via HazardClassAliases. Cutoffs and precedence rules
-     * unchanged — behaviour-identical for every cleanly-normalised input.
+     *   normalised via HazardClassAliases. Cutoffs and precedence rules
+     *   unchanged — behaviour-identical for every cleanly-normalised input.
+     *
+     * v1.2-cpd-cutoffs (Phase 2): competent-person determinations now
+     *   participate in the GHS cutoff check. A CPD-sourced hazard only
+     *   contributes at concentrations ≥ its canonical class cutoff; the
+     *   entire CPD contribution (hazard classes, H/P-codes, pictograms,
+     *   signal word) is suppressed when no individual class triggers.
+     *   Exposure limits are unaffected — they flow regardless for
+     *   Section 8 reporting.
      */
-    public const ENGINE_VERSION = 'v1.1-canonical-names';
+    public const ENGINE_VERSION = 'v1.2-cpd-cutoffs';
 
     /**
      * GHS concentration cut-offs for health hazards, keyed by canonical
@@ -251,13 +259,19 @@ class HazardEngine
                     // Only mark as hazardous if the determination actually has
                     // hazard classifications; a CPD with nothing checked should
                     // not cause the CAS to appear in Section 3.
-                    $hasHazards = !empty($cpdResult['hazard_classes'])
-                               || !empty($cpdResult['h_statements']);
+                    // As of Phase 2, parseDeterminationStructure already strips
+                    // H/P-codes, pictograms, and signal word when no hazard
+                    // class clears its cutoff — so hazard_classes is the sole
+                    // authoritative "did anything trigger" flag. h_statements
+                    // is no longer a valid tie-breaker.
+                    $hasHazards = !empty($cpdResult['hazard_classes']);
                     if (!$hasHazards) {
-                        $this->traceStep('cpd_no_hazards', "CAS {$cas} has determination but no hazard classifications", [
-                            'cas' => $cas,
+                        $this->traceStep('cpd_no_hazards', "CAS {$cas} has determination but no hazard class cleared its cutoff", [
+                            'cas' => $cas, 'concentration' => $conc,
                         ]);
-                        // Still merge exposure limits even if not hazardous
+                        // Still merge exposure limits even if not hazardous —
+                        // Section 8 reporting is independent of Section 3
+                        // classification.
                         foreach ($cpdResult['exposure_limits'] as $el) {
                             $exposureLimits[] = $el;
                         }
@@ -690,38 +704,96 @@ class HazardEngine
         $ghsData = GHSHazardData::HAZARD_CLASSIFICATIONS;
         $selectedHazards = json_decode($det['selected_hazards'] ?? '[]', true) ?: [];
 
+        // Phase 2 (v1.2-cpd-cutoffs): each CPD-sourced hazard class must
+        // clear its canonical GHS cutoff to contribute. Entries that fall
+        // below the cutoff at the component's concentration are dropped and
+        // logged as 'cpd_below_cutoff' in the trace. If no entry triggers,
+        // the whole CPD contribution (H/P-codes, pictograms, signal word)
+        // is suppressed — see below.
+        $anyTriggered = false;
+
         if (!empty($selectedHazards)) {
             foreach ($selectedHazards as $key) {
-                if (isset($ghsData[$key])) {
-                    $entry = $ghsData[$key];
-                    $hazardClasses[] = [
-                        'class'              => $entry['class'],
-                        'category'           => $entry['category'],
-                        'canonical'          => HazardClassAliases::normalize($entry['class']),
-                        'category_canonical' => HazardClassAliases::normalizeCategory($entry['category']),
-                        'cas'                => $cas,
-                        'chemical'           => $name,
-                        'concentration_pct'  => $conc,
-                        'cutoff_pct'         => 0,
-                        'source'             => $source,
-                    ];
+                if (!isset($ghsData[$key])) continue;
+                $entry         = $ghsData[$key];
+                $canonical     = HazardClassAliases::normalize($entry['class']);
+                $categoryCanon = HazardClassAliases::normalizeCategory($entry['category']);
+                $cutoff        = $this->getCutoff($canonical ?? '', $categoryCanon);
+
+                if ($conc < $cutoff) {
+                    $this->traceStep('cpd_below_cutoff', "CPD {$cas} {$entry['class']} {$entry['category']} below cutoff", [
+                        'cas' => $cas, 'class' => $entry['class'], 'category' => $entry['category'],
+                        'canonical' => $canonical, 'category_canonical' => $categoryCanon,
+                        'concentration' => $conc, 'cutoff' => $cutoff, 'source' => $source,
+                    ]);
+                    continue;
                 }
+
+                $anyTriggered = true;
+                $hazardClasses[] = [
+                    'class'              => $entry['class'],
+                    'category'           => $entry['category'],
+                    'canonical'          => $canonical,
+                    'category_canonical' => $categoryCanon,
+                    'cas'                => $cas,
+                    'chemical'           => $name,
+                    'concentration_pct'  => $conc,
+                    'cutoff_pct'         => $cutoff,
+                    'source'             => $source,
+                ];
             }
         } else {
+            // Free-text hazard_classes path: no category supplied, so the
+            // getCutoff() fallback uses the most conservative cutoff for
+            // the canonical class. If the class string can't be normalised
+            // at all, getCutoff returns the 1% default.
             $classRaw = array_filter(array_map('trim', explode(',', $det['hazard_classes'] ?? '')));
             foreach ($classRaw as $classStr) {
+                $canonical = HazardClassAliases::normalize($classStr);
+                $cutoff    = $this->getCutoff($canonical ?? '', null);
+
+                if ($conc < $cutoff) {
+                    $this->traceStep('cpd_below_cutoff', "CPD {$cas} {$classStr} below cutoff (free-text, no category)", [
+                        'cas' => $cas, 'class' => $classStr,
+                        'canonical' => $canonical,
+                        'concentration' => $conc, 'cutoff' => $cutoff, 'source' => $source,
+                    ]);
+                    continue;
+                }
+
+                $anyTriggered = true;
                 $hazardClasses[] = [
                     'class'              => $classStr,
                     'category'           => '',
-                    'canonical'          => HazardClassAliases::normalize($classStr),
+                    'canonical'          => $canonical,
                     'category_canonical' => '',
                     'cas'                => $cas,
                     'chemical'           => $name,
                     'concentration_pct'  => $conc,
-                    'cutoff_pct'         => 0,
+                    'cutoff_pct'         => $cutoff,
                     'source'             => $source,
                 ];
             }
+        }
+
+        // If no CPD-sourced hazard class triggered, strip H/P-codes,
+        // pictograms, and the signal word as well. The CPD's companion
+        // statements are only valid contributions when at least one of
+        // its declared hazard classes clears a cutoff — otherwise a
+        // CPD-declared H350 would leak into the SDS even when the
+        // underlying carcinogenicity classification doesn't fire.
+        if (!$anyTriggered && (!empty($hStmts) || !empty($pStmts) || !empty($pictograms) || $signalWord !== null)) {
+            $this->traceStep('cpd_all_below_cutoff', "CPD {$cas} ({$name}) had no hazard class clear cutoff; suppressing H/P-codes, pictograms, signal word", [
+                'cas' => $cas, 'concentration' => $conc, 'source' => $source,
+                'dropped_h' => array_keys($hStmts),
+                'dropped_p' => array_keys($pStmts),
+                'dropped_pictograms' => $pictograms,
+                'dropped_signal_word' => $signalWord,
+            ]);
+            $hStmts     = [];
+            $pStmts     = [];
+            $pictograms = [];
+            $signalWord = null;
         }
 
         // Exposure limits from determination

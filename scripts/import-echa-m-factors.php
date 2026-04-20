@@ -108,16 +108,24 @@ $rows   = [];
 $lineNo = 0;
 while (($data = fgetcsv($fh)) !== false) {
     $lineNo++;
-    if (empty($data) || $data[0] === null) continue;
+    if (empty($data) || (count($data) === 1 && ($data[0] === null || $data[0] === ''))) continue;
     // Comment lines (first column starts with "#") — skip.
-    if (isset($data[0]) && str_starts_with(trim($data[0]), '#')) continue;
+    if (isset($data[0]) && str_starts_with(trim((string) $data[0]), '#')) continue;
     if ($header === null) {
         $header = array_map(fn($h) => trim(strtolower((string) $h)), $data);
         continue;
     }
+    // Normalise row length to exactly match the header: truncate extra
+    // columns, pad short rows with empty strings. Protects array_combine
+    // from ragged rows caused by unescaped commas in vendor exports.
+    $normalised = array_pad(
+        array_slice($data, 0, count($header)),
+        count($header),
+        ''
+    );
     $row = array_combine(
         $header,
-        array_map(fn($v) => trim((string) $v), array_pad($data, count($header), ''))
+        array_map(fn($v) => trim((string) $v), $normalised)
     );
     if (empty($row['cas_number'])) continue;
     $row['_line'] = $lineNo;
@@ -128,9 +136,20 @@ fclose($fh);
 out("Parsed " . count($rows) . " data row(s).", $quiet);
 
 $requiredCols = ['cas_number', 'm_factor_acute', 'm_factor_chronic', 'acute_category', 'chronic_category'];
-$missingCols = array_diff($requiredCols, array_keys(array_flip($header ?? [])));
+$missingCols = array_diff($requiredCols, $header ?? []);
 if (!empty($missingCols)) {
+    fwrite(STDERR, "\n");
     fwrite(STDERR, "CSV is missing required columns: " . implode(', ', $missingCols) . "\n");
+    fwrite(STDERR, "Found columns in your CSV header:\n  " . implode("\n  ", $header ?? ['(none)']) . "\n\n");
+    fwrite(STDERR, "This looks like the raw ECHA Annex VI export. The import script needs a\n");
+    fwrite(STDERR, "reshaped CSV with these columns (case-insensitive):\n");
+    fwrite(STDERR, "  cas_number, m_factor_acute, m_factor_chronic, acute_category, chronic_category\n\n");
+    fwrite(STDERR, "In Excel: rename 'CAS No' to 'cas_number', split the combined\n");
+    fwrite(STDERR, "'Specific Conc. Limits, M-factors and ATE' column into separate\n");
+    fwrite(STDERR, "m_factor_acute / m_factor_chronic columns (extract values from text like\n");
+    fwrite(STDERR, "'Aquatic Acute 1: M = 100' and 'Aquatic Chronic 1: M = 10'), fill in\n");
+    fwrite(STDERR, "acute_category / chronic_category (usually 'Category 1'), save as CSV.\n");
+    fwrite(STDERR, "See the CSV Requirements section on /admin/echa-import for the exact format.\n");
     exit(2);
 }
 

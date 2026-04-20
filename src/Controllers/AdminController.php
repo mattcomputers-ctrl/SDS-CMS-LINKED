@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace SDS\Controllers;
 
+use SDS\Core\App;
 use SDS\Core\CSRF;
 use SDS\Core\Database;
 use SDS\Models\User;

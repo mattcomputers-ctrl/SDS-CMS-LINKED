@@ -1323,6 +1323,20 @@ class HazardEngine
                 continue;
             }
 
+            if ($this->moreSevereAlreadyClassified($allHClasses, $canonical, $mixCategory)) {
+                // A more-severe category is already classified for this
+                // route (per-component trigger or summation). Consolidation
+                // would drop the ATE entry in favour of the severe one,
+                // but the ATE entry's default H/P-codes / pictograms get
+                // merged before consolidation — which would leak a Cat 3 /
+                // Cat 4 H-statement into an SDS that's classified Cat 1,
+                // producing an inconsistent output. Skip entirely.
+                $this->traceStep('ate_mixture_dominated', "ATE mix for {$route} at {$mixCategory} dominated by existing more-severe classification", [
+                    'route' => $route, 'ate_mix' => $ateMix, 'would_be_category' => $mixCategory,
+                ]);
+                continue;
+            }
+
             $this->traceStep('ate_mixture_classified', "ATE mixture classified for {$route} at {$mixCategory}", [
                 'route'             => $route,
                 'canonical'         => $canonical,

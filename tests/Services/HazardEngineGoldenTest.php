@@ -767,17 +767,23 @@ try {
         traceSteps($result), 'ate_mixture_not_classified');
 
     // ──────────────────────────────────────────────────────────────────
-    echo "\n[29] Phase 3c — ATE skips when per-component already classified same (route, category).\n";
-    // Cat 1 Oral at 0.2% (above 0.1% Cat 1 per-component cutoff → Cat 1
-    // fires directly). ATE would compute 0.2/0.5 = 0.4, ATE_mix = 250 →
-    // Cat 3 range. alreadyClassified(Cat 1) is true so Cat 1 ATE entry
-    // wouldn't be generated; Cat 3 ATE entry IS different (category-wise)
-    // so it IS added. Consolidation keeps Cat 1 (most severe).
+    echo "\n[29] Phase 3c — ATE skipped when per-component classifies a more-severe category.\n";
+    // Cat 1 Oral at 0.2 % (above 0.1 % Cat 1 per-component cutoff → Cat 1
+    // fires directly). ATE would compute 0.2/0.5 = 0.4, ATE_mix = 250
+    // → Cat 3 range, but Cat 1 is already classified and would dominate
+    // in consolidation. moreSevereAlreadyClassified detects this and
+    // suppresses the whole ATE contribution, so the Cat 3 H-code H301
+    // never leaks into the output.
     $result = $engine->classify([
         ['cas_number' => '99999-50-0', 'chemical_name' => 'Tox A', 'concentration_pct' => 0.2],
     ]);
     // Cat 1 per-component fires → H300 present
-    assertContains('ate-percomp: H300 (Cat 1) from per-component', hCodes($result), 'H300');
+    assertContains('ate-dominated: H300 (Cat 1) from per-component', hCodes($result), 'H300');
+    // Cat 3's H301 must NOT appear — ATE was dominated
+    assertNotContains('ate-dominated: H301 (Cat 3) absent — ATE suppressed', hCodes($result), 'H301');
+    // Trace should carry ate_mixture_dominated
+    assertContains('ate-dominated: trace logs ate_mixture_dominated',
+        traceSteps($result), 'ate_mixture_dominated');
     // Final consolidated classes should contain Cat 1 (most severe wins)
     $hasCat1 = false;
     foreach ($result['hazard_classes'] as $hc) {
@@ -786,7 +792,7 @@ try {
             $hasCat1 = true; break;
         }
     }
-    assertEquals('ate-percomp: Cat 1 retained after consolidation', true, $hasCat1);
+    assertEquals('ate-dominated: Cat 1 retained after consolidation', true, $hasCat1);
 
     // ──────────────────────────────────────────────────────────────────
     echo "\n[30] Phase 3c — engine version stamp is v1.3c-ate.\n";

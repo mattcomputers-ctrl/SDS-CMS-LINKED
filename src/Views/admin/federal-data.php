@@ -36,6 +36,17 @@
 </div>
 
 <div class="card">
+    <h2 class="card-title">ECHA CLP Annex VI M-Factors</h2>
+    <p class="text-muted">
+        Aquatic-hazard M-factor values from ECHA CLP Annex VI Table 3.1.
+        Uploaded as CSV (download ECHA's .xlsx, Save As CSV in Excel).
+        Drives the Phase 4 aquatic summation math for any substance with
+        a harmonised M &gt; 1.
+    </p>
+    <a href="/admin/echa-import" class="btn btn-primary">Upload ECHA CSV…</a>
+</div>
+
+<div class="card">
     <h2 class="card-title">Refresh Log</h2>
     <?php if (empty($refreshLog)): ?>
         <p class="text-muted">No refresh history.</p>

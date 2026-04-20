@@ -132,7 +132,9 @@ final class GHSHazardClass
 }
 ```
 
-**`src/Services/HazardClassAliases.php`** — normalize function + alias table. Also normalizes **category strings** in the same pass, since the same fuzzy-match problem applies to "Category 1A (1A/1B)" vs "Cat 1A" vs "1A":
+**`src/Services/HazardClassAliases.php`** — normalize function + alias table. Also normalizes **category strings** in the same pass, since the same fuzzy-match problem applies to "Category 1A (1A/1B)" vs "Cat 1A" vs "1A".
+
+**Multi-language support.** The input to normalize may arrive in any of the four supported SDS languages (`en`, `es`, `fr`, `de`). The system already has authoritative translation tables at `templates/translations/ghs_{de,es,fr}.php`, keyed by English canonical strings with translated values. HazardClassAliases inverts those at load time to build a reverse-lookup table, so every translated form maps back to the English canonical form before canonicalisation. One consequence: the maintainer only ever edits the existing translation files when adding new languages or fixing terminology — no duplicate alias maintenance. Also applies to signal words ("Attention" → "Warning", "Advertencia" → "Warning", "Achtung" → "Warning"). Pictograms are already codes (GHS01–GHS09) so they need no translation.
 
 ```php
 final class HazardClassAliases
@@ -180,23 +182,78 @@ final class HazardClassAliases
     ];
 
     /**
+     * Translated-form → English-canonical map, lazy-loaded from the
+     * existing ghs_*.php translation files at first use. Keys are the
+     * normalised (lowercased/dash/whitespace) translated strings; values
+     * are the English canonical strings (which then feed the ALIASES
+     * table for final mapping to the canonical code).
+     */
+    private static ?array $translationReverse = null;
+
+    private static function loadTranslationReverse(): array
+    {
+        if (self::$translationReverse !== null) return self::$translationReverse;
+        $map = [];
+        foreach (['de', 'es', 'fr'] as $lang) {
+            $file = App::basePath() . "/templates/translations/ghs_{$lang}.php";
+            if (!is_file($file)) continue;
+            $t = require $file;
+            foreach (($t['hazard_class_names'] ?? []) as $english => $translated) {
+                $map[self::normKey($translated)] = $english;
+            }
+            foreach (($t['category_names'] ?? []) as $english => $translated) {
+                $map['__cat__' . self::normKey($translated)] = $english;
+            }
+            foreach (($t['signal_words'] ?? []) as $english => $translated) {
+                $map['__sig__' . self::normKey($translated)] = $english;
+            }
+        }
+        return self::$translationReverse = $map;
+    }
+
+    private static function normKey(string $raw): string
+    {
+        $key = mb_strtolower(trim($raw));
+        $key = preg_replace('/[—–]/u', '-', $key);   // em/en dash -> hyphen
+        $key = preg_replace('/\s+/', ' ', $key);     // collapse whitespace
+        $key = str_replace(',', '', $key);
+        return $key;
+    }
+
+    /**
      * Normalize a raw class name string to its canonical key.
-     * Returns null if unmappable — caller logs and falls through.
+     * Accepts English variants and translations (de/es/fr). Returns null
+     * if unmappable — caller logs and falls through.
      */
     public static function normalize(?string $raw): ?string
     {
         if ($raw === null || trim($raw) === '') return null;
 
-        $key = mb_strtolower(trim($raw));
-        $key = preg_replace('/[—–]/u', '-', $key);   // em/en dash -> hyphen
-        $key = preg_replace('/\s+/', ' ', $key);     // collapse whitespace
-        $key = str_replace(',', '', $key);
+        $key = self::normKey($raw);
 
+        // Try direct English-alias match first (fast path)
         if (isset(self::ALIASES[$key])) return self::ALIASES[$key];
 
-        // Fallback: strip trailing categories ("cat 1", "cat 2a") and retry
+        // Translation fallback: reverse-map to English canonical, retry
+        $rev = self::loadTranslationReverse();
+        if (isset($rev[$key])) {
+            $english = self::normKey($rev[$key]);
+            if (isset(self::ALIASES[$english])) return self::ALIASES[$english];
+        }
+
+        // Stripped-category fallback
         $stripped = preg_replace('/\s+cat(egory)?\s*[0-9a-d]+[a-d]?\s*$/i', '', $key);
         return self::ALIASES[$stripped] ?? null;
+    }
+
+    /** Normalize a signal word to English canonical (Warning / Danger). */
+    public static function normalizeSignalWord(?string $raw): ?string
+    {
+        if ($raw === null || trim($raw) === '') return null;
+        $key = self::normKey($raw);
+        if ($key === 'warning' || $key === 'danger') return ucfirst($key);
+        $rev = self::loadTranslationReverse();
+        return $rev['__sig__' . $key] ?? null;
     }
 
     /** Get all known raw inputs for a canonical key (for QA / backfill). */
@@ -206,13 +263,24 @@ final class HazardClassAliases
      * Normalize a raw category string to a canonical form.
      * Handles: "Category 1A (1A/1B)" -> "Cat 1A", "1A" -> "Cat 1A",
      * "Category 2" -> "Cat 2", "Cat. 3" -> "Cat 3", etc.
+     * Also handles translated forms ("Catégorie 1A", "Kategorie 1A",
+     * "Categoría 1A") by reverse-mapping to English first.
      * Preserves unknown formats untouched (Division 1.1, Type A, Lactation).
      */
     public static function normalizeCategory(?string $raw): string
     {
         if ($raw === null) return '';
-        $key = trim($raw);
-        if ($key === '') return '';
+        $raw = trim($raw);
+        if ($raw === '') return '';
+
+        // Reverse-map translated category to English canonical if applicable
+        $rev = self::loadTranslationReverse();
+        $revKey = '__cat__' . self::normKey($raw);
+        if (isset($rev[$revKey])) {
+            $raw = $rev[$revKey]; // e.g. "Catégorie 1A" -> "Category 1A"
+        }
+
+        $key = $raw;
 
         // Division 1.1 / Type A / Lactation / Compressed - leave alone
         if (preg_match('/^(Division|Type|Lactation|Compressed|Liquefied|Refrigerated|Dissolved)/i', $key)) {
@@ -286,8 +354,10 @@ In `src/Services/HazardEngine.php`:
 ### Tests
 
 **`tests/Services/HazardClassAliasesTest.php`:**
-- 50+ `normalize()` cases: every alias in the table, plus real vendor-SDS variants (case variations, whitespace, punctuation, dashes).
-- 20+ `normalizeCategory()` cases: "Category 1A (1A/1B)" → "Cat 1A", "cat. 2" → "Cat 2", "1A" → "Cat 1A", "Division 1.1" → "Division 1.1" (passthrough), "Lactation" → "Lactation" (passthrough), empty/null → "".
+- 50+ `normalize()` cases covering English variants (case, whitespace, punctuation, dashes, abbreviations like "Carc.", "STOT SE").
+- Multi-language coverage: for each of the 4 supported languages (en / es / fr / de), verify at least one case per canonical class normalises correctly. Iterates the `hazard_class_names` map in every `ghs_*.php` file and asserts the translated value round-trips back to the canonical code.
+- 20+ `normalizeCategory()` cases: "Category 1A (1A/1B)" → "Cat 1A", "cat. 2" → "Cat 2", "1A" → "Cat 1A", translated forms ("Catégorie 1A", "Kategorie 1A", "Categoría 1A" → "Cat 1A"), "Division 1.1" → "Division 1.1" (passthrough), "Lactation" → "Lactation" (passthrough), empty/null → "".
+- 10+ `normalizeSignalWord()` cases: "Warning"/"Attention"/"Advertencia"/"Achtung" → "Warning"; "Danger"/"Peligro"/"Gefahr" → "Danger"; null/empty → null.
 - `normalize('')` and `normalize(null)` return null.
 - Unmapped strings return null.
 
@@ -813,5 +883,7 @@ Assumes one engineer, not accounting for competent-person review cycles between 
 ### Resolved design decisions
 
 1. **ATE data sources.** Vendor SDSs don't consistently provide LD50/LC50 values. The engine will almost always derive ATE from category via GHS Table 3.1.2 converted values. `ate_*` columns exist for the rare vendor or CPD that supplies real numbers. Every ATE computation logs its source (`vendor` / `cpd` / `category_default`) in the trace.
-2. **Category normalization.** Phase 1 normalizes categories alongside class names. `category_canonical` column added to `hazard_classifications` in the same migration. `HazardClassAliases::normalizeCategory()` handles "Category 1A (1A/1B)" → "Cat 1A", "Cat. 2" → "Cat 2", bare "1A" → "Cat 1A", while leaving non-numeric forms (Division, Type, Lactation, Compressed) as passthroughs.
+2. **Category normalization.** Phase 1 normalizes categories alongside class names. `category_canonical` column added to `hazard_classifications` in the same migration. `HazardClassAliases::normalizeCategory()` handles "Category 1A (1A/1B)" → "Cat 1A", "Cat. 2" → "Cat 2", bare "1A" → "Cat 1A", while leaving non-numeric forms (Division, Type, Lactation, Compressed) as passthroughs. Translated forms ("Catégorie 1A", "Kategorie 1A", "Categoría 1A") are reverse-mapped to English first via the existing `ghs_*.php` translation files.
+
+4. **Multi-language input.** `HazardClassAliases` accepts input in any of the four supported SDS languages (en/es/fr/de) and normalises to English canonical before lookup. This uses the existing `templates/translations/ghs_{de,es,fr}.php` files as the authoritative source — they're keyed by English canonical with translated values, so reverse-mapping is mechanical. Adding a fifth language is a single translation-file addition, no alias-table duplication. Signal words and categories get the same treatment via `normalizeSignalWord()` and `normalizeCategory()`. Once Phase 1 lands, the classify-diff harness can drop its `--language=en` filter and produce a single translation-free baseline over all published SDSs.
 3. **Jurisdiction.** US-only for the foreseeable future. The `jurisdiction` column exists on `hazard_classifications` and `competent_person_determinations` (default `'US'`) but no non-US rows exist in any data path today — it's schema-level placeholder, not a feature. The engine ignores the column; none of the refactor phases change that. If you ever expand to EU/CLP or WHMIS, the threshold tables in this plan would need jurisdiction variants, but that's a separate future initiative.

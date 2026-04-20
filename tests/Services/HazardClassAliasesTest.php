@@ -174,8 +174,11 @@ $catTests = [
     ''                      => '',
 ];
 foreach ($catTests as $raw => $expected) {
-    assertEquals("category: '{$raw}' → '{$expected}'",
-        $expected, HazardClassAliases::normalizeCategory($raw));
+    // Cast: PHP silently converts numeric-string array keys to ints, and
+    // the normalizer is strict-typed. We're asserting on the string input.
+    $rawStr = (string) $raw;
+    assertEquals("category: '{$rawStr}' → '{$expected}'",
+        $expected, HazardClassAliases::normalizeCategory($rawStr));
 }
 
 // ──────────────────────────────────────────────────────────────────────

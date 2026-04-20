@@ -408,6 +408,18 @@ final class HazardClassAliases
     }
 
     /**
+     * Additional signal-word aliases that aren't in the ghs_*.php files.
+     * Covers regional vendor variants (e.g. 'Advertencia' is a common Latin
+     * American Spanish alternative to 'Atención'; the codebase's ghs_es.php
+     * uses 'Atención' but Mexican / US Hispanic market SDSs frequently
+     * carry 'Advertencia'). Kept here rather than in the translation
+     * files so the files stay a single source of truth for display.
+     */
+    private const SIGNAL_WORD_ALIASES = [
+        'advertencia' => 'Warning',   // ES variant (ghs_es uses 'Atención')
+    ];
+
+    /**
      * Normalise a raw signal word to English canonical ("Warning" / "Danger").
      * Returns null if the input isn't a recognised signal word.
      */
@@ -425,9 +437,14 @@ final class HazardClassAliases
         if ($key === 'warning') return 'Warning';
         if ($key === 'danger')  return 'Danger';
 
-        // Translation fallback
+        // Translation fallback (via ghs_*.php reverse-lookup)
         $rev = self::loadTranslationReverse();
-        return $rev['__sig__' . $key] ?? null;
+        if (isset($rev['__sig__' . $key])) {
+            return $rev['__sig__' . $key];
+        }
+
+        // Regional variant fallback
+        return self::SIGNAL_WORD_ALIASES[$key] ?? null;
     }
 
     /**

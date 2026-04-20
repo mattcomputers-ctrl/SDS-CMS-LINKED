@@ -207,7 +207,8 @@ $sigTests = [
     'danger'        => 'Danger',
     'Attention'     => 'Warning',       // French
     'Achtung'       => 'Warning',       // German
-    'Advertencia'   => 'Warning',       // Spanish
+    'Atención'      => 'Warning',       // Spanish (per ghs_es.php)
+    'Advertencia'   => 'Warning',       // Spanish regional variant (via SIGNAL_WORD_ALIASES)
     'Gefahr'        => 'Danger',        // German
     'Peligro'       => 'Danger',        // Spanish
 ];

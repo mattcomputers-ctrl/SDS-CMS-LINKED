@@ -154,8 +154,36 @@ out("Parsed " . count($rows) . " data row(s).", $quiet);
 // the rows that have M-factor data (typically ~200 of ~4 000).
 
 $casCol = findEchaColumn($header ?? [], ['cas_number', 'cas no', 'cas number', 'casno', 'cas_no']);
-$scCol  = findEchaColumn($header ?? [], ['specific conc. limits, m-factors and ate', 'specific conc. limits m-factors and ate', 'specific conc limits m-factors and ate', 'm-factor', 'm-factors']);
-$clsCol = findEchaColumn($header ?? [], ['classification', 'hazard class and category code(s)', 'hazard class and category', 'hazard class']);
+$scCol  = findEchaColumn($header ?? [], [
+    // ECHA ATP23 current header
+    'm, scl, ate',
+    'm scl ate',
+    // Older / alternative ECHA headers
+    'specific conc. limits, m-factors and ate',
+    'specific conc. limits m-factors and ate',
+    'specific conc limits m-factors and ate',
+    'specific concentration limits m-factors and ate',
+    'm-factor',
+    'm-factors',
+]);
+// Two separate "classification"-ish columns exist in ECHA ATP23: the
+// compact class/category codes ("Aquatic Acute 1", "Aquatic Chronic 1")
+// and the H-code list ("H400", "H410"). Both carry signal about whether
+// a row's single M-factor should apply to acute or chronic — capture both.
+$clsColA = findEchaColumn($header ?? [], [
+    'hazard class and category code(s)',
+    'hazard class and category codes',
+    'hazard class and category',
+    'hazard class',
+    'classification',
+]);
+$clsColB = findEchaColumn($header ?? [], [
+    'classification hazard statement code(s)',
+    'classification hazard statement codes',
+    'classification hazard statements',
+    'labelling hazard statement code(s)',
+    'labelling hazard statement codes',
+]);
 
 $hasMyFormat = in_array('cas_number', $header ?? [], true)
     && in_array('m_factor_acute', $header ?? [], true)
@@ -175,7 +203,13 @@ if (!$hasMyFormat && $casCol !== null && $scCol !== null) {
         if ($cas === '' || !preg_match('/^\d{1,7}-\d{2}-\d$/', $cas)) continue;
 
         $mText   = (string) ($row[$scCol]  ?? '');
-        $clsText = $clsCol !== null ? (string) ($row[$clsCol] ?? '') : '';
+        // Concatenate both classification-ish columns so extractEchaMFactors
+        // can see both the short class codes ("Aquatic Chronic 1") and the
+        // H-code list ("H410") when routing a single M-factor to acute vs
+        // chronic.
+        $clsText = ($clsColA !== null ? (string) ($row[$clsColA] ?? '') : '')
+                 . "\n"
+                 . ($clsColB !== null ? (string) ($row[$clsColB] ?? '') : '');
         $extracted = extractEchaMFactors($mText, $clsText);
         if ($extracted['m_acute'] === null && $extracted['m_chronic'] === null) {
             $droppedNoM++;

@@ -79,8 +79,19 @@ class HazardEngine
      *   standard aquatic cross-category formulas. M-factors come from
      *   hazard_classifications.m_factor_{acute,chronic} (vendor /
      *   ECHA seed) or the CPD JSON; NULL is treated as 1.0 per GHS.
+     *
+     * v1.5-fg-override (Phase 5): finished-good hazard override support.
+     *   classify() accepts an optional override descriptor sourced from
+     *   finished_goods.hazard_override_json. Two modes:
+     *     - additive:  merge override hazards, H/P-codes, pictograms,
+     *                  signal word into the computed classification
+     *     - replace:   discard composition-derived classification
+     *                  entirely; use only the override payload
+     *   The engine always applies pictogram precedence, consolidation,
+     *   and PPE derivation on the merged result so downstream rendering
+     *   sees a valid classification regardless of mode.
      */
-    public const ENGINE_VERSION = 'v1.4-aquatic-mfactor';
+    public const ENGINE_VERSION = 'v1.5-fg-override';
 
     /**
      * GHS summation thresholds per canonical class + category.
@@ -480,7 +491,25 @@ class HazardEngine
      *   trace: array,
      * }
      */
-    public function classify(array $composition): array
+    /**
+     * @param array|null $finishedGoodOverride Optional Phase-5 FG-level
+     *     override. Expected shape:
+     *       [
+     *         'mode'       => 'none' | 'additive' | 'replace',
+     *         'hazards'    => [
+     *             'hazard_classes' => [['class' => ..., 'category' => ...], …]
+     *                                  // or ['selected_hazards' => [<GHSHazardData keys>]]
+     *             'h_statements' => ['H226', …] | 'H226,H319,…',
+     *             'p_statements' => ['P210', …] | 'P210,…',
+     *             'pictograms'   => ['GHS02', …] | 'GHS02,…',
+     *             'signal_word'  => 'Warning' | 'Danger' | null,
+     *         ],
+     *         'rationale'  => '…',  // informational; logged in trace
+     *         'set_by'     => int|null,
+     *         'set_at'     => 'YYYY-MM-DD HH:MM:SS'|null,
+     *       ]
+     */
+    public function classify(array $composition, ?array $finishedGoodOverride = null): array
     {
         $this->trace = [];
         $this->summationBuffer = [];
@@ -851,6 +880,16 @@ class HazardEngine
         $this->applyAquaticSummation(
             $allHClasses, $allHStmts, $allPStmts, $allPictograms, $signalWord, $hazardousCas
         );
+
+        // Phase 5: finished-good hazard override. Applied after every
+        // composition-derived rule so additive mode layers on top and
+        // replace mode can cleanly discard earlier contributions.
+        if ($finishedGoodOverride !== null) {
+            $this->applyFinishedGoodOverride(
+                $finishedGoodOverride,
+                $allHClasses, $allHStmts, $allPStmts, $allPictograms, $signalWord
+            );
+        }
 
         // Apply pictogram precedence rules
         $finalPictograms = $this->applyPictogramPrecedence(array_keys($allPictograms));
@@ -1406,6 +1445,160 @@ class HazardEngine
                 }
             }
         }
+    }
+
+    /**
+     * Phase 5: apply a finished-good hazard override on top of the
+     * composition-derived classification.
+     *
+     * Override shape — see classify() docblock. Two modes:
+     *
+     *   - "additive": override's hazard classes, H-codes, P-codes,
+     *     pictograms, and signal word are merged with whatever the
+     *     composition produced. Duplicate (class, category) entries
+     *     are deduplicated through alreadyClassified; H/P-codes and
+     *     pictograms go through the same keyed-merge the rest of the
+     *     engine uses.
+     *
+     *   - "replace": the composition-derived classification is
+     *     discarded entirely (hazard_classes, H-codes, P-codes,
+     *     pictograms, signal word). Only the override content remains.
+     *     Exposure limits and the generation trace are preserved —
+     *     Section 8 and audit trails still reflect the composition.
+     *
+     * Every invocation logs a fg_override_applied trace step with the
+     * mode, rationale, and the full override payload for auditability.
+     */
+    private function applyFinishedGoodOverride(
+        array $override,
+        array &$allHClasses,
+        array &$allHStmts,
+        array &$allPStmts,
+        array &$allPictograms,
+        ?string &$signalWord
+    ): void {
+        $mode = (string) ($override['mode'] ?? 'none');
+        if ($mode === 'none') {
+            return;
+        }
+        if ($mode !== 'additive' && $mode !== 'replace') {
+            $this->traceStep('fg_override_ignored_invalid_mode', "Unknown FG override mode '{$mode}' — ignored", [
+                'mode' => $mode,
+            ]);
+            return;
+        }
+
+        $this->traceStep('fg_override_applied', "FG hazard override applied in '{$mode}' mode", [
+            'mode'      => $mode,
+            'rationale' => $override['rationale'] ?? null,
+            'set_by'    => $override['set_by']    ?? null,
+            'set_at'    => $override['set_at']    ?? null,
+            'payload'   => $override['hazards']   ?? null,
+        ]);
+
+        if ($mode === 'replace') {
+            $allHClasses    = [];
+            $allHStmts      = [];
+            $allPStmts      = [];
+            $allPictograms  = [];
+            $signalWord     = null;
+        }
+
+        $hazards = $override['hazards'] ?? [];
+        if (empty($hazards)) {
+            return;
+        }
+
+        // Hazard classes may come as either a list of display-form entries
+        // or a list of GHSHazardData keys (selected_hazards shape).
+        $hazardClassEntries = [];
+        if (!empty($hazards['selected_hazards']) && is_array($hazards['selected_hazards'])) {
+            $ghsData = GHSHazardData::HAZARD_CLASSIFICATIONS;
+            foreach ($hazards['selected_hazards'] as $key) {
+                if (!isset($ghsData[$key])) continue;
+                $hazardClassEntries[] = [
+                    'class'    => $ghsData[$key]['class'],
+                    'category' => $ghsData[$key]['category'],
+                ];
+            }
+        }
+        if (!empty($hazards['hazard_classes']) && is_array($hazards['hazard_classes'])) {
+            foreach ($hazards['hazard_classes'] as $hc) {
+                if (!is_array($hc) || empty($hc['class'])) continue;
+                $hazardClassEntries[] = [
+                    'class'    => (string) $hc['class'],
+                    'category' => (string) ($hc['category'] ?? ''),
+                ];
+            }
+        }
+
+        foreach ($hazardClassEntries as $entry) {
+            $canonical     = HazardClassAliases::normalize($entry['class']);
+            $categoryCanon = HazardClassAliases::normalizeCategory($entry['category']);
+            if ($canonical !== null
+                && $this->alreadyClassified($allHClasses, $canonical, $categoryCanon)) {
+                continue;
+            }
+            $allHClasses[] = [
+                'class'              => $entry['class'],
+                'category'           => $entry['category'],
+                'canonical'          => $canonical,
+                'category_canonical' => $categoryCanon,
+                'cas'                => 'FG_OVERRIDE',
+                'chemical'           => 'Finished-good override',
+                'concentration_pct'  => null,
+                'cutoff_pct'         => null,
+                'source'             => 'fg_override',
+            ];
+        }
+
+        foreach ($this->parseOverrideCodeList($hazards['h_statements'] ?? []) as $code) {
+            if (!isset($allHStmts[$code])) {
+                $allHStmts[$code] = ['code' => $code, 'text' => ''];
+            }
+        }
+        foreach ($this->parseOverrideCodeList($hazards['p_statements'] ?? []) as $code) {
+            if (!isset($allPStmts[$code])) {
+                $allPStmts[$code] = ['code' => $code, 'text' => ''];
+            }
+        }
+        foreach ($this->parseOverrideCodeList($hazards['pictograms'] ?? []) as $pict) {
+            $allPictograms[$pict] = true;
+        }
+
+        $sw = $hazards['signal_word'] ?? null;
+        if (is_string($sw) && $sw !== '') {
+            $normalised = HazardClassAliases::normalizeSignalWord($sw) ?? $sw;
+            $curPri = self::SIGNAL_HIERARCHY[$signalWord] ?? 0;
+            $newPri = self::SIGNAL_HIERARCHY[$normalised] ?? 0;
+            if ($mode === 'replace' || $newPri > $curPri) {
+                $signalWord = $normalised;
+            }
+        }
+    }
+
+    /**
+     * Accept a list of statement / pictogram codes in either of two
+     * forms a CPD or FG-override payload might carry:
+     *   - a real array of strings
+     *   - a single comma-separated string
+     * Returns a cleaned list.
+     */
+    private function parseOverrideCodeList(mixed $raw): array
+    {
+        if (is_array($raw)) {
+            return array_values(array_filter(array_map(
+                fn($c) => is_string($c) ? trim($c) : (string) $c,
+                $raw
+            ), fn($c) => $c !== ''));
+        }
+        if (is_string($raw) && $raw !== '') {
+            return array_values(array_filter(
+                array_map('trim', explode(',', $raw)),
+                fn($c) => $c !== ''
+            ));
+        }
+        return [];
     }
 
     /**

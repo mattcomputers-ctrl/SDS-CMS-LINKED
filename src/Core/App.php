@@ -177,6 +177,7 @@ class App
         $router->get('/finished-goods/component-lookup', 'FinishedGoodController@componentLookup');
         $router->get('/finished-goods/{id}/edit',  'FinishedGoodController@edit');
         $router->post('/finished-goods/{id}',      'FinishedGoodController@update');
+        $router->post('/finished-goods/{id}/hazard-override', 'FinishedGoodController@saveHazardOverride');
 
         // ── Formulas ─────────────────────────────────────────────────
         $router->get('/formulas/mass-replace',                 'FormulaController@massReplace');

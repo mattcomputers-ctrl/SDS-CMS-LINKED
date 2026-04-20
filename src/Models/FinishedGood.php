@@ -598,6 +598,48 @@ class FinishedGood
         return $db->update('finished_goods', $updateData, 'id = ?', [$id]);
     }
 
+    /**
+     * Set the Phase-5 finished-good hazard override.
+     *
+     * Writes only the five hazard_override_* columns plus a timestamp and
+     * the setting user — keeping the override change path separate from
+     * the regular FG update so regular edits can't accidentally clobber
+     * override state, and so permission gating can be scoped more tightly.
+     *
+     * @param int    $id        Finished-good id
+     * @param string $mode      'none' | 'additive' | 'replace'
+     * @param array  $payload   Override payload (hazard_classes, h_statements,
+     *                          p_statements, pictograms, signal_word, …) —
+     *                          stored as JSON on hazard_override_json.
+     *                          Ignored when mode === 'none'.
+     * @param string $rationale Free-text justification.
+     * @param int|null $userId  Authenticated user id.
+     */
+    public static function setHazardOverride(
+        int $id,
+        string $mode,
+        array $payload,
+        string $rationale,
+        ?int $userId
+    ): int {
+        if (!in_array($mode, ['none', 'additive', 'replace'], true)) {
+            throw new \InvalidArgumentException("Invalid hazard_override_mode '{$mode}'.");
+        }
+        if ($mode !== 'none' && trim($rationale) === '') {
+            throw new \InvalidArgumentException('Rationale is required when mode is additive or replace.');
+        }
+
+        $db = Database::getInstance();
+        return $db->update('finished_goods', [
+            'hazard_override_json'      => ($mode === 'none' || empty($payload))
+                                            ? null : json_encode($payload, JSON_UNESCAPED_UNICODE),
+            'hazard_override_mode'      => $mode,
+            'hazard_override_set_by'    => $userId,
+            'hazard_override_set_at'    => date('Y-m-d H:i:s'),
+            'hazard_override_rationale' => $mode === 'none' ? null : trim($rationale),
+        ], 'id = ?', [$id]);
+    }
+
     /* ------------------------------------------------------------------
      *  Helpers
      * ----------------------------------------------------------------*/

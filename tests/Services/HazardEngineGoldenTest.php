@@ -875,9 +875,89 @@ try {
     assertContains('aquatic-defm: GHS09 via default-M summation', picts($result), 'GHS09');
 
     // ──────────────────────────────────────────────────────────────────
-    echo "\n[34] Phase 4 — engine version stamp is v1.4-aquatic-mfactor.\n";
-    assertEquals('ENGINE_VERSION is v1.4-aquatic-mfactor',
-        'v1.4-aquatic-mfactor', \SDS\Services\HazardEngine::ENGINE_VERSION);
+    // Phase 5: finished-good hazard override
+    // ──────────────────────────────────────────────────────────────────
+
+    echo "\n[34] Phase 5 — Additive override adds physical-hazard class on top of computed.\n";
+    // Start with a simple Cat 1A carc at 0.5 % → Cat 1 carc + GHS08 + H350
+    // from per-component. Then additive override stamps Flammable Liquids Cat 3
+    // (H226, GHS02). Both should appear.
+    $override = [
+        'mode' => 'additive',
+        'hazards' => [
+            'hazard_classes' => [
+                ['class' => 'Flammable Liquids', 'category' => 'Category 3'],
+            ],
+            'h_statements' => 'H226',
+            'p_statements' => 'P210',
+            'pictograms'   => 'GHS02',
+            'signal_word'  => 'Warning',
+        ],
+        'rationale' => 'Lab flash point 55 °C',
+        'set_by'    => 1,
+        'set_at'    => '2026-04-20 12:00:00',
+    ];
+    $result = $engine->classify(
+        [['cas_number' => TEST_CAS['carc_1a'], 'chemical_name' => 'Carc', 'concentration_pct' => 0.5]],
+        $override
+    );
+    assertContains('fg-additive: H350 from per-component', hCodes($result), 'H350');
+    assertContains('fg-additive: H226 from override',      hCodes($result), 'H226');
+    assertContains('fg-additive: GHS08 from per-component', picts($result), 'GHS08');
+    assertContains('fg-additive: GHS02 from override',     picts($result), 'GHS02');
+    assertEquals('fg-additive: signal_word stays Danger (per-comp higher than override Warning)',
+        'Danger', $result['signal_word']);
+    assertContains('fg-additive: trace logs fg_override_applied',
+        traceSteps($result), 'fg_override_applied');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[35] Phase 5 — Replace override discards computed classification entirely.\n";
+    $override = [
+        'mode' => 'replace',
+        'hazards' => [
+            'hazard_classes' => [
+                ['class' => 'Flammable Liquids', 'category' => 'Category 3'],
+            ],
+            'h_statements' => 'H226',
+            'pictograms'   => 'GHS02',
+            'signal_word'  => 'Warning',
+        ],
+        'rationale' => 'Product lab-tested non-carcinogenic per 2025 certification; only flammable.',
+        'set_by'    => 1, 'set_at' => '2026-04-20 12:00:00',
+    ];
+    $result = $engine->classify(
+        [['cas_number' => TEST_CAS['carc_1a'], 'chemical_name' => 'Carc', 'concentration_pct' => 0.5]],
+        $override
+    );
+    // Per-component H350 / GHS08 DISCARDED by replace mode
+    assertNotContains('fg-replace: H350 absent (replaced)', hCodes($result), 'H350');
+    assertNotContains('fg-replace: GHS08 absent (replaced)', picts($result), 'GHS08');
+    // Override content present
+    assertContains('fg-replace: H226 from override', hCodes($result), 'H226');
+    assertContains('fg-replace: GHS02 from override', picts($result), 'GHS02');
+    assertEquals('fg-replace: signal_word Warning from override', 'Warning', $result['signal_word']);
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[36] Phase 5 — Mode 'none' or null override leaves classification unchanged.\n";
+    $result = $engine->classify(
+        [['cas_number' => TEST_CAS['carc_1a'], 'chemical_name' => 'Carc', 'concentration_pct' => 0.5]],
+        ['mode' => 'none', 'hazards' => []]
+    );
+    assertContains('fg-none: H350 preserved', hCodes($result), 'H350');
+    assertNotContains('fg-none: no override trace',
+        traceSteps($result), 'fg_override_applied');
+
+    // Null override (equivalent to mode=none, different code path)
+    $resultNull = $engine->classify(
+        [['cas_number' => TEST_CAS['carc_1a'], 'chemical_name' => 'Carc', 'concentration_pct' => 0.5]],
+        null
+    );
+    assertContains('fg-null: H350 preserved with null override', hCodes($resultNull), 'H350');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[37] Phase 5 — engine version stamp is v1.5-fg-override.\n";
+    assertEquals('ENGINE_VERSION is v1.5-fg-override',
+        'v1.5-fg-override', \SDS\Services\HazardEngine::ENGINE_VERSION);
 
 } catch (\Throwable $e) {
     echo "\n!!! EXCEPTION DURING TEST SUITE !!!\n";

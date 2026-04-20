@@ -67,9 +67,11 @@ class SDSGenerator
         $calcService = new FormulaCalcService();
         $calcResult  = $calcService->calculate($finishedGoodId);
 
-        // Run hazard classification
+        // Run hazard classification, passing any Phase-5 finished-good
+        // hazard override the user has configured for this FG.
         $hazardEngine = new HazardEngine();
-        $hazardResult = $hazardEngine->classify($calcResult['composition']);
+        $fgOverride   = $this->buildFinishedGoodOverride($fg);
+        $hazardResult = $hazardEngine->classify($calcResult['composition'], $fgOverride);
 
         // Carbon Black CAS# 1333-86-4 special logic:
         // Apply Carcinogen Category 2 (H351) only if Carbon Black is the only
@@ -202,7 +204,8 @@ class SDSGenerator
         $calcResult  = $calcService->calculate($finishedGoodId);
 
         $hazardEngine = new HazardEngine();
-        $hazardResult = $hazardEngine->classify($calcResult['composition']);
+        $fgOverride   = $this->buildFinishedGoodOverride($fg);
+        $hazardResult = $hazardEngine->classify($calcResult['composition'], $fgOverride);
 
         $this->applyCarbonBlackLogic($hazardResult, $calcResult);
 
@@ -1319,6 +1322,46 @@ class SDSGenerator
      *  - It is the sole ingredient, OR
      *  - All other ingredients have a physical_state of 'Powder'
      *
+     * Build the Phase-5 override descriptor to pass to HazardEngine::classify().
+     *
+     * Returns null (engine leaves classification alone) when:
+     *   - The finished_good row was loaded before migration 041 ran
+     *   - hazard_override_mode is 'none' or missing
+     *   - hazard_override_json is empty or malformed
+     *
+     * Otherwise returns a descriptor with:
+     *   mode       — 'additive' | 'replace'
+     *   hazards    — the decoded override payload
+     *   rationale  — free-text justification (logged in the trace)
+     *   set_by     — user id of the last editor (logged)
+     *   set_at     — datetime of the last edit (logged)
+     */
+    private function buildFinishedGoodOverride(array $fg): ?array
+    {
+        $mode = (string) ($fg['hazard_override_mode'] ?? 'none');
+        if ($mode === '' || $mode === 'none') {
+            return null;
+        }
+
+        $rawJson = $fg['hazard_override_json'] ?? null;
+        if ($rawJson === null || $rawJson === '') {
+            return null;
+        }
+        $payload = is_array($rawJson) ? $rawJson : json_decode((string) $rawJson, true);
+        if (!is_array($payload) || empty($payload)) {
+            return null;
+        }
+
+        return [
+            'mode'      => $mode,
+            'hazards'   => $payload,
+            'rationale' => $fg['hazard_override_rationale'] ?? null,
+            'set_by'    => $fg['hazard_override_set_by']    ?? null,
+            'set_at'    => $fg['hazard_override_set_at']    ?? null,
+        ];
+    }
+
+    /**
      * If mixed with any non-powder material, the Carcinogen Category 2
      * classification is removed (but Carbon Black is still listed in Section 3).
      */

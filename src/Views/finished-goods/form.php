@@ -166,6 +166,96 @@ $selfId = $isEdit ? (int) $item['id'] : 0;
     </form>
 </div>
 
+<?php if ($isEdit): ?>
+<?php
+    $ovMode      = (string) ($item['hazard_override_mode']      ?? 'none');
+    $ovRationale = (string) ($item['hazard_override_rationale'] ?? '');
+    $ovJson      = $item['hazard_override_json'] ?? null;
+    $ovPayload   = is_string($ovJson) ? (json_decode($ovJson, true) ?: []) : (is_array($ovJson) ? $ovJson : []);
+    $ovClassesText = '';
+    foreach ($ovPayload['hazard_classes'] ?? [] as $hc) {
+        if (!is_array($hc) || empty($hc['class'])) continue;
+        $ovClassesText .= $hc['class'] . ($hc['category'] ?? '' ? ' | ' . $hc['category'] : '') . "\n";
+    }
+    $ovHCodes      = (string) ($ovPayload['h_statements']  ?? '');
+    $ovPCodes      = (string) ($ovPayload['p_statements']  ?? '');
+    $ovPictograms  = (string) ($ovPayload['pictograms']    ?? '');
+    $ovSignal      = (string) ($ovPayload['signal_word']   ?? '');
+?>
+<div class="card" style="margin-top: 1.5rem; border: 1px solid #b58105;">
+    <h3 style="color: #b58105;">Hazard Classification Override</h3>
+    <p class="text-muted">
+        For competent-person use only. Overrides the engine's computed
+        classification for this finished good. Leave mode as <strong>None</strong>
+        for normal automatic classification. Changes take effect on the next
+        SDS generation / republish for this product.
+    </p>
+    <?php if ($ovMode !== 'none'): ?>
+        <p class="text-muted" style="background: #fff3cd; padding: 0.5rem 0.75rem; border-left: 3px solid #b58105;">
+            Override is currently <strong><?= e($ovMode) ?></strong>
+            <?php if (!empty($item['hazard_override_set_at'])): ?>
+                — last updated <?= e($item['hazard_override_set_at']) ?>
+            <?php endif; ?>.
+        </p>
+    <?php endif; ?>
+
+    <form method="POST" action="/finished-goods/<?= (int) $item['id'] ?>/hazard-override">
+        <?= csrf_field() ?>
+
+        <div class="form-group">
+            <label for="hazard_override_mode">Mode</label>
+            <select id="hazard_override_mode" name="hazard_override_mode">
+                <option value="none"     <?= $ovMode === 'none'     ? 'selected' : '' ?>>None — use engine classification as-is</option>
+                <option value="additive" <?= $ovMode === 'additive' ? 'selected' : '' ?>>Additive — merge override into computed</option>
+                <option value="replace"  <?= $ovMode === 'replace'  ? 'selected' : '' ?>>Replace — use only the override, discard computed</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="hazard_override_classes">Hazard Classes</label>
+            <textarea id="hazard_override_classes" name="hazard_override_classes" rows="3"
+                placeholder="One per line. Format: Class Name | Category &#10;e.g. Flammable Liquids | Category 3"><?= e($ovClassesText) ?></textarea>
+        </div>
+
+        <div class="form-grid-2col">
+            <div class="form-group">
+                <label for="hazard_override_h_codes">H-Codes (comma-separated)</label>
+                <input type="text" id="hazard_override_h_codes" name="hazard_override_h_codes"
+                       value="<?= e($ovHCodes) ?>" placeholder="e.g. H226, H302">
+            </div>
+            <div class="form-group">
+                <label for="hazard_override_p_codes">P-Codes (comma-separated)</label>
+                <input type="text" id="hazard_override_p_codes" name="hazard_override_p_codes"
+                       value="<?= e($ovPCodes) ?>" placeholder="e.g. P210, P233">
+            </div>
+            <div class="form-group">
+                <label for="hazard_override_pictograms">Pictograms (comma-separated codes)</label>
+                <input type="text" id="hazard_override_pictograms" name="hazard_override_pictograms"
+                       value="<?= e($ovPictograms) ?>" placeholder="e.g. GHS02, GHS07">
+            </div>
+            <div class="form-group">
+                <label for="hazard_override_signal">Signal Word</label>
+                <select id="hazard_override_signal" name="hazard_override_signal">
+                    <option value=""        <?= $ovSignal === ''        ? 'selected' : '' ?>>— unchanged —</option>
+                    <option value="Warning" <?= $ovSignal === 'Warning' ? 'selected' : '' ?>>Warning</option>
+                    <option value="Danger"  <?= $ovSignal === 'Danger'  ? 'selected' : '' ?>>Danger</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="hazard_override_rationale">Rationale <span class="text-muted">(required when mode ≠ None)</span></label>
+            <textarea id="hazard_override_rationale" name="hazard_override_rationale" rows="2"
+                placeholder="Why is this override needed? e.g. 'Flash point tested at 55 °C per ASTM D93; override Flammable Liquids to Cat 3.'"><?= e($ovRationale) ?></textarea>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Save Override</button>
+        </div>
+    </form>
+</div>
+<?php endif; ?>
+
 <script>
 var lookupTimers = {};
 

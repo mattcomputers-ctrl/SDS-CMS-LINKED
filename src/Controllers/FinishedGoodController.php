@@ -176,6 +176,74 @@ class FinishedGoodController
     }
 
     /**
+     * POST /finished-goods/{id}/hazard-override
+     * Save a Phase-5 competent-person hazard override for this finished good.
+     */
+    public function saveHazardOverride(string $id): void
+    {
+        if (!can_edit('finished_goods')) {
+            redirect('/finished-goods');
+        }
+        CSRF::validateRequest();
+
+        $fgId = (int) $id;
+        $item = FinishedGood::findById($fgId);
+        if ($item === null) {
+            $_SESSION['_flash']['error'] = 'Finished good not found.';
+            redirect('/finished-goods');
+        }
+
+        $mode      = trim((string) ($_POST['hazard_override_mode'] ?? 'none'));
+        $rationale = trim((string) ($_POST['hazard_override_rationale'] ?? ''));
+
+        $payload = [];
+        if ($mode !== 'none') {
+            $payload['hazard_classes'] = $this->parseOverrideHazardClasses(
+                (string) ($_POST['hazard_override_classes'] ?? '')
+            );
+            $payload['h_statements']   = trim((string) ($_POST['hazard_override_h_codes']    ?? ''));
+            $payload['p_statements']   = trim((string) ($_POST['hazard_override_p_codes']    ?? ''));
+            $payload['pictograms']     = trim((string) ($_POST['hazard_override_pictograms'] ?? ''));
+            $payload['signal_word']    = trim((string) ($_POST['hazard_override_signal']     ?? ''));
+        }
+
+        try {
+            FinishedGood::setHazardOverride($fgId, $mode, $payload, $rationale, current_user_id());
+            AuditService::log('finished_good', (string) $fgId, 'hazard_override', [
+                'mode'      => $mode,
+                'rationale' => $rationale,
+                'payload'   => $payload,
+            ]);
+            $_SESSION['_flash']['success'] = $mode === 'none'
+                ? 'Hazard override cleared.'
+                : "Hazard override saved in '{$mode}' mode.";
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error'] = $e->getMessage();
+        }
+
+        redirect('/finished-goods/' . $fgId . '/edit');
+    }
+
+    /**
+     * Parse the override hazard classes textarea into structured entries.
+     * Expected format: one "Class Name | Category" per line.
+     */
+    private function parseOverrideHazardClasses(string $raw): array
+    {
+        $entries = [];
+        foreach (preg_split('/\r\n|\n|\r/', $raw) ?: [] as $line) {
+            $line = trim($line);
+            if ($line === '') continue;
+            $parts = array_map('trim', explode('|', $line, 2));
+            $class    = $parts[0] ?? '';
+            $category = $parts[1] ?? '';
+            if ($class === '') continue;
+            $entries[] = ['class' => $class, 'category' => $category];
+        }
+        return $entries;
+    }
+
+    /**
      * Parse formula lines from POST into an array suitable for Formula::create().
      * Returns empty array if no valid lines were provided.
      */

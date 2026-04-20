@@ -40,8 +40,74 @@ class HazardEngine
      *   signal word) is suppressed when no individual class triggers.
      *   Exposure limits are unaffected — they flow regardless for
      *   Section 8 reporting.
+     *
+     * v1.3-summation (Phase 3): additivity rules per GHS Annex I /
+     *   29 CFR 1910.1200 App A. Multiple sub-threshold components of
+     *   the same hazard class sum to trigger the mixture classification
+     *   once their combined concentration clears the summation
+     *   threshold (e.g. three Cat 1A carcinogens at 0.04% each sum to
+     *   0.12% and trigger Carcinogenicity Cat 1A). Applies to health
+     *   hazards only in this phase — physical hazards are test-based,
+     *   aquatic hazards need M-factors (Phase 4), acute toxicity needs
+     *   ATE formula (deferred to Phase 3b). Per-component triggers
+     *   still fire independently; summation is purely additive.
      */
-    public const ENGINE_VERSION = 'v1.2-cpd-cutoffs';
+    public const ENGINE_VERSION = 'v1.3-summation';
+
+    /**
+     * GHS summation thresholds per canonical class + category.
+     * When the combined concentration of all components that share a
+     * (canonical_class, category) classification meets or exceeds the
+     * threshold, the mixture is classified at that (class, category) even
+     * though no single component triggered its per-component cutoff.
+     *
+     * Values sourced from GHS Annex I / 29 CFR 1910.1200 App A. Physical
+     * hazards (flammable, oxidizer, etc.) are test-based and not subject
+     * to additivity. Aquatic hazards need M-factor weighting — Phase 4.
+     * Acute toxicity uses the ATE formula — deferred to a follow-up.
+     */
+    private const SUMMATION_RULES = [
+        GHSHazardClass::SKIN_CORROSION_IRRITATION => [
+            'Cat 1'  => 5.0,
+            'Cat 2'  => 10.0,
+        ],
+        GHSHazardClass::EYE_DAMAGE_IRRITATION => [
+            'Cat 1'  => 3.0,
+            'Cat 2A' => 10.0,
+        ],
+        GHSHazardClass::CARCINOGENICITY => [
+            'Cat 1A' => 0.1,
+            'Cat 1B' => 0.1,
+            'Cat 2'  => 0.1,  // OSHA HazCom uses 0.1%; EU CLP uses 1.0%. OSHA stricter.
+        ],
+        GHSHazardClass::GERM_CELL_MUTAGENICITY => [
+            'Cat 1' => 0.1,
+            'Cat 2' => 1.0,
+        ],
+        GHSHazardClass::REPRODUCTIVE_TOXICITY => [
+            'Cat 1' => 0.3,
+            'Cat 2' => 3.0,
+        ],
+        GHSHazardClass::SKIN_SENSITIZATION => [
+            'Cat 1' => 0.1,   // Conservative (0.1% for potent, 1.0% for others)
+        ],
+        GHSHazardClass::RESPIRATORY_SENSITIZATION => [
+            'Cat 1' => 0.1,
+        ],
+        GHSHazardClass::STOT_SINGLE => [
+            'Cat 1' => 10.0,
+            'Cat 2' => 10.0,
+            'Cat 3' => 20.0,
+        ],
+        GHSHazardClass::STOT_REPEATED => [
+            'Cat 1' => 10.0,
+            'Cat 2' => 10.0,
+        ],
+        GHSHazardClass::ASPIRATION_HAZARD => [
+            'Cat 1' => 10.0,  // Full GHS rule also requires kinematic viscosity
+                              // ≤ 20.5 mm²/s at 40 °C; not modelled here.
+        ],
+    ];
 
     /**
      * GHS concentration cut-offs for health hazards, keyed by canonical
@@ -50,7 +116,7 @@ class HazardEngine
      * more fuzzy stripos matching against display strings.
      *
      * Acute toxicity uses identical cutoffs for all three routes in Phase 1;
-     * per-route ATE-weighted summation arrives in Phase 3.
+     * per-route ATE-weighted summation arrives in Phase 3b.
      */
     private const HEALTH_CUTOFFS = [
         GHSHazardClass::ACUTE_TOXICITY_ORAL       => ['Cat 1' => 0.1, 'Cat 2' => 0.1, 'Cat 3' => 0.1, 'Cat 4' => 1.0],
@@ -87,6 +153,25 @@ class HazardEngine
     private array $trace = [];
 
     /**
+     * Per-classify() summation accumulator.
+     *
+     * Structure:
+     *   [canonical_class => [category_canonical => [
+     *       ['cas' => ..., 'name' => ..., 'conc' => float,
+     *        'source' => ..., 'triggered_directly' => bool], …
+     *   ]]]
+     *
+     * Populated during the main component loop (and the CPD /
+     * trade-secret fallbacks) with every hazard-class entry that
+     * attaches to a component, whether or not it individually cleared
+     * its per-component cutoff. applySummationRules() runs after the
+     * loop and fires the mixture-level classification when the sum of
+     * contributions for a (class, category) meets the GHS summation
+     * threshold.
+     */
+    private array $summationBuffer = [];
+
+    /**
      * Run hazard classification for a composition.
      *
      * @param  array $composition  From Formula::getExpandedComposition()
@@ -105,6 +190,7 @@ class HazardEngine
     public function classify(array $composition): array
     {
         $this->trace = [];
+        $this->summationBuffer = [];
         $db = Database::getInstance();
 
         $allHClasses   = [];
@@ -341,6 +427,14 @@ class HazardEngine
                 // Check against GHS concentration cutoffs
                 $cutoff = $this->getCutoff($canonical ?? '', $categoryCanon);
 
+                // Feed the summation buffer regardless of whether this
+                // component individually triggers — a sub-threshold entry
+                // still counts toward the mixture-level summation check.
+                $this->addToSummationBuffer(
+                    $canonical, $categoryCanon ?? '', $cas, $name, $conc,
+                    'hazard_classification', $conc >= $cutoff
+                );
+
                 if ($conc >= $cutoff) {
                     // Mark CAS as hazardous only when a GHS category actually triggers
                     $hazardousCas[$cas] = true;
@@ -412,6 +506,14 @@ class HazardEngine
                 }
             }
         }
+
+        // Phase 3: apply GHS summation rules before precedence / consolidation.
+        // Any (class, category) whose combined component concentrations clear
+        // the summation threshold classifies the mixture, contributing default
+        // H/P-codes / pictograms / signal word for that category.
+        $this->applySummationRules(
+            $allHClasses, $allHStmts, $allPStmts, $allPictograms, $signalWord, $hazardousCas
+        );
 
         // Apply pictogram precedence rules
         $finalPictograms = $this->applyPictogramPrecedence(array_keys($allPictograms));
@@ -612,6 +714,181 @@ class HazardEngine
     }
 
     /**
+     * Record a (class, category) contribution from a single component into
+     * the summation accumulator. Safe to call for every hazard entry the
+     * engine sees, triggered or not — entries for classes without a
+     * SUMMATION_RULES entry are silently dropped so the buffer stays focused.
+     */
+    private function addToSummationBuffer(
+        ?string $canonical,
+        string $category,
+        string $cas,
+        string $name,
+        float $conc,
+        string $source,
+        bool $triggeredDirectly
+    ): void {
+        if ($canonical === null || $canonical === '') {
+            return;
+        }
+        if (!isset(self::SUMMATION_RULES[$canonical][$category])) {
+            return;
+        }
+        $this->summationBuffer[$canonical][$category][] = [
+            'cas'                => $cas,
+            'name'               => $name,
+            'conc'               => $conc,
+            'source'             => $source,
+            'triggered_directly' => $triggeredDirectly,
+        ];
+    }
+
+    /**
+     * After the main component loop, iterate every SUMMATION_RULES entry
+     * and fire mixture-level classifications whose combined concentration
+     * meets the GHS Annex I / 29 CFR 1910.1200 App A summation threshold.
+     *
+     * Skips any (class, category) already classified by a per-component
+     * trigger — summation only fills gaps where no single component
+     * reached its own cutoff but the combined mass does.
+     */
+    private function applySummationRules(
+        array &$allHClasses,
+        array &$allHStmts,
+        array &$allPStmts,
+        array &$allPictograms,
+        ?string &$signalWord,
+        array &$hazardousCas
+    ): void {
+        foreach (self::SUMMATION_RULES as $canonical => $categoryThresholds) {
+            foreach ($categoryThresholds as $category => $threshold) {
+                $contributors = $this->summationBuffer[$canonical][$category] ?? [];
+                if (empty($contributors)) {
+                    continue;
+                }
+
+                $sum = 0.0;
+                foreach ($contributors as $c) {
+                    $sum += (float) $c['conc'];
+                }
+
+                if ($sum < $threshold) {
+                    continue;
+                }
+
+                if ($this->alreadyClassified($allHClasses, $canonical, $category)) {
+                    continue;
+                }
+
+                $this->traceStep('summation_triggered', "Summation rule fired for {$canonical} {$category}", [
+                    'canonical'    => $canonical,
+                    'category'     => $category,
+                    'sum_pct'      => $sum,
+                    'threshold_pct' => $threshold,
+                    'contributors' => array_map(fn($c) => [
+                        'cas' => $c['cas'], 'conc' => $c['conc'], 'source' => $c['source'],
+                        'triggered_directly' => $c['triggered_directly'],
+                    ], $contributors),
+                ]);
+
+                $defaults = $this->getDefaultsForClassCategory($canonical, $category);
+
+                $allHClasses[] = [
+                    'class'              => GHSHazardClass::displayName($canonical),
+                    'category'           => $defaults['category_display'] ?? $category,
+                    'canonical'          => $canonical,
+                    'category_canonical' => $category,
+                    'cas'                => 'MIXTURE',
+                    'chemical'           => 'Multiple components (summation)',
+                    'concentration_pct'  => $sum,
+                    'cutoff_pct'         => $threshold,
+                    'source'             => 'summation',
+                ];
+
+                foreach ($defaults['h_codes'] as $hc) {
+                    if (!isset($allHStmts[$hc])) {
+                        $allHStmts[$hc] = ['code' => $hc, 'text' => ''];
+                    }
+                }
+                foreach ($defaults['p_codes'] as $pc) {
+                    if (!isset($allPStmts[$pc])) {
+                        $allPStmts[$pc] = ['code' => $pc, 'text' => ''];
+                    }
+                }
+                foreach ($defaults['pictograms'] as $pict) {
+                    $allPictograms[$pict] = true;
+                }
+                if ($defaults['signal_word'] !== null) {
+                    $curPri = self::SIGNAL_HIERARCHY[$signalWord] ?? 0;
+                    $newPri = self::SIGNAL_HIERARCHY[$defaults['signal_word']] ?? 0;
+                    if ($newPri > $curPri) {
+                        $signalWord = $defaults['signal_word'];
+                    }
+                }
+
+                foreach ($contributors as $c) {
+                    $casId = (string) $c['cas'];
+                    if ($casId === '' || $casId === 'TRADE_SECRET') {
+                        continue;
+                    }
+                    $hazardousCas[$casId] = true;
+                }
+            }
+        }
+    }
+
+    /**
+     * True if $hazardClasses already contains an entry for the given
+     * canonical class + canonical category — used by applySummationRules
+     * to avoid stamping a mixture-level duplicate when a per-component
+     * trigger already classified the same (class, category).
+     */
+    private function alreadyClassified(array $hazardClasses, string $canonical, string $category): bool
+    {
+        foreach ($hazardClasses as $hc) {
+            if (($hc['canonical'] ?? null) !== $canonical) continue;
+            if (($hc['category_canonical'] ?? null) !== $category) continue;
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Pull the default H-codes, P-codes, pictograms, and signal word for a
+     * given canonical class + canonical category out of GHSHazardData.
+     * The lookup is by matching entry['class'] to the canonical's display
+     * name and normalising entry['category'] through HazardClassAliases.
+     * Returns empty arrays if no match is found.
+     */
+    private function getDefaultsForClassCategory(string $canonical, string $category): array
+    {
+        $displayClass = GHSHazardClass::displayName($canonical);
+        foreach (GHSHazardData::HAZARD_CLASSIFICATIONS as $entry) {
+            if (($entry['class'] ?? null) !== $displayClass) {
+                continue;
+            }
+            $entryCat = HazardClassAliases::normalizeCategory((string) ($entry['category'] ?? ''));
+            if ($entryCat !== $category) {
+                continue;
+            }
+            return [
+                'h_codes'          => $entry['h_codes']    ?? [],
+                'p_codes'          => $entry['p_codes']    ?? [],
+                'pictograms'       => $entry['pictograms'] ?? [],
+                'signal_word'      => $entry['signal_word'] ?? null,
+                'category_display' => $entry['category']   ?? $category,
+            ];
+        }
+        return [
+            'h_codes'          => [],
+            'p_codes'          => [],
+            'pictograms'       => [],
+            'signal_word'      => null,
+            'category_display' => $category,
+        ];
+    }
+
+    /**
      * Apply GHS pictogram precedence rules.
      * GHS06 (skull) takes precedence over GHS07 (exclamation).
      * GHS05 (corrosion) takes precedence over GHS07 for skin/eye.
@@ -720,6 +997,14 @@ class HazardEngine
                 $categoryCanon = HazardClassAliases::normalizeCategory($entry['category']);
                 $cutoff        = $this->getCutoff($canonical ?? '', $categoryCanon);
 
+                // Feed the summation buffer for every CPD-declared
+                // (class, category), triggered or not. The buffer is
+                // consulted by applySummationRules after the main loop.
+                $this->addToSummationBuffer(
+                    $canonical, $categoryCanon, $cas, $name, $conc,
+                    $source, $conc >= $cutoff
+                );
+
                 if ($conc < $cutoff) {
                     $this->traceStep('cpd_below_cutoff', "CPD {$cas} {$entry['class']} {$entry['category']} below cutoff", [
                         'cas' => $cas, 'class' => $entry['class'], 'category' => $entry['category'],
@@ -751,6 +1036,15 @@ class HazardEngine
             foreach ($classRaw as $classStr) {
                 $canonical = HazardClassAliases::normalize($classStr);
                 $cutoff    = $this->getCutoff($canonical ?? '', null);
+
+                // Free-text entries have no category, so they don't land in
+                // SUMMATION_RULES (which is keyed by specific categories).
+                // Still record the attempt — addToSummationBuffer silently
+                // drops uncategorised entries so the buffer stays coherent.
+                $this->addToSummationBuffer(
+                    $canonical, '', $cas, $name, $conc,
+                    $source, $conc >= $cutoff
+                );
 
                 if ($conc < $cutoff) {
                     $this->traceStep('cpd_below_cutoff', "CPD {$cas} {$classStr} below cutoff (free-text, no category)", [

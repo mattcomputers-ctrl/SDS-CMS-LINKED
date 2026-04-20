@@ -509,9 +509,116 @@ try {
     // validating only that a fully-below-cutoff CPD is fully suppressed.
 
     // ──────────────────────────────────────────────────────────────────
-    echo "\n[18] Phase 2 — engine version stamp is bumped to v1.2-cpd-cutoffs.\n";
-    assertEquals('ENGINE_VERSION is v1.2-cpd-cutoffs',
-        'v1.2-cpd-cutoffs', \SDS\Services\HazardEngine::ENGINE_VERSION);
+    // Phase 3: GHS summation / additivity rules
+    // ──────────────────────────────────────────────────────────────────
+
+    echo "\n[18] Phase 3 — Three Cat 1A carcinogens at 0.04% each sum to 0.12% > 0.1% threshold → TRIGGERS.\n";
+    // Seed three distinct CASes all classified Carc Cat 1A. None alone clears
+    // the per-component 0.1% cutoff, but together they clear the 0.1%
+    // summation threshold for carcinogenicity Cat 1A.
+    $seeded['sum_carc_a'] = seedClassification(
+        $db, '99999-30-0', 'Carcinogenicity', 'Category 1A',
+        ['H350'], ['P201'], ['GHS08'], 'Danger'
+    );
+    $seeded['sum_carc_b'] = seedClassification(
+        $db, '99999-31-1', 'Carcinogenicity', 'Category 1A',
+        ['H350'], ['P201'], ['GHS08'], 'Danger'
+    );
+    $seeded['sum_carc_c'] = seedClassification(
+        $db, '99999-32-2', 'Carcinogenicity', 'Category 1A',
+        ['H350'], ['P201'], ['GHS08'], 'Danger'
+    );
+    $result = $engine->classify([
+        ['cas_number' => '99999-30-0', 'chemical_name' => 'Carc A', 'concentration_pct' => 0.04],
+        ['cas_number' => '99999-31-1', 'chemical_name' => 'Carc B', 'concentration_pct' => 0.04],
+        ['cas_number' => '99999-32-2', 'chemical_name' => 'Carc C', 'concentration_pct' => 0.04],
+    ]);
+    assertContains('sum-carc-trigger: GHS08 via summation', picts($result), 'GHS08');
+    assertContains('sum-carc-trigger: H350 via summation', hCodes($result), 'H350');
+    assertEquals('sum-carc-trigger: signal_word Danger', 'Danger', $result['signal_word']);
+    assertContains('sum-carc-trigger: trace logs summation_triggered', traceSteps($result), 'summation_triggered');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[19] Phase 3 — Three Cat 1A carcinogens at 0.02% each (sum 0.06%) do NOT trigger.\n";
+    $result = $engine->classify([
+        ['cas_number' => '99999-30-0', 'chemical_name' => 'Carc A', 'concentration_pct' => 0.02],
+        ['cas_number' => '99999-31-1', 'chemical_name' => 'Carc B', 'concentration_pct' => 0.02],
+        ['cas_number' => '99999-32-2', 'chemical_name' => 'Carc C', 'concentration_pct' => 0.02],
+    ]);
+    assertEmpty('sum-carc-below: no pictograms', picts($result));
+    assertEmpty('sum-carc-below: no hazard_classes', hazardClasses($result));
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[20] Phase 3 — Per-component trigger + summation contributors does not duplicate.\n";
+    // One CAS at 0.5% (above cutoff, triggers directly) + two CASes at 0.04%
+    // (sub-threshold summation contributors). The direct trigger should fire
+    // once; summation sees already-classified and skips its add.
+    $result = $engine->classify([
+        ['cas_number' => '99999-30-0', 'chemical_name' => 'Carc A', 'concentration_pct' => 0.5],
+        ['cas_number' => '99999-31-1', 'chemical_name' => 'Carc B', 'concentration_pct' => 0.04],
+        ['cas_number' => '99999-32-2', 'chemical_name' => 'Carc C', 'concentration_pct' => 0.04],
+    ]);
+    // Count Carc Cat 1A entries in the output — should be exactly one
+    $carcCount = 0;
+    foreach ($result['hazard_classes'] as $hc) {
+        if (($hc['canonical'] ?? '') === \SDS\Services\GHSHazardClass::CARCINOGENICITY
+            && ($hc['category_canonical'] ?? '') === 'Cat 1A') {
+            $carcCount++;
+        }
+    }
+    assertEquals('sum-no-dup: exactly one Carc Cat 1A entry after consolidation', 1, $carcCount);
+    assertContains('sum-no-dup: GHS08 present', picts($result), 'GHS08');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[21] Phase 3 — Mixed Skin Sens Cat 1 contributors sum to trigger (0.1% threshold).\n";
+    // Two distinct Skin Sens Cat 1 CASes at 0.06% each → sum 0.12% > 0.1%
+    $seeded['sum_sens_a'] = seedClassification(
+        $db, '99999-33-3', 'Skin Sensitization', 'Category 1',
+        ['H317'], ['P261'], ['GHS07'], 'Warning'
+    );
+    $seeded['sum_sens_b'] = seedClassification(
+        $db, '99999-34-4', 'Skin Sensitization', 'Category 1',
+        ['H317'], ['P261'], ['GHS07'], 'Warning'
+    );
+    $result = $engine->classify([
+        ['cas_number' => '99999-33-3', 'chemical_name' => 'Sens A', 'concentration_pct' => 0.06],
+        ['cas_number' => '99999-34-4', 'chemical_name' => 'Sens B', 'concentration_pct' => 0.06],
+    ]);
+    assertContains('sum-skin-sens: GHS07 via summation', picts($result), 'GHS07');
+    assertContains('sum-skin-sens: H317 via summation', hCodes($result), 'H317');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[22] Phase 3 — CPD contributors participate in summation.\n";
+    // Two CPDs each declaring Carcinogenicity Cat 1A at 0.06% → sum 0.12%.
+    // Neither individually triggers (both below 0.1% cutoff per Phase 2),
+    // but the summation rule fires.
+    $cpdIds[] = seedCpd($db, '99999-35-5', [
+        'selected_hazards' => ['Carcinogenicity - Category 1A'],
+        'h_statements'     => 'H350',
+        'p_statements'     => 'P201',
+        'pictograms'       => 'GHS08',
+        'signal_word'      => 'Danger',
+    ]);
+    $cpdIds[] = seedCpd($db, '99999-36-6', [
+        'selected_hazards' => ['Carcinogenicity - Category 1A'],
+        'h_statements'     => 'H350',
+        'p_statements'     => 'P201',
+        'pictograms'       => 'GHS08',
+        'signal_word'      => 'Danger',
+    ]);
+    $result = $engine->classify([
+        ['cas_number' => '99999-35-5', 'chemical_name' => 'CPD Carc A', 'concentration_pct' => 0.06],
+        ['cas_number' => '99999-36-6', 'chemical_name' => 'CPD Carc B', 'concentration_pct' => 0.06],
+    ]);
+    assertContains('sum-cpd: GHS08 via summation', picts($result), 'GHS08');
+    assertContains('sum-cpd: H350 via summation', hCodes($result), 'H350');
+    assertEquals('sum-cpd: signal_word Danger', 'Danger', $result['signal_word']);
+    assertContains('sum-cpd: summation_triggered in trace', traceSteps($result), 'summation_triggered');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[23] Phase 3 — engine version stamp is bumped to v1.3-summation.\n";
+    assertEquals('ENGINE_VERSION is v1.3-summation',
+        'v1.3-summation', \SDS\Services\HazardEngine::ENGINE_VERSION);
 
 } catch (\Throwable $e) {
     echo "\n!!! EXCEPTION DURING TEST SUITE !!!\n";

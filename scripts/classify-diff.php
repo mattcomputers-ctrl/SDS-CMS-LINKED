@@ -240,20 +240,24 @@ function recomputedClassification(array $engineResult): array
 // --- Main loop -------------------------------------------------------------
 
 $db = Database::getInstance();
+$pdo = $db->getPdo();
 
-$sql = "SELECT sv.id, sv.finished_good_id, sv.version, sv.language, sv.published_at,
-               sv.snapshot_json, fg.product_code
-          FROM sds_versions sv
-          JOIN finished_goods fg ON fg.id = sv.finished_good_id
-         WHERE sv.status = 'published' AND sv.is_deleted = 0";
+// Memory strategy: we select only the ID list upfront (tiny), then fetch
+// each SDS's heavy snapshot_json one at a time inside the loop. This avoids
+// both fetchAll() materialising 14k rows into PHP memory and PDO buffered-
+// query mode loading every snapshot into mysqlnd's internal buffer — either
+// one easily blows past a 2 GB heap at this data scale. Per-iteration memory
+// stays bounded to one snapshot at a time.
+$whereClause = "WHERE sv.status = 'published' AND sv.is_deleted = 0";
 $params = [];
 if ($fgId !== null) {
-    $sql .= " AND sv.finished_good_id = ?";
+    $whereClause .= " AND sv.finished_good_id = ?";
     $params[] = $fgId;
 }
-$sql .= " ORDER BY sv.id";
+
+$idSql = "SELECT id FROM sds_versions sv {$whereClause} ORDER BY id";
 if ($limit !== null) {
-    $sql .= " LIMIT " . $limit;
+    $idSql .= " LIMIT " . $limit;
 }
 
 out("=== SDS Classification Diff Harness ===", $quiet);
@@ -264,9 +268,20 @@ if ($fgId !== null) out("Filter FG:     {$fgId}", $quiet);
 if ($limit !== null) out("Limit:         {$limit}", $quiet);
 out("", $quiet);
 
-$rows = $db->fetchAll($sql, $params);
-$totalSds = count($rows);
+$idStmt = $pdo->prepare($idSql);
+$idStmt->execute($params);
+$idList = $idStmt->fetchAll(\PDO::FETCH_COLUMN);
+$totalSds = count($idList);
 out("Processing {$totalSds} published SDS version(s).", $quiet);
+
+// Reused per-row statement — one indexed PK lookup per SDS.
+$rowStmt = $pdo->prepare(
+    "SELECT sv.id, sv.finished_good_id, sv.version, sv.language, sv.published_at,
+            sv.snapshot_json, fg.product_code
+       FROM sds_versions sv
+       JOIN finished_goods fg ON fg.id = sv.finished_good_id
+      WHERE sv.id = ?"
+);
 
 $csv = fopen($outputPath, 'w');
 if ($csv === false) {
@@ -287,7 +302,14 @@ $counters = [
     'diff_by_type' => [],
 ];
 
-foreach ($rows as $row) {
+foreach ($idList as $sdsIdRaw) {
+    $rowStmt->execute([(int) $sdsIdRaw]);
+    $row = $rowStmt->fetch(\PDO::FETCH_ASSOC);
+    $rowStmt->closeCursor();
+    if ($row === false) {
+        continue;
+    }
+
     $counters['processed']++;
 
     $sdsId        = (int) $row['id'];

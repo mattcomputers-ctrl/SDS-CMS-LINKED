@@ -112,10 +112,21 @@ function classificationColumnExists(Database $db, string $column): bool
 
 /**
  * Seed a competent_person_determinations row for CPD-path tests.
- * Returns the insert id for teardown.
+ *
+ * Reproduces the real CPD data shape from AdminController: the inner
+ * `selected_hazards` and `exposure_limits` fields are themselves stored
+ * as JSON-encoded strings within determination_json (double-encoded).
+ * The engine's parseDeterminationStructure does an inner json_decode on
+ * them, so the fixture must match or it TypeErrors.
  */
 function seedCpd(Database $db, string $cas, array $determination): int
 {
+    if (isset($determination['selected_hazards']) && is_array($determination['selected_hazards'])) {
+        $determination['selected_hazards'] = json_encode($determination['selected_hazards']);
+    }
+    if (isset($determination['exposure_limits']) && is_array($determination['exposure_limits'])) {
+        $determination['exposure_limits'] = json_encode($determination['exposure_limits']);
+    }
     return (int) $db->insert('competent_person_determinations', [
         'cas_number'         => $cas,
         'jurisdiction'       => 'US',

@@ -24,6 +24,12 @@
  *   --mode=<snapshot|live>    snapshot: reconstruct composition from snapshot Section 3
  *                             live:     re-run Formula::getExpandedComposition() on current data
  *                             (default: snapshot)
+ *   --language=<code>         only diff SDSs in this language (e.g. 'en'). Non-English
+ *                             snapshots carry translated signal words and hazard class
+ *                             names ("Attention" vs "Warning", "Cancérogénicité" vs
+ *                             "Carcinogenicity") which the engine always emits in English
+ *                             canonical form — set this to 'en' to avoid spurious
+ *                             translation diffs on non-English SDSs.
  *   --limit=<n>               stop after N SDSs (default: all published, non-deleted)
  *   --fg-id=<id>              only diff SDSs for this finished_good_id
  *   --output=<path>           CSV output path
@@ -52,6 +58,7 @@ use SDS\Models\Formula;
 
 $args = [
     'mode'           => 'snapshot',
+    'language'       => null,
     'limit'          => null,
     'fg-id'          => null,
     'output'         => null,
@@ -81,9 +88,10 @@ if (!in_array($args['mode'], ['snapshot', 'live'], true)) {
     exit(1);
 }
 
-$limit = $args['limit'] !== null ? (int) $args['limit'] : null;
-$fgId  = $args['fg-id'] !== null ? (int) $args['fg-id'] : null;
-$quiet = (bool) $args['quiet'];
+$limit    = $args['limit'] !== null ? (int) $args['limit'] : null;
+$fgId     = $args['fg-id'] !== null ? (int) $args['fg-id'] : null;
+$language = $args['language'] !== null ? strtolower(trim((string) $args['language'])) : null;
+$quiet    = (bool) $args['quiet'];
 $progressEvery = max(1, (int) $args['progress-every']);
 
 if ($args['output'] === null) {
@@ -254,6 +262,10 @@ if ($fgId !== null) {
     $whereClause .= " AND sv.finished_good_id = ?";
     $params[] = $fgId;
 }
+if ($language !== null) {
+    $whereClause .= " AND sv.language = ?";
+    $params[] = $language;
+}
 
 $idSql = "SELECT id FROM sds_versions sv {$whereClause} ORDER BY id";
 if ($limit !== null) {
@@ -264,8 +276,9 @@ out("=== SDS Classification Diff Harness ===", $quiet);
 out("Mode:          {$args['mode']}", $quiet);
 out("Engine:        " . HazardEngine::ENGINE_VERSION, $quiet);
 out("Output CSV:    {$outputPath}", $quiet);
-if ($fgId !== null) out("Filter FG:     {$fgId}", $quiet);
-if ($limit !== null) out("Limit:         {$limit}", $quiet);
+if ($language !== null) out("Filter lang:   {$language}", $quiet);
+if ($fgId !== null)     out("Filter FG:     {$fgId}", $quiet);
+if ($limit !== null)    out("Limit:         {$limit}", $quiet);
 out("", $quiet);
 
 $idStmt = $pdo->prepare($idSql);

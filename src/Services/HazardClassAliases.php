@@ -332,16 +332,28 @@ final class HazardClassAliases
             }
         }
 
-        // 3. Stripped-trailing-category fallback: some vendor rows concatenate
-        // the category into the class name ("Skin Corrosion Cat 1"). Strip
-        // the category suffix and retry.
+        // 3. Stripped-trailing-category fallback: CPD / vendor rows frequently
+        // concatenate the category into the class name —
+        //   "Skin Corrosion/Irritation Cat 1"
+        //   "Skin Sensitization Category 1 (1A/1B)"
+        //   "STOT — Single Exposure Category 3 (Respiratory Irritation)"
+        // The optional trailing "(…)" captures sub-category qualifiers or
+        // alternate-category unions like "(1A/1B/1C)".
         $stripped = preg_replace(
-            '/\s+cat(egory)?\.?\s*[0-9][a-d]?\s*$/i',
+            '/\s+cat(egory)?\.?\s*[0-9][a-d]?(\s*\([^)]*\))?\s*$/i',
             '',
             $key
         );
         if (is_string($stripped) && $stripped !== $key && isset(self::ALIASES[$stripped])) {
             return self::ALIASES[$stripped];
+        }
+
+        // Translation fallback on the stripped form too
+        if (is_string($stripped) && $stripped !== $key && isset($rev[$stripped])) {
+            $englishKey = self::normKey($rev[$stripped]);
+            if (isset(self::ALIASES[$englishKey])) {
+                return self::ALIASES[$englishKey];
+            }
         }
 
         return null;

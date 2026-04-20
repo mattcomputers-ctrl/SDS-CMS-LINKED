@@ -141,6 +141,25 @@ foreach ($translationFiles as $lang => $t) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
+echo "[4b] normalize() — class name with category baked into string.\n";
+// CPD free-text rows frequently concatenate category into the class name.
+// Also covers the optional trailing parenthetical sub-category qualifier.
+$combinedCatTests = [
+    'Skin Sensitization Category 1 (1A/1B)'                       => GHSHazardClass::SKIN_SENSITIZATION,
+    'Skin Corrosion/Irritation Category 1 (1A/1B/1C)'             => GHSHazardClass::SKIN_CORROSION_IRRITATION,
+    'Reproductive Toxicity Category 1 (1A/1B)'                    => GHSHazardClass::REPRODUCTIVE_TOXICITY,
+    'STOT — Single Exposure Category 3 (Respiratory Irritation)'  => GHSHazardClass::STOT_SINGLE,
+    'STOT — Single Exposure Category 3 (Narcotic Effects)'        => GHSHazardClass::STOT_SINGLE,
+    'Carcinogenicity Category 1A'                                 => GHSHazardClass::CARCINOGENICITY,
+    'Carcinogenicity Cat 1A'                                      => GHSHazardClass::CARCINOGENICITY,
+    'Skin Corrosion Cat 1'                                        => GHSHazardClass::SKIN_CORROSION_IRRITATION,
+];
+foreach ($combinedCatTests as $raw => $expected) {
+    assertEquals("combined-cat: '{$raw}' → {$expected}",
+        $expected, HazardClassAliases::normalize($raw));
+}
+
+// ──────────────────────────────────────────────────────────────────────
 echo "[5] normalize() — unmappable / empty / null inputs.\n";
 assertNull("empty string → null", HazardClassAliases::normalize(''));
 assertNull("whitespace → null", HazardClassAliases::normalize('   '));

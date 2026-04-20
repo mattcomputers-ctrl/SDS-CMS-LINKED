@@ -307,6 +307,10 @@ class App
             $r->get('/federal-data',          'AdminController@federalData');
             $r->post('/federal-data/refresh', 'AdminController@refreshFederalData');
 
+            // ECHA CLP Annex VI M-factor import (Phase 4 aquatic data)
+            $r->get('/echa-import',           'AdminController@echaImport');
+            $r->post('/echa-import/upload',   'AdminController@uploadEchaCsv');
+
             // Audit log
             $r->get('/audit-log', 'AdminController@auditLog');
 

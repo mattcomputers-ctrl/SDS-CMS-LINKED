@@ -1034,6 +1034,116 @@ class AdminController
      *  Federal Data
      * ----------------------------------------------------------------*/
 
+    /**
+     * GET /admin/echa-import — ECHA CLP Annex VI M-factor import page.
+     * Shows current M-factor count, last-imported file, and an upload
+     * form. Upload drops the CSV at seeds/echa_m_factors.csv and runs
+     * import-echa-m-factors.php.
+     */
+    public function echaImport(): void
+    {
+        $this->requireAdmin();
+
+        $db = Database::getInstance();
+
+        // Current state: how many hazard_classifications rows carry an
+        // M-factor value, and when was the last import?
+        $counts = $db->fetch(
+            "SELECT
+                SUM(CASE WHEN m_factor_acute   IS NOT NULL THEN 1 ELSE 0 END) AS acute_cnt,
+                SUM(CASE WHEN m_factor_chronic IS NOT NULL THEN 1 ELSE 0 END) AS chronic_cnt
+             FROM hazard_classifications"
+        );
+
+        $csvPath = App::basePath() . '/seeds/echa_m_factors.csv';
+        $csvExists = file_exists($csvPath);
+        $csvMtime  = $csvExists ? date('Y-m-d H:i:s', filemtime($csvPath)) : null;
+        $csvSize   = $csvExists ? filesize($csvPath) : 0;
+
+        view('admin/echa-import', [
+            'pageTitle'  => 'ECHA M-Factor Import',
+            'acuteCount'   => (int) ($counts['acute_cnt']   ?? 0),
+            'chronicCount' => (int) ($counts['chronic_cnt'] ?? 0),
+            'csvExists'  => $csvExists,
+            'csvMtime'   => $csvMtime,
+            'csvSize'    => $csvSize,
+            'flash'      => $_SESSION['_flash']['echa'] ?? null,
+        ]);
+        unset($_SESSION['_flash']['echa']);
+    }
+
+    /**
+     * POST /admin/echa-import/upload — accept a CSV upload, save it to
+     * seeds/echa_m_factors.csv, run the import script, and display the
+     * results. Idempotent — upload the same file twice and no new
+     * synthetic rows are created.
+     */
+    public function uploadEchaCsv(): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+
+        $file = $_FILES['echa_csv'] ?? null;
+        if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            $_SESSION['_flash']['echa'] = ['type' => 'error', 'msg' => 'No file uploaded, or upload failed.'];
+            redirect('/admin/echa-import');
+        }
+
+        // Sanity check: must be CSV-ish (size, extension). Don't verify
+        // full schema here — import-echa-m-factors.php does that and
+        // reports specific parse problems per row.
+        $name = (string) ($file['name'] ?? '');
+        $ext  = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+        if (!in_array($ext, ['csv', 'txt'], true)) {
+            $_SESSION['_flash']['echa'] = ['type' => 'error', 'msg' => "File must be .csv (got .{$ext}). If you have an .xls/.xlsx, open in Excel and Save As CSV UTF-8 first."];
+            redirect('/admin/echa-import');
+        }
+        if ((int) $file['size'] > 50 * 1024 * 1024) {
+            $_SESSION['_flash']['echa'] = ['type' => 'error', 'msg' => 'File is too large (>50 MB). ECHA Annex VI Table 3 is typically <5 MB as CSV.'];
+            redirect('/admin/echa-import');
+        }
+
+        // Save to seeds/echa_m_factors.csv, overwriting any prior import.
+        $dest = App::basePath() . '/seeds/echa_m_factors.csv';
+        if (!move_uploaded_file($file['tmp_name'], $dest)) {
+            $_SESSION['_flash']['echa'] = ['type' => 'error', 'msg' => 'Failed to save uploaded file. Check filesystem permissions on seeds/.'];
+            redirect('/admin/echa-import');
+        }
+
+        // Run import synchronously, capture output.
+        $script = App::basePath() . '/scripts/import-echa-m-factors.php';
+        $cmd = escapeshellarg(\php_cli_binary()) . ' '
+             . escapeshellarg($script) . ' '
+             . escapeshellarg($dest) . ' 2>&1';
+
+        $output = shell_exec($cmd);
+        $exit   = 0;  // shell_exec doesn't return exit code; rely on output patterns
+
+        AuditService::log('echa_import', basename($dest), 'upload', [
+            'size'   => (int) $file['size'],
+            'summary' => self::extractEchaSummary((string) $output),
+        ]);
+
+        $_SESSION['_flash']['echa'] = [
+            'type'   => 'success',
+            'msg'    => 'Import complete.',
+            'output' => (string) $output,
+        ];
+        redirect('/admin/echa-import');
+    }
+
+    /**
+     * Pull the "Summary" section out of the import script's stdout so
+     * the audit log captures row counts without storing the whole dump.
+     */
+    private static function extractEchaSummary(string $output): string
+    {
+        if (preg_match('/=== Summary ===(.*)$/s', $output, $m)) {
+            return trim($m[1]);
+        }
+        return '';
+    }
+
     public function federalData(): void
     {
         $this->requireAdmin();

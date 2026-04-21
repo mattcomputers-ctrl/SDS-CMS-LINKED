@@ -1424,16 +1424,21 @@ class SDSGenerator
                 continue;
             }
 
-            // If any other material is NOT powder, flag it
-            $state = $line['physical_state'] ?? null;
-            if ($state === null || strtolower($state) !== 'powder') {
+            // Per the Carbon Black rule: only "powder" or "solid" coincident
+            // materials keep the carcinogen classification in play. Liquids,
+            // pastes, gels, gases, and unknown states all cause H351 / Prop 65
+            // to be suppressed because the CB particulate can't become an
+            // inhalation hazard when locked inside (or dispersed through)
+            // a non-solid matrix.
+            $state = strtolower((string) ($line['physical_state'] ?? ''));
+            if ($state !== 'powder' && $state !== 'solid') {
                 $hasNonPowder = true;
                 break;
             }
         }
 
         // Determine if carcinogen classification should apply
-        $onlyPowders = !$hasNonPowder; // true if CB is only ingredient or all others are powder
+        $onlyPowders = !$hasNonPowder; // true if CB is only ingredient or all others are powder/solid
 
         if ($onlyPowders) {
             // Add Carcinogen Category 2 + H351 if not already present
@@ -1545,17 +1550,21 @@ class SDSGenerator
             return [];
         }
 
-        // 1. Does the formula contain at least one liquid raw material?
-        $hasLiquid = false;
+        // 1. Does the formula contain at least one raw material that is NOT
+        //    a solid or a powder? A solid particulate becomes an inhalation
+        //    hazard only in dry / airborne form — any liquid, paste, gel,
+        //    gas, or unknown-state coincident material traps or disperses
+        //    the particulate and drops the inhalation concern.
+        $hasNonSolidNonPowder = false;
         foreach ($enrichedLines as $line) {
-            $state = strtolower($line['physical_state'] ?? '');
-            if ($state === 'liquid') {
-                $hasLiquid = true;
+            $state = strtolower((string) ($line['physical_state'] ?? ''));
+            if ($state !== 'solid' && $state !== 'powder') {
+                $hasNonSolidNonPowder = true;
                 break;
             }
         }
 
-        if (!$hasLiquid) {
+        if (!$hasNonSolidNonPowder) {
             return [];
         }
 
@@ -1564,7 +1573,7 @@ class SDSGenerator
         //    contains it has a physical_state of Solid or Powder.
         $casStates = []; // cas => ['solid' => true, ...]
         foreach ($enrichedLines as $line) {
-            $state = strtolower($line['physical_state'] ?? '');
+            $state = strtolower((string) ($line['physical_state'] ?? ''));
             foreach ($line['constituents'] ?? [] as $constituent) {
                 $cas = $constituent['cas_number'] ?? '';
                 if ($cas === '') {

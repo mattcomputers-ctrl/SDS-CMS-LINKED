@@ -58,6 +58,41 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
             <?php if (!empty($section['hazard_classes'])): ?>
                 <p><strong><?= e($l('ghs_classification')) ?>:</strong></p>
                 <?php
+                    // Build an H-code → statement-text lookup so each
+                    // classification row includes the phrase text inline —
+                    // no separate Hazard Statements list underneath. Try
+                    // the code(s) verbatim first (combined codes like
+                    // "H300+H310+H330" may index as a single entry), then
+                    // fall back to splitting on '+' for the components.
+                    $statementsByCode = [];
+                    foreach ($section['h_statements'] ?? [] as $stmt) {
+                        $c = (string) ($stmt['code'] ?? '');
+                        if ($c !== '') {
+                            $statementsByCode[$c] = (string) ($stmt['text'] ?? '');
+                        }
+                    }
+                    $lookupStatement = function (array $hCodes) use ($statementsByCode): string {
+                        foreach ($hCodes as $c) {
+                            if (!empty($statementsByCode[$c])) return $statementsByCode[$c];
+                            foreach (explode('+', (string) $c) as $part) {
+                                $part = trim($part);
+                                if ($part !== '' && !empty($statementsByCode[$part])) {
+                                    return $statementsByCode[$part];
+                                }
+                            }
+                        }
+                        return '';
+                    };
+                    // Sort within each category by first H-code number so
+                    // more-severe hazards (lower H number) lead the list.
+                    $firstHCodeNum = function (array $hCodes): int {
+                        if (empty($hCodes)) return 9999;
+                        if (preg_match('/H(\d+)/', (string) $hCodes[0], $m)) {
+                            return (int) $m[1];
+                        }
+                        return 9999;
+                    };
+
                     $grouped = \SDS\Services\HazardEngine::groupByHazardType($section['hazard_classes']);
                     $groupLabels = [
                         'physical'      => $l('physical_hazards'),
@@ -66,41 +101,37 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                     ];
                 ?>
                 <?php foreach ($groupLabels as $groupKey => $groupLabel): ?>
-                    <p style="margin-bottom: 0.2rem;"><strong><?= e($groupLabel) ?></strong></p>
+                    <p style="margin-bottom: 0.2rem;"><strong><?= e($groupLabel) ?>:</strong></p>
                     <?php if (empty($grouped[$groupKey])): ?>
                         <p style="margin-left: 1rem;">None</p>
                     <?php else: ?>
-                        <ul>
                         <?php
+                            $sorted = $grouped[$groupKey];
+                            usort($sorted, function ($a, $b) use ($firstHCodeNum) {
+                                return $firstHCodeNum($a['h_codes'] ?? []) <=> $firstHCodeNum($b['h_codes'] ?? []);
+                            });
                             $seen = [];
-                            foreach ($grouped[$groupKey] as $hc):
+                            foreach ($sorted as $hc):
                                 $cls = trim($hc['class_translated'] ?? $hc['class'] ?? '');
                                 $cat = trim($hc['category_translated'] ?? $hc['category'] ?? '');
-                                $label = ($cls !== '' && $cat !== '') ? $cls . ' (' . $cat . ')' : ($cls !== '' ? $cls : $cat);
-                                // Prefix H-codes so the identifier leads the line,
-                                // matching the "H###: description" format of the
-                                // Hazard Statements list below.
-                                $hcPrefix = (!empty($hc['h_codes']) && is_array($hc['h_codes']))
-                                    ? implode(', ', $hc['h_codes']) . ' — '
-                                    : '';
-                                if ($label !== '' && !isset($seen[$label])):
-                                    $seen[$label] = true;
+                                $classLabel = ($cls !== '' && $cat !== '') ? $cls . ' (' . $cat . ')' : ($cls !== '' ? $cls : $cat);
+                                $hCodes   = is_array($hc['h_codes'] ?? null) ? $hc['h_codes'] : [];
+                                $hcPrefix = !empty($hCodes) ? implode(', ', $hCodes) . ' — ' : '';
+                                $stmtText = $lookupStatement($hCodes);
+                                $line     = $hcPrefix . $classLabel . ($stmtText !== '' ? ': ' . $stmtText : '');
+                                if ($classLabel !== '' && !isset($seen[$line])):
+                                    $seen[$line] = true;
                         ?>
-                            <li><?= e($hcPrefix . $label) ?></li>
+                            <p style="margin-left: 1rem; margin-bottom: 0.1rem;"><?= e($line) ?></p>
                         <?php endif; endforeach; ?>
-                        </ul>
                     <?php endif; ?>
                 <?php endforeach; ?>
             <?php endif; ?>
 
-            <?php if (!empty($section['h_statements'])): ?>
-                <p><strong><?= e($l('hazard_statements')) ?>:</strong></p>
-                <ul>
-                <?php foreach ($section['h_statements'] as $s): ?>
-                    <li><strong><?= e($s['code']) ?></strong><?php if (!empty($s['text'])): ?>: <?= e($s['text']) ?><?php endif; ?></li>
-                <?php endforeach; ?>
-                </ul>
-            <?php endif; ?>
+            <?php // Hazard statements are rendered inline with the
+                  // classification above (H-code + phrase on the same line
+                  // under its Physical / Health / Environmental heading) —
+                  // no separate Hazard Statements list. ?>
 
             <?php if (!empty($section['p_statements'])): ?>
                 <p><strong><?= e($l('precautionary_statements')) ?>:</strong></p>

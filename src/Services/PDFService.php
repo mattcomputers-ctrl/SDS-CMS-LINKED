@@ -279,8 +279,50 @@ class PDFService
             $pdf->Ln(2);
         }
 
-        // Hazard classes summary — grouped by hazard type
+        // Hazard classes summary — grouped by hazard type, with H-code +
+        // hazard-statement text inlined so each hazard is shown once
+        // instead of appearing both here and in a separate Hazard
+        // Statements list. Entries within each group are sorted by the
+        // first H-code number so severity reads top-down (H300 before
+        // H400, H315 before H319, etc.).
         if (!empty($s['hazard_classes'])) {
+            // Build an H-code → statement-text map from $s['h_statements']
+            // so the classification line can append the phrase text.
+            $statementsByCode = [];
+            foreach ($s['h_statements'] ?? [] as $stmt) {
+                $code = (string) ($stmt['code'] ?? '');
+                if ($code !== '') {
+                    $statementsByCode[$code] = (string) ($stmt['text'] ?? '');
+                }
+            }
+
+            $lookupStatement = function (array $hCodes) use ($statementsByCode): string {
+                // Try the code(s) as given first (handles combined codes
+                // like "H300+H310+H330" that index as a single entry),
+                // then fall back to splitting on '+' and looking up the
+                // component codes.
+                foreach ($hCodes as $code) {
+                    if (!empty($statementsByCode[$code])) {
+                        return $statementsByCode[$code];
+                    }
+                    foreach (explode('+', (string) $code) as $part) {
+                        $part = trim($part);
+                        if ($part !== '' && !empty($statementsByCode[$part])) {
+                            return $statementsByCode[$part];
+                        }
+                    }
+                }
+                return '';
+            };
+
+            $firstHCodeNum = function (array $hCodes): int {
+                if (empty($hCodes)) return 9999;
+                if (preg_match('/H(\d+)/', (string) $hCodes[0], $m)) {
+                    return (int) $m[1];
+                }
+                return 9999;
+            };
+
             $pdf->SetFont('helvetica', 'B', 9);
             $pdf->Cell(0, 5, $this->label('ghs_classification') . ':', 0, 1);
 
@@ -293,56 +335,46 @@ class PDFService
 
             foreach ($groupLabels as $groupKey => $groupLabel) {
                 $pdf->SetFont('helvetica', 'B', 9);
-                $pdf->Cell(0, 5, $groupLabel, 0, 1);
+                $pdf->Cell(0, 5, $groupLabel . ':', 0, 1);
                 $pdf->SetFont('helvetica', '', 9);
 
                 if (empty($grouped[$groupKey])) {
-                    $pdf->MultiCell(0, 4, 'None', 0, 'L');
-                } else {
-                    $seen = [];
-                    foreach ($grouped[$groupKey] as $hc) {
-                        $class = trim($hc['class_translated'] ?? $hc['class'] ?? '');
-                        $category = trim($hc['category_translated'] ?? $hc['category'] ?? '');
-                        if ($class !== '' && $category !== '') {
-                            $label = $class . ' (' . $category . ')';
-                        } elseif ($class !== '') {
-                            $label = $class;
-                        } else {
-                            $label = $category;
-                        }
-                        // Prefix the H-code(s) so the identifier leads the
-                        // line — matches the "H302: Harmful if swallowed"
-                        // style of the Hazard Statements list below. Engine
-                        // attaches $hc['h_codes'] post-consolidation.
-                        if (!empty($hc['h_codes']) && is_array($hc['h_codes'])) {
-                            $label = implode(', ', $hc['h_codes']) . ' — ' . $label;
-                        }
-                        if ($label !== '' && !isset($seen[$label])) {
-                            $seen[$label] = true;
-                            $pdf->MultiCell(0, 4, "\xE2\x80\xA2 " . $label, 0, 'L');
-                        }
+                    $pdf->MultiCell(0, 4, '  None', 0, 'L');
+                    continue;
+                }
+
+                $sorted = $grouped[$groupKey];
+                usort($sorted, function ($a, $b) use ($firstHCodeNum) {
+                    return $firstHCodeNum($a['h_codes'] ?? []) <=> $firstHCodeNum($b['h_codes'] ?? []);
+                });
+
+                $seen = [];
+                foreach ($sorted as $hc) {
+                    $class = trim($hc['class_translated'] ?? $hc['class'] ?? '');
+                    $category = trim($hc['category_translated'] ?? $hc['category'] ?? '');
+                    $classLabel = ($class !== '' && $category !== '')
+                        ? $class . ' (' . $category . ')'
+                        : ($class !== '' ? $class : $category);
+                    $hCodes   = is_array($hc['h_codes'] ?? null) ? $hc['h_codes'] : [];
+                    $hcPrefix = !empty($hCodes) ? implode(', ', $hCodes) . ' — ' : '';
+                    $stmtText = $lookupStatement($hCodes);
+
+                    $line = '  ' . $hcPrefix . $classLabel;
+                    if ($stmtText !== '') {
+                        $line .= ': ' . $stmtText;
+                    }
+                    if ($line !== '  ' && !isset($seen[$line])) {
+                        $seen[$line] = true;
+                        $pdf->MultiCell(0, 4, $line, 0, 'L');
                     }
                 }
             }
             $pdf->Ln(1);
         }
 
-        // Hazard statements
-        if (!empty($s['h_statements'])) {
-            $pdf->SetFont('helvetica', 'B', 9);
-            $pdf->Cell(0, 5, $this->label('hazard_statements') . ':', 0, 1);
-            $pdf->SetFont('helvetica', '', 9);
-            foreach ($s['h_statements'] as $stmt) {
-                $code = $stmt['code'] ?? '';
-                $text = $stmt['text'] ?? '';
-                $line = $code;
-                if ($text !== '') {
-                    $line .= ': ' . $text;
-                }
-                $pdf->MultiCell(0, 4, $line, 0, 'L');
-            }
-            $pdf->Ln(1);
-        }
+        // Hazard statements are rendered inline with each classification
+        // above (H-code + phrase on the same line under its category) —
+        // no standalone list needed.
 
         // Precautionary statements
         if (!empty($s['p_statements'])) {

@@ -164,13 +164,19 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
             <p><strong><?= e($l('type')) ?>:</strong> <?= e($section['substance_or_mixture'] ?? $l('mixture')) ?></p>
             <?php if (!empty($section['components'])): ?>
             <table class="table table-sm">
-                <thead><tr><th><?= e($l('cas_number')) ?></th><th><?= e($l('chemical_name')) ?></th><th><?= e($l('concentration')) ?></th></tr></thead>
+                <thead><tr>
+                    <th><?= e($l('cas_number')) ?></th>
+                    <th><?= e($l('chemical_name')) ?></th>
+                    <th><?= e($l('concentration')) ?></th>
+                    <th>H-Codes</th>
+                </tr></thead>
                 <tbody>
                 <?php foreach ($section['components'] as $c): ?>
                     <tr>
                         <td><?= e($c['cas_number']) ?></td>
                         <td><?= e($c['chemical_name']) ?></td>
                         <td><?= e($c['concentration_range'] ?? number_format((float) $c['concentration_pct'], 2) . '%') ?></td>
+                        <td><?= !empty($c['h_codes']) && is_array($c['h_codes']) ? e(implode(', ', $c['h_codes'])) : '' ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>

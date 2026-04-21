@@ -525,19 +525,24 @@ class PDFService
             $pdf->MultiCell(0, 4, $this->label('hazardous_only_note'), 0, 'L');
             $pdf->Ln(1);
 
-            // Table header
+            // Table header — CAS + Chemical Name + Concentration + H-codes
             $pdf->SetFont('helvetica', 'B', 8);
             $pdf->SetFillColor(230, 230, 230);
-            $w = [30, 95, 45];
+            $w = [25, 75, 30, 40];
             $pdf->Cell($w[0], 5, $this->label('cas_number'), 1, 0, 'C', true);
             $pdf->Cell($w[1], 5, $this->label('chemical_name'), 1, 0, 'C', true);
-            $pdf->Cell($w[2], 5, $this->label('concentration'), 1, 1, 'C', true);
+            $pdf->Cell($w[2], 5, $this->label('concentration'), 1, 0, 'C', true);
+            $pdf->Cell($w[3], 5, 'H-Codes', 1, 1, 'C', true);
             $pdf->SetFont('helvetica', '', 8);
 
             foreach ($s['components'] as $comp) {
+                $hCodes = (!empty($comp['h_codes']) && is_array($comp['h_codes']))
+                    ? implode(', ', $comp['h_codes'])
+                    : '';
                 $pdf->Cell($w[0], 5, $comp['cas_number'] ?? '', 1, 0, 'C');
                 $pdf->Cell($w[1], 5, $comp['chemical_name'] ?? '', 1, 0, 'L');
-                $pdf->Cell($w[2], 5, $comp['concentration_range'] ?? '', 1, 1, 'C');
+                $pdf->Cell($w[2], 5, $comp['concentration_range'] ?? '', 1, 0, 'C');
+                $pdf->Cell($w[3], 5, $hCodes, 1, 1, 'C');
             }
         } else {
             $pdf->SetFont('helvetica', 'I', 8);

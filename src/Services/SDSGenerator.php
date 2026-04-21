@@ -507,6 +507,25 @@ class SDSGenerator
             }
         }
 
+        // Build a per-CAS H-code list from the consolidated hazard_classes
+        // so Section 3's component table can show each component alongside
+        // the GHS hazard codes it contributed. Mixture-level entries
+        // ('MIXTURE', 'FG_OVERRIDE', 'TRADE_SECRET') are skipped — they
+        // don't belong to a single disclosable CAS.
+        $casToHCodes = [];
+        foreach (($hazardResult['hazard_classes'] ?? []) as $hc) {
+            $hcCas = (string) ($hc['cas'] ?? '');
+            if ($hcCas === '' || $hcCas === 'MIXTURE'
+                || $hcCas === 'FG_OVERRIDE' || $hcCas === 'TRADE_SECRET') {
+                continue;
+            }
+            foreach (($hc['h_codes'] ?? []) as $code) {
+                if ($code !== '') {
+                    $casToHCodes[$hcCas][$code] = true;
+                }
+            }
+        }
+
         $disclosed      = [];
         $tradeSecretBuckets = []; // group trade secrets by description
 
@@ -547,6 +566,7 @@ class SDSGenerator
                 'chemical_name'       => $c['chemical_name'],
                 'concentration_pct'   => $conc,
                 'concentration_range' => $this->concentrationRange($conc),
+                'h_codes'             => array_keys($casToHCodes[$cas] ?? []),
             ];
         }
 
@@ -557,6 +577,7 @@ class SDSGenerator
                 'chemical_name'       => $bucket['chemical_name'],
                 'concentration_pct'   => round($bucket['concentration_pct'], 4),
                 'concentration_range' => $this->concentrationRange($bucket['concentration_pct']),
+                'h_codes'             => [],
             ];
         }
 

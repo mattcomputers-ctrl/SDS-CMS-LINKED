@@ -1403,30 +1403,19 @@ class SDSGenerator
             return;
         }
 
-        // Check enriched lines: is Carbon Black the only material,
-        // or are all OTHER materials Powder?
+        // Check enriched lines: are ALL materials (including the CB line
+        // itself) solid or powder? We consider CB's own RM state too —
+        // if CB is delivered via a paste (e.g. a pigment dispersion),
+        // the finished product inherits the paste matrix and CB is no
+        // longer a dry inhalation hazard, even before considering other
+        // coincident materials.
         $enrichedLines = $calcResult['formula_props']['enriched_lines'] ?? [];
         $hasNonPowder = false;
-        $lineCount = count($enrichedLines);
 
         foreach ($enrichedLines as $line) {
-            // Check if this line contains Carbon Black by looking at its constituents
-            $isCarbonBlackLine = false;
-            foreach ($line['constituents'] ?? [] as $constituent) {
-                if (($constituent['cas_number'] ?? '') === $carbonBlackCas) {
-                    $isCarbonBlackLine = true;
-                    break;
-                }
-            }
-
-            // Skip the Carbon Black line itself — we check OTHER materials
-            if ($isCarbonBlackLine) {
-                continue;
-            }
-
-            // Per the Carbon Black rule: only "powder" or "solid" coincident
-            // materials keep the carcinogen classification in play. Liquids,
-            // pastes, gels, gases, and unknown states all cause H351 / Prop 65
+            // Per the Carbon Black rule: only "powder" or "solid" RMs
+            // keep the carcinogen classification in play. Liquids, pastes,
+            // gels, gases, and unknown states all cause H351 / Prop 65
             // to be suppressed because the CB particulate can't become an
             // inhalation hazard when locked inside (or dispersed through)
             // a non-solid matrix.
@@ -1438,7 +1427,7 @@ class SDSGenerator
         }
 
         // Determine if carcinogen classification should apply
-        $onlyPowders = !$hasNonPowder; // true if CB is only ingredient or all others are powder/solid
+        $onlyPowders = !$hasNonPowder; // true if every line (CB's and others) is powder/solid
 
         if ($onlyPowders) {
             // Add Carcinogen Category 2 + H351 if not already present
@@ -1662,8 +1651,16 @@ class SDSGenerator
         ));
 
         // --- Filter Prop 65 for Carbon Black specifically ---
-        $carbonBlackCas = '1333-86-4';
-        if (isset($suppressedSet[$carbonBlackCas])) {
+        // Check runs independently of $suppressedSet: per the operator
+        // rule, CB's Prop 65 listing is dropped whenever the finished
+        // formula contains any non-solid-non-powder component, regardless
+        // of which RM delivers the CB. In real ink/coating catalogs CB
+        // almost always ships in a pigment paste (e.g. DSK0107), so
+        // checking only the CB-source-RM state systematically missed the
+        // fact that the finished product is itself a paste or liquid.
+        if ($this->shouldSuppressCarbonBlackProp65($calcResult)) {
+            $carbonBlackCas = '1333-86-4';
+
             // Remove carbon black from listed chemicals
             $prop65Result['listed_chemicals'] = array_values(array_filter(
                 $prop65Result['listed_chemicals'],
@@ -1691,6 +1688,37 @@ class SDSGenerator
                 $prop65Result['warning_text'] = '';
             }
         }
+    }
+
+    /**
+     * True iff the finished formula contains Carbon Black (CAS 1333-86-4)
+     * AND at least one raw-material line is in a non-solid-non-powder
+     * state (liquid, paste, gel, gas, or unknown). Used to decide whether
+     * to suppress the CB Prop 65 listing independent of which specific RM
+     * contributes the CB.
+     */
+    private function shouldSuppressCarbonBlackProp65(array $calcResult): bool
+    {
+        $carbonBlackCas = '1333-86-4';
+
+        $hasCarbonBlack = false;
+        foreach (($calcResult['composition'] ?? []) as $c) {
+            if (($c['cas_number'] ?? '') === $carbonBlackCas) {
+                $hasCarbonBlack = true;
+                break;
+            }
+        }
+        if (!$hasCarbonBlack) {
+            return false;
+        }
+
+        foreach (($calcResult['formula_props']['enriched_lines'] ?? []) as $line) {
+            $state = strtolower((string) ($line['physical_state'] ?? ''));
+            if ($state !== 'powder' && $state !== 'solid') {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

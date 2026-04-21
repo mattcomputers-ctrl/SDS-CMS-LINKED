@@ -1607,6 +1607,16 @@ class SDSGenerator
         array &$prop65Result,
         array $calcResult
     ): void {
+        // Carbon Black is suppressed from Section 11 (carcinogen findings)
+        // and Section 15 (Prop 65) whenever the finished formula contains
+        // any non-solid-non-powder component — even when no other CAS
+        // qualifies for the generic solid-powder filter. This check runs
+        // first so it can fire independently of the early-return below,
+        // which only concerns the generic suppression set.
+        if ($this->shouldSuppressCarbonBlackProp65($calcResult)) {
+            $this->removeCarbonBlackFromResults($carcinogenResult, $prop65Result);
+        }
+
         $suppressedCas = $this->getSolidPowderCasInLiquidMixture($calcResult);
 
         if (empty($suppressedCas)) {
@@ -1650,43 +1660,68 @@ class SDSGenerator
             fn($el) => !isset($suppressedSet[$el['cas_number']])
         ));
 
-        // --- Filter Prop 65 for Carbon Black specifically ---
-        // Check runs independently of $suppressedSet: per the operator
-        // rule, CB's Prop 65 listing is dropped whenever the finished
-        // formula contains any non-solid-non-powder component, regardless
-        // of which RM delivers the CB. In real ink/coating catalogs CB
-        // almost always ships in a pigment paste (e.g. DSK0107), so
-        // checking only the CB-source-RM state systematically missed the
-        // fact that the finished product is itself a paste or liquid.
-        if ($this->shouldSuppressCarbonBlackProp65($calcResult)) {
-            $carbonBlackCas = '1333-86-4';
+        // Carbon Black Prop 65 + Section 11 suppression ran at the top
+        // of this method, independent of $suppressedCas. Nothing else to
+        // do for CB here.
+    }
 
-            // Remove carbon black from listed chemicals
-            $prop65Result['listed_chemicals'] = array_values(array_filter(
-                $prop65Result['listed_chemicals'],
-                fn($lc) => ($lc['cas_number'] ?? '') !== $carbonBlackCas
-            ));
+    /**
+     * Remove Carbon Black (CAS 1333-86-4) from the carcinogen and Prop 65
+     * result arrays. Called when the finished formula contains any
+     * non-solid-non-powder component — per the operator rule that CB is
+     * only a dry-particulate inhalation hazard in pure solid/powder form.
+     */
+    private function removeCarbonBlackFromResults(array &$carcinogenResult, array &$prop65Result): void
+    {
+        $carbonBlackCas = '1333-86-4';
 
-            // Remove carbon black name from cancer and repro chemical lists
-            $prop65Result['cancer_chemicals'] = array_values(array_filter(
+        // ── Prop 65 ──
+        $prop65Result['listed_chemicals'] = array_values(array_filter(
+            $prop65Result['listed_chemicals'] ?? [],
+            fn($lc) => ($lc['cas_number'] ?? '') !== $carbonBlackCas
+        ));
+        $prop65Result['cancer_chemicals'] = array_values(array_filter(
+            $prop65Result['cancer_chemicals'] ?? [],
+            fn($name) => stripos((string) $name, 'carbon black') === false
+        ));
+        $prop65Result['repro_chemicals'] = array_values(array_filter(
+            $prop65Result['repro_chemicals'] ?? [],
+            fn($name) => stripos((string) $name, 'carbon black') === false
+        ));
+        $prop65Result['requires_warning'] = !empty($prop65Result['cancer_chemicals'])
+                                          || !empty($prop65Result['repro_chemicals']);
+        $prop65Result['warning_text'] = $prop65Result['requires_warning']
+            ? self::rebuildProp65Warning(
                 $prop65Result['cancer_chemicals'],
-                fn($name) => stripos($name, 'carbon black') === false
-            ));
-            $prop65Result['repro_chemicals'] = array_values(array_filter(
-                $prop65Result['repro_chemicals'],
-                fn($name) => stripos($name, 'carbon black') === false
-            ));
+                $prop65Result['repro_chemicals']
+            )
+            : '';
 
-            // Recalculate warning
-            $prop65Result['requires_warning'] = !empty($prop65Result['cancer_chemicals']) || !empty($prop65Result['repro_chemicals']);
-            if ($prop65Result['requires_warning']) {
-                $prop65Result['warning_text'] = self::rebuildProp65Warning(
-                    $prop65Result['cancer_chemicals'],
-                    $prop65Result['repro_chemicals']
-                );
-            } else {
-                $prop65Result['warning_text'] = '';
+        // ── Carcinogen findings (Section 11) ──
+        $carcinogenResult['findings'] = array_values(array_filter(
+            $carcinogenResult['findings'] ?? [],
+            fn($f) => ($f['cas_number'] ?? '') !== $carbonBlackCas
+        ));
+        if (isset($carcinogenResult['component_texts'][$carbonBlackCas])) {
+            unset($carcinogenResult['component_texts'][$carbonBlackCas]);
+        }
+        $carcinogenResult['has_carcinogens'] = !empty($carcinogenResult['findings']);
+        if ($carcinogenResult['has_carcinogens']) {
+            $lines = [];
+            foreach ($carcinogenResult['findings'] as $f) {
+                $parts = [];
+                foreach ($f['agencies'] ?? [] as $a) {
+                    $parts[] = ($a['agency'] ?? '') . ' ' . ($a['classification'] ?? '');
+                }
+                $lines[] = ($f['chemical_name'] ?? '') . ' (CAS ' . ($f['cas_number'] ?? '') . ', '
+                         . round((float) ($f['concentration_pct'] ?? 0), 2) . '%): '
+                         . implode('; ', $parts);
             }
+            $carcinogenResult['summary_text'] = "The following component(s) are listed as carcinogens:\n"
+                . implode("\n", $lines);
+        } else {
+            $carcinogenResult['summary_text'] =
+                'No components of this product are listed as carcinogens by IARC, NTP, or OSHA.';
         }
     }
 

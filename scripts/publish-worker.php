@@ -33,7 +33,15 @@ if ($argc < 4) {
 
 $batchFile    = $argv[1];
 $progressFile = $argv[2];
-$userId       = (int) $argv[3];
+// Cron dispatches the workers with user id "0" because there's no
+// HTTP user. published_by / created_by on sds_versions are FK'd to
+// users.id so a literal 0 fails the constraint; translate to null
+// here so system-initiated publishes just leave the user columns
+// blank.
+$userId = (int) $argv[3];
+if ($userId <= 0) {
+    $userId = null;
+}
 
 if (!file_exists($batchFile)) {
     fwrite(STDERR, "Batch file not found: {$batchFile}\n");

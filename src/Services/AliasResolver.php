@@ -189,15 +189,13 @@ class AliasResolver
      */
     private static function findRawMaterialByBase(string $base, Database $db): ?array
     {
+        // SELECT * so we pick up whatever columns the schema actually
+        // has — earlier attempts spelled out the column list and hit
+        // a missing-column fatal because `color` lives on finished_goods,
+        // not raw_materials. Callers use array access with defaulted
+        // keys so a wider row here is harmless.
         return $db->fetch(
-            "SELECT id, internal_code, supplier, supplier_product_name, supplier_product_code,
-                    physical_state, appearance, odor, color, solubility,
-                    voc_wt, exempt_voc_wt, water_wt, specific_gravity, density, density_units,
-                    temp_ref_c, solids_wt, solids_vol, flash_point_c, flash_point_greater_than,
-                    is_prop65, prop65_chemical_name, prop65_toxicity_types, prop65_data,
-                    haps_data, is_snur, snur_description,
-                    hazardous_no_cas, manual_hazard_json,
-                    sds_last_confirmed_at, created_at, updated_at
+            "SELECT *
              FROM raw_materials
              WHERE SUBSTRING_INDEX(internal_code, '-', 1) = ?
              ORDER BY id ASC

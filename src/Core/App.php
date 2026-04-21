@@ -193,6 +193,8 @@ class App
         // ── SDS Generation / Versions ────────────────────────────────
         $router->get('/sds/{finished_good_id}',             'SDSController@index');
         $router->get('/sds/{finished_good_id}/preview',     'SDSController@preview');
+        $router->get('/sds/resale/{rm_id}/preview',         'SDSController@previewResale');
+        $router->post('/sds/resale/{rm_id}/publish',        'SDSController@publishResale');
         $router->get('/sds/{finished_good_id}/edit',        'SDSController@edit');
         $router->post('/sds/{finished_good_id}/save-edits', 'SDSController@saveEdits');
         $router->post('/sds/{finished_good_id}/publish',    'SDSController@publish');

@@ -8,6 +8,7 @@ use SDS\Core\Database;
 use SDS\Models\FinishedGood;
 use SDS\Models\LabelTemplate;
 use SDS\Models\Manufacturer;
+use SDS\Services\AliasResolver;
 use SDS\Services\SDSGenerator;
 use SDS\Services\LabelPDFService;
 
@@ -46,6 +47,7 @@ class LabelController
     public function generate(): void
     {
         $finishedGoodId  = (int) ($_POST['finished_good_id'] ?? 0);
+        $resaleCode      = trim($_POST['resale_code'] ?? '');
         $lotNumber       = trim($_POST['lot_number'] ?? '');
         $templateId      = (int) ($_POST['template_id'] ?? 0);
         $sheets          = max(1, (int) ($_POST['sheets'] ?? 1));
@@ -55,11 +57,35 @@ class LabelController
         $privateLabel    = !empty($_POST['private_label']);
         $manufacturerId  = (int) ($_POST['manufacturer_id'] ?? 0);
 
-        // Validate finished good
-        $fg = FinishedGood::findById($finishedGoodId);
-        if ($fg === null) {
-            $_SESSION['_flash']['error'] = 'Please select a valid product.';
-            redirect('/labels');
+        // Resolve the label target. Three input modes, checked in order:
+        //   1. resale_code — an alias customer_code, an RM base code, or
+        //      an RM pack-variant code. AliasResolver routes it to the
+        //      right composition source (formula vs 100 % RM resale).
+        //   2. finished_good_id — the existing FG dropdown.
+        // The resolved target is encoded as either ($fg, $sdsData,
+        // $productCode) for FG labels, or ($rm, $sdsData, $productCode)
+        // with a synthetic $fg dict for resale labels.
+        $fg         = null;  // real FG row, OR synthetic row for resale
+        $sdsData    = null;
+        $productCode = null;
+
+        if ($resaleCode !== '') {
+            $resolved = self::resolveLabelTarget($resaleCode);
+            if ($resolved === null) {
+                $_SESSION['_flash']['error'] =
+                    'Could not find a finished good, alias, or raw material matching "' . $resaleCode . '".';
+                redirect('/labels');
+            }
+            $fg          = $resolved['fg'];
+            $sdsData     = $resolved['sds_builder']();
+            $productCode = $resolved['display_code'];
+        } else {
+            $fg = FinishedGood::findById($finishedGoodId);
+            if ($fg === null) {
+                $_SESSION['_flash']['error'] = 'Please select a valid product.';
+                redirect('/labels');
+            }
+            $productCode = $fg['product_code'];
         }
 
         // Validate lot number: must be 1 to 12 digits
@@ -86,9 +112,12 @@ class LabelController
         $quantity = $sheets * $labelsPerSheet;
 
         try {
-            // Generate SDS data to get hazard info
-            $generator = new SDSGenerator();
-            $sdsData   = $generator->generate($finishedGoodId, 'en');
+            // Generate SDS data only if not already built by the resale
+            // resolver — formula-based FGs still use the regular path.
+            if ($sdsData === null) {
+                $generator = new SDSGenerator();
+                $sdsData   = $generator->generate($finishedGoodId, 'en');
+            }
 
             // Override manufacturer info if a specific manufacturer is selected
             if ($manufacturerId > 0) {
@@ -106,7 +135,7 @@ class LabelController
             $pdfContent = $pdfService->generateFromTemplate($sdsData, $fg, $lotNumber, $template, $quantity, $netWeight, $privateLabel);
 
             // Output PDF
-            $filename = $fg['product_code'] . '_label_' . $lotNumber . '.pdf';
+            $filename = $productCode . '_label_' . $lotNumber . '.pdf';
             header('Content-Type: application/pdf');
             header('Content-Disposition: inline; filename="' . $filename . '"');
             header('Content-Length: ' . strlen($pdfContent));
@@ -116,5 +145,99 @@ class LabelController
             $_SESSION['_flash']['error'] = 'Label generation failed: ' . $e->getMessage();
             redirect('/labels');
         }
+    }
+
+    /**
+     * Resolve a user-typed code (alias, RM, or RM-with-pack) into a
+     * label target. Returns null when the code doesn't match anything.
+     *
+     * The returned array has:
+     *   fg            — either a real FG row (formula path) or a
+     *                   synthetic row shaped like an FG (resale path)
+     *   sds_builder   — closure returning the SDSData array. Deferred
+     *                   so the caller doesn't pay the generation cost
+     *                   on resolution failure.
+     *   display_code  — pack-extension-stripped code used for the
+     *                   label's product identifier and PDF filename.
+     */
+    private static function resolveLabelTarget(string $code): ?array
+    {
+        // Alias path first — aliases may resolve to either a formula FG
+        // or a resale RM. AliasResolver encapsulates the rule.
+        $alias = AliasResolver::resolveByCustomerCode($code);
+        if ($alias !== null) {
+            if ($alias['type'] === 'formula') {
+                $fgId = (int) $alias['fg']['id'];
+                $fg   = FinishedGood::findById($fgId);
+                if ($fg === null) {
+                    return null;
+                }
+                $displayCode = $alias['display_code'];
+                $aliasDesc   = (string) $alias['alias']['description'];
+                return [
+                    'fg'           => $fg,
+                    'display_code' => $displayCode,
+                    'sds_builder'  => function () use ($fgId, $displayCode, $aliasDesc) {
+                        $generator = new SDSGenerator();
+                        $sds = $generator->generate($fgId, 'en');
+                        return SDSGenerator::createAliasVariant($sds, $displayCode, $aliasDesc);
+                    },
+                ];
+            }
+            if ($alias['type'] === 'resale') {
+                $rmId        = (int) $alias['rm']['id'];
+                $displayCode = $alias['display_code'];
+                $aliasDesc   = (string) $alias['alias']['description'];
+                return [
+                    'fg'           => self::buildResaleFg($alias['rm'], $displayCode, $aliasDesc),
+                    'display_code' => $displayCode,
+                    'sds_builder'  => function () use ($rmId, $displayCode, $aliasDesc) {
+                        $generator = new SDSGenerator();
+                        $sds = $generator->generateForResaleRawMaterial($rmId, 'en');
+                        return SDSGenerator::createAliasVariant($sds, $displayCode, $aliasDesc);
+                    },
+                ];
+            }
+        }
+
+        // Direct RM code (e.g. "DSS0100" or "DSS0100-20"). Strip the
+        // pack extension; pack size doesn't change label content.
+        $rmResolution = AliasResolver::resolveByRawMaterialCode($code);
+        if ($rmResolution !== null) {
+            $rm          = $rmResolution['rm'];
+            $rmId        = (int) $rm['id'];
+            $displayCode = $rmResolution['display_code'];
+            $description = (string) ($rm['supplier_product_name'] ?? $displayCode);
+            return [
+                'fg'           => self::buildResaleFg($rm, $displayCode, $description),
+                'display_code' => $displayCode,
+                'sds_builder'  => function () use ($rmId) {
+                    $generator = new SDSGenerator();
+                    return $generator->generateForResaleRawMaterial($rmId, 'en');
+                },
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Build an FG-shaped dict from a raw material for LabelPDFService.
+     * The label service reads product_code, description, physical_state,
+     * and color off this dict — all of which map cleanly from the RM.
+     */
+    private static function buildResaleFg(array $rm, string $displayCode, string $description): array
+    {
+        return [
+            'id'                  => null,
+            'product_code'        => $displayCode,
+            'description'         => $description,
+            'family'              => null,
+            'is_active'           => 1,
+            'physical_state'      => $rm['physical_state'] ?? null,
+            'color'               => $rm['color'] ?? null,
+            'recommended_use'     => null,
+            'restrictions_on_use' => null,
+        ];
     }
 }

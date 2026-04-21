@@ -81,6 +81,71 @@ class SDSController
         }
     }
 
+    /**
+     * Preview an SDS for a resale raw material (no formula — sold as-is).
+     *
+     * The SDS is derived 100 % from the RM's own constituents. If an
+     * alias id is supplied, the preview is branded under that alias's
+     * customer code + description; otherwise it renders under the RM's
+     * own base code.
+     */
+    public function previewResale(string $rm_id): void
+    {
+        $rmId  = (int) $rm_id;
+        $rm    = \SDS\Models\RawMaterial::findById($rmId);
+        if ($rm === null) {
+            $_SESSION['_flash']['error'] = 'Raw material not found.';
+            redirect('/sds-review');
+        }
+
+        $language = $_GET['lang'] ?? 'en';
+        $aliasId  = isset($_GET['alias_id']) ? (int) $_GET['alias_id'] : 0;
+
+        try {
+            $generator = new SDSGenerator();
+            $sdsData   = $generator->generateForResaleRawMaterial($rmId, $language);
+
+            // If branded for a specific alias, swap Section 1 + meta
+            // identity using the existing alias-variant helper.
+            if ($aliasId > 0) {
+                $alias = Database::getInstance()->fetch(
+                    "SELECT customer_code, description FROM aliases WHERE id = ?",
+                    [$aliasId]
+                );
+                if ($alias !== null) {
+                    $displayCode = \SDS\Services\AliasResolver::stripPack((string) $alias['customer_code']);
+                    $sdsData = SDSGenerator::createAliasVariant(
+                        $sdsData,
+                        $displayCode,
+                        (string) $alias['description']
+                    );
+                }
+            }
+
+            // Reuse the existing FG preview template by shaping a fake
+            // "finished good" row — the template reads product_code and
+            // description, both of which are already correct in the
+            // sds data's Section 1.
+            $fakeFg = [
+                'id'          => null,
+                'product_code' => $sdsData['meta']['product_code'] ?? $rm['internal_code'],
+                'description'  => $sdsData['meta']['description'] ?? $rm['supplier_product_name'],
+                'family'       => null,
+            ];
+
+            view('sds/preview', [
+                'pageTitle'    => 'SDS Preview: ' . ($fakeFg['product_code'] ?? ''),
+                'finishedGood' => $fakeFg,
+                'sds'          => $sdsData,
+                'language'     => $language,
+                'isResale'     => true,
+            ]);
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error'] = 'SDS generation failed: ' . $e->getMessage();
+            redirect('/sds-review');
+        }
+    }
+
     public function edit(string $finished_good_id): void
     {
         if (!can_edit('sds')) {
@@ -480,6 +545,250 @@ class SDSController
             'version'   => $version,
             'trace'     => $traceData,
         ]);
+    }
+
+    /**
+     * Publish an SDS for a resale raw material.
+     *
+     * The SDS is derived 100 % from the RM's own constituents. One version
+     * is stored under the RM itself (finished_good_id = NULL, raw_material_id
+     * set, alias_id NULL), and one per alias that points to this RM via
+     * the resale path (alias_id set).
+     *
+     * Route: POST /sds/resale/{rm_id}/publish
+     */
+    public function publishResale(string $rm_id): void
+    {
+        if (!can_edit('sds')) {
+            $_SESSION['_flash']['error'] = 'Permission denied.';
+            redirect('/sds-review?rm_id=' . $rm_id);
+        }
+
+        CSRF::validateRequest();
+
+        $rmId = (int) $rm_id;
+        $rm   = \SDS\Models\RawMaterial::findById($rmId);
+        if ($rm === null) {
+            $_SESSION['_flash']['error'] = 'Raw material not found.';
+            redirect('/sds-review');
+        }
+
+        $changeSummary = trim($_POST['change_summary'] ?? '');
+        $languages = \SDS\Core\App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
+        $db = Database::getInstance();
+
+        try {
+            $generator = new SDSGenerator();
+            $baseData  = $generator->computeBaseForResaleRawMaterial($rmId);
+
+            // Generate per-language SDS data from the shared base.
+            $langData = [];
+            foreach ($languages as $lang) {
+                $sdsData = $generator->generateFromBase($baseData, $lang);
+
+                // Enforce missing-data threshold once; hazard data is
+                // language-independent so the first language is sufficient.
+                if ($lang === $languages[0]) {
+                    $blockError = $this->checkMissingHazardData($sdsData, $db);
+                    if ($blockError !== null) {
+                        $_SESSION['_flash']['error'] = $blockError;
+                        redirect('/sds-review?rm_id=' . $rmId);
+                        return;
+                    }
+                }
+
+                $langData[$lang] = $sdsData;
+            }
+
+            // PDFs for the base (non-alias) version.
+            $pdfResults = $this->generatePdfsInParallel($langData);
+
+            $baseCode = \SDS\Services\AliasResolver::stripPack((string) $rm['internal_code']);
+
+            $lastVersion = $db->fetch(
+                "SELECT MAX(version) AS max_ver
+                 FROM sds_versions
+                 WHERE raw_material_id = ? AND alias_id IS NULL",
+                [$rmId]
+            );
+            $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
+
+            $publishedVersions = [];
+            $now = date('Y-m-d H:i:s');
+
+            foreach ($languages as $lang) {
+                if (!($pdfResults[$lang]['ok'] ?? false)) {
+                    throw new \RuntimeException(
+                        'PDF generation failed for ' . strtoupper($lang) . ': ' .
+                        ($pdfResults[$lang]['error'] ?? 'unknown error')
+                    );
+                }
+                $relativePath = str_replace(\SDS\Core\App::basePath() . '/', '', $pdfResults[$lang]['pdf_path']);
+
+                $versionId = $db->insert('sds_versions', [
+                    'finished_good_id' => null,
+                    'raw_material_id'  => $rmId,
+                    'alias_id'         => null,
+                    'language'         => $lang,
+                    'version'          => $nextVersion,
+                    'status'           => 'published',
+                    'effective_date'   => date('Y-m-d'),
+                    'published_by'     => current_user_id(),
+                    'published_at'     => $now,
+                    'snapshot_json'    => json_encode($langData[$lang], JSON_UNESCAPED_UNICODE),
+                    'pdf_path'         => $relativePath,
+                    'change_summary'   => $changeSummary ?: ('Resale SDS for ' . $baseCode),
+                    'created_by'       => current_user_id(),
+                ]);
+
+                $traceData = array_merge(
+                    $langData[$lang]['hazard_result']['trace'] ?? [],
+                    $langData[$lang]['voc_result']['trace'] ?? []
+                );
+                $db->insert('sds_generation_trace', [
+                    'sds_version_id' => $versionId,
+                    'engine_version' => \SDS\Services\HazardEngine::ENGINE_VERSION,
+                    'trace_json'     => json_encode($traceData, JSON_UNESCAPED_UNICODE),
+                ]);
+
+                AuditService::log('sds_version', $versionId, 'publish_resale', [
+                    'raw_material_id' => $rmId,
+                    'base_code'       => $baseCode,
+                    'language'        => $lang,
+                    'version'         => $nextVersion,
+                ]);
+
+                $publishedVersions[] = strtoupper($lang);
+            }
+
+            // Publish alias-branded variants for every alias that resolves
+            // to this RM via the resale path.
+            $aliasCount = $this->publishResaleAliases(
+                $rmId, $baseCode, $langData, $changeSummary, $now, $db
+            );
+
+            $msg = 'Resale SDS v' . $nextVersion . ' published: ' . implode(', ', $publishedVersions);
+            if ($aliasCount > 0) {
+                $msg .= ' (+ ' . $aliasCount . ' alias SDS' . ($aliasCount > 1 ? 'es' : '') . ')';
+            }
+            $_SESSION['_flash']['success'] = $msg;
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error'] = 'Publish failed: ' . $e->getMessage();
+        }
+
+        redirect('/sds-review?rm_id=' . $rmId);
+    }
+
+    /**
+     * Publish alias-branded variants of a resale RM's SDS.
+     *
+     * An alias points at this RM via the resale path when its
+     * internal_code_base matches the RM's base code AND no FG with that
+     * base code exists. AliasResolver::resolveByAliasId re-verifies so a
+     * half-set-up FG doesn't cause us to publish a resale version that
+     * conflicts with the FG's own formula path.
+     */
+    private function publishResaleAliases(
+        int $rmId,
+        string $rmBaseCode,
+        array $langData,
+        string $changeSummary,
+        string $now,
+        Database $db
+    ): int {
+        // Candidates: aliases whose base points at this RM. De-dup by
+        // base customer_code so pack variants share one SDS.
+        $aliases = $db->fetchAll(
+            "SELECT a.*
+             FROM aliases a
+             INNER JOIN (
+                 SELECT MIN(id) AS rep_id
+                 FROM aliases
+                 WHERE internal_code_base = ?
+                 GROUP BY SUBSTRING_INDEX(customer_code, '-', 1)
+             ) rep ON rep.rep_id = a.id",
+            [$rmBaseCode]
+        );
+        if (empty($aliases)) {
+            return 0;
+        }
+
+        $count = 0;
+
+        foreach ($aliases as $alias) {
+            // Re-verify resolution — if an FG with this base code has
+            // been created since the candidate query ran, the alias now
+            // belongs on the formula path, not the resale path.
+            $resolution = \SDS\Services\AliasResolver::resolveByAliasId((int) $alias['id']);
+            if ($resolution === null || $resolution['type'] !== 'resale') {
+                continue;
+            }
+
+            $displayCode = \SDS\Services\AliasResolver::stripPack((string) $alias['customer_code']);
+
+            $aliasLangData = [];
+            foreach ($langData as $lang => $sdsData) {
+                $aliasLangData[$lang] = SDSGenerator::createAliasVariant(
+                    $sdsData,
+                    $displayCode,
+                    (string) $alias['description']
+                );
+            }
+
+            $pdfResults = $this->generatePdfsInParallel($aliasLangData);
+
+            $lastVersion = $db->fetch(
+                "SELECT MAX(version) AS max_ver FROM sds_versions WHERE alias_id = ?",
+                [(int) $alias['id']]
+            );
+            $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
+
+            foreach ($aliasLangData as $lang => $aliasSds) {
+                if (!($pdfResults[$lang]['ok'] ?? false)) {
+                    continue;
+                }
+
+                $relativePath = str_replace(\SDS\Core\App::basePath() . '/', '', $pdfResults[$lang]['pdf_path']);
+
+                $versionId = $db->insert('sds_versions', [
+                    'finished_good_id' => null,
+                    'raw_material_id'  => $rmId,
+                    'alias_id'         => (int) $alias['id'],
+                    'language'         => $lang,
+                    'version'          => $nextVersion,
+                    'status'           => 'published',
+                    'effective_date'   => date('Y-m-d'),
+                    'published_by'     => current_user_id(),
+                    'published_at'     => $now,
+                    'snapshot_json'    => json_encode($aliasSds, JSON_UNESCAPED_UNICODE),
+                    'pdf_path'         => $relativePath,
+                    'change_summary'   => $changeSummary ?: ('Resale alias of ' . $rmBaseCode),
+                    'created_by'       => current_user_id(),
+                ]);
+
+                $traceData = array_merge(
+                    $aliasSds['hazard_result']['trace'] ?? [],
+                    $aliasSds['voc_result']['trace'] ?? []
+                );
+                $db->insert('sds_generation_trace', [
+                    'sds_version_id' => $versionId,
+                    'engine_version' => \SDS\Services\HazardEngine::ENGINE_VERSION,
+                    'trace_json'     => json_encode($traceData, JSON_UNESCAPED_UNICODE),
+                ]);
+
+                AuditService::log('sds_version', $versionId, 'publish_resale_alias', [
+                    'raw_material_id' => $rmId,
+                    'alias_id'        => $alias['id'],
+                    'alias_code'      => $alias['customer_code'],
+                    'language'        => $lang,
+                    'version'         => $nextVersion,
+                ]);
+
+                $count++;
+            }
+        }
+
+        return $count;
     }
 
     /**

@@ -94,6 +94,182 @@ class FormulaCalcService
     }
 
     /**
+     * Calculate the SDS-generation pipeline for a resale raw material,
+     * i.e. "this alias is 100 % of this RM — no formula table row."
+     *
+     * Returns the same shape as calculate() so the SDS generator can
+     * consume either result without branching on source. There is no
+     * real formula row; a synthetic lines array with a single 100 %
+     * entry feeds the existing enrichment + VOC pipeline. Composition
+     * is computed directly from the RM's constituents (or a single
+     * TRADE_SECRET bucket for hazardous_no_cas RMs), mirroring what
+     * Formula::getExpandedComposition would produce for the same RM.
+     *
+     * @throws \RuntimeException if the RM doesn't exist.
+     */
+    public function calculateForRawMaterial(int $rawMaterialId, string $vocMode = 'method24_standard'): array
+    {
+        $rm = RawMaterial::findById($rawMaterialId);
+        if ($rm === null) {
+            throw new \RuntimeException('Raw material #' . $rawMaterialId . ' not found.');
+        }
+
+        $warnings = [];
+        $exemptVocCasList = $this->loadExemptVocList();
+
+        // Synthetic single-line "formula": pretend this RM is a one-
+        // ingredient product at 100 %. Shape matches what getLines()
+        // returns so the existing enrichment path works unchanged.
+        $syntheticLines = [[
+            'id'                         => null,
+            'formula_id'                 => null,
+            'raw_material_id'            => $rawMaterialId,
+            'finished_good_component_id' => null,
+            'pct'                        => 100.0,
+            'sort_order'                 => 1,
+            'internal_code'              => $rm['internal_code'],
+            'supplier'                   => $rm['supplier'],
+            'supplier_product_name'      => $rm['supplier_product_name'],
+            'voc_wt'                     => $rm['voc_wt'],
+            'exempt_voc_wt'              => $rm['exempt_voc_wt'],
+            'water_wt'                   => $rm['water_wt'],
+            'flash_point_c'              => $rm['flash_point_c'],
+            'component_product_code'     => null,
+            'component_description'      => null,
+            'line_type'                  => 'raw_material',
+        ]];
+
+        $enrichedLines = $this->enrichFormulaLines($syntheticLines, $warnings, $exemptVocCasList);
+
+        $vocCalc   = new VOCCalculator($enrichedLines, $vocMode);
+        $vocResult = $vocCalc->calculate();
+
+        $composition  = $this->buildResaleComposition($rm);
+        $formulaProps = $this->deriveFormulaProperties($enrichedLines);
+
+        // Synthetic formula header so downstream consumers that read
+        // $calcResult['formula']['lines'] (e.g. manual Prop 65 / HAPs
+        // collection) keep working.
+        $syntheticFormula = [
+            'id'              => null,
+            'finished_good_id' => null,
+            'version'         => 1,
+            'is_current'      => 1,
+            'product_code'    => $rm['internal_code'],
+            'created_by_name' => null,
+            'created_at'      => null,
+            'updated_at'      => null,
+            'lines'           => $syntheticLines,
+        ];
+
+        return [
+            'formula'       => $syntheticFormula,
+            'composition'   => $composition,
+            'voc'           => $vocResult,
+            'formula_props' => $formulaProps,
+            'warnings'      => $warnings,
+        ];
+    }
+
+    /**
+     * Build the expanded composition for a single RM at 100 %, matching
+     * the shape Formula::getExpandedComposition returns. Handles both
+     * CAS-constituent RMs and trade-secret (hazardous_no_cas) RMs.
+     */
+    private function buildResaleComposition(array $rm): array
+    {
+        $rmId = (int) $rm['id'];
+
+        // Trade-secret RM: vendor disclosed GHS classifications but no
+        // CAS constituents — emit a single synthetic bucket, matching
+        // Formula::getExpandedComposition's TRADE_SECRET convention.
+        if ((int) ($rm['hazardous_no_cas'] ?? 0) === 1) {
+            $manual = [];
+            if (!empty($rm['manual_hazard_json'])) {
+                $decoded = is_string($rm['manual_hazard_json'])
+                    ? json_decode($rm['manual_hazard_json'], true)
+                    : $rm['manual_hazard_json'];
+                if (is_array($decoded)) {
+                    $manual[] = $decoded;
+                }
+            }
+            return [[
+                'cas_number'               => 'TRADE_SECRET',
+                'chemical_name'            => 'Trade Secret',
+                'concentration_pct'        => 100.0,
+                'is_trade_secret'          => true,
+                'is_non_hazardous'         => false,
+                'trade_secret_description' => 'Trade Secret',
+                'manual_hazard_json'       => $manual,
+                'contributing_materials'   => [[
+                    'raw_material_id' => $rmId,
+                    'internal_code'   => $rm['internal_code'],
+                    'pct_in_rm'       => 100.0,
+                    'pct_in_formula'  => 100.0,
+                ]],
+            ]];
+        }
+
+        $buckets = [];
+        foreach ($rm['constituents'] ?? [] as $c) {
+            $cas = $c['cas_number'];
+            if ($cas === null || $cas === '') {
+                continue;
+            }
+
+            $pct = $this->resolveConstituentPct($c);
+
+            if (!isset($buckets[$cas])) {
+                $buckets[$cas] = [
+                    'cas_number'               => $cas,
+                    'chemical_name'            => $c['chemical_name'],
+                    'concentration_pct'        => 0.0,
+                    'is_trade_secret'          => (int) ($c['is_trade_secret'] ?? 0) === 1,
+                    'is_non_hazardous'         => (int) ($c['is_non_hazardous'] ?? 0) === 1,
+                    'trade_secret_description' => $c['trade_secret_description'] ?? null,
+                    'contributing_materials'   => [],
+                ];
+            }
+
+            // For a 100 % RM the in-formula contribution equals the
+            // constituent's percentage in the RM.
+            $buckets[$cas]['concentration_pct'] += $pct;
+            $buckets[$cas]['contributing_materials'][] = [
+                'raw_material_id' => $rmId,
+                'internal_code'   => $rm['internal_code'],
+                'pct_in_rm'       => $pct,
+                'pct_in_formula'  => $pct,
+            ];
+        }
+
+        foreach ($buckets as &$bucket) {
+            $bucket['concentration_pct'] = round($bucket['concentration_pct'], 4);
+        }
+        unset($bucket);
+
+        $result = array_values($buckets);
+        usort($result, fn(array $a, array $b): int => $b['concentration_pct'] <=> $a['concentration_pct']);
+        return $result;
+    }
+
+    private function resolveConstituentPct(array $c): float
+    {
+        if (($c['pct_exact'] ?? null) !== null) {
+            return (float) $c['pct_exact'];
+        }
+        if (($c['pct_min'] ?? null) !== null && ($c['pct_max'] ?? null) !== null) {
+            return ((float) $c['pct_min'] + (float) $c['pct_max']) / 2.0;
+        }
+        if (($c['pct_min'] ?? null) !== null) {
+            return (float) $c['pct_min'];
+        }
+        if (($c['pct_max'] ?? null) !== null) {
+            return (float) $c['pct_max'];
+        }
+        return 0.0;
+    }
+
+    /**
      * Enrich formula lines with full raw material data + constituents
      * for the VOC calculator.
      *

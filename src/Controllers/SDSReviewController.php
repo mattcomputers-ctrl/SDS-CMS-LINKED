@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace SDS\Controllers;
 
 use SDS\Core\Database;
+use SDS\Services\AliasResolver;
 use SDS\Services\SDSReadinessService;
 
 /**
@@ -36,6 +37,7 @@ class SDSReviewController
 
         $q    = trim((string) ($_GET['q'] ?? ''));
         $fgId = isset($_GET['fg_id']) ? (int) $_GET['fg_id'] : 0;
+        $rmId = isset($_GET['rm_id']) ? (int) $_GET['rm_id'] : 0;
 
         $review  = null;
         $matches = [];
@@ -44,6 +46,12 @@ class SDSReviewController
             $review = SDSReadinessService::review($fgId);
             if ($review === null) {
                 $_SESSION['_flash']['error'] = 'Finished good #' . $fgId . ' not found.';
+                redirect('/sds-review');
+            }
+        } elseif ($rmId > 0) {
+            $review = SDSReadinessService::reviewRawMaterial($rmId);
+            if ($review === null) {
+                $_SESSION['_flash']['error'] = 'Raw material #' . $rmId . ' not found.';
                 redirect('/sds-review');
             }
         } elseif ($q !== '') {
@@ -57,45 +65,41 @@ class SDSReviewController
                 redirect('/sds-review?fg_id=' . (int) $exact['id']);
             }
 
-            // Then try alias customer_code — the user may have typed a
-            // customer-facing code like "BK1008" or "BK1008-50" (pack-ext
-            // variant). Check both the raw input and the base code with
-            // the pack-extension stripped.
-            $aliasBase = strpos($q, '-') !== false
-                ? substr($q, 0, strpos($q, '-'))
-                : $q;
-            $aliasFg = $db->fetch(
-                "SELECT fg.id
-                 FROM aliases a
-                 INNER JOIN finished_goods fg ON fg.product_code = a.internal_code_base
-                 WHERE a.customer_code = ?
-                    OR SUBSTRING_INDEX(a.customer_code, '-', 1) = ?
-                 LIMIT 1",
-                [$q, $aliasBase]
-            );
-            if ($aliasFg !== null) {
-                redirect('/sds-review?fg_id=' . (int) $aliasFg['id']);
+            // Alias — resolve either to a formula FG or a resale RM.
+            // AliasResolver encapsulates the "does this base code have
+            // an FG with a formula, otherwise an RM" rule so bulk
+            // publish / label / SDS generation all agree.
+            $aliasResolution = AliasResolver::resolveByCustomerCode($q);
+            if ($aliasResolution !== null) {
+                if ($aliasResolution['type'] === 'formula') {
+                    redirect('/sds-review?fg_id=' . (int) $aliasResolution['fg']['id']);
+                }
+                if ($aliasResolution['type'] === 'resale') {
+                    redirect('/sds-review?rm_id=' . (int) $aliasResolution['rm']['id']);
+                }
+            }
+
+            // Direct RM code — an operator may type "DSS0100" or
+            // "DSS0100-20" to check the resale item itself.
+            $rmResolution = AliasResolver::resolveByRawMaterialCode($q);
+            if ($rmResolution !== null) {
+                redirect('/sds-review?rm_id=' . (int) $rmResolution['rm']['id']);
             }
 
             // Fall back to a partial-match picker so typos and description
-            // searches still surface something useful.
+            // searches still surface something useful. Includes resale
+            // aliases (matched via RM internal_code) alongside FG/alias
+            // matches.
             $like = '%' . $q . '%';
-            $matches = $db->fetchAll(
-                "SELECT DISTINCT fg.id, fg.product_code, fg.description,
-                        fg.family, fg.is_active
-                 FROM finished_goods fg
-                 LEFT JOIN aliases a ON a.internal_code_base = fg.product_code
-                 WHERE fg.product_code LIKE ?
-                    OR fg.description LIKE ?
-                    OR a.customer_code LIKE ?
-                    OR a.description LIKE ?
-                 ORDER BY fg.product_code ASC
-                 LIMIT 50",
-                [$like, $like, $like, $like]
-            );
+            $base = AliasResolver::stripPack($q);
+            $matches = $this->findMatches($db, $like, $base);
 
             if (count($matches) === 1) {
-                redirect('/sds-review?fg_id=' . (int) $matches[0]['id']);
+                $row = $matches[0];
+                if (($row['_kind'] ?? 'fg') === 'rm') {
+                    redirect('/sds-review?rm_id=' . (int) $row['id']);
+                }
+                redirect('/sds-review?fg_id=' . (int) $row['id']);
             }
         }
 
@@ -105,5 +109,69 @@ class SDSReviewController
             'review'    => $review,
             'matches'   => $matches,
         ]);
+    }
+
+    /**
+     * Union of FG/alias matches and resale-RM matches for the picker.
+     *
+     * Each row is tagged with '_kind' ('fg' | 'rm') so the view and the
+     * auto-redirect logic know which URL to build.
+     */
+    private function findMatches(Database $db, string $like, string $base): array
+    {
+        $fgRows = $db->fetchAll(
+            "SELECT DISTINCT fg.id, fg.product_code, fg.description,
+                    fg.family, fg.is_active
+             FROM finished_goods fg
+             LEFT JOIN aliases a ON a.internal_code_base = fg.product_code
+             WHERE fg.product_code LIKE ?
+                OR fg.description LIKE ?
+                OR a.customer_code LIKE ?
+                OR a.description LIKE ?
+             ORDER BY fg.product_code ASC
+             LIMIT 50",
+            [$like, $like, $like, $like]
+        );
+
+        // Resale RM matches — RMs whose base internal_code matches the
+        // search, OR whose supplier_product_name/internal_code LIKE, that
+        // don't also have a finished_goods row (that would make them
+        // formula-based, which the FG query already covers).
+        $rmRows = $db->fetchAll(
+            "SELECT DISTINCT rm.id, rm.internal_code, rm.supplier, rm.supplier_product_name
+             FROM raw_materials rm
+             LEFT JOIN aliases a
+                 ON SUBSTRING_INDEX(a.internal_code, '-', 1) = SUBSTRING_INDEX(rm.internal_code, '-', 1)
+             WHERE (
+                    rm.internal_code LIKE ?
+                 OR rm.supplier_product_name LIKE ?
+                 OR SUBSTRING_INDEX(rm.internal_code, '-', 1) = ?
+                 OR a.customer_code LIKE ?
+                 OR a.description LIKE ?
+             )
+               AND NOT EXISTS (
+                   SELECT 1 FROM finished_goods fg
+                    WHERE fg.product_code = SUBSTRING_INDEX(rm.internal_code, '-', 1)
+               )
+             ORDER BY rm.internal_code ASC
+             LIMIT 50",
+            [$like, $like, $base, $like, $like]
+        );
+
+        $rows = [];
+        foreach ($fgRows as $r) {
+            $r['_kind']        = 'fg';
+            $r['display_code'] = $r['product_code'];
+            $rows[] = $r;
+        }
+        foreach ($rmRows as $r) {
+            $r['_kind']        = 'rm';
+            $r['display_code'] = AliasResolver::stripPack((string) $r['internal_code']);
+            $r['description']  = $r['supplier_product_name'];
+            $r['family']       = null;
+            $r['is_active']    = 1;
+            $rows[] = $r;
+        }
+        return $rows;
     }
 }

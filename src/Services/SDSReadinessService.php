@@ -155,6 +155,70 @@ class SDSReadinessService
     }
 
     /**
+     * Readiness for a resale raw material (no formula, sold 100 % as-is).
+     *
+     * Same reviewed-RM rule as the FG path: the RM is ready when a user
+     * has saved it at least once, or one of its constituent CAS numbers
+     * has an active CAS determination. The report shape mirrors review()
+     * so the view can render both without branching.
+     *
+     * @return array|null Null when the RM doesn't exist.
+     */
+    public static function reviewRawMaterial(int $rmId): ?array
+    {
+        $db = Database::getInstance();
+
+        $rm = $db->fetch(
+            "SELECT id, internal_code, supplier, supplier_product_name
+             FROM raw_materials
+             WHERE id = ?",
+            [$rmId]
+        );
+        if ($rm === null) {
+            return null;
+        }
+
+        $reviewedRms = self::loadReviewedRmIds($db);
+        $isReviewed  = isset($reviewedRms[$rmId]);
+
+        // Shape this like an FG review so the view can render one table.
+        // Fake an FG-shaped row using the RM's details so existing
+        // template paths ("product_code", "description", etc.) work.
+        $baseCode = \SDS\Services\AliasResolver::stripPack((string) $rm['internal_code']);
+        $fakeFg = [
+            'id'          => null,
+            'product_code' => $baseCode,
+            'description'  => $rm['supplier_product_name'] ?? $baseCode,
+            'family'       => null,
+            'is_active'    => 1,
+        ];
+
+        return [
+            'fg'              => $fakeFg,
+            'has_formula'     => true,          // No real formula, but the data is present — not a "missing formula" case
+            'formula_version' => null,
+            'is_resale'       => true,
+            'resale_rm'       => [
+                'id'                    => $rmId,
+                'internal_code'         => $rm['internal_code'],
+                'base_code'             => $baseCode,
+                'supplier'              => $rm['supplier'],
+                'supplier_product_name' => $rm['supplier_product_name'],
+            ],
+            'total_rms'       => 1,
+            'reviewed_count'  => $isReviewed ? 1 : 0,
+            'unreviewed'      => $isReviewed ? [] : [[
+                'id'                    => $rmId,
+                'internal_code'         => $rm['internal_code'],
+                'supplier'              => $rm['supplier'],
+                'supplier_product_name' => $rm['supplier_product_name'],
+                'is_direct'             => true,
+                'via_fg_codes'          => [],
+            ]],
+        ];
+    }
+
+    /**
      * Walk the formula tree, returning per-RM context.
      *
      * For each RM encountered, track whether it appears directly on the

@@ -8,13 +8,26 @@
         <?= csrf_field() ?>
 
         <div class="form-group">
-            <label for="finished_good_id">Product <span class="text-danger">*</span></label>
-            <select name="finished_good_id" id="finished_good_id" class="searchable-select" required>
-                <option value="">— Select a product —</option>
+            <label for="finished_good_id">Product</label>
+            <select name="finished_good_id" id="finished_good_id" class="searchable-select">
+                <option value="">— Select a finished good —</option>
                 <?php foreach ($finishedGoods as $fg): ?>
                     <option value="<?= (int) $fg['id'] ?>"><?= e($fg['product_code']) ?> — <?= e($fg['description']) ?></option>
                 <?php endforeach; ?>
             </select>
+            <small class="text-muted">Pick a finished good above, or enter a resale code below.</small>
+        </div>
+
+        <div class="form-group">
+            <label for="resale_code">Or enter a resale code</label>
+            <input type="text" name="resale_code" id="resale_code" class="input"
+                   placeholder="Alias customer code, RM code (e.g. DSS0100), or pack variant"
+                   autocomplete="off" spellcheck="false">
+            <small class="text-muted">
+                For resale items sold as-is (alias) or the raw material itself.
+                Pack extensions are ignored &mdash; DSS0100 and DSS0100-20 produce identical labels.
+                Leave blank if you've chosen a finished good above.
+            </small>
         </div>
 
         <div class="form-row" style="display: flex; gap: 0.75rem; flex-wrap: wrap;">

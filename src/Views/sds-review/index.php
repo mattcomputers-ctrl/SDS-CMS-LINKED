@@ -37,11 +37,22 @@
             <?php if (!empty($fg['family'])): ?>
                 &middot; <?= e($fg['family']) ?>
             <?php endif; ?>
-            <?php if ($review['has_formula']): ?>
+            <?php if (!empty($review['is_resale'])): ?>
+                &middot; Resale of raw material <strong><?= e($review['resale_rm']['internal_code']) ?></strong>
+                &middot; <?= (int) $review['reviewed_count'] ?> of <?= (int) $review['total_rms'] ?> raw material ready
+            <?php elseif (!empty($review['formula_version'])): ?>
                 &middot; Formula v<?= (int) $review['formula_version'] ?>
                 &middot; <?= (int) $review['reviewed_count'] ?> of <?= (int) $review['total_rms'] ?> raw material<?= $review['total_rms'] === 1 ? '' : 's' ?> ready
             <?php endif; ?>
         </p>
+
+        <?php if (!empty($review['is_resale'])): ?>
+            <div class="alert alert-muted" style="background:#eef; border-left:3px solid #99c;">
+                <strong>Resale item.</strong> This product has no formula — it's sold
+                as-is under the alias. The SDS will be derived 100 % from the source
+                raw material <strong><?= e($review['resale_rm']['internal_code']) ?></strong>.
+            </div>
+        <?php endif; ?>
 
         <?php if (!$review['has_formula']): ?>
             <div class="alert alert-warning">
@@ -103,11 +114,33 @@
         <?php endif; ?>
 
         <p class="text-muted" style="margin-top: 1rem; margin-bottom: 0; font-size: 0.85rem;">
-            <a href="/formulas/<?= (int) $fg['id'] ?>">View full formula</a>
-            <?php if ($review['has_formula']): ?>
-                &middot; <a href="/sds/<?= (int) $fg['id'] ?>/preview">Preview SDS</a>
+            <?php if (!empty($review['is_resale'])): ?>
+                <a href="/raw-materials/<?= (int) $review['resale_rm']['id'] ?>/edit">Open source raw material</a>
+                <?php if (empty($review['unreviewed'])): ?>
+                    &middot; <a href="/sds/resale/<?= (int) $review['resale_rm']['id'] ?>/preview">Preview SDS</a>
+                <?php endif; ?>
+            <?php else: ?>
+                <a href="/formulas/<?= (int) $fg['id'] ?>">View full formula</a>
+                <?php if ($review['has_formula']): ?>
+                    &middot; <a href="/sds/<?= (int) $fg['id'] ?>/preview">Preview SDS</a>
+                <?php endif; ?>
             <?php endif; ?>
         </p>
+
+        <?php if (!empty($review['is_resale']) && empty($review['unreviewed']) && can_edit('sds')): ?>
+            <form method="POST" action="/sds/resale/<?= (int) $review['resale_rm']['id'] ?>/publish"
+                  style="margin-top: 1rem;"
+                  onsubmit="return confirm('Publish SDS for <?= e($review['resale_rm']['base_code']) ?> and all resale aliases pointing at it?');">
+                <?= csrf_field() ?>
+                <input type="hidden" name="change_summary" value="Published from SDS Creation Readiness Check">
+                <button type="submit" class="btn btn-primary">Publish Resale SDS</button>
+                <small class="text-muted" style="margin-left: 0.5rem;">
+                    Generates the SDS for this raw material under code
+                    <strong><?= e($review['resale_rm']['base_code']) ?></strong>, plus one alias-branded
+                    variant per alias that resolves to this RM via the resale path.
+                </small>
+            </form>
+        <?php endif; ?>
     </div>
 
 <?php elseif ($q !== '' && !empty($matches)): ?>
@@ -124,12 +157,24 @@
         </thead>
         <tbody>
         <?php foreach ($matches as $m): ?>
+            <?php $kind = $m['_kind'] ?? 'fg'; ?>
             <tr>
-                <td><strong><?= e($m['product_code']) ?></strong></td>
+                <td>
+                    <strong><?= e($m['display_code'] ?? ($m['product_code'] ?? '')) ?></strong>
+                    <?php if ($kind === 'rm'): ?>
+                        <span class="badge badge-muted" title="Resale raw material (no formula)">Resale</span>
+                    <?php endif; ?>
+                </td>
                 <td><?= e($m['description']) ?></td>
                 <td><?= e($m['family'] ?? '—') ?></td>
                 <td><?= (int) $m['is_active'] ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-muted">Inactive</span>' ?></td>
-                <td><a href="/sds-review?fg_id=<?= (int) $m['id'] ?>" class="btn btn-sm btn-primary">Check</a></td>
+                <td>
+                    <?php if ($kind === 'rm'): ?>
+                        <a href="/sds-review?rm_id=<?= (int) $m['id'] ?>" class="btn btn-sm btn-primary">Check</a>
+                    <?php else: ?>
+                        <a href="/sds-review?fg_id=<?= (int) $m['id'] ?>" class="btn btn-sm btn-primary">Check</a>
+                    <?php endif; ?>
+                </td>
             </tr>
         <?php endforeach; ?>
         </tbody>

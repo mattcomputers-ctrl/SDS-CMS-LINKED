@@ -253,6 +253,106 @@ class SDSGenerator
     }
 
     /**
+     * Compute language-independent base data for a resale raw material.
+     *
+     * Resale path: the alias (or an operator-typed RM code) maps to an
+     * RM with no finished-good formula. The SDS is derived from the RM's
+     * own constituents at 100 %. Output shape matches computeBase() so
+     * generateFromBase() can build language variants without caring
+     * which source produced the base.
+     *
+     * @throws \RuntimeException if the RM doesn't exist.
+     */
+    public function computeBaseForResaleRawMaterial(int $rawMaterialId): array
+    {
+        $calcService = new FormulaCalcService();
+        $calcResult  = $calcService->calculateForRawMaterial($rawMaterialId);
+
+        // Synthesise the "finished good" row the rest of the pipeline
+        // expects. Physical state / color come from the RM so Section 9
+        // has something to render. Hazard-override columns are null —
+        // resale RMs don't carry FG-level overrides.
+        $rm = $calcResult['formula']['lines'][0] ?? [];
+        $rmModel = \SDS\Models\RawMaterial::findById($rawMaterialId);
+        $baseCode = AliasResolver::stripPack((string) ($rmModel['internal_code'] ?? ''));
+        $fg = [
+            'id'                         => null,
+            'product_code'               => $baseCode,
+            'description'                => $rmModel['supplier_product_name'] ?? $baseCode,
+            'family'                     => null,
+            'is_active'                  => 1,
+            'physical_state'             => $rmModel['physical_state'] ?? null,
+            'color'                      => $rmModel['color'] ?? null,
+            'recommended_use'            => null,
+            'restrictions_on_use'        => null,
+            'hazard_override_json'       => null,
+            'hazard_override_mode'       => 'none',
+            'hazard_override_set_by'     => null,
+            'hazard_override_set_at'     => null,
+            'hazard_override_rationale'  => null,
+        ];
+
+        $hazardEngine = new HazardEngine();
+        $hazardResult = $hazardEngine->classify($calcResult['composition'], null);
+
+        $this->applyCarbonBlackLogic($hazardResult, $calcResult);
+
+        $carcinogenResult = CarcinogenService::analyse($calcResult['composition']);
+        $saraResult       = SARA313Service::analyse($calcResult['composition']);
+
+        $formulaLines = $calcResult['formula']['lines'] ?? [];
+        $manualProp65 = $this->getManualProp65($formulaLines);
+        $manualHaps   = $this->getManualHaps($formulaLines);
+
+        $prop65Result = Prop65Service::analyse($calcResult['composition'], $manualProp65);
+        $hapResult    = HAPService::analyse($calcResult['composition'], $manualHaps);
+
+        $this->applySolidPowderLiquidFiltering($carcinogenResult, $hazardResult, $prop65Result, $calcResult);
+        $this->applyCarcinogenFindings($hazardResult, $carcinogenResult);
+
+        $dotInfo = $this->getDOTInfo($calcResult['composition']);
+        $company = $this->getCompanySettings();
+
+        // Resale RMs have no family so the UV acrylate rule pack is
+        // skipped — it gates on FG family and we don't have one here.
+        $uvWarnings      = [];
+        $uvSectionAppend = [];
+
+        return [
+            'fg'               => $fg,
+            'calcResult'       => $calcResult,
+            'hazardResult'     => $hazardResult,
+            'saraResult'       => $saraResult,
+            'prop65Result'     => $prop65Result,
+            'carcinogenResult' => $carcinogenResult,
+            'hapResult'        => $hapResult,
+            'dotInfo'          => $dotInfo,
+            'company'          => $company,
+            'uvWarnings'       => $uvWarnings,
+            'uvSectionAppend'  => $uvSectionAppend,
+            // Source tracking — consumers that insert into sds_versions
+            // need to know the RM id and that finished_good_id is null.
+            'resale_source'    => [
+                'raw_material_id' => $rawMaterialId,
+                'base_code'       => $baseCode,
+            ],
+        ];
+    }
+
+    /**
+     * Generate a resale-alias or resale-RM SDS in a single call.
+     *
+     * Convenience wrapper equivalent to computeBaseForResaleRawMaterial()
+     * + generateFromBase(). Use this for previews or ad-hoc generation
+     * where you only need one language.
+     */
+    public function generateForResaleRawMaterial(int $rawMaterialId, string $language = 'en'): array
+    {
+        $base = $this->computeBaseForResaleRawMaterial($rawMaterialId);
+        return $this->generateFromBase($base, $language);
+    }
+
+    /**
      * Generate the full SDS data structure from pre-computed base data.
      *
      * Only performs language-specific work: GHS translation, text overrides,

@@ -64,7 +64,13 @@ $db         = Database::getInstance();
 // timestamp from second 1, which broke the bulk-publish eligibility
 // freshness check (any RM updated during the run ended up looking
 // newer than "its own" SDS).
-$today      = date('Y-m-d');
+//
+// $today is UTC so it matches MySQL's CURRENT_TIMESTAMP-based
+// updated_at columns. PHP's default timezone is user-local
+// (America/New_York), but every MySQL-written timestamp on this DB is
+// UTC. Using date() here would store effective_date 5 hours behind
+// MySQL's today on late-evening runs and break freshness comparisons.
+$today      = gmdate('Y-m-d');
 
 $total     = count($workItems);
 $published = 0;
@@ -142,7 +148,14 @@ foreach ($workItems as $i => $item) {
         // not when the worker started. In long-running bulk publishes
         // workers can run for hours; stamping every row with the
         // worker-start time makes freshness comparisons incorrect.
-        $now = date('Y-m-d H:i:s');
+        //
+        // gmdate (UTC) matches MySQL's CURRENT_TIMESTAMP-written
+        // columns like raw_materials.updated_at. date() would drift
+        // by the app-local timezone offset (e.g. 5h on UTC-5), making
+        // every freshly-published SDS look 5 hours older than the RMs
+        // it was derived from and leaving the FG permanently
+        // "eligible for publish" even right after it's republished.
+        $now = gmdate('Y-m-d H:i:s');
 
         // Insert version record. For resale items finished_good_id is
         // NULL and raw_material_id carries the source; for FG items

@@ -103,8 +103,18 @@ class HazardEngine
      *   a single Cat 2/3 component above 1 % will now correctly not
      *   classify as aquatic-hazardous unless the summation threshold
      *   is met.
+     *
+     * v1.6.1-cpd-code-filter: when a CPD declares multiple hazard
+     *   classes with a single shared h_statements / pictograms list,
+     *   and only some of those classes trigger at the component's
+     *   concentration, the engine now filters the companion H-codes
+     *   and pictograms to only those whose GHS-declared class is in
+     *   the triggered set. Fixes SDSs that carried H411 + GHS09 with
+     *   no environmental hazard class listed because the CPD declared
+     *   Acute Tox + Aquatic but only Acute Tox fired. P-codes are left
+     *   alone (many are cross-cutting across classes).
      */
-    public const ENGINE_VERSION = 'v1.6-aquatic-summation-only';
+    public const ENGINE_VERSION = 'v1.6.1-cpd-code-filter';
 
     /**
      * GHS summation thresholds per canonical class + category.
@@ -1924,6 +1934,89 @@ class HazardEngine
     }
 
     /**
+     * Filter CPD-declared companion codes (H-codes or pictograms) to only
+     * those whose GHS associations include at least one canonical class
+     * that actually triggered in this CPD contribution.
+     *
+     * Builds a lazy, cached reverse map from GHSHazardData once:
+     *   h_codes:    H-code    → set of canonical classes that carry it
+     *   pictograms: pictogram → set of canonical classes that carry it
+     *
+     * Items with no known class association are kept defensively (an
+     * unmapped code could still be legitimate vendor-specific data).
+     * Items whose every associated class is in the untriggered set are
+     * dropped, with a trace step recording the reason for the drop.
+     *
+     * @param array  $items               Key-value map (H/P codes) or flat list (pictograms)
+     * @param array  $triggeredCanonicals canonical_code => true (set of actually-fired classes)
+     * @param string $codeType            'h_codes' | 'pictograms'
+     */
+    private function filterCpdCodesByTriggeredClasses(
+        array $items,
+        array $triggeredCanonicals,
+        string $codeType,
+        string $cas,
+        string $source
+    ): array {
+        static $codeToCanonicalsCache = [];
+        if (!isset($codeToCanonicalsCache[$codeType])) {
+            $map = [];
+            foreach (GHSHazardData::HAZARD_CLASSIFICATIONS as $entry) {
+                $canonical = HazardClassAliases::normalize((string) ($entry['class'] ?? ''));
+                if ($canonical === null) continue;
+                foreach (($entry[$codeType] ?? []) as $code) {
+                    $map[(string) $code][$canonical] = true;
+                }
+            }
+            $codeToCanonicalsCache[$codeType] = $map;
+        }
+        $mapForType = $codeToCanonicalsCache[$codeType];
+
+        $filtered = [];
+        foreach ($items as $key => $value) {
+            // H/P statement entries are keyed by code with array values;
+            // pictograms are flat lists of code strings.
+            $code = is_array($value) ? (string) ($value['code'] ?? $key) : (string) $value;
+            if ($code === '') {
+                continue;
+            }
+
+            $canonicalsForCode = $mapForType[$code] ?? null;
+            if ($canonicalsForCode === null) {
+                // Unmapped — not associated with any known class. Keep
+                // defensively; custom / non-GHS codes shouldn't be silently dropped.
+                $filtered[$key] = $value;
+                continue;
+            }
+
+            $keep = false;
+            foreach ($canonicalsForCode as $cls => $_) {
+                if (isset($triggeredCanonicals[$cls])) {
+                    $keep = true;
+                    break;
+                }
+            }
+
+            if ($keep) {
+                $filtered[$key] = $value;
+            } else {
+                $this->traceStep('cpd_code_dropped_untriggered_class',
+                    "CPD {$cas} {$codeType} '{$code}' dropped — only maps to classes that didn't trigger",
+                    [
+                        'cas' => $cas,
+                        'code' => $code,
+                        'code_type' => $codeType,
+                        'associated_classes' => array_keys($canonicalsForCode),
+                        'triggered_classes' => array_keys($triggeredCanonicals),
+                        'source' => $source,
+                    ]
+                );
+            }
+        }
+        return $filtered;
+    }
+
+    /**
      * True if any existing $hazardClasses entry for the same canonical class
      * has a strictly more-severe category than $targetCategory. Used by the
      * cross-category summation pass to skip a Cat 2 firing when Cat 1 has
@@ -2232,6 +2325,28 @@ class HazardEngine
             $pStmts     = [];
             $pictograms = [];
             $signalWord = null;
+        } elseif ($anyTriggered) {
+            // When SOME classes fire but not all the CPD declared, filter
+            // the companion H-codes and pictograms to drop those whose
+            // only associated classes are among the non-triggered ones.
+            // Without this, a CPD declaring both Acute Tox Oral Cat 4 and
+            // Aquatic Chronic Cat 2 (with h_statements="H302,H411" and
+            // pictograms="GHS07,GHS09") would leak H411+GHS09 onto every
+            // SDS even when the aquatic class didn't trigger — producing
+            // environmental pictograms on products with no environmental
+            // hazard classes listed.
+            //
+            // P-codes are left alone: many (P210, P280, P304+P340, …) are
+            // cross-cutting across multiple hazard classes and a strict
+            // filter would drop legitimate P-code contributions.
+            $triggeredCanonicals = [];
+            foreach ($hazardClasses as $hc) {
+                if (!empty($hc['canonical'])) {
+                    $triggeredCanonicals[$hc['canonical']] = true;
+                }
+            }
+            $hStmts     = $this->filterCpdCodesByTriggeredClasses($hStmts,     $triggeredCanonicals, 'h_codes',    $cas, $source);
+            $pictograms = $this->filterCpdCodesByTriggeredClasses($pictograms, $triggeredCanonicals, 'pictograms', $cas, $source);
         }
 
         // Exposure limits from determination

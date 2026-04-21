@@ -975,9 +975,9 @@ try {
         traceSteps($result), 'aquatic_per_component_skipped');
 
     // ──────────────────────────────────────────────────────────────────
-    echo "\n[38] engine version stamp is v1.6-aquatic-summation-only.\n";
-    assertEquals('ENGINE_VERSION is v1.6-aquatic-summation-only',
-        'v1.6-aquatic-summation-only', \SDS\Services\HazardEngine::ENGINE_VERSION);
+    echo "\n[38] engine version stamp is v1.6.1-cpd-code-filter.\n";
+    assertEquals('ENGINE_VERSION is v1.6.1-cpd-code-filter',
+        'v1.6.1-cpd-code-filter', \SDS\Services\HazardEngine::ENGINE_VERSION);
 
 } catch (\Throwable $e) {
     echo "\n!!! EXCEPTION DURING TEST SUITE !!!\n";

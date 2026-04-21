@@ -310,12 +310,12 @@ class PDFService
                         } else {
                             $label = $category;
                         }
-                        // Append the H-code(s) associated with this hazard class
-                        // so operators don't need to cross-reference the flat
-                        // Hazard Statements list below. Engine attaches
-                        // $hc['h_codes'] post-consolidation.
+                        // Prefix the H-code(s) so the identifier leads the
+                        // line — matches the "H302: Harmful if swallowed"
+                        // style of the Hazard Statements list below. Engine
+                        // attaches $hc['h_codes'] post-consolidation.
                         if (!empty($hc['h_codes']) && is_array($hc['h_codes'])) {
-                            $label .= ' — ' . implode(', ', $hc['h_codes']);
+                            $label = implode(', ', $hc['h_codes']) . ' — ' . $label;
                         }
                         if ($label !== '' && !isset($seen[$label])) {
                             $seen[$label] = true;

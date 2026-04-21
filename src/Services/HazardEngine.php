@@ -1368,6 +1368,16 @@ class HazardEngine
                     'concentration_pct'  => $sum,
                     'cutoff_pct'         => $threshold,
                     'source'             => 'summation',
+                    // Carry the H-codes + contributor CAS list on the
+                    // mixture entry so Section 3 can attribute each
+                    // H-code back to the CAS numbers that drove it,
+                    // even though the classification fires at mixture
+                    // level rather than per-component.
+                    'h_codes'            => array_values($defaults['h_codes'] ?? []),
+                    'contributors'       => array_values(array_unique(array_filter(
+                        array_map(fn($c) => (string) $c['cas'], $contributors),
+                        fn($cas) => $cas !== '' && $cas !== 'TRADE_SECRET'
+                    ))),
                 ];
 
                 foreach ($defaults['h_codes'] as $hc) {
@@ -1465,6 +1475,11 @@ class HazardEngine
                     'concentration_pct'  => $weightedSum,
                     'cutoff_pct'         => $rule['threshold'],
                     'source'             => 'cross_category_summation',
+                    'h_codes'            => array_values($defaults['h_codes'] ?? []),
+                    'contributors'       => array_values(array_unique(array_filter(
+                        array_map(fn($c) => (string) $c['cas'], $contributorRows),
+                        fn($cas) => $cas !== '' && $cas !== 'TRADE_SECRET'
+                    ))),
                 ];
 
                 foreach ($defaults['h_codes'] as $hc) {
@@ -1747,6 +1762,11 @@ class HazardEngine
                     'concentration_pct'  => $weightedSum,
                     'cutoff_pct'         => $rule['threshold'],
                     'source'             => 'aquatic_summation',
+                    'h_codes'            => array_values($defaults['h_codes'] ?? []),
+                    'contributors'       => array_values(array_unique(array_filter(
+                        array_map(fn($c) => (string) $c['cas'], $usedRows),
+                        fn($cas) => $cas !== '' && $cas !== 'TRADE_SECRET'
+                    ))),
                 ];
 
                 foreach ($defaults['h_codes'] as $hc) {
@@ -1917,6 +1937,11 @@ class HazardEngine
                 'source'             => 'ate_mixture',
                 'ate_mix'            => $ateMix,
                 'route'              => $route,
+                'h_codes'            => array_values($defaults['h_codes'] ?? []),
+                'contributors'       => array_values(array_unique(array_filter(
+                    array_map(fn($c) => (string) $c['cas'], $usedContributors),
+                    fn($cas) => $cas !== '' && $cas !== 'TRADE_SECRET'
+                ))),
             ];
 
             foreach ($defaults['h_codes'] as $hc) {

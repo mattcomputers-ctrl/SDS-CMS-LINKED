@@ -609,16 +609,44 @@ class SDSGenerator
 
         // Build a per-CAS H-code list from the consolidated hazard_classes
         // so Section 3's component table can show each component alongside
-        // the GHS hazard codes it contributed. Mixture-level entries
-        // ('MIXTURE', 'FG_OVERRIDE', 'TRADE_SECRET') are skipped — they
-        // don't belong to a single disclosable CAS.
+        // the GHS hazard codes it contributed.
+        //
+        // Per-component entries contribute to their own CAS directly.
+        // Mixture-level entries (aquatic summation, ATE mixture, cross-
+        // category summation) fire at the mixture level — the CAS field
+        // reads 'MIXTURE' — but each entry carries a contributors[] list
+        // of the CAS numbers that drove the classification. We attribute
+        // the mixture's h_codes back to every contributor so Section 3
+        // and Section 2 don't disagree about which codes apply.
+        //
+        // FG_OVERRIDE / TRADE_SECRET stay unattributed — those H-codes
+        // come from operator overrides or trade-secret declarations with
+        // no individual CAS to credit.
         $casToHCodes = [];
         foreach (($hazardResult['hazard_classes'] ?? []) as $hc) {
             $hcCas = (string) ($hc['cas'] ?? '');
-            if ($hcCas === '' || $hcCas === 'MIXTURE'
-                || $hcCas === 'FG_OVERRIDE' || $hcCas === 'TRADE_SECRET') {
+
+            if ($hcCas === 'MIXTURE') {
+                $mixtureCodes      = $hc['h_codes']      ?? [];
+                $mixtureContribs   = $hc['contributors'] ?? [];
+                foreach ($mixtureContribs as $contribCas) {
+                    $contribCas = (string) $contribCas;
+                    if ($contribCas === '' || $contribCas === 'TRADE_SECRET') {
+                        continue;
+                    }
+                    foreach ($mixtureCodes as $code) {
+                        if ($code !== '') {
+                            $casToHCodes[$contribCas][$code] = true;
+                        }
+                    }
+                }
                 continue;
             }
+
+            if ($hcCas === '' || $hcCas === 'FG_OVERRIDE' || $hcCas === 'TRADE_SECRET') {
+                continue;
+            }
+
             foreach (($hc['h_codes'] ?? []) as $code) {
                 if ($code !== '') {
                     $casToHCodes[$hcCas][$code] = true;

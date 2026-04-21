@@ -46,6 +46,9 @@
                     <?php if (can_read('fg_sds_lookup')): ?>
                     <li><a href="/lookup" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/lookup') ? 'active' : '' ?>"><span class="menu-icon">&#128269;</span> FG SDS Lookup</a></li>
                     <?php endif; ?>
+                    <?php if (can_read('sds_review')): ?>
+                    <li><a href="/sds-review" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/sds-review') ? 'active' : '' ?>"><span class="menu-icon">&#9989;</span> SDS Creation Readiness Check</a></li>
+                    <?php endif; ?>
                     <?php if (can_read('rm_sds_book')): ?>
                     <li><a href="/sds-book" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/sds-book') ? 'active' : '' ?>"><span class="menu-icon">&#128214;</span> RM SDS Book</a></li>
                     <?php endif; ?>

@@ -191,23 +191,9 @@ class BulkPublishController
             $formulaCreatedAt[(int) $r['id']]            = $r['created_at'];
         }
 
-        // Reviewed RM ids (Rule 1)
-        $reviewedRms = [];
-        foreach ($db->fetchAll(
-            "SELECT DISTINCT entity_id
-             FROM audit_log
-             WHERE entity_type = 'raw_material' AND user_id IS NOT NULL"
-        ) as $r) {
-            $reviewedRms[(int) $r['entity_id']] = true;
-        }
-        foreach ($db->fetchAll(
-            "SELECT DISTINCT rmc.raw_material_id
-             FROM raw_material_constituents rmc
-             INNER JOIN competent_person_determinations cpd
-                 ON cpd.cas_number = rmc.cas_number AND cpd.is_active = 1"
-        ) as $r) {
-            $reviewedRms[(int) $r['raw_material_id']] = true;
-        }
+        // Reviewed RM ids (Rule 1) — shared with the per-FG SDS Review page
+        // so both views agree on what "reviewed" means.
+        $reviewedRms = \SDS\Services\SDSReadinessService::loadReviewedRmIds($db);
 
         // Per-RM max upstream timestamp = MAX(rm.updated_at, constituents.updated_at, CPDs.updated_at)
         $rmMaxUpstream = [];

@@ -141,6 +141,9 @@ class App
         $router->get('/lookup/search',       'LookupController@search');
         $router->get('/lookup/download/{id}', 'LookupController@download');
 
+        // ── SDS Review (per-FG readiness report) ─────────────────────
+        $router->get('/sds-review',          'SDSReviewController@index');
+
         // ── Raw Materials ────────────────────────────────────────────
         $router->get('/raw-materials',                       'RawMaterialController@index');
         $router->get('/raw-materials/create',                'RawMaterialController@create');

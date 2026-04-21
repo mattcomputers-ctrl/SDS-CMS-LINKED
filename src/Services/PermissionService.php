@@ -27,6 +27,7 @@ class PermissionService
         'raw_materials'    => 'Raw Materials',
         'finished_goods'   => 'Finished Goods',
         'fg_sds_lookup'    => 'FG SDS Lookup',
+        'sds_review'       => 'SDS Creation Readiness Check',
         'rm_sds_book'      => 'RM SDS Book',
         'reports'          => 'Reports',
         'aliases'          => 'Product Aliases',

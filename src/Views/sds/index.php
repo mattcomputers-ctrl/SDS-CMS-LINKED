@@ -118,8 +118,19 @@
     <p class="text-muted">Each alias has its own SDS listing the alias product code and description. All prior versions are retained.</p>
 
     <?php foreach ($aliasGrouped as $aliasId => $aliasInfo): ?>
+        <?php
+            // Strip pack extension from the alias customer_code for display —
+            // the SDS covers the whole base product (e.g. BK1008), not a
+            // specific pack size (BK1008-50). The full code with extension
+            // is still the stored identifier for download URLs and audit.
+            $displayAliasCode = $aliasInfo['alias_code'];
+            $dashAt = strpos($displayAliasCode, '-');
+            if ($dashAt !== false) {
+                $displayAliasCode = substr($displayAliasCode, 0, $dashAt);
+            }
+        ?>
         <div class="card" style="margin-bottom: 1rem;">
-            <h4 style="margin-top: 0;"><?= e($aliasInfo['alias_code']) ?> — <?= e($aliasInfo['alias_description']) ?></h4>
+            <h4 style="margin-top: 0;"><?= e($displayAliasCode) ?> — <?= e($aliasInfo['alias_description']) ?></h4>
             <table class="table">
                 <thead>
                     <tr><th>Version</th><th>Status</th><th>Published By</th><th>Date</th><th>Downloads</th><th>Actions</th></tr>

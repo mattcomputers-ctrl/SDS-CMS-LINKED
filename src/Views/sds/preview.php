@@ -77,10 +77,16 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                                 $cls = trim($hc['class_translated'] ?? $hc['class'] ?? '');
                                 $cat = trim($hc['category_translated'] ?? $hc['category'] ?? '');
                                 $label = ($cls !== '' && $cat !== '') ? $cls . ' (' . $cat . ')' : ($cls !== '' ? $cls : $cat);
+                                // Append H-codes inline so this list shows the full
+                                // classification without needing to cross-reference
+                                // the Hazard Statements section.
+                                $hcInlineCodes = (!empty($hc['h_codes']) && is_array($hc['h_codes']))
+                                    ? ' — ' . implode(', ', $hc['h_codes'])
+                                    : '';
                                 if ($label !== '' && !isset($seen[$label])):
                                     $seen[$label] = true;
                         ?>
-                            <li><?= e($label) ?></li>
+                            <li><?= e($label . $hcInlineCodes) ?></li>
                         <?php endif; endforeach; ?>
                         </ul>
                     <?php endif; ?>

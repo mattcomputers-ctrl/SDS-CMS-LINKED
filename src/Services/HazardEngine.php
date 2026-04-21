@@ -933,6 +933,23 @@ class HazardEngine
         // then sort by GHS group order (physical > health > environmental) and severity
         $allHClasses = $this->consolidateHazardClasses($allHClasses);
 
+        // Attach per-class H-codes to each surviving hazard_class entry so
+        // renderers (PDF Section 2, HTML preview) can display the code(s)
+        // inline with the class name — e.g. "Skin Sensitization (Category 1) — H317"
+        // — rather than making operators cross-reference the flat H-statement
+        // list at the bottom of the section.
+        foreach ($allHClasses as &$hcRef) {
+            $hcCanonical = (string) ($hcRef['canonical'] ?? '');
+            $hcCategory  = (string) ($hcRef['category_canonical'] ?? '');
+            if ($hcCanonical !== '' && $hcCategory !== '') {
+                $defaults = $this->getDefaultsForClassCategory($hcCanonical, $hcCategory);
+                $hcRef['h_codes'] = $defaults['h_codes'] ?? [];
+            } else {
+                $hcRef['h_codes'] = [];
+            }
+        }
+        unset($hcRef);
+
         // Sort H and P statements by code
         $hStatements = array_values($allHStmts);
         $pStatements = array_values($allPStmts);

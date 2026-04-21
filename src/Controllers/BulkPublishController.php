@@ -23,7 +23,7 @@ class BulkPublishController
     /**
      * Detect the number of available CPU cores.
      */
-    private static function getCpuCount(): int
+    public static function getCpuCount(): int
     {
         // Linux: /proc/cpuinfo
         if (is_readable('/proc/cpuinfo')) {
@@ -58,7 +58,7 @@ class BulkPublishController
      * workers regardless of detected CPU cores, scaling up to 4× cores on
      * larger machines.  Override via admin settings or config sds.publish_workers.
      */
-    private static function getWorkerCount(int $totalItems): int
+    public static function getWorkerCount(int $totalItems): int
     {
         // Check admin settings (DB) first, fall back to config file
         $db = Database::getInstance();
@@ -179,7 +179,7 @@ class BulkPublishController
      * @return array{eligible: array<int,array{id:int,product_code:string}>,
      *               blocked:  array<int,array{id:int,product_code:string}>}
      */
-    private static function computeEligibleFinishedGoods(Database $db): array
+    public static function computeEligibleFinishedGoods(Database $db): array
     {
         // All active FGs with a current formula — the candidate set.
         $fgs = $db->fetchAll(
@@ -359,7 +359,7 @@ class BulkPublishController
      * @return array{eligible: array<int,array{rm_id:int,base_code:string,description:string}>,
      *               blocked:  array<int,array{rm_id:int,base_code:string,description:string}>}
      */
-    private static function computeEligibleResaleItems(Database $db): array
+    public static function computeEligibleResaleItems(Database $db): array
     {
         // Candidate RMs: those whose base internal_code matches at least
         // one alias's internal_code_base AND whose base does NOT match
@@ -472,58 +472,35 @@ class BulkPublishController
     }
 
     /**
-     * POST /admin/bulk-publish/start — Begin bulk publish with parallel workers.
+     * Build the flat work-items list the parallel workers consume.
      *
-     * Work is split by (finished-good, language) pairs so that each PDF can
-     * be generated in its own worker, maximising parallelism.
+     * For each eligible FG: one base work item per language plus one
+     * alias-branded work item per deduplicated alias per language.
+     * For each eligible resale RM: one base work item under the RM's
+     * own code plus one alias-branded work item per alias that points
+     * at it via the resale path.
+     *
+     * Version numbers are pre-computed per item so concurrent workers
+     * don't race on MAX(version) lookups.
+     *
+     * Kept public + static so the CMS sync cron can reuse the same
+     * item shape without duplicating the build logic — both callers
+     * feed the output straight into publish-worker.php.
      */
-    public function start(): void
-    {
-        if (!can_edit('bulk_publish')) {
-            $this->jsonResponse(['error' => 'Forbidden'], 403);
-            return;
-        }
-        CSRF::validateRequest();
-
-        $db = Database::getInstance();
-
-        // Compute eligible FGs with full recursion through FG sub-components.
-        // See computeEligibleFinishedGoods() for the full rule set.
-        $eligibility = self::computeEligibleFinishedGoods($db);
-        $finishedGoods = $eligibility['eligible'];
-
-        // Resale items: purchased RMs sold as-is. Same review rule as FGs,
-        // but the work items point at an RM id with type='resale' so the
-        // worker knows to take the resale composition path.
-        $resaleEligibility = self::computeEligibleResaleItems($db);
-        $resaleItems       = $resaleEligibility['eligible'];
-
-        if (empty($finishedGoods) && empty($resaleItems)) {
-            $this->jsonResponse(['error' => 'No eligible finished goods or resale items to publish. Every raw material in the formula (through all FG sub-components) must have been reviewed by a user, or have an active CAS determination on one of its constituents. If a finished good or resale item already has an up-to-date SDS, it is also skipped.']);
-            return;
-        }
-
-        // Create progress directory
-        $basePath    = App::basePath();
-        $progressDir = $basePath . self::PROGRESS_DIR;
-        if (!is_dir($progressDir)) {
-            mkdir($progressDir, 0755, true);
-        }
-
-        $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
-
-        // Build (FG, language) work items with pre-computed version numbers
-        // so concurrent workers don't race on version selection.
-        // Also include alias work items for each finished good.
+    public static function buildWorkItems(
+        Database $db,
+        array $eligibleFgs,
+        array $eligibleResaleItems,
+        array $languages
+    ): array {
         $workItems = [];
-        foreach ($finishedGoods as $fg) {
-            // Add alias work items for this finished good (deduplicated by base customer code)
+
+        foreach ($eligibleFgs as $fg) {
             $aliases = self::deduplicateAliasesByBaseCode($db->fetchAll(
                 "SELECT id, customer_code, description FROM aliases WHERE internal_code_base = ? ORDER BY customer_code",
                 [$fg['product_code']]
             ));
 
-            // Always generate an SDS under the internal FG code
             $lastVersion = $db->fetch(
                 "SELECT MAX(version) AS max_ver FROM sds_versions WHERE finished_good_id = ? AND alias_id IS NULL",
                 [$fg['id']]
@@ -539,7 +516,6 @@ class BulkPublishController
                 ];
             }
 
-            // Also generate SDSs under each alias code
             foreach ($aliases as $alias) {
                 $aliasLastVersion = $db->fetch(
                     "SELECT MAX(version) AS max_ver FROM sds_versions WHERE alias_id = ?",
@@ -561,10 +537,7 @@ class BulkPublishController
             }
         }
 
-        // Resale items: each eligible RM gets a base SDS under its own
-        // code plus one alias-branded variant per alias. Same alias-
-        // deduplication as the FG path so pack variants share one SDS.
-        foreach ($resaleItems as $resale) {
+        foreach ($eligibleResaleItems as $resale) {
             $rmId     = (int) $resale['rm_id'];
             $baseCode = (string) $resale['base_code'];
 
@@ -613,6 +586,52 @@ class BulkPublishController
                 }
             }
         }
+
+        return $workItems;
+    }
+
+    /**
+     * POST /admin/bulk-publish/start — Begin bulk publish with parallel workers.
+     *
+     * Work is split by (finished-good, language) pairs so that each PDF can
+     * be generated in its own worker, maximising parallelism.
+     */
+    public function start(): void
+    {
+        if (!can_edit('bulk_publish')) {
+            $this->jsonResponse(['error' => 'Forbidden'], 403);
+            return;
+        }
+        CSRF::validateRequest();
+
+        $db = Database::getInstance();
+
+        // Compute eligible FGs with full recursion through FG sub-components.
+        // See computeEligibleFinishedGoods() for the full rule set.
+        $eligibility = self::computeEligibleFinishedGoods($db);
+        $finishedGoods = $eligibility['eligible'];
+
+        // Resale items: purchased RMs sold as-is. Same review rule as FGs,
+        // but the work items point at an RM id with type='resale' so the
+        // worker knows to take the resale composition path.
+        $resaleEligibility = self::computeEligibleResaleItems($db);
+        $resaleItems       = $resaleEligibility['eligible'];
+
+        if (empty($finishedGoods) && empty($resaleItems)) {
+            $this->jsonResponse(['error' => 'No eligible finished goods or resale items to publish. Every raw material in the formula (through all FG sub-components) must have been reviewed by a user, or have an active CAS determination on one of its constituents. If a finished good or resale item already has an up-to-date SDS, it is also skipped.']);
+            return;
+        }
+
+        // Create progress directory
+        $basePath    = App::basePath();
+        $progressDir = $basePath . self::PROGRESS_DIR;
+        if (!is_dir($progressDir)) {
+            mkdir($progressDir, 0755, true);
+        }
+
+        $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
+
+        $workItems = self::buildWorkItems($db, $finishedGoods, $resaleItems, $languages);
 
         $token       = bin2hex(random_bytes(8));
         $totalItems  = count($workItems);
@@ -904,7 +923,7 @@ class BulkPublishController
     /**
      * Strip the pack extension from a code (everything after the first "-").
      */
-    private static function stripPackExtension(string $code): string
+    public static function stripPackExtension(string $code): string
     {
         $pos = strpos($code, '-');
         return $pos !== false ? substr($code, 0, $pos) : $code;
@@ -916,7 +935,7 @@ class BulkPublishController
      * Returns one row per unique base code, using the first occurrence's id
      * and description, with customer_code set to the base (no pack extension).
      */
-    private static function deduplicateAliasesByBaseCode(array $rows): array
+    public static function deduplicateAliasesByBaseCode(array $rows): array
     {
         $seen = [];
         $result = [];

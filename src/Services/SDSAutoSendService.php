@@ -11,16 +11,26 @@ use SDS\Models\FinishedGood;
 use SDS\Models\Formula;
 
 /**
- * SDSAutoSendService — auto-publishes SDS documents and sends them
- * to customer regulatory contacts based on shipment data.
+ * SDSAutoSendService — sends SDS documents to customer regulatory
+ * contacts based on shipment data.
  *
- * Called after each CMS sync. The flow is:
- *   1. Auto-publish SDS for products with ready data (new formulas, revised formulas, new aliases)
- *   2. Identify new shipments since last run
- *   3. For each shipment to a customer with a regulatory email:
+ * Called after each CMS sync, AFTER the bulk SDS publish step in
+ * cron/cms-sync.php — by then any SDS that could have been published
+ * already has been, so this service only has to match shipments to
+ * published SDSs and send the emails (or queue missing-data items
+ * for regulatory review).
+ *
+ * The flow is:
+ *   1. Identify new shipments since last run.
+ *   2. For each shipment to a customer with a regulatory email:
  *      - Determine if an SDS needs to be sent (based on send mode)
  *      - If SDS is published → send email with PDF
  *      - If SDS can't be published (missing data) → queue for regulatory review
+ *
+ * The legacy autoPublishReady() method is retained on the class but no
+ * longer called from processNewShipments(). The Bulk SDS Publish flow
+ * (cron/bulk-publish.php) supersedes it with stricter eligibility rules
+ * that require every RM to be user-reviewed.
  */
 class SDSAutoSendService
 {
@@ -32,27 +42,27 @@ class SDSAutoSendService
     }
 
     /**
-     * Main entry point — called after CMS sync.
+     * Main entry point — called after CMS sync + bulk publish.
+     *
+     * No longer auto-publishes SDSs itself; cron/bulk-publish.php
+     * handles that using the Bulk SDS Publish page's eligibility
+     * rules, running before this service is invoked.
      */
     public function processNewShipments(): array
     {
         $results = [
-            'auto_published'     => 0,
-            'emails_sent'        => 0,
-            'queued'             => 0,
-            'skipped'            => 0,
-            'errors'             => [],
+            'emails_sent' => 0,
+            'queued'      => 0,
+            'skipped'     => 0,
+            'errors'      => [],
         ];
 
-        // Phase A: Auto-publish all SDS that can be published
-        $results['auto_published'] = $this->autoPublishReady();
-
-        // Phase B: Process new shipments for email sending
+        // Phase A: Process new shipments for email sending
         $lastRun = $this->getLastRunTimestamp();
         $this->processShipmentsSince($lastRun, $results);
         $this->setLastRunTimestamp();
 
-        // Phase C: Notify regulatory staff if items were queued
+        // Phase B: Notify regulatory staff if items were queued
         if ($results['queued'] > 0) {
             $this->notifyRegulatoryStaff($results['queued']);
         }
@@ -448,20 +458,12 @@ class SDSAutoSendService
                 continue;
             }
 
-            // Find or auto-publish SDS
+            // Look up the latest published SDS. We no longer auto-publish
+            // here on-demand — the Bulk SDS Publish cron step (which runs
+            // before us) already published everything eligible under the
+            // strict review rules. If there's no SDS now, the item isn't
+            // eligible and will get queued for regulatory review below.
             $sdsVersion = $this->getLatestPublishedSds((int) $fg['id'], $itemName);
-
-            if ($sdsVersion === null) {
-                if ($this->canAutoPublish((int) $fg['id'])) {
-                    try {
-                        $this->publishSds((int) $fg['id'], 'Auto-published for shipment');
-                        $results['auto_published']++;
-                        $sdsVersion = $this->getLatestPublishedSds((int) $fg['id'], $itemName);
-                    } catch (\Throwable $e) {
-                        // Fall through to queue
-                    }
-                }
-            }
 
             if ($sdsVersion === null) {
                 $this->queueForReview($customer, $row, 'SDS not available — missing raw material data or CAS determination');

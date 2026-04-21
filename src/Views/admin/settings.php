@@ -168,6 +168,27 @@
             <div class="form-group"><label>Sync Interval (hours)</label><input type="number" name="cms_sync__interval_hours" min="1" step="1" value="<?= e($settings['cms_sync.interval_hours'] ?? '1') ?>"><small class="text-muted">How often the CMS sync runs (default: every 1 hour)</small></div>
             <div class="form-group"><label>Shipment History (days)</label><input type="number" name="cms_sync__shipment_days" min="1" step="1" value="<?= e($settings['cms_sync.shipment_days'] ?? '1095') ?>"><small class="text-muted">How many days of shipment history to import from CMS</small></div>
         </div>
+        <div class="form-group">
+            <?php // Hidden-first pattern: unchecked checkboxes don't POST, so
+                  // a hidden "0" with the same name flips the setting to 0
+                  // when the box is unchecked. ?>
+            <input type="hidden" name="cms_sync__enabled" value="0">
+            <label style="font-weight: normal;">
+                <input type="checkbox" name="cms_sync__enabled" value="1"
+                    <?= ((string) ($settings['cms_sync.enabled'] ?? '1')) !== '0' ? 'checked' : '' ?>>
+                Enable CMS sync
+            </label>
+            <small class="text-muted">Uncheck to stop the hourly CMS sync cron from doing anything (it still starts, reads this setting, and exits). Leave checked in normal operation.</small>
+        </div>
+        <div class="form-group">
+            <input type="hidden" name="cms_sync__auto_bulk_publish" value="0">
+            <label style="font-weight: normal;">
+                <input type="checkbox" name="cms_sync__auto_bulk_publish" value="1"
+                    <?= ((string) ($settings['cms_sync.auto_bulk_publish'] ?? '1')) !== '0' ? 'checked' : '' ?>>
+                Auto-run Bulk SDS Publish after every CMS sync
+            </label>
+            <small class="text-muted">Uses the same eligibility rules as the <a href="/bulk-publish">Bulk SDS Publish</a> page — every RM in a formula (or the source RM of a resale item) must be user-reviewed, and the item must not already have an up-to-date SDS. Runs before the customer auto-send step.</small>
+        </div>
 
         <h2>Raw Material SDS Staleness</h2>
         <p class="text-muted mb-1">Controls the threshold used by the <a href="/stale-rm-sds">Stale RM SDS</a> page. Raw materials whose supplier SDS hasn't been confirmed current within this window are surfaced for vendor follow-up.</p>

@@ -135,11 +135,11 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
 
             <?php if (!empty($section['p_statements'])): ?>
                 <p><strong><?= e($l('precautionary_statements')) ?>:</strong></p>
-                <ul>
                 <?php foreach ($section['p_statements'] as $s): ?>
-                    <li><strong><?= e($s['code']) ?></strong><?php if (!empty($s['text'])): ?>: <?= e($s['text']) ?><?php endif; ?></li>
+                    <p style="margin-left: 1rem; margin-bottom: 0.1rem;">
+                        <strong><?= e($s['code']) ?></strong><?php if (!empty($s['text'])): ?>: <?= e($s['text']) ?><?php endif; ?>
+                    </p>
                 <?php endforeach; ?>
-                </ul>
             <?php endif; ?>
 
             <?php
@@ -171,20 +171,20 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                         </span>
                     <?php endforeach; ?>
                 </div>
-                <ul style="margin-top: 0.3rem;">
+                <div style="margin-top: 0.3rem;">
                 <?php if (!empty($ppe['respiratory'])): ?>
-                    <li><strong><?= e($l('respiratory')) ?>:</strong> <?= e($ppe['respiratory']) ?></li>
+                    <p style="margin-left: 1rem; margin-bottom: 0.1rem;"><strong><?= e($l('respiratory')) ?>:</strong> <?= e($ppe['respiratory']) ?></p>
                 <?php endif; ?>
                 <?php if (!empty($ppe['hand_protection'])): ?>
-                    <li><strong><?= e($l('hand_protection')) ?>:</strong> <?= e($ppe['hand_protection']) ?></li>
+                    <p style="margin-left: 1rem; margin-bottom: 0.1rem;"><strong><?= e($l('hand_protection')) ?>:</strong> <?= e($ppe['hand_protection']) ?></p>
                 <?php endif; ?>
                 <?php if (!empty($ppe['eye_protection'])): ?>
-                    <li><strong><?= e($l('eye_protection')) ?>:</strong> <?= e($ppe['eye_protection']) ?></li>
+                    <p style="margin-left: 1rem; margin-bottom: 0.1rem;"><strong><?= e($l('eye_protection')) ?>:</strong> <?= e($ppe['eye_protection']) ?></p>
                 <?php endif; ?>
                 <?php if (!empty($ppe['skin_protection'])): ?>
-                    <li><strong><?= e($l('skin_body')) ?>:</strong> <?= e($ppe['skin_protection']) ?></li>
+                    <p style="margin-left: 1rem; margin-bottom: 0.1rem;"><strong><?= e($l('skin_body')) ?>:</strong> <?= e($ppe['skin_protection']) ?></p>
                 <?php endif; ?>
-                </ul>
+                </div>
             <?php endif; ?>
 
             <?php if (!empty($section['has_other_hazards'])): ?>

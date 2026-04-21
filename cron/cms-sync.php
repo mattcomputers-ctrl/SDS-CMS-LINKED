@@ -124,7 +124,10 @@ try {
     if (MailService::isConfigured()) {
         echo "\n[" . date('Y-m-d H:i:s') . "] SDS customer auto-send starting...\n";
         $autoSend = new SDSAutoSendService();
-        $sendResults = $autoSend->processNewShipments();
+        // Pass the session start so auto-send only considers shipments
+        // imported in THIS sync run — no emails for shipments that
+        // arrived in an earlier run but weren't already handled.
+        $sendResults = $autoSend->processNewShipments($timestamp);
         echo "  Emails sent:     " . ($sendResults['emails_sent'] ?? 0) . "\n";
         echo "  Queued:          " . ($sendResults['queued'] ?? 0) . "\n";
         echo "  Skipped:         " . ($sendResults['skipped'] ?? 0) . "\n";

@@ -47,8 +47,18 @@ class SDSAutoSendService
      * No longer auto-publishes SDSs itself; cron/bulk-publish.php
      * handles that using the Bulk SDS Publish page's eligibility
      * rules, running before this service is invoked.
+     *
+     * @param  string|null $sessionStart When non-null, only shipments
+     *                                   imported at or after this
+     *                                   timestamp are considered — so a
+     *                                   cron pass only emails customers
+     *                                   for shipments that were synced
+     *                                   in the same run. When null,
+     *                                   falls back to the persisted
+     *                                   auto_send.last_run_at marker
+     *                                   (legacy behaviour).
      */
-    public function processNewShipments(): array
+    public function processNewShipments(?string $sessionStart = null): array
     {
         $results = [
             'emails_sent' => 0,
@@ -58,8 +68,8 @@ class SDSAutoSendService
         ];
 
         // Phase A: Process new shipments for email sending
-        $lastRun = $this->getLastRunTimestamp();
-        $this->processShipmentsSince($lastRun, $results);
+        $since = $sessionStart ?? $this->getLastRunTimestamp();
+        $this->processShipmentsSince($since, $results);
         $this->setLastRunTimestamp();
 
         // Phase B: Notify regulatory staff if items were queued
@@ -400,7 +410,11 @@ class SDSAutoSendService
         $params = [];
 
         if ($since !== null) {
-            $where .= " AND sd.imported_at > ?";
+            // >= so shipments imported exactly at the session-start
+            // second are included. CMSImportService stamps imported_at
+            // at DB INSERT time, which is always after the PHP-side
+            // session-start timestamp captured at script boot.
+            $where .= " AND sd.imported_at >= ?";
             $params[] = $since;
         }
 

@@ -193,6 +193,22 @@ class SDSReadinessService
             'is_active'    => 1,
         ];
 
+        // Published SDSs derived from this RM — both the RM's own base
+        // SDS (alias_id NULL) and every alias-branded variant — so the
+        // operator can confirm the publish landed and grab the PDFs
+        // without hunting through FG SDS Lookup.
+        $publishedVersions = $db->fetchAll(
+            "SELECT sv.id, sv.version, sv.language, sv.published_at,
+                    sv.alias_id, a.customer_code AS alias_code
+             FROM sds_versions sv
+             LEFT JOIN aliases a ON a.id = sv.alias_id
+             WHERE sv.raw_material_id = ?
+               AND sv.status = 'published'
+               AND sv.is_deleted = 0
+             ORDER BY sv.published_at DESC, sv.version DESC, sv.language ASC",
+            [$rmId]
+        );
+
         return [
             'fg'              => $fakeFg,
             'has_formula'     => true,          // No real formula, but the data is present — not a "missing formula" case
@@ -215,6 +231,7 @@ class SDSReadinessService
                 'is_direct'             => true,
                 'via_fg_codes'          => [],
             ]],
+            'published_versions' => $publishedVersions,
         ];
     }
 

@@ -120,6 +120,27 @@ class BulkPublishController
             $aliasCount = (int) ($aliasStats['alias_count'] ?? 0);
         }
 
+        // Resale items — purchased raw materials sold as-is under an
+        // alias (the alias's internal_code_base points at an RM, not an
+        // FG with a formula). Same review-ready rule as FGs: the RM
+        // must be reviewed.
+        $resaleEligibility = self::computeEligibleResaleItems($db);
+        $eligibleResale    = $resaleEligibility['eligible'];
+        $blockedResale     = $resaleEligibility['blocked'];
+
+        $resaleAliasCount = 0;
+        if (!empty($eligibleResale)) {
+            $eligibleResaleBases = array_column($eligibleResale, 'base_code');
+            $placeholders = implode(',', array_fill(0, count($eligibleResaleBases), '?'));
+            $resaleAliasStats = $db->fetch(
+                "SELECT COUNT(DISTINCT SUBSTRING_INDEX(customer_code, '-', 1)) AS cnt
+                 FROM aliases
+                 WHERE internal_code_base IN ({$placeholders})",
+                $eligibleResaleBases
+            );
+            $resaleAliasCount = (int) ($resaleAliasStats['cnt'] ?? 0);
+        }
+
         $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
 
         view('admin/bulk-publish', [
@@ -127,6 +148,9 @@ class BulkPublishController
             'fgCount'             => count($eligibleFgs),
             'blockedCount'        => count($blockedFgs),
             'aliasCount'          => $aliasCount,
+            'resaleCount'         => count($eligibleResale),
+            'resaleBlockedCount'  => count($blockedResale),
+            'resaleAliasCount'    => $resaleAliasCount,
             'langCount'           => count($languages),
             'languages'           => $languages,
         ]);
@@ -318,6 +342,136 @@ class BulkPublishController
     }
 
     /**
+     * Compute the set of resale raw materials bulk-publish should process.
+     *
+     * A resale RM is a raw material whose base internal_code has at least
+     * one alias pointing at it AND no matching finished_goods.product_code
+     * with a current formula (otherwise the formula path wins). Eligibility
+     * rules mirror computeEligibleFinishedGoods:
+     *
+     *   1. The RM itself must be reviewed (audit_log entry with a real
+     *      user_id OR active CPD on one of its constituents).
+     *   2. The RM's latest non-alias published SDS (sds_versions.raw_material_id
+     *      = rmId, alias_id IS NULL) must be older than the most recent
+     *      upstream change (RM updated_at, constituent updated_at, or CPD
+     *      updated_at) — or no SDS exists yet.
+     *
+     * @return array{eligible: array<int,array{rm_id:int,base_code:string,description:string}>,
+     *               blocked:  array<int,array{rm_id:int,base_code:string,description:string}>}
+     */
+    private static function computeEligibleResaleItems(Database $db): array
+    {
+        // Candidate RMs: those whose base internal_code matches at least
+        // one alias's internal_code_base AND whose base does NOT match
+        // any finished_goods.product_code with a current formula. One
+        // row per RM (we want to publish per RM, not per alias).
+        $candidates = $db->fetchAll(
+            "SELECT rm.id AS rm_id,
+                    SUBSTRING_INDEX(rm.internal_code, '-', 1) AS base_code,
+                    rm.updated_at,
+                    rm.supplier_product_name
+             FROM raw_materials rm
+             INNER JOIN (
+                 SELECT DISTINCT internal_code_base
+                 FROM aliases
+             ) al ON al.internal_code_base = SUBSTRING_INDEX(rm.internal_code, '-', 1)
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM finished_goods fg
+                 INNER JOIN formulas f ON f.finished_good_id = fg.id AND f.is_current = 1
+                 WHERE fg.product_code = SUBSTRING_INDEX(rm.internal_code, '-', 1)
+             )
+             GROUP BY SUBSTRING_INDEX(rm.internal_code, '-', 1)"
+        );
+
+        if (empty($candidates)) {
+            return ['eligible' => [], 'blocked' => []];
+        }
+
+        // Shared reviewed-RM rule — identical to FG eligibility.
+        $reviewedRms = \SDS\Services\SDSReadinessService::loadReviewedRmIds($db);
+
+        // Per-RM upstream timestamps for Rule 2.
+        $rmIds = array_map(fn($c) => (int) $c['rm_id'], $candidates);
+        $placeholders = implode(',', array_fill(0, count($rmIds), '?'));
+
+        $rmMaxUpstream = [];
+        foreach ($db->fetchAll("SELECT id, updated_at FROM raw_materials WHERE id IN ({$placeholders})", $rmIds) as $r) {
+            $rmMaxUpstream[(int) $r['id']] = $r['updated_at'];
+        }
+        foreach ($db->fetchAll(
+            "SELECT raw_material_id, MAX(updated_at) AS max_upd
+             FROM raw_material_constituents
+             WHERE raw_material_id IN ({$placeholders})
+             GROUP BY raw_material_id",
+            $rmIds
+        ) as $r) {
+            $rmId = (int) $r['raw_material_id'];
+            if (!isset($rmMaxUpstream[$rmId]) || $r['max_upd'] > $rmMaxUpstream[$rmId]) {
+                $rmMaxUpstream[$rmId] = $r['max_upd'];
+            }
+        }
+        // Pull CPDs active on constituents of these RMs and compare.
+        foreach ($db->fetchAll(
+            "SELECT rmc.raw_material_id, MAX(cpd.updated_at) AS max_upd
+             FROM raw_material_constituents rmc
+             INNER JOIN competent_person_determinations cpd
+                 ON cpd.cas_number = rmc.cas_number AND cpd.is_active = 1
+             WHERE rmc.raw_material_id IN ({$placeholders})
+             GROUP BY rmc.raw_material_id",
+            $rmIds
+        ) as $r) {
+            $rmId = (int) $r['raw_material_id'];
+            if (!isset($rmMaxUpstream[$rmId]) || $r['max_upd'] > $rmMaxUpstream[$rmId]) {
+                $rmMaxUpstream[$rmId] = $r['max_upd'];
+            }
+        }
+
+        // Latest non-alias resale SDS per RM (raw_material_id set,
+        // alias_id NULL).
+        $lastPublished = [];
+        foreach ($db->fetchAll(
+            "SELECT raw_material_id, MAX(published_at) AS last
+             FROM sds_versions
+             WHERE status = 'published'
+               AND is_deleted = 0
+               AND alias_id IS NULL
+               AND raw_material_id IN ({$placeholders})
+             GROUP BY raw_material_id",
+            $rmIds
+        ) as $r) {
+            $lastPublished[(int) $r['raw_material_id']] = $r['last'];
+        }
+
+        $eligible = [];
+        $blocked  = [];
+
+        foreach ($candidates as $c) {
+            $rmId = (int) $c['rm_id'];
+            $entry = [
+                'rm_id'       => $rmId,
+                'base_code'   => $c['base_code'],
+                'description' => (string) ($c['supplier_product_name'] ?? $c['base_code']),
+            ];
+
+            if (!isset($reviewedRms[$rmId])) {
+                $blocked[] = $entry;
+                continue;
+            }
+
+            // Rule 2 freshness check.
+            $maxTs   = $rmMaxUpstream[$rmId] ?? null;
+            $lastPub = $lastPublished[$rmId] ?? null;
+            if ($lastPub !== null && $maxTs !== null && $lastPub >= $maxTs) {
+                continue; // SDS is already up to date — skip, not blocked.
+            }
+
+            $eligible[] = $entry;
+        }
+
+        return ['eligible' => $eligible, 'blocked' => $blocked];
+    }
+
+    /**
      * POST /admin/bulk-publish/start — Begin bulk publish with parallel workers.
      *
      * Work is split by (finished-good, language) pairs so that each PDF can
@@ -338,8 +492,14 @@ class BulkPublishController
         $eligibility = self::computeEligibleFinishedGoods($db);
         $finishedGoods = $eligibility['eligible'];
 
-        if (empty($finishedGoods)) {
-            $this->jsonResponse(['error' => 'No eligible finished goods to publish. Every raw material in the formula (through all FG sub-components) must have been reviewed by a user, or have an active CAS determination on one of its constituents. If a finished good already has an up-to-date SDS, it is also skipped.']);
+        // Resale items: purchased RMs sold as-is. Same review rule as FGs,
+        // but the work items point at an RM id with type='resale' so the
+        // worker knows to take the resale composition path.
+        $resaleEligibility = self::computeEligibleResaleItems($db);
+        $resaleItems       = $resaleEligibility['eligible'];
+
+        if (empty($finishedGoods) && empty($resaleItems)) {
+            $this->jsonResponse(['error' => 'No eligible finished goods or resale items to publish. Every raw material in the formula (through all FG sub-components) must have been reviewed by a user, or have an active CAS determination on one of its constituents. If a finished good or resale item already has an up-to-date SDS, it is also skipped.']);
             return;
         }
 
@@ -391,6 +551,59 @@ class BulkPublishController
                     $workItems[] = [
                         'id'                => $fg['id'],
                         'product_code'      => $fg['product_code'],
+                        'language'          => $lang,
+                        'version'           => $aliasNextVersion,
+                        'alias_id'          => (int) $alias['id'],
+                        'alias_code'        => $alias['customer_code'],
+                        'alias_description' => $alias['description'],
+                    ];
+                }
+            }
+        }
+
+        // Resale items: each eligible RM gets a base SDS under its own
+        // code plus one alias-branded variant per alias. Same alias-
+        // deduplication as the FG path so pack variants share one SDS.
+        foreach ($resaleItems as $resale) {
+            $rmId     = (int) $resale['rm_id'];
+            $baseCode = (string) $resale['base_code'];
+
+            $lastVersion = $db->fetch(
+                "SELECT MAX(version) AS max_ver FROM sds_versions
+                 WHERE raw_material_id = ? AND alias_id IS NULL",
+                [$rmId]
+            );
+            $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
+
+            foreach ($languages as $lang) {
+                $workItems[] = [
+                    'type'         => 'resale',
+                    'rm_id'        => $rmId,
+                    'product_code' => $baseCode,
+                    'language'     => $lang,
+                    'version'      => $nextVersion,
+                ];
+            }
+
+            $resaleAliases = self::deduplicateAliasesByBaseCode($db->fetchAll(
+                "SELECT id, customer_code, description FROM aliases
+                 WHERE internal_code_base = ?
+                 ORDER BY customer_code",
+                [$baseCode]
+            ));
+
+            foreach ($resaleAliases as $alias) {
+                $aliasLastVersion = $db->fetch(
+                    "SELECT MAX(version) AS max_ver FROM sds_versions WHERE alias_id = ?",
+                    [(int) $alias['id']]
+                );
+                $aliasNextVersion = ((int) ($aliasLastVersion['max_ver'] ?? 0)) + 1;
+
+                foreach ($languages as $lang) {
+                    $workItems[] = [
+                        'type'              => 'resale',
+                        'rm_id'             => $rmId,
+                        'product_code'      => $baseCode,
                         'language'          => $lang,
                         'version'           => $aliasNextVersion,
                         'alias_id'          => (int) $alias['id'],

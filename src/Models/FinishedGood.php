@@ -430,11 +430,13 @@ class FinishedGood
         }
         $whereSQL2 = $where2 ? 'WHERE ' . implode(' AND ', $where2) : '';
 
-        // Count total unique base customer codes (pack extension agnostic)
+        // Count total unique base customer codes (pack extension agnostic).
+        // LEFT JOIN so resale aliases (whose internal_code_base points
+        // at a raw material, not an FG) still appear in the lookup.
         $countRow = $db->fetch(
             "SELECT COUNT(DISTINCT SUBSTRING_INDEX(a.customer_code, '-', 1)) AS cnt
              FROM aliases a
-             INNER JOIN finished_goods fg ON fg.product_code = a.internal_code_base
+             LEFT JOIN finished_goods fg ON fg.product_code = a.internal_code_base
              {$whereSQL}",
             $params
         );
@@ -447,7 +449,7 @@ class FinishedGood
         $representativeAlias = "INNER JOIN (
                 SELECT MIN(a2.id) AS rep_id
                 FROM aliases a2
-                INNER JOIN finished_goods fg2 ON fg2.product_code = a2.internal_code_base
+                LEFT JOIN finished_goods fg2 ON fg2.product_code = a2.internal_code_base
                 {$whereSQL2}
                 GROUP BY SUBSTRING_INDEX(a2.customer_code, '-', 1)
                 ORDER BY SUBSTRING_INDEX(a2.customer_code, '-', 1) ASC
@@ -481,7 +483,7 @@ class FinishedGood
                        sv_fr.version AS ver_fr, sv_fr.published_at AS date_fr, sv_fr.sds_id AS sds_id_fr,
                        sv_de.version AS ver_de, sv_de.published_at AS date_de, sv_de.sds_id AS sds_id_de
                 FROM aliases a
-                INNER JOIN finished_goods fg ON fg.product_code = a.internal_code_base
+                LEFT JOIN finished_goods fg ON fg.product_code = a.internal_code_base
                 {$representativeAlias}
                 {$latestVersionJoin('sv_en', 'en')}
                 {$latestVersionJoin('sv_es', 'es')}
@@ -493,13 +495,21 @@ class FinishedGood
         $queryParams = $params2;
         $rows = $db->fetchAll($sql, $queryParams);
 
-        // Post-process: strip pack extension from displayed product code
+        // Post-process: strip pack extension from displayed product code.
+        // Rows where fg_id is NULL are resale aliases (internal_code_base
+        // points at a raw material). Mark them so the view can badge
+        // accordingly; default is_active to 1 because these aliases
+        // don't inherit an FG's active flag.
         foreach ($rows as &$row) {
             $baseCode = strpos($row['customer_code'], '-') !== false
                 ? substr($row['customer_code'], 0, strpos($row['customer_code'], '-'))
                 : $row['customer_code'];
             $row['product_code'] = $baseCode;
             $row['description']  = $row['alias_description'];
+            $row['is_resale']    = $row['fg_id'] === null;
+            if ($row['is_resale']) {
+                $row['is_active'] = 1;
+            }
             $row['has_en'] = $row['ver_en'] !== null;
             $row['has_es'] = $row['ver_es'] !== null;
             $row['has_fr'] = $row['ver_fr'] !== null;

@@ -37,7 +37,12 @@
             <tbody>
             <?php foreach ($items as $r): ?>
                 <tr>
-                    <td><strong><?= e($r['product_code']) ?></strong></td>
+                    <td>
+                        <strong><?= e($r['product_code']) ?></strong>
+                        <?php if (!empty($r['is_resale'])): ?>
+                            <span class="badge badge-muted" title="Resale item — SDS derived from source raw material">Resale</span>
+                        <?php endif; ?>
+                    </td>
                     <td><?= e($r['description']) ?></td>
                     <td><?= e($r['family'] ?? '—') ?></td>
                     <td><?= (int) $r['is_active'] ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-muted">Inactive</span>' ?></td>

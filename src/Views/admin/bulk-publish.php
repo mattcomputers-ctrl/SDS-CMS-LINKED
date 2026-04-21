@@ -1,27 +1,40 @@
 <?php include dirname(__DIR__) . '/layouts/main.php'; ?>
 
-<p class="text-muted mb-1">Generate and publish a new SDS version for every eligible finished good (all languages). A finished good is eligible only when:</p>
+<p class="text-muted mb-1">Generate and publish a new SDS version for every eligible finished good <em>and</em> resale item (all languages). An item is eligible only when:</p>
 <ul class="text-muted" style="margin-top: 0; margin-bottom: 0.75rem;">
-    <li><strong>Every</strong> raw material in its current formula has been edited by a user at least once (any audit-log entry qualifies — even just adding a note). RMs that have only been imported from CMS and never reviewed block their finished good.</li>
-    <li>The finished good <strong>doesn't already have an up-to-date SDS</strong>. If the latest published SDS was published after the most recent change to the formula, raws, constituents, or CAS determinations, there's nothing to republish and it's skipped.</li>
+    <li><strong>Every</strong> raw material in its formula (or for a resale item, the source raw material itself) has been edited by a user at least once (any audit-log entry qualifies — even just adding a note). RMs that have only been imported from CMS and never reviewed block their item.</li>
+    <li>The item <strong>doesn't already have an up-to-date SDS</strong>. If the latest published SDS was published after the most recent change to the formula, raws, constituents, or CAS determinations, there's nothing to republish and it's skipped.</li>
 </ul>
+
+<?php $totalEligible = (int) $fgCount + (int) ($resaleCount ?? 0); ?>
+<?php $totalAliases  = (int) ($aliasCount ?? 0) + (int) ($resaleAliasCount ?? 0); ?>
 
 <div class="card" style="max-width: 700px;">
     <h2>Publish Summary</h2>
     <table class="table table-sm" style="max-width: 500px;">
         <tr><td><strong>Eligible Finished Goods (all raws user-reviewed):</strong></td><td><?= (int) $fgCount ?></td></tr>
         <?php if (($blockedCount ?? 0) > 0): ?>
-        <tr><td><strong>Blocked (at least one raw is unreviewed):</strong></td><td><?= (int) $blockedCount ?></td></tr>
+        <tr><td><strong>Blocked FGs (at least one raw is unreviewed):</strong></td><td><?= (int) $blockedCount ?></td></tr>
         <?php endif; ?>
         <?php if (($aliasCount ?? 0) > 0): ?>
         <tr><td><strong>Aliases (for eligible FGs):</strong></td><td><?= (int) $aliasCount ?></td></tr>
         <?php endif; ?>
+        <?php if (($resaleCount ?? 0) > 0 || ($resaleBlockedCount ?? 0) > 0 || ($resaleAliasCount ?? 0) > 0): ?>
+        <tr><td colspan="2" style="padding-top: 0.75rem; font-weight: 600;">Resale items (sold as-is, 100% of source RM):</td></tr>
+        <tr><td><strong>&nbsp;&nbsp;Eligible resale RMs:</strong></td><td><?= (int) ($resaleCount ?? 0) ?></td></tr>
+            <?php if (($resaleBlockedCount ?? 0) > 0): ?>
+        <tr><td><strong>&nbsp;&nbsp;Blocked resale RMs (unreviewed):</strong></td><td><?= (int) $resaleBlockedCount ?></td></tr>
+            <?php endif; ?>
+            <?php if (($resaleAliasCount ?? 0) > 0): ?>
+        <tr><td><strong>&nbsp;&nbsp;Resale aliases:</strong></td><td><?= (int) $resaleAliasCount ?></td></tr>
+            <?php endif; ?>
+        <?php endif; ?>
         <tr><td><strong>Languages:</strong></td><td><?= (int) $langCount ?> (<?= e(strtoupper(implode(', ', $languages))) ?>)</td></tr>
-        <tr><td><strong>Total PDFs to Generate:</strong></td><td><?= ((int) $fgCount + (int) ($aliasCount ?? 0)) * (int) $langCount ?></td></tr>
+        <tr><td><strong>Total PDFs to Generate:</strong></td><td><?= ($totalEligible + $totalAliases) * (int) $langCount ?></td></tr>
     </table>
 
-    <?php if ($fgCount === 0): ?>
-        <p class="text-muted">No eligible finished goods. Edit the raw materials used in your formulas (any save counts) to make them eligible.</p>
+    <?php if ($totalEligible === 0): ?>
+        <p class="text-muted">No eligible items. Edit the raw materials used in your formulas (any save counts) to make them eligible.</p>
     <?php else: ?>
 
         <form id="publish-form" style="margin-top: 1rem;">

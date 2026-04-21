@@ -43,12 +43,19 @@ class LookupController
     {
         $db = Database::getInstance();
 
+        // LEFT JOIN finished_goods so resale-path SDSs (finished_good_id
+        // IS NULL, raw_material_id set) are also downloadable. The
+        // product code falls back to the RM's internal_code when there
+        // is no FG row.
         $version = $db->fetch(
-            "SELECT sv.*, fg.product_code,
+            "SELECT sv.*,
+                    fg.product_code AS fg_product_code,
+                    rm.internal_code AS rm_internal_code,
                     a.customer_code AS alias_code
              FROM sds_versions sv
-             JOIN finished_goods fg ON fg.id = sv.finished_good_id
-             LEFT JOIN aliases a ON a.id = sv.alias_id
+             LEFT JOIN finished_goods fg ON fg.id = sv.finished_good_id
+             LEFT JOIN raw_materials  rm ON rm.id = sv.raw_material_id
+             LEFT JOIN aliases        a  ON a.id  = sv.alias_id
              WHERE sv.id = ? AND sv.status = 'published' AND sv.is_deleted = 0",
             [(int) $id]
         );
@@ -74,9 +81,14 @@ class LookupController
             'ip_address'  => $_SERVER['REMOTE_ADDR'] ?? null,
         ]);
 
-        // Use alias code for filename when available, otherwise fall back to product code
-        // Strip pack extension (e.g. "-5G") from the display code
-        $displayCode = strip_pack_extension($version['alias_code'] ?? $version['product_code']);
+        // Use alias code for filename when available, otherwise fall back
+        // to the FG product code or the RM's internal code. Strip pack
+        // extension (e.g. "-5G") from the display code.
+        $sourceCode = $version['alias_code']
+                   ?? $version['fg_product_code']
+                   ?? $version['rm_internal_code']
+                   ?? 'SDS';
+        $displayCode = strip_pack_extension($sourceCode);
 
         header('Content-Type: application/pdf');
         header('Content-Disposition: inline; filename="SDS_' . $displayCode . '_v' . $version['version'] . '.pdf"');

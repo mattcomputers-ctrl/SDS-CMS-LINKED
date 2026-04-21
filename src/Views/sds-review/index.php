@@ -141,6 +141,44 @@
                 </small>
             </form>
         <?php endif; ?>
+
+        <?php if (!empty($review['is_resale']) && !empty($review['published_versions'])): ?>
+            <h3 style="margin-top: 1.5rem; margin-bottom: 0.5rem; font-size: 1rem;">Published SDSs for this resale item</h3>
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Branded as</th>
+                        <th>Version</th>
+                        <th>Language</th>
+                        <th>Published</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($review['published_versions'] as $v): ?>
+                    <?php
+                        $brandBase = !empty($v['alias_code'])
+                            ? \SDS\Services\AliasResolver::stripPack((string) $v['alias_code'])
+                            : $review['resale_rm']['base_code'];
+                    ?>
+                    <tr>
+                        <td>
+                            <strong><?= e($brandBase) ?></strong>
+                            <?php if (empty($v['alias_id'])): ?>
+                                <span class="badge badge-muted" title="Base SDS under the raw material's own code">base</span>
+                            <?php endif; ?>
+                        </td>
+                        <td>v<?= (int) $v['version'] ?></td>
+                        <td><?= strtoupper(e($v['language'])) ?></td>
+                        <td><?= e(format_date($v['published_at'], 'Y-m-d H:i')) ?></td>
+                        <td>
+                            <a href="/lookup/download/<?= (int) $v['id'] ?>" class="btn btn-sm btn-outline">Download</a>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
     </div>
 
 <?php elseif ($q !== '' && !empty($matches)): ?>

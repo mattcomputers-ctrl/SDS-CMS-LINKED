@@ -60,8 +60,10 @@ $failed    = 0;
 $errors    = [];
 
 // Cache computeBase() results — multiple languages for the same FG may
-// land in the same worker batch, no need to recompute.
-$baseDataCache = [];
+// land in the same worker batch, no need to recompute. Separate cache
+// keys for FG vs resale so a resale RM id can't collide with an FG id.
+$baseDataCache       = [];
+$resaleBaseDataCache = [];
 
 writeWorkerProgress($progressFile, $total, 0, 0, 0, [], false);
 
@@ -85,10 +87,12 @@ foreach ($workItems as $i => $item) {
         exit(0);
     }
 
-    $fgId    = (int) $item['id'];
-    $code    = $item['product_code'];
-    $lang    = $item['language'];
-    $version = (int) $item['version'];
+    $isResale = (($item['type'] ?? null) === 'resale');
+    $fgId     = $isResale ? null : (int) $item['id'];
+    $rmId     = $isResale ? (int) $item['rm_id'] : null;
+    $code     = $item['product_code'];
+    $lang     = $item['language'];
+    $version  = (int) $item['version'];
 
     // Alias support: items with alias_id get a modified section 1
     // alias_code is already the base code (pack extension stripped by BulkPublishController)
@@ -99,12 +103,20 @@ foreach ($workItems as $i => $item) {
     $displayCode = $aliasCode ?? $code;
 
     try {
-        // Compute language-independent data once per FG
-        if (!isset($baseDataCache[$fgId])) {
-            $baseDataCache[$fgId] = $generator->computeBase($fgId);
+        // Compute language-independent data once per source — formula
+        // path caches by fg_id, resale path caches by rm_id, so the two
+        // can't collide.
+        if ($isResale) {
+            if (!isset($resaleBaseDataCache[$rmId])) {
+                $resaleBaseDataCache[$rmId] = $generator->computeBaseForResaleRawMaterial($rmId);
+            }
+            $sdsData = $generator->generateFromBase($resaleBaseDataCache[$rmId], $lang);
+        } else {
+            if (!isset($baseDataCache[$fgId])) {
+                $baseDataCache[$fgId] = $generator->computeBase($fgId);
+            }
+            $sdsData = $generator->generateFromBase($baseDataCache[$fgId], $lang);
         }
-
-        $sdsData = $generator->generateFromBase($baseDataCache[$fgId], $lang);
 
         // For alias items, replace product code/description in section 1
         if ($aliasId !== null && $aliasCode !== null) {
@@ -114,9 +126,12 @@ foreach ($workItems as $i => $item) {
         $pdfPath      = $pdfService->generate($sdsData);
         $relativePath = str_replace(App::basePath() . '/', '', $pdfPath);
 
-        // Insert version record
+        // Insert version record. For resale items finished_good_id is
+        // NULL and raw_material_id carries the source; for FG items
+        // it's the other way round.
         $versionData = [
             'finished_good_id' => $fgId,
+            'raw_material_id'  => $rmId,
             'language'         => $lang,
             'version'          => $version,
             'status'           => 'published',
@@ -125,7 +140,7 @@ foreach ($workItems as $i => $item) {
             'published_at'     => $now,
             'snapshot_json'    => json_encode($sdsData, JSON_UNESCAPED_UNICODE),
             'pdf_path'         => $relativePath,
-            'change_summary'   => 'Bulk publish',
+            'change_summary'   => $isResale ? 'Bulk publish (resale)' : 'Bulk publish',
             'created_by'       => $userId,
         ];
 
@@ -144,9 +159,14 @@ foreach ($workItems as $i => $item) {
             'trace_json'     => json_encode($traceData, JSON_UNESCAPED_UNICODE),
         ]);
 
-        $auditAction = $aliasId !== null ? 'bulk_publish_alias' : 'bulk_publish';
+        if ($isResale) {
+            $auditAction = $aliasId !== null ? 'bulk_publish_resale_alias' : 'bulk_publish_resale';
+        } else {
+            $auditAction = $aliasId !== null ? 'bulk_publish_alias' : 'bulk_publish';
+        }
         $auditData = [
             'finished_good_id' => $fgId,
+            'raw_material_id'  => $rmId,
             'product_code'     => $displayCode,
             'language'         => $lang,
             'version'          => $version,
@@ -156,7 +176,8 @@ foreach ($workItems as $i => $item) {
             $auditData['alias_code'] = $aliasCode;
         }
 
-        AuditService::log('sds_version', (string) $fgId, $auditAction, $auditData);
+        $auditKey = $isResale ? (string) $rmId : (string) $fgId;
+        AuditService::log('sds_version', $auditKey, $auditAction, $auditData);
 
         $published++;
     } catch (\Throwable $e) {

@@ -59,7 +59,11 @@ if (!is_array($workItems) || empty($workItems)) {
 $generator  = new SDSGenerator();
 $pdfService = new PDFService();
 $db         = Database::getInstance();
-$now        = date('Y-m-d H:i:s');
+// $now is captured per-insert inside the loop below — freezing it at
+// worker startup caused every row in a multi-hour run to carry the
+// timestamp from second 1, which broke the bulk-publish eligibility
+// freshness check (any RM updated during the run ended up looking
+// newer than "its own" SDS).
 $today      = date('Y-m-d');
 
 $total     = count($workItems);
@@ -133,6 +137,12 @@ foreach ($workItems as $i => $item) {
 
         $pdfPath      = $pdfService->generate($sdsData);
         $relativePath = str_replace(App::basePath() . '/', '', $pdfPath);
+
+        // published_at reflects when THIS PDF was actually written,
+        // not when the worker started. In long-running bulk publishes
+        // workers can run for hours; stamping every row with the
+        // worker-start time makes freshness comparisons incorrect.
+        $now = date('Y-m-d H:i:s');
 
         // Insert version record. For resale items finished_good_id is
         // NULL and raw_material_id carries the source; for FG items

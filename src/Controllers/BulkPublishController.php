@@ -692,13 +692,25 @@ class BulkPublishController
             fastcgi_finish_request();
         }
 
-        // Spawn parallel worker processes (stderr → log file for debugging)
+        // Spawn parallel worker processes (stderr → log file for debugging).
+        //
+        // The command has to survive the end of this PHP-FPM request:
+        //  - `setsid` puts the worker in its own session so Apache can't
+        //    deliver SIGHUP when it reaps the FPM child that fired exec().
+        //  - `< /dev/null` detaches stdin so nothing on the parent end
+        //    keeps the child's pipe open.
+        //  - `> logFile 2>&1 &` redirects both streams and backgrounds,
+        //    same as before.
+        // Without setsid + </dev/null, backgrounded workers get killed
+        // by FPM before they can open their log file, which is exactly
+        // what happened here: the UI returned a token but no worker
+        // ever produced a row or a log entry.
         $workerScript = $basePath . '/scripts/publish-worker.php';
         $phpBin       = php_cli_binary();
 
         for ($w = 0; $w < count($batches); $w++) {
             $cmd = sprintf(
-                '%s %s %s %s %s > %s 2>&1 &',
+                'setsid %s %s %s %s %s < /dev/null > %s 2>&1 &',
                 escapeshellarg($phpBin),
                 escapeshellarg($workerScript),
                 escapeshellarg($batchFiles[$w]),

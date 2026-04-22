@@ -338,7 +338,7 @@ class PDFService
             // only indent the first visual line; MultiCell wraps long
             // lines and every wrap would fall back to the page left
             // margin, producing a jagged outdent on the second line.
-            $origLeftMargin = $pdf->getLeftMargin();
+            $origLeftMargin = ($pdf->getMargins()['left'] ?? 10);
             $indentedMargin = $origLeftMargin + 4; // ~4mm hanging indent
 
             foreach ($groupLabels as $groupKey => $groupLabel) {
@@ -396,7 +396,7 @@ class PDFService
             $pdf->Cell(0, 5, $this->label('precautionary_statements') . ':', 0, 1);
             $pdf->SetFont('helvetica', '', 9);
 
-            $origLeftMargin = $pdf->getLeftMargin();
+            $origLeftMargin = ($pdf->getMargins()['left'] ?? 10);
             $pdf->SetLeftMargin($origLeftMargin + 4);
             $pdf->SetX($origLeftMargin + 4);
 

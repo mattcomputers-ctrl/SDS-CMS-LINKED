@@ -36,9 +36,74 @@ class Prop65Service
     public const WARNING_COMBINED = 'WARNING: This product can expose you to chemicals including %s, which is/are known to the State of California to cause birth defects or other reproductive harm and chemicals including %s, which is/are known to the State of California to cause cancer. For more information go to www.P65Warnings.ca.gov.';
 
     /**
+     * Default auto-trace threshold (percent). Any CAS-matched Prop 65
+     * chemical whose composition concentration is below this figure is
+     * treated as "trace" — the "(trace)" suffix is appended to its name
+     * in the warning text. Configurable via admin setting
+     * `prop65.auto_trace_threshold_pct`. 0.1 % aligns with the usual
+     * OSHA HazCom Section 3 disclosure threshold for CMR chemicals.
+     */
+    public const DEFAULT_AUTO_TRACE_THRESHOLD_PCT = 0.1;
+
+    /**
+     * Return the Prop 65 auto-trace threshold in percent as configured
+     * by the admin, falling back to the class default.
+     */
+    public static function autoTraceThresholdPct(): float
+    {
+        $db  = Database::getInstance();
+        $row = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'prop65.auto_trace_threshold_pct'");
+        if ($row === null || $row['value'] === '' || $row['value'] === null) {
+            return self::DEFAULT_AUTO_TRACE_THRESHOLD_PCT;
+        }
+        $v = (float) $row['value'];
+        return $v > 0 ? $v : self::DEFAULT_AUTO_TRACE_THRESHOLD_PCT;
+    }
+
+    /**
+     * Remove manual prop65_data entries whose CAS is already present
+     * in the RM's constituents. With the new Auto section on the RM
+     * form rendering those from prop65_list directly, keeping a manual
+     * copy would duplicate the chemical in the generated SDS.
+     *
+     * Entries with no CAS (name-only) or a CAS that doesn't appear in
+     * constituents are kept untouched. Shared between the on-save flow
+     * (RawMaterialController) and the one-off migration script so both
+     * apply identical rules.
+     *
+     * @param  array $constituents  list of rows, each with a 'cas_number' key
+     * @param  array $prop65Data    list of manual entries, each with 'cas_number'
+     * @return array{pruned: array, removed_count: int}
+     */
+    public static function pruneManualEntriesAgainstConstituents(array $constituents, array $prop65Data): array
+    {
+        $casInConstituents = [];
+        foreach ($constituents as $c) {
+            $cas = trim((string) ($c['cas_number'] ?? ''));
+            if ($cas !== '') {
+                $casInConstituents[$cas] = true;
+            }
+        }
+
+        $kept    = [];
+        $removed = 0;
+        foreach ($prop65Data as $entry) {
+            $cas = trim((string) ($entry['cas_number'] ?? ''));
+            if ($cas !== '' && isset($casInConstituents[$cas])) {
+                $removed++;
+                continue;
+            }
+            $kept[] = $entry;
+        }
+
+        return ['pruned' => array_values($kept), 'removed_count' => $removed];
+    }
+
+    /**
      * Analyse a composition against the California Prop 65 list.
      *
-     * @param  array $composition  Expanded CAS-level composition
+     * @param  array $composition    Expanded CAS-level composition
+     * @param  array $manualEntries  Optional manual Prop 65 entries from raw materials
      * @return array {
      *   listed_chemicals: array of matched chemicals with details,
      *   cancer_chemicals: string[] names of cancer-listed chemicals,
@@ -47,13 +112,10 @@ class Prop65Service
      *   warning_text: string,
      * }
      */
-    /**
-     * @param  array $composition    Expanded CAS-level composition
-     * @param  array $manualEntries  Optional manual Prop 65 entries from raw materials
-     */
     public static function analyse(array $composition, array $manualEntries = []): array
     {
-        $db = Database::getInstance();
+        $db              = Database::getInstance();
+        $autoTraceLimit  = self::autoTraceThresholdPct();
 
         $listedChemicals = [];
         $cancerChemicals = [];
@@ -98,8 +160,13 @@ class Prop65Service
 
             $displayName = $name ?: $row['chemical_name'];
 
-            // CAS-matched chemicals from composition are never trace
-            self::updateTraceStatus($traceStatus, $displayName, false);
+            // Auto-trace: a CAS-matched Prop 65 chemical is considered
+            // trace if its effective concentration in the composition
+            // is below the admin-configured threshold (default 0.1 %).
+            // Trace status is merged across all occurrences in the
+            // formula — see updateTraceStatus().
+            $autoIsTrace = $conc < $autoTraceLimit;
+            self::updateTraceStatus($traceStatus, $displayName, $autoIsTrace);
 
             if (in_array('cancer', $types)) {
                 $cancerChemicals[] = $displayName;

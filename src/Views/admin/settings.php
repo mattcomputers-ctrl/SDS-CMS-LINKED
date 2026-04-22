@@ -196,6 +196,12 @@
             <div class="form-group"><label>Stale Threshold (days)</label><input type="number" name="sds__rm_stale_days" min="1" step="1" value="<?= e($settings['sds.rm_stale_days'] ?? '1095') ?>"><small class="text-muted">Default 1095 (3 years). RMs exceeding this are flagged as stale.</small></div>
         </div>
 
+        <h2>California Proposition 65</h2>
+        <p class="text-muted mb-1">Threshold below which a CAS-matched Prop 65 chemical is treated as trace and gets the "(trace)" suffix in the generated warning text. Applies to chemicals pulled automatically from <code>prop65_list</code> via composition CAS numbers. Manual entries on the raw-material page still have their own Trace checkbox.</p>
+        <div class="form-grid-2col">
+            <div class="form-group"><label>Auto-Trace Threshold (%)</label><input type="number" name="prop65__auto_trace_threshold_pct" min="0" step="0.01" value="<?= e($settings['prop65.auto_trace_threshold_pct'] ?? '0.1') ?>"><small class="text-muted">Default 0.1 % — matches the OSHA HazCom Section 3 disclosure threshold for CMR chemicals.</small></div>
+        </div>
+
         <h2>Maintenance</h2>
         <div class="form-grid-2col">
             <div class="form-group"><label>Audit Log Retention (days)</label><input type="number" name="cron__log_retention_days" value="<?= e($settings['cron.log_retention_days'] ?? '365') ?>"></div>

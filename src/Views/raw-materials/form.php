@@ -348,14 +348,75 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
         </div>
         </div><!-- /#cas-constituents-section -->
 
-        <!-- Prop 65 Manual Marking -->
+        <!-- California Proposition 65 — Auto (derived) + Manual (overrides) -->
         <h3>California Proposition 65</h3>
-        <p class="text-muted">If this raw material contains Prop 65 listed chemicals that aren't detected automatically via CAS number lookup, you can manually add them here. Add multiple rows for purchased mixtures containing more than one listed chemical.</p>
 
         <?php
+        // ── Build the Auto section from this RM's constituents ─────
+        // For every constituent CAS that appears in the seeded
+        // prop65_list, render a read-only row showing the list's
+        // chemical name + toxicity types. Trace status is derived from
+        // the constituent's effective percentage vs the admin-configured
+        // threshold (default 0.1 %).
+        $p65AutoRows   = [];
+        $p65AutoCasSet = [];
+        $autoThreshold = \SDS\Services\Prop65Service::autoTraceThresholdPct();
+
+        $constituentCasList = [];
+        foreach (($constituents ?? []) as $c) {
+            $cas = trim((string) ($c['cas_number'] ?? ''));
+            if ($cas !== '') {
+                $constituentCasList[$cas] = $c;
+            }
+        }
+        if (!empty($constituentCasList)) {
+            $db = \SDS\Core\Database::getInstance();
+            $casArr       = array_keys($constituentCasList);
+            $placeholders = implode(',', array_fill(0, count($casArr), '?'));
+            $listRows = $db->fetchAll(
+                "SELECT cas_number, chemical_name, toxicity_type
+                 FROM prop65_list
+                 WHERE cas_number IN ({$placeholders})",
+                $casArr
+            );
+            foreach ($listRows as $lr) {
+                $c = $constituentCasList[$lr['cas_number']] ?? null;
+                if ($c === null) { continue; }
+
+                // Effective pct: prefer pct_exact, else upper bound of range
+                $eff = null;
+                if (isset($c['pct_exact']) && $c['pct_exact'] !== null && $c['pct_exact'] !== '') {
+                    $eff = (float) $c['pct_exact'];
+                } elseif (isset($c['pct_max']) && $c['pct_max'] !== null && $c['pct_max'] !== '') {
+                    $eff = (float) $c['pct_max'];
+                } elseif (isset($c['pct_min']) && $c['pct_min'] !== null && $c['pct_min'] !== '') {
+                    $eff = (float) $c['pct_min'];
+                }
+
+                $p65AutoRows[] = [
+                    'cas_number'    => $lr['cas_number'],
+                    'chemical_name' => $lr['chemical_name'],
+                    'toxicity_type' => $lr['toxicity_type'],
+                    'effective_pct' => $eff,
+                    'is_trace'      => ($eff !== null) ? ($eff < $autoThreshold) : false,
+                ];
+                $p65AutoCasSet[$lr['cas_number']] = true;
+            }
+        }
+
+        // ── Manual section: load existing prop65_data, skipping entries
+        //    whose CAS is in the Auto section (those are duplicates and
+        //    will be pruned on save).
         $prop65Data = [];
         if (!empty($item['prop65_data'])) {
-            $prop65Data = json_decode($item['prop65_data'], true) ?: [];
+            $decoded = json_decode($item['prop65_data'], true);
+            if (is_array($decoded)) {
+                if (array_is_list($decoded) || $decoded === []) {
+                    $prop65Data = $decoded;
+                } else {
+                    $prop65Data = [$decoded];
+                }
+            }
         }
         // Backward compat: if no JSON data but old fields exist, build one entry
         if (empty($prop65Data) && !empty($item['is_prop65']) && !empty($item['prop65_chemical_name'])) {
@@ -365,7 +426,58 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                 'toxicity_types' => $item['prop65_toxicity_types'] ?? '',
             ]];
         }
+        // Hide any entry whose CAS is covered by the Auto section.
+        $prop65Data = array_values(array_filter($prop65Data, function ($e) use ($p65AutoCasSet) {
+            $cas = trim((string) ($e['cas_number'] ?? ''));
+            return $cas === '' || !isset($p65AutoCasSet[$cas]);
+        }));
         ?>
+
+        <!-- Auto section: derived from constituents + prop65_list -->
+        <h4 style="margin-top: 0.75rem; margin-bottom: 0.25rem;">Auto-detected (from composition)</h4>
+        <p class="text-muted" style="margin-top: 0; margin-bottom: 0.5rem;">
+            Every constituent whose CAS appears in the California Prop 65 database.
+            Name and reason come from the public list; trace is derived from the
+            constituent's percentage (threshold: <?= number_format($autoThreshold, 2) ?>%,
+            configurable in <a href="/admin/settings">Admin Settings</a>).
+            Edit the composition above to change this list.
+        </p>
+        <table class="table table-sm">
+            <thead>
+                <tr>
+                    <th>CAS</th>
+                    <th>Chemical Name</th>
+                    <th>Toxicity Type(s)</th>
+                    <th>Conc.</th>
+                    <th>Trace</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php if (empty($p65AutoRows)): ?>
+                <tr><td colspan="5" class="text-muted" style="font-style: italic;">None detected from current composition.</td></tr>
+            <?php else: ?>
+                <?php foreach ($p65AutoRows as $ar): ?>
+                <tr>
+                    <td><code><?= e($ar['cas_number']) ?></code></td>
+                    <td><?= e($ar['chemical_name']) ?></td>
+                    <td><?= e($ar['toxicity_type']) ?></td>
+                    <td><?= $ar['effective_pct'] !== null ? e(number_format($ar['effective_pct'], 3)) . '%' : '—' ?></td>
+                    <td><?= $ar['is_trace'] ? '<span class="badge badge-muted">trace</span>' : '—' ?></td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </tbody>
+        </table>
+
+        <!-- Manual section: overrides + non-CAS chemicals -->
+        <h4 style="margin-top: 1rem; margin-bottom: 0.25rem;">Manual entries</h4>
+        <p class="text-muted" style="margin-top: 0; margin-bottom: 0.5rem;">
+            Use this for Prop 65 chemicals that are below the Section 3 disclosure
+            threshold (i.e. not listed in the composition) but still need a warning
+            — these are usually trace. Entering a CAS auto-fills the chemical name
+            and toxicity types from the public list. Entries whose CAS matches a
+            constituent are pruned on save; use the composition above for those.
+        </p>
 
         <table class="table table-sm" id="prop65Table">
             <thead>
@@ -384,11 +496,11 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                 <tr class="prop65-row">
                     <td>
                         <div style="display:flex; align-items:center; gap:0.5rem;">
-                            <input type="text" name="p65_chemical_name[<?= $pi ?>]" value="<?= e($p65['chemical_name'] ?? '') ?>" class="input-sm" placeholder="e.g. Titanium dioxide" style="flex:1;">
+                            <input type="text" name="p65_chemical_name[<?= $pi ?>]" value="<?= e($p65['chemical_name'] ?? '') ?>" class="input-sm p65-chem-name" placeholder="e.g. Titanium dioxide" style="flex:1;">
                             <label class="inline-check" style="white-space:nowrap; font-size:0.85rem;"><input type="checkbox" name="p65_is_trace[<?= $pi ?>]" value="1" <?= !empty($p65['is_trace']) ? 'checked' : '' ?>> Trace</label>
                         </div>
                     </td>
-                    <td><input type="text" name="p65_cas_number[<?= $pi ?>]" value="<?= e($p65['cas_number'] ?? '') ?>" class="input-sm" placeholder="e.g. 13463-67-7"></td>
+                    <td><input type="text" name="p65_cas_number[<?= $pi ?>]" value="<?= e($p65['cas_number'] ?? '') ?>" class="input-sm p65-cas" placeholder="e.g. 13463-67-7"></td>
                     <td class="p65-tox-checkboxes">
                         <label class="inline-check"><input type="checkbox" name="p65_tox_cancer[<?= $pi ?>]" value="1" <?= in_array('cancer', $existingTypes) ? 'checked' : '' ?>> Cancer</label>
                         <label class="inline-check"><input type="checkbox" name="p65_tox_developmental[<?= $pi ?>]" value="1" <?= in_array('developmental', $existingTypes) ? 'checked' : '' ?>> Developmental</label>
@@ -744,13 +856,17 @@ document.getElementById('vocLessThanOne').addEventListener('change', function() 
 });
 
 // ── Prop 65 dynamic rows ────────────────────────────────────
+// New manual rows pre-check Trace because the most common use for
+// the manual section is a chemical below the Section 3 disclosure
+// threshold (i.e. not in the composition table), which by definition
+// should warn as trace.
 document.getElementById('addProp65Row').addEventListener('click', function() {
     var tbody = document.getElementById('prop65Body');
     var idx = tbody.querySelectorAll('.prop65-row').length;
     var tr = document.createElement('tr');
     tr.className = 'prop65-row';
-    tr.innerHTML = '<td><div style="display:flex; align-items:center; gap:0.5rem;"><input type="text" name="p65_chemical_name[' + idx + ']" class="input-sm" placeholder="e.g. Titanium dioxide" style="flex:1;"><label class="inline-check" style="white-space:nowrap; font-size:0.85rem;"><input type="checkbox" name="p65_is_trace[' + idx + ']" value="1"> Trace</label></div></td>' +
-        '<td><input type="text" name="p65_cas_number[' + idx + ']" class="input-sm" placeholder="e.g. 13463-67-7"></td>' +
+    tr.innerHTML = '<td><div style="display:flex; align-items:center; gap:0.5rem;"><input type="text" name="p65_chemical_name[' + idx + ']" class="input-sm p65-chem-name" placeholder="e.g. Titanium dioxide" style="flex:1;"><label class="inline-check" style="white-space:nowrap; font-size:0.85rem;"><input type="checkbox" name="p65_is_trace[' + idx + ']" value="1" checked> Trace</label></div></td>' +
+        '<td><input type="text" name="p65_cas_number[' + idx + ']" class="input-sm p65-cas" placeholder="e.g. 13463-67-7"></td>' +
         '<td class="p65-tox-checkboxes">' +
             '<label class="inline-check"><input type="checkbox" name="p65_tox_cancer[' + idx + ']" value="1"> Cancer</label>' +
             '<label class="inline-check"><input type="checkbox" name="p65_tox_developmental[' + idx + ']" value="1"> Developmental</label>' +
@@ -767,6 +883,61 @@ document.addEventListener('click', function(e) {
         e.target.closest('tr').remove();
     }
 });
+
+// ── Prop 65 CAS → auto-fill name + toxicity ──────────────────
+// When the operator types/pastes a CAS into a manual Prop 65 row and
+// the value looks like a real CAS, call the shared casLookup endpoint
+// (same one used by the constituent rows). If it comes back with a
+// `prop65` payload, populate the chemical name and tick the matching
+// toxicity checkboxes so the operator doesn't have to re-type data
+// the public list already has. Existing values are preserved unless
+// empty to avoid clobbering operator edits.
+(function () {
+    var P65_TOX_TO_CHECKBOX = {
+        'cancer': 'p65_tox_cancer',
+        'developmental': 'p65_tox_developmental',
+        'reproductive': 'p65_tox_reproductive',
+        'female reproductive': 'p65_tox_female_reproductive',
+        'male reproductive': 'p65_tox_male_reproductive',
+    };
+    var CAS_PATTERN = /^\d{2,7}-\d{2}-\d$/;
+
+    document.addEventListener('change', function (e) {
+        if (!e.target.classList || !e.target.classList.contains('p65-cas')) return;
+        var cas = (e.target.value || '').trim();
+        if (!CAS_PATTERN.test(cas)) return;
+
+        var row = e.target.closest('tr');
+        if (!row) return;
+
+        fetch('/raw-materials/cas-lookup?cas=' + encodeURIComponent(cas))
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || !data.found) return;
+
+                // Fill chemical name if empty
+                var nameInput = row.querySelector('.p65-chem-name');
+                if (nameInput && !nameInput.value.trim()) {
+                    var fill = (data.prop65 && data.prop65.chemical_name)
+                        ? data.prop65.chemical_name
+                        : data.chemical_name;
+                    if (fill) nameInput.value = fill;
+                }
+
+                // Tick matching toxicity checkboxes if the CAS is on
+                // the public Prop 65 list.
+                if (data.prop65 && Array.isArray(data.prop65.toxicity_types)) {
+                    data.prop65.toxicity_types.forEach(function (t) {
+                        var name = P65_TOX_TO_CHECKBOX[t.toLowerCase()];
+                        if (!name) return;
+                        var cb = row.querySelector('input[name^="' + name + '["]');
+                        if (cb && !cb.checked) cb.checked = true;
+                    });
+                }
+            })
+            .catch(function () { /* ignore — lookup is a nicety, not critical */ });
+    });
+})();
 
 // ── HAPs dynamic rows ───────────────────────────────────────
 document.getElementById('addHapRow').addEventListener('click', function() {

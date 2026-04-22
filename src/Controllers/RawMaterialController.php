@@ -411,6 +411,22 @@ class RawMaterialController
                     $response['regulatory_lists'] = $lists;
                 }
 
+                // Attach Prop 65 details if the CAS is on the public list.
+                // The RM form's Manual Prop 65 section uses this to auto-
+                // fill the chemical name + toxicity-type checkboxes.
+                $p65 = \SDS\Core\Database::getInstance()->fetch(
+                    "SELECT chemical_name, toxicity_type FROM prop65_list WHERE cas_number = ?",
+                    [$cas]
+                );
+                if ($p65 !== null) {
+                    $response['prop65'] = [
+                        'chemical_name'  => $p65['chemical_name'],
+                        'toxicity_types' => array_values(array_filter(
+                            array_map('trim', explode(',', (string) $p65['toxicity_type']))
+                        )),
+                    ];
+                }
+
                 // Attach exposure limits (grouped by source)
                 $limits = RawMaterial::getExposureLimits($cas);
                 if (!empty($limits)) {
@@ -481,6 +497,14 @@ class RawMaterialController
 
     /**
      * Build Prop 65 data JSON from the form's repeating Prop 65 rows.
+     *
+     * After collecting the submitted rows, prune any entry whose CAS
+     * number matches one of the constituents posted in the same form.
+     * Those constituents are already covered by the Auto Prop 65
+     * section (derived from prop65_list at render time), so a manual
+     * duplicate would double-count the chemical. Logic is shared with
+     * scripts/resave-prop65-raw-materials.php via
+     * Prop65Service::pruneManualEntriesAgainstConstituents().
      */
     private function buildProp65Json(): ?string
     {
@@ -525,7 +549,25 @@ class RawMaterialController
             ];
         }
 
-        return !empty($entries) ? json_encode($entries) : null;
+        // Reconstruct the constituents list that this same POST request
+        // is about to save so the prune helper can drop any manual entry
+        // whose CAS is already in composition.
+        $postedConstituents = [];
+        $postedCas          = $_POST['cas_number'] ?? [];
+        foreach ($postedCas as $cas) {
+            $cas = trim((string) $cas);
+            if ($cas !== '') {
+                $postedConstituents[] = ['cas_number' => $cas];
+            }
+        }
+
+        $result = \SDS\Services\Prop65Service::pruneManualEntriesAgainstConstituents(
+            $postedConstituents,
+            $entries
+        );
+        $pruned = $result['pruned'];
+
+        return !empty($pruned) ? json_encode($pruned) : null;
     }
 
     /**

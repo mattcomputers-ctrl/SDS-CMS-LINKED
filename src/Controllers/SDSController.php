@@ -486,10 +486,18 @@ class SDSController
     public function download(string $id): void
     {
         $db = Database::getInstance();
+        // LEFT JOIN finished_goods + raw_materials too so the filename
+        // can fall back to either source when no alias is on the row,
+        // and so formula-based FGs without aliases pick up a real code.
         $version = $db->fetch(
-            "SELECT sv.*, a.customer_code AS alias_code
+            "SELECT sv.*,
+                    a.customer_code    AS alias_code,
+                    fg.product_code    AS fg_product_code,
+                    rm.internal_code   AS rm_internal_code
              FROM sds_versions sv
-             LEFT JOIN aliases a ON a.id = sv.alias_id
+             LEFT JOIN aliases        a  ON a.id  = sv.alias_id
+             LEFT JOIN finished_goods fg ON fg.id = sv.finished_good_id
+             LEFT JOIN raw_materials  rm ON rm.id = sv.raw_material_id
              WHERE sv.id = ? AND sv.is_deleted = 0",
             [(int) $id]
         );
@@ -506,10 +514,19 @@ class SDSController
             redirect('/sds/' . $version['finished_good_id']);
         }
 
-        // Include alias code in filename when downloading an alias-specific SDS
+        // Prefer the alias code (what the customer sees), falling back
+        // to the FG product code or the RM's internal code. Pack
+        // extension is always stripped so BK1080-2G and BK1080-5G both
+        // land as "SDS_BK1080_v…".
+        $sourceCode = $version['alias_code']
+                   ?? $version['fg_product_code']
+                   ?? $version['rm_internal_code']
+                   ?? '';
+        $displayCode = strip_pack_extension((string) $sourceCode);
+        $safeCode    = preg_replace('/[^A-Za-z0-9_\-]/', '_', $displayCode);
+
         $filename = 'SDS_';
-        if (!empty($version['alias_code'])) {
-            $safeCode = preg_replace('/[^A-Za-z0-9_\-]/', '_', $version['alias_code']);
+        if ($safeCode !== '') {
             $filename .= $safeCode . '_';
         }
         $filename .= 'v' . $version['version'] . '_' . $version['language'] . '.pdf';

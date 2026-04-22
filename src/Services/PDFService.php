@@ -376,7 +376,8 @@ class PDFService
         // above (H-code + phrase on the same line under its category) —
         // no standalone list needed.
 
-        // Precautionary statements
+        // Precautionary statements — same indent as the hazard rows
+        // above so both lists align visually under their headings.
         if (!empty($s['p_statements'])) {
             $pdf->SetFont('helvetica', 'B', 9);
             $pdf->Cell(0, 5, $this->label('precautionary_statements') . ':', 0, 1);
@@ -384,7 +385,7 @@ class PDFService
             foreach ($s['p_statements'] as $stmt) {
                 $code = $stmt['code'] ?? '';
                 $text = $stmt['text'] ?? '';
-                $line = $code;
+                $line = '  ' . $code;
                 if ($text !== '') {
                     $line .= ': ' . $text;
                 }

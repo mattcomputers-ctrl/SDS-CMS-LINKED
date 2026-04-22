@@ -333,41 +333,53 @@ class PDFService
                 'environmental' => $this->label('environmental_hazards'),
             ];
 
+            // Indent rendered lines by bumping the left margin for the
+            // duration of each category's list. Prefixing with "  " would
+            // only indent the first visual line; MultiCell wraps long
+            // lines and every wrap would fall back to the page left
+            // margin, producing a jagged outdent on the second line.
+            $origLeftMargin = $pdf->getLeftMargin();
+            $indentedMargin = $origLeftMargin + 4; // ~4mm hanging indent
+
             foreach ($groupLabels as $groupKey => $groupLabel) {
                 $pdf->SetFont('helvetica', 'B', 9);
                 $pdf->Cell(0, 5, $groupLabel . ':', 0, 1);
                 $pdf->SetFont('helvetica', '', 9);
 
+                $pdf->SetLeftMargin($indentedMargin);
+                $pdf->SetX($indentedMargin);
+
                 if (empty($grouped[$groupKey])) {
-                    $pdf->MultiCell(0, 4, '  None', 0, 'L');
-                    continue;
+                    $pdf->MultiCell(0, 4, 'None', 0, 'L');
+                } else {
+                    $sorted = $grouped[$groupKey];
+                    usort($sorted, function ($a, $b) use ($firstHCodeNum) {
+                        return $firstHCodeNum($a['h_codes'] ?? []) <=> $firstHCodeNum($b['h_codes'] ?? []);
+                    });
+
+                    $seen = [];
+                    foreach ($sorted as $hc) {
+                        $class = trim($hc['class_translated'] ?? $hc['class'] ?? '');
+                        $category = trim($hc['category_translated'] ?? $hc['category'] ?? '');
+                        $classLabel = ($class !== '' && $category !== '')
+                            ? $class . ' (' . $category . ')'
+                            : ($class !== '' ? $class : $category);
+                        $hCodes   = is_array($hc['h_codes'] ?? null) ? $hc['h_codes'] : [];
+                        $hcPrefix = !empty($hCodes) ? implode(', ', $hCodes) . ' — ' : '';
+                        $stmtText = $lookupStatement($hCodes);
+
+                        $line = $hcPrefix . $classLabel;
+                        if ($stmtText !== '') {
+                            $line .= ': ' . $stmtText;
+                        }
+                        if ($line !== '' && !isset($seen[$line])) {
+                            $seen[$line] = true;
+                            $pdf->MultiCell(0, 4, $line, 0, 'L');
+                        }
+                    }
                 }
 
-                $sorted = $grouped[$groupKey];
-                usort($sorted, function ($a, $b) use ($firstHCodeNum) {
-                    return $firstHCodeNum($a['h_codes'] ?? []) <=> $firstHCodeNum($b['h_codes'] ?? []);
-                });
-
-                $seen = [];
-                foreach ($sorted as $hc) {
-                    $class = trim($hc['class_translated'] ?? $hc['class'] ?? '');
-                    $category = trim($hc['category_translated'] ?? $hc['category'] ?? '');
-                    $classLabel = ($class !== '' && $category !== '')
-                        ? $class . ' (' . $category . ')'
-                        : ($class !== '' ? $class : $category);
-                    $hCodes   = is_array($hc['h_codes'] ?? null) ? $hc['h_codes'] : [];
-                    $hcPrefix = !empty($hCodes) ? implode(', ', $hCodes) . ' — ' : '';
-                    $stmtText = $lookupStatement($hCodes);
-
-                    $line = '  ' . $hcPrefix . $classLabel;
-                    if ($stmtText !== '') {
-                        $line .= ': ' . $stmtText;
-                    }
-                    if ($line !== '  ' && !isset($seen[$line])) {
-                        $seen[$line] = true;
-                        $pdf->MultiCell(0, 4, $line, 0, 'L');
-                    }
-                }
+                $pdf->SetLeftMargin($origLeftMargin);
             }
             $pdf->Ln(1);
         }
@@ -376,21 +388,29 @@ class PDFService
         // above (H-code + phrase on the same line under its category) —
         // no standalone list needed.
 
-        // Precautionary statements — same indent as the hazard rows
-        // above so both lists align visually under their headings.
+        // Precautionary statements — same 4mm hanging indent as the
+        // hazard rows so long statements that wrap keep their indent on
+        // every wrapped line.
         if (!empty($s['p_statements'])) {
             $pdf->SetFont('helvetica', 'B', 9);
             $pdf->Cell(0, 5, $this->label('precautionary_statements') . ':', 0, 1);
             $pdf->SetFont('helvetica', '', 9);
+
+            $origLeftMargin = $pdf->getLeftMargin();
+            $pdf->SetLeftMargin($origLeftMargin + 4);
+            $pdf->SetX($origLeftMargin + 4);
+
             foreach ($s['p_statements'] as $stmt) {
                 $code = $stmt['code'] ?? '';
                 $text = $stmt['text'] ?? '';
-                $line = '  ' . $code;
+                $line = $code;
                 if ($text !== '') {
                     $line .= ': ' . $text;
                 }
                 $pdf->MultiCell(0, 4, $line, 0, 'L');
             }
+
+            $pdf->SetLeftMargin($origLeftMargin);
         }
 
         // PPE Recommendations derived from H/P codes — with pictograms

@@ -86,7 +86,13 @@ class SDSGenerator
         $saraResult = SARA313Service::analyse($calcResult['composition']);
 
         // Gather manual regulatory data from raw materials in this formula
-        $formulaLines = $calcResult['formula']['lines'] ?? [];
+        // Use enriched_lines so RMs that live inside a sub-FG
+        // component are walked too — the top-level formula.lines only
+        // has direct RMs + sub-FG references, so manual Prop 65 / HAP
+        // entries on an RM one level down were silently dropped before.
+        $formulaLines = $calcResult['formula_props']['enriched_lines']
+            ?? $calcResult['formula']['lines']
+            ?? [];
         $manualProp65 = $this->getManualProp65($formulaLines);
         $manualHaps   = $this->getManualHaps($formulaLines);
 
@@ -213,7 +219,13 @@ class SDSGenerator
 
         $saraResult = SARA313Service::analyse($calcResult['composition']);
 
-        $formulaLines = $calcResult['formula']['lines'] ?? [];
+        // Use enriched_lines so RMs that live inside a sub-FG
+        // component are walked too — the top-level formula.lines only
+        // has direct RMs + sub-FG references, so manual Prop 65 / HAP
+        // entries on an RM one level down were silently dropped before.
+        $formulaLines = $calcResult['formula_props']['enriched_lines']
+            ?? $calcResult['formula']['lines']
+            ?? [];
         $manualProp65 = $this->getManualProp65($formulaLines);
         $manualHaps   = $this->getManualHaps($formulaLines);
 
@@ -300,7 +312,13 @@ class SDSGenerator
         $carcinogenResult = CarcinogenService::analyse($calcResult['composition']);
         $saraResult       = SARA313Service::analyse($calcResult['composition']);
 
-        $formulaLines = $calcResult['formula']['lines'] ?? [];
+        // Use enriched_lines so RMs that live inside a sub-FG
+        // component are walked too — the top-level formula.lines only
+        // has direct RMs + sub-FG references, so manual Prop 65 / HAP
+        // entries on an RM one level down were silently dropped before.
+        $formulaLines = $calcResult['formula_props']['enriched_lines']
+            ?? $calcResult['formula']['lines']
+            ?? [];
         $manualProp65 = $this->getManualProp65($formulaLines);
         $manualHaps   = $this->getManualHaps($formulaLines);
 

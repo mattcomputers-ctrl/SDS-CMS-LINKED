@@ -508,19 +508,38 @@ class RawMaterialController
      */
     private function buildProp65Json(): ?string
     {
-        $chemNames = $_POST['p65_chemical_name'] ?? [];
-        $casNums   = $_POST['p65_cas_number'] ?? [];
-        $isTrace   = $_POST['p65_is_trace'] ?? [];
-        $toxCancer = $_POST['p65_tox_cancer'] ?? [];
-        $toxDev    = $_POST['p65_tox_developmental'] ?? [];
-        $toxRepro  = $_POST['p65_tox_reproductive'] ?? [];
-        $toxFemale = $_POST['p65_tox_female_reproductive'] ?? [];
-        $toxMale   = $_POST['p65_tox_male_reproductive'] ?? [];
+        $chemNames  = $_POST['p65_chemical_name'] ?? [];
+        $casNums    = $_POST['p65_cas_number'] ?? [];
+        $isTrace    = $_POST['p65_is_trace'] ?? [];
+        $isOverride = $_POST['p65_is_override'] ?? [];
+        $toxCancer  = $_POST['p65_tox_cancer'] ?? [];
+        $toxDev     = $_POST['p65_tox_developmental'] ?? [];
+        $toxRepro   = $_POST['p65_tox_reproductive'] ?? [];
+        $toxFemale  = $_POST['p65_tox_female_reproductive'] ?? [];
+        $toxMale    = $_POST['p65_tox_male_reproductive'] ?? [];
 
         $entries = [];
-        foreach ($chemNames as $i => $name) {
-            $name = trim($name);
-            if ($name === '') {
+        // Iterate over whichever column is widest so we don't drop rows
+        // that have a CAS but no typed name (non-override rows derive
+        // the name from prop65_list at render time).
+        $rowCount = max(count($chemNames), count($casNums), count($isOverride));
+        for ($i = 0; $i < $rowCount; $i++) {
+            $name     = trim((string) ($chemNames[$i] ?? ''));
+            $cas      = trim((string) ($casNums[$i] ?? ''));
+            $override = !empty($isOverride[$i]);
+
+            // Empty row — skip. A row with neither CAS nor name has
+            // nothing to act on.
+            if ($cas === '' && $name === '') {
+                continue;
+            }
+
+            // Non-override rows must have a CAS (that's how the service
+            // looks them up in prop65_list). Override rows need a name.
+            if (!$override && $cas === '') {
+                continue;
+            }
+            if ($override && $name === '') {
                 continue;
             }
 
@@ -543,9 +562,10 @@ class RawMaterialController
 
             $entries[] = [
                 'chemical_name'  => $name,
-                'cas_number'     => trim($casNums[$i] ?? ''),
+                'cas_number'     => $cas,
                 'toxicity_types' => implode(', ', $types),
                 'is_trace'       => !empty($isTrace[$i]) ? 1 : 0,
+                'is_override'    => $override ? 1 : 0,
             ];
         }
 

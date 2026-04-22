@@ -176,23 +176,58 @@ class Prop65Service
             }
         }
 
-        // Include manual Prop 65 entries from raw materials
+        // Include manual Prop 65 entries from raw materials.
+        //
+        // Default behaviour: ignore whatever name / toxicity the operator
+        // typed and pull them from prop65_list by CAS — matches the Auto
+        // section's rule that the public list is the source of truth. A
+        // per-entry `is_override` flag flips that back: operator-typed
+        // name + toxicity are used verbatim. Use override for CASes the
+        // public list doesn't cover or when you deliberately want a
+        // different classification.
         foreach ($manualEntries as $manual) {
-            $chemName = $manual['chemical_name'] ?? '';
+            $cas        = trim((string) ($manual['cas_number'] ?? ''));
+            $isOverride = !empty($manual['is_override']);
+            $isTrace    = !empty($manual['is_trace']);
+
+            $chemName = '';
+            $types    = [];
+
+            if ($isOverride) {
+                // Use exactly what the operator stored.
+                $chemName = trim((string) ($manual['chemical_name'] ?? ''));
+                $types    = $manual['toxicity_type'] ?? [];
+                if (is_string($types)) {
+                    $types = array_map('trim', explode(',', $types));
+                }
+                $types = array_values(array_filter($types));
+            } else {
+                // Derive from the public list. If the CAS isn't on the
+                // list, skip — the operator's typed data isn't trusted
+                // without the override box checked.
+                if ($cas === '') {
+                    continue;
+                }
+                $row = $db->fetch(
+                    "SELECT chemical_name, toxicity_type FROM prop65_list WHERE cas_number = ?",
+                    [$cas]
+                );
+                if ($row === null) {
+                    continue;
+                }
+                $chemName = (string) $row['chemical_name'];
+                $types    = array_values(array_filter(array_map(
+                    'trim',
+                    explode(',', (string) $row['toxicity_type'])
+                )));
+            }
+
             if ($chemName === '') {
                 continue;
             }
 
-            $types = $manual['toxicity_type'] ?? [];
-            if (is_string($types)) {
-                $types = array_map('trim', explode(',', $types));
-            }
-            $types = array_filter($types);
-
-            $isTrace = !empty($manual['is_trace']);
-
             $listedChemicals[] = [
-                'cas_number'        => $manual['cas_number'] ?? '',
+                'cas_number'        => $cas,
                 'chemical_name'     => $chemName,
                 'concentration_pct' => (float) ($manual['concentration_pct'] ?? 0),
                 'toxicity_type'     => $types,
@@ -200,12 +235,13 @@ class Prop65Service
                 'madl_ug'           => null,
                 'date_listed'       => null,
                 'is_trace'          => $isTrace,
+                'is_override'       => $isOverride,
                 'source'            => 'manual',
             ];
 
             self::updateTraceStatus($traceStatus, $chemName, $isTrace);
 
-            if (in_array('cancer', $types)) {
+            if (in_array('cancer', $types, true)) {
                 $cancerChemicals[] = $chemName;
             }
             if (array_intersect(['developmental', 'reproductive', 'female reproductive', 'male reproductive'], $types)) {

@@ -474,39 +474,85 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
         <p class="text-muted" style="margin-top: 0; margin-bottom: 0.5rem;">
             Use this for Prop 65 chemicals that are below the Section 3 disclosure
             threshold (i.e. not listed in the composition) but still need a warning
-            — these are usually trace. Entering a CAS auto-fills the chemical name
-            and toxicity types from the public list. Entries whose CAS matches a
-            constituent are pruned on save; use the composition above for those.
+            — typically trace. Enter the CAS and the name + toxicity are derived
+            from the public list automatically. Check <strong>Override</strong> to
+            force a specific name or toxicity (needed when the CAS isn't on the
+            public list). Entries whose CAS also appears in the composition above
+            are pruned on save — let the Auto section handle those.
         </p>
+
+        <?php
+        // Pre-fetch prop65_list rows for any existing CAS we're about
+        // to render so non-override rows can show the authoritative
+        // name + toxicity instead of whatever was typed long ago.
+        $manualCasList = [];
+        foreach ($prop65Data as $p65) {
+            $c = trim((string) ($p65['cas_number'] ?? ''));
+            if ($c !== '') { $manualCasList[$c] = true; }
+        }
+        $p65ListByCas = [];
+        if (!empty($manualCasList)) {
+            $db2 = \SDS\Core\Database::getInstance();
+            $casArr2 = array_keys($manualCasList);
+            $ph2     = implode(',', array_fill(0, count($casArr2), '?'));
+            foreach ($db2->fetchAll(
+                "SELECT cas_number, chemical_name, toxicity_type
+                   FROM prop65_list WHERE cas_number IN ({$ph2})",
+                $casArr2
+            ) as $lr) {
+                $p65ListByCas[$lr['cas_number']] = $lr;
+            }
+        }
+        ?>
 
         <table class="table table-sm" id="prop65Table">
             <thead>
                 <tr>
-                    <th>Chemical Name</th>
                     <th>CAS Number</th>
+                    <th>Chemical Name</th>
                     <th>Toxicity Type(s)</th>
+                    <th>Flags</th>
                     <th></th>
                 </tr>
             </thead>
             <tbody id="prop65Body">
             <?php if (!empty($prop65Data)): ?>
                 <?php foreach ($prop65Data as $pi => $p65):
-                    $existingTypes = array_map('trim', explode(',', $p65['toxicity_types'] ?? ''));
+                    $entryCas   = trim((string) ($p65['cas_number'] ?? ''));
+                    $entryOver  = !empty($p65['is_override']);
+                    $listMatch  = (!$entryOver && isset($p65ListByCas[$entryCas])) ? $p65ListByCas[$entryCas] : null;
+
+                    // Non-override rows: prefer prop65_list's values for
+                    // display. Override rows: use whatever was stored.
+                    $displayName = $listMatch !== null
+                        ? $listMatch['chemical_name']
+                        : (string) ($p65['chemical_name'] ?? '');
+                    $displayTypesRaw = $listMatch !== null
+                        ? (string) $listMatch['toxicity_type']
+                        : (string) ($p65['toxicity_types'] ?? '');
+                    $existingTypes = array_values(array_filter(array_map(
+                        'trim',
+                        explode(',', $displayTypesRaw)
+                    )));
+                    $inputsLocked = !$entryOver;
+                    $lockAttr = $inputsLocked ? ' readonly' : '';
+                    $cbLockAttr = $inputsLocked ? ' disabled' : '';
                 ?>
-                <tr class="prop65-row">
+                <tr class="prop65-row" data-override="<?= $entryOver ? '1' : '0' ?>">
+                    <td><input type="text" name="p65_cas_number[<?= $pi ?>]" value="<?= e($entryCas) ?>" class="input-sm p65-cas" placeholder="e.g. 13463-67-7"></td>
                     <td>
-                        <div style="display:flex; align-items:center; gap:0.5rem;">
-                            <input type="text" name="p65_chemical_name[<?= $pi ?>]" value="<?= e($p65['chemical_name'] ?? '') ?>" class="input-sm p65-chem-name" placeholder="e.g. Titanium dioxide" style="flex:1;">
-                            <label class="inline-check" style="white-space:nowrap; font-size:0.85rem;"><input type="checkbox" name="p65_is_trace[<?= $pi ?>]" value="1" <?= !empty($p65['is_trace']) ? 'checked' : '' ?>> Trace</label>
-                        </div>
+                        <input type="text" name="p65_chemical_name[<?= $pi ?>]" value="<?= e($displayName) ?>" class="input-sm p65-chem-name" placeholder="Auto from CAS" style="width: 100%;"<?= $lockAttr ?>>
                     </td>
-                    <td><input type="text" name="p65_cas_number[<?= $pi ?>]" value="<?= e($p65['cas_number'] ?? '') ?>" class="input-sm p65-cas" placeholder="e.g. 13463-67-7"></td>
                     <td class="p65-tox-checkboxes">
-                        <label class="inline-check"><input type="checkbox" name="p65_tox_cancer[<?= $pi ?>]" value="1" <?= in_array('cancer', $existingTypes) ? 'checked' : '' ?>> Cancer</label>
-                        <label class="inline-check"><input type="checkbox" name="p65_tox_developmental[<?= $pi ?>]" value="1" <?= in_array('developmental', $existingTypes) ? 'checked' : '' ?>> Developmental</label>
-                        <label class="inline-check"><input type="checkbox" name="p65_tox_reproductive[<?= $pi ?>]" value="1" <?= in_array('reproductive', $existingTypes) ? 'checked' : '' ?>> Reproductive</label>
-                        <label class="inline-check"><input type="checkbox" name="p65_tox_female_reproductive[<?= $pi ?>]" value="1" <?= in_array('female reproductive', $existingTypes) ? 'checked' : '' ?>> Female Reproductive</label>
-                        <label class="inline-check"><input type="checkbox" name="p65_tox_male_reproductive[<?= $pi ?>]" value="1" <?= in_array('male reproductive', $existingTypes) ? 'checked' : '' ?>> Male Reproductive</label>
+                        <label class="inline-check"><input type="checkbox" class="p65-tox" name="p65_tox_cancer[<?= $pi ?>]" value="1" <?= in_array('cancer', $existingTypes, true) ? 'checked' : '' ?><?= $cbLockAttr ?>> Cancer</label>
+                        <label class="inline-check"><input type="checkbox" class="p65-tox" name="p65_tox_developmental[<?= $pi ?>]" value="1" <?= in_array('developmental', $existingTypes, true) ? 'checked' : '' ?><?= $cbLockAttr ?>> Developmental</label>
+                        <label class="inline-check"><input type="checkbox" class="p65-tox" name="p65_tox_reproductive[<?= $pi ?>]" value="1" <?= in_array('reproductive', $existingTypes, true) ? 'checked' : '' ?><?= $cbLockAttr ?>> Reproductive</label>
+                        <label class="inline-check"><input type="checkbox" class="p65-tox" name="p65_tox_female_reproductive[<?= $pi ?>]" value="1" <?= in_array('female reproductive', $existingTypes, true) ? 'checked' : '' ?><?= $cbLockAttr ?>> Female Reproductive</label>
+                        <label class="inline-check"><input type="checkbox" class="p65-tox" name="p65_tox_male_reproductive[<?= $pi ?>]" value="1" <?= in_array('male reproductive', $existingTypes, true) ? 'checked' : '' ?><?= $cbLockAttr ?>> Male Reproductive</label>
+                    </td>
+                    <td style="white-space: nowrap;">
+                        <label class="inline-check" style="font-size:0.85rem;"><input type="checkbox" class="p65-is-trace" name="p65_is_trace[<?= $pi ?>]" value="1" <?= !empty($p65['is_trace']) ? 'checked' : '' ?>> Trace</label>
+                        <label class="inline-check" style="font-size:0.85rem;"><input type="checkbox" class="p65-is-override" name="p65_is_override[<?= $pi ?>]" value="1" <?= $entryOver ? 'checked' : '' ?>> Override</label>
                     </td>
                     <td><button type="button" class="btn btn-sm btn-danger remove-p65">X</button></td>
                 </tr>
@@ -856,23 +902,36 @@ document.getElementById('vocLessThanOne').addEventListener('change', function() 
 });
 
 // ── Prop 65 dynamic rows ────────────────────────────────────
-// New manual rows pre-check Trace because the most common use for
-// the manual section is a chemical below the Section 3 disclosure
-// threshold (i.e. not in the composition table), which by definition
-// should warn as trace.
+// Row layout: CAS | Name (locked unless override) | Toxicity checkboxes
+// (locked unless override) | Trace + Override checkboxes | Remove.
+//
+// Default posture: CAS drives the row. Name + toxicity are read-only
+// placeholders; entering a CAS asks the server for the prop65_list
+// entry and fills them in. Flipping Override lets the operator type
+// whatever they want — used when the CAS isn't on the public list or
+// when a different classification is intentional.
+//
+// Trace is pre-checked on new rows because the typical reason for a
+// manual entry is a chemical below the Section 3 disclosure threshold.
 document.getElementById('addProp65Row').addEventListener('click', function() {
     var tbody = document.getElementById('prop65Body');
     var idx = tbody.querySelectorAll('.prop65-row').length;
     var tr = document.createElement('tr');
     tr.className = 'prop65-row';
-    tr.innerHTML = '<td><div style="display:flex; align-items:center; gap:0.5rem;"><input type="text" name="p65_chemical_name[' + idx + ']" class="input-sm p65-chem-name" placeholder="e.g. Titanium dioxide" style="flex:1;"><label class="inline-check" style="white-space:nowrap; font-size:0.85rem;"><input type="checkbox" name="p65_is_trace[' + idx + ']" value="1" checked> Trace</label></div></td>' +
+    tr.setAttribute('data-override', '0');
+    tr.innerHTML =
         '<td><input type="text" name="p65_cas_number[' + idx + ']" class="input-sm p65-cas" placeholder="e.g. 13463-67-7"></td>' +
+        '<td><input type="text" name="p65_chemical_name[' + idx + ']" class="input-sm p65-chem-name" placeholder="Auto from CAS" style="width:100%;" readonly></td>' +
         '<td class="p65-tox-checkboxes">' +
-            '<label class="inline-check"><input type="checkbox" name="p65_tox_cancer[' + idx + ']" value="1"> Cancer</label>' +
-            '<label class="inline-check"><input type="checkbox" name="p65_tox_developmental[' + idx + ']" value="1"> Developmental</label>' +
-            '<label class="inline-check"><input type="checkbox" name="p65_tox_reproductive[' + idx + ']" value="1"> Reproductive</label>' +
-            '<label class="inline-check"><input type="checkbox" name="p65_tox_female_reproductive[' + idx + ']" value="1"> Female Reproductive</label>' +
-            '<label class="inline-check"><input type="checkbox" name="p65_tox_male_reproductive[' + idx + ']" value="1"> Male Reproductive</label>' +
+            '<label class="inline-check"><input type="checkbox" class="p65-tox" name="p65_tox_cancer[' + idx + ']" value="1" disabled> Cancer</label>' +
+            '<label class="inline-check"><input type="checkbox" class="p65-tox" name="p65_tox_developmental[' + idx + ']" value="1" disabled> Developmental</label>' +
+            '<label class="inline-check"><input type="checkbox" class="p65-tox" name="p65_tox_reproductive[' + idx + ']" value="1" disabled> Reproductive</label>' +
+            '<label class="inline-check"><input type="checkbox" class="p65-tox" name="p65_tox_female_reproductive[' + idx + ']" value="1" disabled> Female Reproductive</label>' +
+            '<label class="inline-check"><input type="checkbox" class="p65-tox" name="p65_tox_male_reproductive[' + idx + ']" value="1" disabled> Male Reproductive</label>' +
+        '</td>' +
+        '<td style="white-space: nowrap;">' +
+            '<label class="inline-check" style="font-size:0.85rem;"><input type="checkbox" class="p65-is-trace" name="p65_is_trace[' + idx + ']" value="1" checked> Trace</label>' +
+            '<label class="inline-check" style="font-size:0.85rem;"><input type="checkbox" class="p65-is-override" name="p65_is_override[' + idx + ']" value="1"> Override</label>' +
         '</td>' +
         '<td><button type="button" class="btn btn-sm btn-danger remove-p65">X</button></td>';
     tbody.appendChild(tr);
@@ -884,14 +943,11 @@ document.addEventListener('click', function(e) {
     }
 });
 
-// ── Prop 65 CAS → auto-fill name + toxicity ──────────────────
-// When the operator types/pastes a CAS into a manual Prop 65 row and
-// the value looks like a real CAS, call the shared casLookup endpoint
-// (same one used by the constituent rows). If it comes back with a
-// `prop65` payload, populate the chemical name and tick the matching
-// toxicity checkboxes so the operator doesn't have to re-type data
-// the public list already has. Existing values are preserved unless
-// empty to avoid clobbering operator edits.
+// ── Prop 65 override toggle + CAS auto-fill ──────────────────
+// The Override checkbox unlocks the name + toxicity inputs. When it's
+// flipped off, we also (a) re-lock the inputs and (b) re-fetch from
+// the public list if the row has a valid CAS, so operators can't end
+// up with an override-only name after accidentally checking the box.
 (function () {
     var P65_TOX_TO_CHECKBOX = {
         'cancer': 'p65_tox_cancer',
@@ -902,40 +958,84 @@ document.addEventListener('click', function(e) {
     };
     var CAS_PATTERN = /^\d{2,7}-\d{2}-\d$/;
 
-    document.addEventListener('change', function (e) {
-        if (!e.target.classList || !e.target.classList.contains('p65-cas')) return;
-        var cas = (e.target.value || '').trim();
+    function setRowLocked(row, locked) {
+        row.setAttribute('data-override', locked ? '0' : '1');
+        var nameInput = row.querySelector('.p65-chem-name');
+        if (nameInput) {
+            if (locked) {
+                nameInput.setAttribute('readonly', 'readonly');
+            } else {
+                nameInput.removeAttribute('readonly');
+            }
+        }
+        row.querySelectorAll('.p65-tox').forEach(function (cb) {
+            if (locked) {
+                cb.setAttribute('disabled', 'disabled');
+            } else {
+                cb.removeAttribute('disabled');
+            }
+        });
+    }
+
+    function fillFromPublicList(row, cas) {
         if (!CAS_PATTERN.test(cas)) return;
-
-        var row = e.target.closest('tr');
-        if (!row) return;
-
         fetch('/raw-materials/cas-lookup?cas=' + encodeURIComponent(cas))
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 if (!data || !data.found) return;
-
-                // Fill chemical name if empty
                 var nameInput = row.querySelector('.p65-chem-name');
-                if (nameInput && !nameInput.value.trim()) {
+                if (nameInput) {
                     var fill = (data.prop65 && data.prop65.chemical_name)
                         ? data.prop65.chemical_name
                         : data.chemical_name;
                     if (fill) nameInput.value = fill;
                 }
-
-                // Tick matching toxicity checkboxes if the CAS is on
-                // the public Prop 65 list.
+                // Reset all toxicity checkboxes first so the row reflects
+                // exactly what the list says (previous values may have
+                // been ticked for a different CAS).
+                row.querySelectorAll('.p65-tox').forEach(function (cb) {
+                    cb.checked = false;
+                });
                 if (data.prop65 && Array.isArray(data.prop65.toxicity_types)) {
                     data.prop65.toxicity_types.forEach(function (t) {
                         var name = P65_TOX_TO_CHECKBOX[t.toLowerCase()];
                         if (!name) return;
                         var cb = row.querySelector('input[name^="' + name + '["]');
-                        if (cb && !cb.checked) cb.checked = true;
+                        if (cb) cb.checked = true;
                     });
                 }
             })
-            .catch(function () { /* ignore — lookup is a nicety, not critical */ });
+            .catch(function () { /* lookup is a convenience, not critical */ });
+    }
+
+    document.addEventListener('change', function (e) {
+        var t = e.target;
+        if (!t.classList) return;
+
+        // Override toggle → lock/unlock inputs; refetch if CAS present.
+        if (t.classList.contains('p65-is-override')) {
+            var row = t.closest('tr');
+            if (!row) return;
+            var isOverride = t.checked;
+            setRowLocked(row, !isOverride);
+            if (!isOverride) {
+                var casInput = row.querySelector('.p65-cas');
+                if (casInput) {
+                    fillFromPublicList(row, (casInput.value || '').trim());
+                }
+            }
+            return;
+        }
+
+        // CAS typed → auto-fill when not overridden. Override rows keep
+        // whatever the operator typed.
+        if (t.classList.contains('p65-cas')) {
+            var row = t.closest('tr');
+            if (!row) return;
+            if (row.getAttribute('data-override') === '1') return;
+            fillFromPublicList(row, (t.value || '').trim());
+            return;
+        }
     });
 })();
 

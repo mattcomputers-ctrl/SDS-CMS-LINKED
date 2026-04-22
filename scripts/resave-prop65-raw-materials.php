@@ -7,9 +7,13 @@
  *   1. Remove any manual prop65_data entry whose CAS is already
  *      present in the RM's constituents (the new Auto section on the
  *      RM form will render it from prop65_list instead).
- *   2. Recompute is_prop65 = 1 when any remaining manual entry exists
+ *   2. For every surviving entry, rewrite chemical_name and
+ *      toxicity_types from prop65_list when the CAS is on the public
+ *      list, and force is_override = 0 — operator-typed values from
+ *      the old form are superseded by the list's authoritative data.
+ *   3. Recompute is_prop65 = 1 when any remaining manual entry exists
  *      OR any constituent CAS is on the seeded prop65_list.
- *   3. Bump updated_at so Bulk SDS Publish sees the change and
+ *   4. Bump updated_at so Bulk SDS Publish sees the change and
  *      regenerates the affected FGs' SDSs.
  *
  * The script INTENTIONALLY touches only RMs that already have manual
@@ -81,9 +85,10 @@ if ($total === 0) {
     exit(0);
 }
 
-$touched = 0;
-$pruned  = 0;
-$failed  = 0;
+$touched   = 0;
+$pruned    = 0;
+$rewrites  = 0;
+$failed    = 0;
 
 foreach ($rows as $r) {
     $id    = (int) $r['id'];
@@ -144,6 +149,42 @@ foreach ($rows as $r) {
     $kept           = $pruneResult['pruned'];
     $removedForRow  = $pruneResult['removed_count'];
 
+    // ── Step 3b: rewrite each surviving entry's name + toxicity
+    //    from prop65_list where the CAS matches. Also force
+    //    is_override = 0 so the runtime service looks them up fresh
+    //    on every analyse() — "operator-typed data is stale, the
+    //    public list wins" is the whole point of this migration.
+    $rewritten = 0;
+    if (!empty($kept)) {
+        $keptCas = [];
+        foreach ($kept as $e) {
+            $c = trim((string) ($e['cas_number'] ?? ''));
+            if ($c !== '') { $keptCas[$c] = true; }
+        }
+        $listByCas = [];
+        if (!empty($keptCas)) {
+            $casArr = array_keys($keptCas);
+            $ph     = implode(',', array_fill(0, count($casArr), '?'));
+            foreach ($db->fetchAll(
+                "SELECT cas_number, chemical_name, toxicity_type
+                 FROM prop65_list WHERE cas_number IN ({$ph})",
+                $casArr
+            ) as $lr) {
+                $listByCas[$lr['cas_number']] = $lr;
+            }
+        }
+        foreach ($kept as $k => $e) {
+            $c = trim((string) ($e['cas_number'] ?? ''));
+            $kept[$k]['is_override'] = 0;
+            if ($c !== '' && isset($listByCas[$c])) {
+                $row = $listByCas[$c];
+                $kept[$k]['chemical_name']  = (string) $row['chemical_name'];
+                $kept[$k]['toxicity_types'] = (string) $row['toxicity_type'];
+                $rewritten++;
+            }
+        }
+    }
+
     // ── Step 4: recompute is_prop65 ──
     $hasManual = !empty($kept);
     $hasListedConstituent = false;
@@ -159,7 +200,7 @@ foreach ($rows as $r) {
     $newIsProp65 = ($hasManual || $hasListedConstituent) ? 1 : 0;
 
     $keptCount = count($kept);
-    $note = "prune {$removedForRow}, keep {$keptCount}, is_prop65={$newIsProp65}";
+    $note = "prune {$removedForRow}, rewrite {$rewritten}, keep {$keptCount}, is_prop65={$newIsProp65}";
 
     if (!$confirm) {
         $out("  WOULD UPDATE  {$label}  [{$note}]");
@@ -178,7 +219,8 @@ foreach ($rows as $r) {
             [$id]
         );
         $touched++;
-        $pruned += $removedForRow;
+        $pruned   += $removedForRow;
+        $rewrites += $rewritten;
         $out("  updated       {$label}  [{$note}]");
     } catch (\Throwable $e) {
         $failed++;
@@ -189,10 +231,11 @@ foreach ($rows as $r) {
 $out('');
 if ($confirm) {
     $out("=== Summary ===");
-    $out("  Raw materials updated: {$touched}");
-    $out("  Manual entries pruned: {$pruned}");
+    $out("  Raw materials updated:   {$touched}");
+    $out("  Manual entries pruned:   {$pruned}");
+    $out("  Entries rewritten:       {$rewrites}  (name + toxicity replaced from prop65_list)");
     if ($failed > 0) {
-        $out("  Failed:                {$failed}");
+        $out("  Failed:                  {$failed}");
     }
     $out('');
     $out("Next Bulk SDS Publish run will regenerate SDSs for every FG whose");

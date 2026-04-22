@@ -2115,16 +2115,24 @@ class SDSGenerator
             }
 
             foreach ($entries as $entry) {
-                $chemName = trim($entry['chemical_name'] ?? '');
-                if ($chemName === '') {
+                $chemName   = trim($entry['chemical_name'] ?? '');
+                $cas        = trim((string) ($entry['cas_number'] ?? ''));
+                $isOverride = !empty($entry['is_override']);
+                // Pass rows through even when chemical_name is empty as
+                // long as there's a CAS — Prop65Service will derive the
+                // name + toxicity from prop65_list when is_override is
+                // false. Skipping here on empty name would hide legit
+                // public-list entries.
+                if ($chemName === '' && $cas === '') {
                     continue;
                 }
                 $result[] = [
                     'chemical_name'     => $chemName,
-                    'cas_number'        => $entry['cas_number'] ?? '',
+                    'cas_number'        => $cas,
                     'concentration_pct' => $rmPct,
                     'toxicity_type'     => array_map('trim', explode(',', $entry['toxicity_types'] ?? '')),
                     'is_trace'          => !empty($entry['is_trace']),
+                    'is_override'       => $isOverride,
                     'source'            => 'manual',
                     'raw_material_code' => $row['internal_code'],
                 ];

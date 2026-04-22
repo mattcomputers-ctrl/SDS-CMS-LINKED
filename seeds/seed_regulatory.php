@@ -49,6 +49,14 @@ $prop65 = [
     ['109-86-4',   '2-Methoxyethanol',                  'developmental,male reproductive',           null, null, '1993-01-01'],
     ['123-91-1',   '1,4-Dioxane',                       'cancer',                                   null, null, '1988-01-01'],
     ['127-18-4',   'Tetrachloroethylene (Perchloroethylene)', 'cancer',                             null, null, '1988-04-01'],
+
+    // ── Supplemental: chemicals OEHHA lists under a name-only entry
+    //    (CAS column "---" in the official CSV) but industry knows the
+    //    single CAS by. Added here so scripts/import-prop65-list.php
+    //    — which skips name-only OEHHA rows — doesn't leave gaps for
+    //    constituents our RMs actually carry. Keep this block short and
+    //    CAS-verified against the supplier data you're actually using.
+    ['15625-89-5', 'Trimethylolpropane triacrylate',     'cancer',                                   null, null, '2021-12-17'],
 ];
 
 $insertedP65 = 0;

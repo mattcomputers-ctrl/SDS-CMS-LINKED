@@ -136,9 +136,8 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
             <?php if (!empty($section['p_statements'])): ?>
                 <p><strong><?= e($l('precautionary_statements')) ?>:</strong></p>
                 <?php foreach ($section['p_statements'] as $s): ?>
-                    <p style="margin-left: 1rem; margin-bottom: 0.1rem;">
-                        <strong><?= e($s['code']) ?></strong><?php if (!empty($s['text'])): ?>: <?= e($s['text']) ?><?php endif; ?>
-                    </p>
+                    <?php /* Keep <strong> tight against the <p> — leading whitespace inside a <p> renders as a visible space, which was making these lines look slightly more indented than the hazard lines. */ ?>
+                    <p style="margin-left: 1rem; margin-bottom: 0.1rem;"><strong><?= e($s['code']) ?></strong><?php if (!empty($s['text'])): ?>: <?= e($s['text']) ?><?php endif; ?></p>
                 <?php endforeach; ?>
             <?php endif; ?>
 

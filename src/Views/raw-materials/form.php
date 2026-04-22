@@ -73,13 +73,11 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                 <strong>Last confirmed current:</strong>
                 <?= e($item['sds_last_confirmed_at']) ?>
                 <span class="text-muted">(<?= $daysSince ?> day<?= $daysSince === 1 ? '' : 's' ?> ago)</span>
-                <form method="POST" action="/raw-materials/<?= (int) $item['id'] ?>/confirm-sds-current" style="display: inline; margin-left: 0.75rem;">
-                    <?= csrf_field() ?>
-                    <button type="submit" class="btn btn-sm btn-outline"
-                            title="Use when the vendor confirms the existing SDS is still current — advances the confirmation date without requiring a re-upload.">
-                        Supplier Confirmed Current
-                    </button>
-                </form>
+                <button type="submit" form="confirmSdsCurrentForm" class="btn btn-sm btn-outline"
+                        style="margin-left: 0.75rem;"
+                        title="Use when the vendor confirms the existing SDS is still current — advances the confirmation date without requiring a re-upload.">
+                    Supplier Confirmed Current
+                </button>
             </div>
         <?php endif; ?>
 
@@ -609,6 +607,12 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
             <a href="/raw-materials" class="btn btn-outline">Cancel</a>
         </div>
     </form>
+
+    <?php if ($isEdit && !empty($item['sds_last_confirmed_at'])): ?>
+    <form method="POST" action="/raw-materials/<?= (int) $item['id'] ?>/confirm-sds-current" id="confirmSdsCurrentForm" style="display:none">
+        <?= csrf_field() ?>
+    </form>
+    <?php endif; ?>
 </div>
 
 <?php if ($isEdit && can_manage_users()): ?>

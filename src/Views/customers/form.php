@@ -75,13 +75,16 @@ $action = $isEdit ? '/customers/' . (int) $item['id'] : '/customers';
             <button type="submit" class="btn btn-primary"><?= $isEdit ? 'Update' : 'Create' ?> Customer</button>
             <a href="/customers" class="btn btn-outline">Cancel</a>
             <?php if ($isEdit && can_edit('customers')): ?>
-                <form method="POST" action="/customers/<?= (int) $item['id'] ?>/delete" style="display: inline;" onsubmit="return confirm('Delete this customer? SDS send history will also be removed.');">
-                    <?= csrf_field() ?>
-                    <button type="submit" class="btn btn-danger">Delete</button>
-                </form>
+                <button type="submit" form="deleteCustomerForm" class="btn btn-danger">Delete</button>
             <?php endif; ?>
         </div>
     </form>
+
+    <?php if ($isEdit && can_edit('customers')): ?>
+    <form method="POST" action="/customers/<?= (int) $item['id'] ?>/delete" id="deleteCustomerForm" style="display:none" onsubmit="return confirm('Delete this customer? SDS send history will also be removed.');">
+        <?= csrf_field() ?>
+    </form>
+    <?php endif; ?>
 </div>
 
 <?php if ($isEdit && !empty($sendHistory)): ?>

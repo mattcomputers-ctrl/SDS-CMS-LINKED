@@ -977,11 +977,48 @@ class HazardEngine
             'p_statements'        => $pStatements,
             'pictograms'          => $finalPictograms,
             'signal_word'         => $signalWord,
-            'exposure_limits'     => $exposureLimits,
+            // Dedupe exposure limits by (cas, limit_type, value, units,
+            // notes). If the regulatory seed gets re-run and leaves two
+            // hazard_source_records rows marked is_current = 1 for the
+            // same CAS (one per OSHA/NIOSH/ACGIH source, each with an
+            // identical copy of the same limits), the JOIN in the main
+            // loop above produces duplicate limit entries. That used to
+            // surface as "Carbon Black REL-TWA 3.5 mg/m3" appearing
+            // twice in Section 8 of the generated SDS. Dedup here keeps
+            // the first occurrence so operators see one row per unique
+            // limit, regardless of the source data's cleanliness.
+            'exposure_limits'     => self::dedupeExposureLimits($exposureLimits),
             'hazardous_cas'       => array_keys($hazardousCas),
             'ppe_recommendations' => $ppeRecommendations,
             'trace'               => $this->trace,
         ];
+    }
+
+    /**
+     * Drop duplicate rows from the exposure_limits array, keyed by
+     * (cas_number, limit_type, value, units, notes). Keeps the first
+     * seen row so ordering is stable with respect to the collection
+     * order in classify().
+     */
+    private static function dedupeExposureLimits(array $limits): array
+    {
+        $seen   = [];
+        $unique = [];
+        foreach ($limits as $el) {
+            $key = implode('|', [
+                (string) ($el['cas_number'] ?? ''),
+                (string) ($el['limit_type'] ?? ''),
+                (string) ($el['value']      ?? ''),
+                (string) ($el['units']      ?? ''),
+                trim((string) ($el['notes'] ?? '')),
+            ]);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $unique[]   = $el;
+        }
+        return $unique;
     }
 
     /**

@@ -39,6 +39,7 @@ class PermissionService
         'bulk_publish'       => 'Bulk SDS Publish',
         'bulk_export'        => 'Bulk SDS Export',
         'exempt_vocs'        => 'Exempt VOC Library',
+        'prop65_list'        => 'California Prop 65 List',
         'manufacturers'      => 'Manufacturers',
         'private_label'      => 'Private Label SDS',
         'sds_updates'        => 'SDS Update Required',

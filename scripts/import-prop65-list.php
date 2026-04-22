@@ -24,8 +24,9 @@
  * Handling notes:
  *   - Rows without a CAS (CSV value "---", e.g., "Aflatoxins",
  *     "Trimethylolpropane triacrylate, technical grade") are skipped —
- *     the table's unique key is cas_number. For those entries, seed
- *     them manually via seeds/seed_regulatory.php with the industry CAS.
+ *     the table's unique key is cas_number. For those entries, add
+ *     them via the /prop65 admin page or seeds/seed_regulatory.php
+ *     with the industry CAS.
  *   - Rows marked "Delisted" in the Chemical name are skipped.
  *   - A chemical can appear on multiple rows (one per toxicity type) —
  *     those rows are merged into one prop65_list row with
@@ -34,6 +35,9 @@
  *   - NSRL goes into nsrl_ug; any reproductive threshold goes into
  *     madl_ug. Parenthetical notes like "(inhalation)" are dropped;
  *     only the numeric value is stored.
+ *   - Entries tagged source_ref='manual' (set when an operator saves
+ *     through /prop65) are skipped entirely — the admin curated them
+ *     and OEHHA's data shouldn't overwrite.
  *
  * Idempotent: re-running with the same CSV makes zero changes.
  *
@@ -240,7 +244,7 @@ out('', $quiet);
 $db = Database::getInstance();
 $sourceRef = 'OEHHA ' . date('Y-m-d');
 
-$inserted = $updated = $unchanged = 0;
+$inserted = $updated = $unchanged = $skippedManual = 0;
 
 foreach ($byCas as $cas => $d) {
     sort($d['toxicity']);
@@ -248,10 +252,18 @@ foreach ($byCas as $cas => $d) {
 
     $existing = $db->fetch(
         "SELECT id, chemical_name, toxicity_type, listing_mechanism,
-                nsrl_ug, madl_ug, date_listed
+                nsrl_ug, madl_ug, date_listed, source_ref
          FROM prop65_list WHERE cas_number = ?",
         [$cas]
     );
+
+    // Rows edited through /prop65 (the admin UI) carry source_ref='manual'
+    // and must survive OEHHA refreshes verbatim — the operator deliberately
+    // curated them. Leave them alone.
+    if ($existing !== null && ($existing['source_ref'] ?? null) === 'manual') {
+        $skippedManual++;
+        continue;
+    }
 
     $newData = [
         'chemical_name'     => $d['name'],
@@ -310,9 +322,10 @@ foreach ($byCas as $cas => $d) {
 }
 
 out('=== Summary ===', $quiet);
-out("  Inserted:  {$inserted}", $quiet);
-out("  Updated:   {$updated}", $quiet);
-out("  Unchanged: {$unchanged}", $quiet);
+out("  Inserted:        {$inserted}", $quiet);
+out("  Updated:         {$updated}", $quiet);
+out("  Unchanged:       {$unchanged}", $quiet);
+out("  Skipped manual:  {$skippedManual}  (source_ref='manual', preserved verbatim)", $quiet);
 if ($dryRun) {
     out('', $quiet);
     out('DRY-RUN: no DB writes. Re-run with --confirm to apply.', $quiet);

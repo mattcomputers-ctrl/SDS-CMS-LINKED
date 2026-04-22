@@ -216,6 +216,14 @@ class App
         $router->post('/exempt-vocs/{id}',        'AdminController@updateExemptVoc');
         $router->post('/exempt-vocs/{id}/delete', 'AdminController@deleteExemptVoc');
 
+        // ── California Prop 65 List (permission-gated) ──────────────
+        $router->get('/prop65',              'AdminController@prop65');
+        $router->get('/prop65/create',       'AdminController@createProp65');
+        $router->post('/prop65',             'AdminController@storeProp65');
+        $router->get('/prop65/{id}/edit',    'AdminController@editProp65');
+        $router->post('/prop65/{id}',        'AdminController@updateProp65');
+        $router->post('/prop65/{id}/delete', 'AdminController@deleteProp65');
+
         // ── Bulk SDS Publish (permission-gated) ─────────────────────
         $router->get('/bulk-publish',                    'BulkPublishController@page');
         $router->post('/bulk-publish/start',             'BulkPublishController@start');

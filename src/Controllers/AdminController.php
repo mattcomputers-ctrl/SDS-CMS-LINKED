@@ -619,6 +619,242 @@ class AdminController
     }
 
     /* ------------------------------------------------------------------
+     *  California Prop 65 List
+     *
+     *  Entries saved through this UI are tagged source_ref='manual' and
+     *  are preserved verbatim by scripts/import-prop65-list.php so a
+     *  future OEHHA refresh won't stomp them.
+     * ----------------------------------------------------------------*/
+
+    private const PROP65_TOXICITY_OPTIONS = [
+        'cancer',
+        'developmental',
+        'female reproductive',
+        'male reproductive',
+    ];
+
+    public function prop65(): void
+    {
+        $this->requirePageAccess('prop65_list');
+        $db = Database::getInstance();
+
+        $q      = trim((string) ($_GET['q'] ?? ''));
+        $source = (string) ($_GET['source'] ?? 'all');
+
+        $where  = [];
+        $params = [];
+        if ($q !== '') {
+            $where[]  = '(cas_number LIKE ? OR chemical_name LIKE ?)';
+            $params[] = '%' . $q . '%';
+            $params[] = '%' . $q . '%';
+        }
+        if ($source === 'manual') {
+            $where[] = "source_ref = 'manual'";
+        } elseif ($source === 'oehha') {
+            $where[] = "source_ref LIKE 'OEHHA%'";
+        } elseif ($source === 'seed') {
+            $where[] = 'source_ref IS NULL';
+        }
+        $sql = 'SELECT * FROM prop65_list';
+        if ($where !== []) {
+            $sql .= ' WHERE ' . implode(' AND ', $where);
+        }
+        $sql .= ' ORDER BY chemical_name';
+
+        $items = $db->fetchAll($sql, $params);
+
+        $counts = $db->fetch(
+            "SELECT
+                SUM(CASE WHEN source_ref = 'manual'         THEN 1 ELSE 0 END) AS manual,
+                SUM(CASE WHEN source_ref LIKE 'OEHHA%'      THEN 1 ELSE 0 END) AS oehha,
+                SUM(CASE WHEN source_ref IS NULL            THEN 1 ELSE 0 END) AS seed,
+                COUNT(*)                                                       AS total
+             FROM prop65_list"
+        );
+
+        view('admin/prop65', [
+            'pageTitle' => 'California Prop 65 List',
+            'items'     => $items,
+            'q'         => $q,
+            'source'    => $source,
+            'counts'    => $counts,
+        ]);
+    }
+
+    public function createProp65(): void
+    {
+        $this->requirePageAccess('prop65_list', 'full');
+        view('admin/prop65-form', [
+            'pageTitle'        => 'Add Prop 65 Chemical',
+            'item'             => null,
+            'mode'             => 'create',
+            'toxicityOptions'  => self::PROP65_TOXICITY_OPTIONS,
+        ]);
+    }
+
+    public function storeProp65(): void
+    {
+        $this->requirePageAccess('prop65_list', 'full');
+        CSRF::validateRequest();
+
+        $db   = Database::getInstance();
+        $data = $this->collectProp65Input();
+
+        if ($data === null) {
+            redirect('/prop65/create');
+            return;
+        }
+
+        $existing = $db->fetch("SELECT id FROM prop65_list WHERE cas_number = ?", [$data['cas_number']]);
+        if ($existing) {
+            $_SESSION['_flash']['error'] = "CAS {$data['cas_number']} is already in the Prop 65 list. Edit the existing entry instead.";
+            redirect('/prop65');
+            return;
+        }
+
+        $db->insert('prop65_list', array_merge($data, ['source_ref' => 'manual']));
+
+        AuditService::log('prop65_list', $data['cas_number'], 'create');
+        $_SESSION['_flash']['success'] = "Prop 65 entry added for CAS {$data['cas_number']}.";
+        redirect('/prop65');
+    }
+
+    public function editProp65(string $id): void
+    {
+        $this->requirePageAccess('prop65_list', 'full');
+        $db = Database::getInstance();
+
+        $item = $db->fetch("SELECT * FROM prop65_list WHERE id = ?", [(int) $id]);
+        if (!$item) {
+            $_SESSION['_flash']['error'] = 'Prop 65 entry not found.';
+            redirect('/prop65');
+            return;
+        }
+
+        view('admin/prop65-form', [
+            'pageTitle'       => 'Edit Prop 65 Chemical: ' . $item['cas_number'],
+            'item'            => $item,
+            'mode'            => 'edit',
+            'toxicityOptions' => self::PROP65_TOXICITY_OPTIONS,
+        ]);
+    }
+
+    public function updateProp65(string $id): void
+    {
+        $this->requirePageAccess('prop65_list', 'full');
+        CSRF::validateRequest();
+        $db = Database::getInstance();
+
+        $item = $db->fetch("SELECT * FROM prop65_list WHERE id = ?", [(int) $id]);
+        if (!$item) {
+            $_SESSION['_flash']['error'] = 'Prop 65 entry not found.';
+            redirect('/prop65');
+            return;
+        }
+
+        $data = $this->collectProp65Input();
+        if ($data === null) {
+            redirect('/prop65/' . (int) $id . '/edit');
+            return;
+        }
+
+        // If the CAS changed, make sure the new CAS isn't already taken.
+        if ($data['cas_number'] !== $item['cas_number']) {
+            $clash = $db->fetch(
+                "SELECT id FROM prop65_list WHERE cas_number = ? AND id <> ?",
+                [$data['cas_number'], (int) $id]
+            );
+            if ($clash) {
+                $_SESSION['_flash']['error'] = "CAS {$data['cas_number']} is already in the Prop 65 list.";
+                redirect('/prop65/' . (int) $id . '/edit');
+                return;
+            }
+        }
+
+        $db->update(
+            'prop65_list',
+            array_merge($data, ['source_ref' => 'manual']),
+            'id = ?',
+            [(int) $id]
+        );
+
+        AuditService::log('prop65_list', $data['cas_number'], 'update');
+        $_SESSION['_flash']['success'] = 'Prop 65 entry updated.';
+        redirect('/prop65');
+    }
+
+    public function deleteProp65(string $id): void
+    {
+        $this->requirePageAccess('prop65_list', 'full');
+        CSRF::validateRequest();
+        $db = Database::getInstance();
+
+        $item = $db->fetch("SELECT cas_number FROM prop65_list WHERE id = ?", [(int) $id]);
+        $db->query("DELETE FROM prop65_list WHERE id = ?", [(int) $id]);
+
+        AuditService::log('prop65_list', $item['cas_number'] ?? $id, 'delete');
+        $_SESSION['_flash']['success'] = 'Prop 65 entry removed.';
+        redirect('/prop65');
+    }
+
+    /**
+     * Collect, validate, and normalize Prop 65 form input. Returns null
+     * and sets a flash error on validation failure.
+     */
+    private function collectProp65Input(): ?array
+    {
+        $cas  = trim((string) ($_POST['cas_number'] ?? ''));
+        $name = trim((string) ($_POST['chemical_name'] ?? ''));
+        $date = trim((string) ($_POST['date_listed'] ?? ''));
+
+        if ($cas === '' || !preg_match('/^\d{1,7}-\d{2}-\d$/', $cas)) {
+            $_SESSION['_flash']['error'] = 'A valid CAS number is required (e.g. 15625-89-5).';
+            $_SESSION['_flash']['_old_input'] = $_POST;
+            return null;
+        }
+        if ($name === '') {
+            $_SESSION['_flash']['error'] = 'Chemical name is required.';
+            $_SESSION['_flash']['_old_input'] = $_POST;
+            return null;
+        }
+
+        $rawTox = $_POST['toxicity_type'] ?? [];
+        if (!is_array($rawTox)) { $rawTox = [$rawTox]; }
+        $tox = [];
+        foreach ($rawTox as $t) {
+            $t = trim((string) $t);
+            if (in_array($t, self::PROP65_TOXICITY_OPTIONS, true)) {
+                $tox[] = $t;
+            }
+        }
+        $tox = array_values(array_unique($tox));
+        if ($tox === []) {
+            $_SESSION['_flash']['error'] = 'Select at least one toxicity type.';
+            $_SESSION['_flash']['_old_input'] = $_POST;
+            return null;
+        }
+
+        $dateSql = null;
+        if ($date !== '') {
+            $ts = strtotime($date);
+            if ($ts === false) {
+                $_SESSION['_flash']['error'] = 'Date Listed must be a valid date (YYYY-MM-DD).';
+                $_SESSION['_flash']['_old_input'] = $_POST;
+                return null;
+            }
+            $dateSql = date('Y-m-d', $ts);
+        }
+
+        sort($tox);
+        return [
+            'cas_number'    => $cas,
+            'chemical_name' => $name,
+            'toxicity_type' => implode(',', $tox),
+            'date_listed'   => $dateSql,
+        ];
+    }
+
+    /* ------------------------------------------------------------------
      *  Competent Person Determinations
      * ----------------------------------------------------------------*/
 

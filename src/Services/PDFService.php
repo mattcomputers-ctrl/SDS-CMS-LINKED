@@ -592,10 +592,22 @@ class PDFService
                 $hCodes = (!empty($comp['h_codes']) && is_array($comp['h_codes']))
                     ? implode(', ', $comp['h_codes'])
                     : '';
-                $pdf->Cell($w[0], 5, $comp['cas_number'] ?? '', 1, 0, 'C');
-                $pdf->Cell($w[1], 5, $comp['chemical_name'] ?? '', 1, 0, 'L');
-                $pdf->Cell($w[2], 5, $comp['concentration_range'] ?? '', 1, 0, 'C');
-                $pdf->Cell($w[3], 5, $hCodes, 1, 1, 'C');
+                $cas   = (string) ($comp['cas_number'] ?? '');
+                $name  = (string) ($comp['chemical_name'] ?? '');
+                $conc  = (string) ($comp['concentration_range'] ?? '');
+
+                // Chemical names can be very long (e.g. IUPAC names with
+                // bracketed acyl groups); Cell() silently runs off the
+                // page edge. Measure wrapped height for the name column
+                // and render all four cells with matching MultiCell heights
+                // so borders line up and the row grows downward.
+                $nameLines = max(1, (int) $pdf->getNumLines($name, $w[1]));
+                $rowH      = max(5, $nameLines * 4);
+
+                $pdf->MultiCell($w[0], $rowH, $cas,    1, 'C', false, 0, '', '', true, 0, false, true, $rowH, 'M');
+                $pdf->MultiCell($w[1], $rowH, $name,   1, 'L', false, 0, '', '', true, 0, false, true, $rowH, 'M');
+                $pdf->MultiCell($w[2], $rowH, $conc,   1, 'C', false, 0, '', '', true, 0, false, true, $rowH, 'M');
+                $pdf->MultiCell($w[3], $rowH, $hCodes, 1, 'C', false, 1, '', '', true, 0, false, true, $rowH, 'M');
             }
         } else {
             $pdf->SetFont('helvetica', 'I', 8);

@@ -84,10 +84,10 @@
             <tr>
                 <th>CAS Number</th>
                 <th>Jurisdiction</th>
+                <th>H-Codes</th>
                 <th>Rationale (excerpt)</th>
                 <th>Active</th>
                 <th>Created By</th>
-                <th>Approved By</th>
                 <th>Date</th>
                 <th style="width:80px;">Actions</th>
             </tr>
@@ -97,13 +97,26 @@
             <tr><td colspan="8" class="text-muted" style="text-align:center;">No determinations recorded.</td></tr>
         <?php endif; ?>
         <?php foreach ($items as $item): ?>
+            <?php
+                // determination_json stores h_statements as a comma-separated
+                // string (e.g. "H225, H319, H335"). Fallback for edge cases:
+                // missing / malformed JSON or pre-schema rows.
+                $hCodesStr = '';
+                $detRaw = $item['determination_json'] ?? '';
+                if ($detRaw !== '') {
+                    $det = json_decode((string) $detRaw, true);
+                    if (is_array($det)) {
+                        $hCodesStr = trim((string) ($det['h_statements'] ?? ''));
+                    }
+                }
+            ?>
             <tr>
                 <td><strong><?= e($item['cas_number']) ?></strong></td>
                 <td><?= e($item['jurisdiction']) ?></td>
+                <td><?= $hCodesStr !== '' ? e($hCodesStr) : '<span class="text-muted">—</span>' ?></td>
                 <td><?= e(mb_strimwidth($item['rationale_text'], 0, 80, '...')) ?></td>
                 <td><?= (int)$item['is_active'] ? '<span style="color:green;">Yes</span>' : '<span style="color:#999;">No</span>' ?></td>
                 <td><?= e($item['created_by_name'] ?? '—') ?></td>
-                <td><?= e($item['approved_by_name'] ?? '—') ?></td>
                 <td><?= e(date('m/d/Y', strtotime($item['created_at']))) ?></td>
                 <td><a href="/determinations/<?= (int)$item['id'] ?>/edit" class="btn btn-sm">Edit</a></td>
             </tr>

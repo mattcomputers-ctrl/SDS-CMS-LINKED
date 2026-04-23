@@ -95,6 +95,28 @@ $exposureLimits = json_decode($det['exposure_limits'] ?? ($old['exposure_limits_
         <div class="hazard-selection" id="hazard-selection">
             <?php
             $grouped = \SDS\Services\GHSHazardData::groupedByClass();
+
+            // Sort each class's entries by their smallest H-code number,
+            // and sort each entry's h_codes array, so the page always
+            // reads H200 → H201 → ... within a class. Combined codes
+            // ("H300+H310") use their first part's number for sorting.
+            $hCodeNum = static function (string $code): int {
+                $first = explode('+', $code)[0];
+                return (int) preg_replace('/[^\d]/', '', $first);
+            };
+            foreach ($grouped as $className => &$entries) {
+                foreach ($entries as &$entry) {
+                    usort($entry['h_codes'], fn($a, $b) => $hCodeNum($a) <=> $hCodeNum($b) ?: strcmp($a, $b));
+                }
+                unset($entry);
+                uasort($entries, function ($a, $b) use ($hCodeNum) {
+                    $aMin = min(array_map($hCodeNum, $a['h_codes']));
+                    $bMin = min(array_map($hCodeNum, $b['h_codes']));
+                    return $aMin <=> $bMin ?: strcmp($a['category'], $b['category']);
+                });
+            }
+            unset($entries);
+
             foreach ($grouped as $className => $entries):
             ?>
             <div class="hazard-class-group">

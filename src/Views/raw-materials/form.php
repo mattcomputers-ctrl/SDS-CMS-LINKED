@@ -563,16 +563,112 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
             <button type="button" id="addProp65Row" class="btn btn-sm btn-outline">+ Add Prop 65 Chemical</button>
         </div>
 
-        <!-- HAPs Manual Entry -->
+        <!-- Hazardous Air Pollutants — Auto (derived) + Manual (overrides) -->
         <h3>Hazardous Air Pollutants (HAPs)</h3>
-        <p class="text-muted">If this raw material contains HAP chemicals not automatically detected via CAS lookup, enter them here with their weight percent within this raw material.</p>
 
         <?php
+        // ── Build the Auto section from this RM's constituents ─────
+        // For every constituent CAS that appears in hap_list, render a
+        // read-only row showing the list's chemical name + category. Same
+        // pattern as the Prop 65 Auto section above.
+        $hapAutoRows   = [];
+        $hapAutoCasSet = [];
+
+        $constituentCasListForHap = [];
+        foreach (($constituents ?? []) as $c) {
+            $cas = trim((string) ($c['cas_number'] ?? ''));
+            if ($cas !== '') {
+                $constituentCasListForHap[$cas] = $c;
+            }
+        }
+        if (!empty($constituentCasListForHap)) {
+            $db = \SDS\Core\Database::getInstance();
+            $hapCasArr     = array_keys($constituentCasListForHap);
+            $hapPlaceholders = implode(',', array_fill(0, count($hapCasArr), '?'));
+            $hapListRows = $db->fetchAll(
+                "SELECT cas_number, chemical_name, category
+                 FROM hap_list
+                 WHERE cas_number IN ({$hapPlaceholders})",
+                $hapCasArr
+            );
+            foreach ($hapListRows as $lr) {
+                $c = $constituentCasListForHap[$lr['cas_number']] ?? null;
+                if ($c === null) { continue; }
+
+                // Effective pct in this RM — prefer pct_exact, then upper
+                // bound of range, then lower bound. Same logic Prop 65 uses.
+                $eff = null;
+                if (isset($c['pct_exact']) && $c['pct_exact'] !== null && $c['pct_exact'] !== '') {
+                    $eff = (float) $c['pct_exact'];
+                } elseif (isset($c['pct_max']) && $c['pct_max'] !== null && $c['pct_max'] !== '') {
+                    $eff = (float) $c['pct_max'];
+                } elseif (isset($c['pct_min']) && $c['pct_min'] !== null && $c['pct_min'] !== '') {
+                    $eff = (float) $c['pct_min'];
+                }
+
+                $hapAutoRows[] = [
+                    'cas_number'    => $lr['cas_number'],
+                    'chemical_name' => $lr['chemical_name'],
+                    'category'      => $lr['category'],
+                    'effective_pct' => $eff,
+                ];
+                $hapAutoCasSet[$lr['cas_number']] = true;
+            }
+        }
+
+        // ── Manual HAPs: load existing haps_data, skipping entries whose
+        //    CAS is already in the Auto section (those are duplicates and
+        //    will be pruned on save via HAPService).
         $hapsData = [];
         if (!empty($item['haps_data'])) {
             $hapsData = json_decode($item['haps_data'], true) ?: [];
         }
+        $hapsData = array_values(array_filter($hapsData, function ($e) use ($hapAutoCasSet) {
+            $cas = trim((string) ($e['cas_number'] ?? ''));
+            return $cas === '' || !isset($hapAutoCasSet[$cas]);
+        }));
         ?>
+
+        <!-- Auto section: derived from constituents + hap_list -->
+        <h4 style="margin-top: 0.75rem; margin-bottom: 0.25rem;">Auto-detected (from composition)</h4>
+        <p class="text-muted" style="margin-top: 0; margin-bottom: 0.5rem;">
+            Every constituent whose CAS appears on the EPA Clean Air Act §112(b) HAP list.
+            Chemical name and category come from the federal list; the weight % reflects
+            the constituent's concentration in this raw material. Edit the composition
+            above to change this list.
+        </p>
+        <table class="table table-sm">
+            <thead>
+                <tr>
+                    <th>CAS</th>
+                    <th>Chemical Name</th>
+                    <th>Category</th>
+                    <th>Weight %</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php if (empty($hapAutoRows)): ?>
+                <tr><td colspan="4" class="text-muted" style="text-align:center;">No constituents on the HAP list.</td></tr>
+            <?php else: ?>
+                <?php foreach ($hapAutoRows as $ar): ?>
+                    <tr>
+                        <td><?= e($ar['cas_number']) ?></td>
+                        <td><?= e($ar['chemical_name']) ?></td>
+                        <td><?= e($ar['category'] ?? '') ?: '<span class="text-muted">—</span>' ?></td>
+                        <td><?= $ar['effective_pct'] !== null ? number_format($ar['effective_pct'], 4) . '%' : '<span class="text-muted">—</span>' ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </tbody>
+        </table>
+
+        <!-- Manual section: HAPs without a CAS or operator overrides -->
+        <h4 style="margin-top: 1rem; margin-bottom: 0.25rem;">Manual entries</h4>
+        <p class="text-muted" style="margin-top: 0; margin-bottom: 0.5rem;">
+            Use this for HAPs that don't have a single CAS on the federal list
+            (e.g. "Glycol ethers — mixed") or intentional overrides. Rows whose CAS
+            is already in the Auto section above will be pruned on save.
+        </p>
 
         <table class="table table-sm" id="hapsTable">
             <thead>
@@ -587,8 +683,8 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
             <?php if (!empty($hapsData)): ?>
                 <?php foreach ($hapsData as $hi => $hap): ?>
                 <tr class="hap-row">
-                    <td><input type="text" name="hap_chemical_name[<?= $hi ?>]" value="<?= e($hap['chemical_name'] ?? '') ?>" class="input-sm" placeholder="e.g. Toluene"></td>
-                    <td><input type="text" name="hap_cas_number[<?= $hi ?>]" value="<?= e($hap['cas_number'] ?? '') ?>" class="input-sm" placeholder="108-88-3"></td>
+                    <td><input type="text" name="hap_chemical_name[<?= $hi ?>]" value="<?= e($hap['chemical_name'] ?? '') ?>" class="input-sm" placeholder="e.g. Glycol ethers"></td>
+                    <td><input type="text" name="hap_cas_number[<?= $hi ?>]" value="<?= e($hap['cas_number'] ?? '') ?>" class="input-sm" placeholder="(optional)"></td>
                     <td><input type="number" name="hap_weight_pct[<?= $hi ?>]" value="<?= e((string) ($hap['weight_pct'] ?? '')) ?>" step="0.01" min="0" max="100" class="input-xs"></td>
                     <td><button type="button" class="btn btn-sm btn-danger remove-hap">X</button></td>
                 </tr>

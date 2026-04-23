@@ -23,6 +23,44 @@ use SDS\Core\Database;
 class HAPService
 {
     /**
+     * Remove manual haps_data entries whose CAS is already present in the
+     * RM's constituents. Mirror of Prop65Service::pruneManualEntriesAgainst
+     * Constituents — the RM form's Auto-detected HAPs section renders
+     * those CAS matches from hap_list directly, so keeping a manual copy
+     * would duplicate the chemical in the generated SDS.
+     *
+     * Entries with no CAS (name-only, e.g. "Glycol ethers — mixed") or a
+     * CAS that doesn't appear in constituents are kept untouched.
+     *
+     * @param  array $constituents  list of rows, each with 'cas_number'
+     * @param  array $hapsData      list of manual entries, each with 'cas_number'
+     * @return array{pruned: array, removed_count: int}
+     */
+    public static function pruneManualEntriesAgainstConstituents(array $constituents, array $hapsData): array
+    {
+        $casInConstituents = [];
+        foreach ($constituents as $c) {
+            $cas = trim((string) ($c['cas_number'] ?? ''));
+            if ($cas !== '') {
+                $casInConstituents[$cas] = true;
+            }
+        }
+
+        $kept    = [];
+        $removed = 0;
+        foreach ($hapsData as $entry) {
+            $cas = trim((string) ($entry['cas_number'] ?? ''));
+            if ($cas !== '' && isset($casInConstituents[$cas])) {
+                $removed++;
+                continue;
+            }
+            $kept[] = $entry;
+        }
+
+        return ['pruned' => array_values($kept), 'removed_count' => $removed];
+    }
+
+    /**
      * Analyse a composition for Hazardous Air Pollutants.
      *
      * @param  array $composition  Expanded CAS-level composition from FormulaCalcService

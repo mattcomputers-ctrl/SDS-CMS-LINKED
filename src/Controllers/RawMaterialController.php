@@ -634,6 +634,26 @@ class RawMaterialController
             ];
         }
 
+        // Prune manual entries whose CAS already appears in the RM's
+        // composition — those are shown by the Auto-detected HAPs section
+        // on the edit page (derived from hap_list at render time), so
+        // keeping a manual duplicate would double-count the chemical in
+        // the generated SDS. Mirrors the Prop 65 save path exactly.
+        if (!empty($haps)) {
+            $postedConstituents = [];
+            foreach (($_POST['cas_number'] ?? []) as $cas) {
+                $cas = trim((string) $cas);
+                if ($cas !== '') {
+                    $postedConstituents[] = ['cas_number' => $cas];
+                }
+            }
+            $result = \SDS\Services\HAPService::pruneManualEntriesAgainstConstituents(
+                $postedConstituents,
+                $haps
+            );
+            $haps = $result['pruned'];
+        }
+
         return !empty($haps) ? json_encode($haps) : null;
     }
 

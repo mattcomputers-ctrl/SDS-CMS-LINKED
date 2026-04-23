@@ -332,10 +332,19 @@ class ReportController
                             $zip->addFile($aliasPdf, $zipName);
                             $tempPdfs[] = $aliasPdf;
                             $addedFiles++;
+                        } else {
+                            // Failure is logged via error_log inside
+                            // generateAliasPdf; surface it here so the
+                            // customer-visible _MISSING_ITEMS.csv explains
+                            // why an item didn't make the ZIP.
+                            $missingItems[$itemCode] = 'SDS generation failed (alias rebrand error)';
                         }
                     } else {
                         $pdfFullPath = $basePath . '/' . ltrim($v['pdf_path'], '/');
-                        if (!file_exists($pdfFullPath)) continue;
+                        if (!file_exists($pdfFullPath)) {
+                            $missingItems[$itemCode] = 'Published PDF missing on disk: ' . basename($v['pdf_path']);
+                            continue;
+                        }
                         $zip->addFile($pdfFullPath, $zipName);
                         $addedFiles++;
                     }
@@ -344,13 +353,19 @@ class ReportController
         }
 
         foreach (array_keys($unresolvedCodes) as $code) {
-            $missingItems[$code] = true;
+            $missingItems[$code] = 'Not found in SDS system — product code unrecognized';
         }
 
         if (!empty($missingItems)) {
             $missingCsv = "Product Code,Status\n";
-            foreach (array_keys($missingItems) as $code) {
-                $missingCsv .= '"' . str_replace('"', '""', $code) . '","Not found in SDS system - needs to be entered"' . "\n";
+            foreach ($missingItems as $code => $reason) {
+                // Legacy callers still set the value to bool(true); map to
+                // the default message so the CSV is consistent.
+                $msg = is_string($reason) && $reason !== ''
+                    ? $reason
+                    : 'Not found in SDS system — needs to be entered';
+                $missingCsv .= '"' . str_replace('"', '""', $code)
+                             . '","' . str_replace('"', '""', $msg) . '"' . "\n";
             }
             $zip->addFromString('_MISSING_ITEMS.csv', $missingCsv);
         }
@@ -615,11 +630,20 @@ class ReportController
             }
 
             $tempPath = tempnam(sys_get_temp_dir(), 'sds_alias_') . '.pdf';
+            // PDFService exposes generate() (writes to a dir and returns the
+            // path) and generateString() (returns bytes). It has no
+            // generateToFile(). Use generateString + file_put_contents so
+            // we control the filename.
             $pdfService = new PDFService();
-            $pdfService->generateToFile($data, $tempPath);
+            $bytes = $pdfService->generateString($data);
+            if ($bytes === '' || file_put_contents($tempPath, $bytes) === false) {
+                error_log("generateAliasPdf: failed to write {$tempPath} for alias {$alias['customer_code']}");
+                return null;
+            }
 
             return $tempPath;
         } catch (\Throwable $e) {
+            error_log("generateAliasPdf: {$e->getMessage()} for alias " . ($alias['customer_code'] ?? '?'));
             return null;
         }
     }
@@ -718,13 +742,22 @@ class ReportController
             return null;
         }
 
-        $vocWtPct    = (float) ($calcResult['voc']['voc_weight_percent'] ?? 0);
+        // VOCCalculator's return uses total_voc_wt_pct, not voc_weight_percent.
+        $vocWtPct    = (float) ($calcResult['voc']['total_voc_wt_pct'] ?? 0);
         $composition = $calcResult['composition'] ?? [];
 
-        // Use the canonical analyse() services rather than per-row lookups;
-        // they apply the correct thresholds (0.01% HAP floor, SARA 313
-        // de minimis, PBT overrides) and share logic with SDS generation.
-        $hapResult  = HAPService::analyse($composition);
+        // Match SDSGenerator's canonical path: walk enriched_lines (which
+        // include RMs nested inside sub-FG components) to collect manual
+        // HAP entries, then feed those to HAPService::analyse alongside
+        // the composition. Without the second argument, products whose
+        // HAPs are stored as manual RM entries (rather than CAS-detected)
+        // would register 0% HAP on this report.
+        $formulaLines = $calcResult['formula_props']['enriched_lines']
+            ?? $calcResult['formula']['lines']
+            ?? [];
+        $manualHaps   = \SDS\Services\SDSGenerator::getManualHaps($formulaLines);
+
+        $hapResult  = HAPService::analyse($composition, $manualHaps);
         $saraResult = SARA313Service::analyse($composition);
 
         return [

@@ -94,7 +94,7 @@ class SDSGenerator
             ?? $calcResult['formula']['lines']
             ?? [];
         $manualProp65 = $this->getManualProp65($formulaLines);
-        $manualHaps   = $this->getManualHaps($formulaLines);
+        $manualHaps   = self::getManualHaps($formulaLines);
 
         // Run Prop 65 analysis (CAS-level + manual raw material flags)
         $prop65Result = Prop65Service::analyse($calcResult['composition'], $manualProp65);
@@ -227,7 +227,7 @@ class SDSGenerator
             ?? $calcResult['formula']['lines']
             ?? [];
         $manualProp65 = $this->getManualProp65($formulaLines);
-        $manualHaps   = $this->getManualHaps($formulaLines);
+        $manualHaps   = self::getManualHaps($formulaLines);
 
         $prop65Result     = Prop65Service::analyse($calcResult['composition'], $manualProp65);
         $hapResult        = HAPService::analyse($calcResult['composition'], $manualHaps);
@@ -320,7 +320,7 @@ class SDSGenerator
             ?? $calcResult['formula']['lines']
             ?? [];
         $manualProp65 = $this->getManualProp65($formulaLines);
-        $manualHaps   = $this->getManualHaps($formulaLines);
+        $manualHaps   = self::getManualHaps($formulaLines);
 
         $prop65Result = Prop65Service::analyse($calcResult['composition'], $manualProp65);
         $hapResult    = HAPService::analyse($calcResult['composition'], $manualHaps);
@@ -2167,7 +2167,7 @@ class SDSGenerator
      * individual HAP chemicals with their weight percent within the RM.
      * The effective concentration in the FG is calculated from the formula line pct.
      */
-    private function getManualHaps(array $formulaLines): array
+    public static function getManualHaps(array $formulaLines): array
     {
         $db = Database::getInstance();
         $rmIds = array_column($formulaLines, 'raw_material_id');

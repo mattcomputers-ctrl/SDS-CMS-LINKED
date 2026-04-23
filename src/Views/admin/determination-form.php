@@ -96,17 +96,28 @@ $exposureLimits = json_decode($det['exposure_limits'] ?? ($old['exposure_limits_
             <?php
             $grouped = \SDS\Services\GHSHazardData::groupedByClass();
 
-            // Sort each class's entries by their smallest H-code number,
-            // and sort each entry's h_codes array, so the page always
-            // reads H200 → H201 → ... within a class. Combined codes
-            // ("H300+H310") use their first part's number for sorting.
+            // Sort by H-code throughout the Hazard Classification section:
+            //   1. each entry's h_codes array (e.g. "H222, H229")
+            //   2. entries within a class (e.g. Category 1 before Cat. 2)
+            //   3. classes relative to each other, so Skin Sensitization
+            //      (H317) slots between Skin Corrosion (H314-H316) and
+            //      Eye Damage (H318-H319), not after Respiratory
+            //      Sensitization (H334) as it was in source-file order.
+            // Combined codes ("H300+H310") sort by their first part's
+            // number so they slot next to their base.
             $hCodeNum = static function (string $code): int {
                 $first = explode('+', $code)[0];
                 return (int) preg_replace('/[^\d]/', '', $first);
             };
+            $classMinCode = [];
             foreach ($grouped as $className => &$entries) {
+                $classMin = PHP_INT_MAX;
                 foreach ($entries as &$entry) {
                     usort($entry['h_codes'], fn($a, $b) => $hCodeNum($a) <=> $hCodeNum($b) ?: strcmp($a, $b));
+                    $entryMin = min(array_map($hCodeNum, $entry['h_codes']));
+                    if ($entryMin < $classMin) {
+                        $classMin = $entryMin;
+                    }
                 }
                 unset($entry);
                 uasort($entries, function ($a, $b) use ($hCodeNum) {
@@ -114,8 +125,10 @@ $exposureLimits = json_decode($det['exposure_limits'] ?? ($old['exposure_limits_
                     $bMin = min(array_map($hCodeNum, $b['h_codes']));
                     return $aMin <=> $bMin ?: strcmp($a['category'], $b['category']);
                 });
+                $classMinCode[$className] = $classMin;
             }
             unset($entries);
+            uksort($grouped, fn($a, $b) => ($classMinCode[$a] <=> $classMinCode[$b]) ?: strcmp($a, $b));
 
             foreach ($grouped as $className => $entries):
             ?>

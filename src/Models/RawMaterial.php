@@ -514,14 +514,34 @@ class RawMaterial
             'sds_date_received' => $dateReceived,
         ]);
 
-        // Also update the legacy supplier_sds_path pointer + bump the RM's
-        // last-confirmed date to this upload's received date (uploading a
-        // new SDS counts as a confirmation).
-        $rmUpdate = ['supplier_sds_path' => $filePath];
+        // Update the legacy supplier_sds_path pointer + (if provided) bump
+        // sds_last_confirmed_at, but EXPLICITLY preserve updated_at.
+        //
+        // Why: bulk publish's staleness check compares
+        // sds_versions.published_at against MAX(raw_materials.updated_at,
+        // …) across the formula tree. Uploading a vendor SDS PDF is
+        // metadata — it doesn't change any hazard/composition field that
+        // would require regenerating downstream SDSs — so it must not
+        // look "newer" to the publisher. The `updated_at = updated_at`
+        // assignment suppresses MySQL's ON UPDATE CURRENT_TIMESTAMP for
+        // this statement. Any genuine content change goes through
+        // RawMaterial::update() in the same request and bumps updated_at
+        // there, correctly.
         if ($dateReceived !== null && $dateReceived !== '') {
-            $rmUpdate['sds_last_confirmed_at'] = $dateReceived;
+            $db->query(
+                "UPDATE raw_materials
+                 SET supplier_sds_path = ?, sds_last_confirmed_at = ?, updated_at = updated_at
+                 WHERE id = ?",
+                [$filePath, $dateReceived, $rmId]
+            );
+        } else {
+            $db->query(
+                "UPDATE raw_materials
+                 SET supplier_sds_path = ?, updated_at = updated_at
+                 WHERE id = ?",
+                [$filePath, $rmId]
+            );
         }
-        $db->update('raw_materials', $rmUpdate, 'id = ?', [$rmId]);
 
         return $id;
     }

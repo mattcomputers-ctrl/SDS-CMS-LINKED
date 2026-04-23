@@ -638,13 +638,30 @@ class PDFService
             $pdf->SetFont('helvetica', '', 7);
 
             foreach ($s['exposure_limits'] as $el) {
-                $pdf->Cell($w[0], 5, $el['cas_number'] ?? '', 1, 0, 'C');
-                $pdf->Cell($w[1], 5, substr($el['chemical_name'] ?? '', 0, 28), 1, 0, 'L');
-                $pdf->Cell($w[2], 5, $el['limit_type'] ?? '', 1, 0, 'C');
-                $pdf->Cell($w[3], 5, $el['value'] ?? '', 1, 0, 'C');
-                $pdf->Cell($w[4], 5, $el['units'] ?? '', 1, 0, 'C');
-                $pdf->Cell($w[5], 5, round((float) ($el['concentration_pct'] ?? 0), 2), 1, 0, 'C');
-                $pdf->Cell($w[6], 5, substr($el['notes'] ?? '', 0, 25), 1, 1, 'L');
+                $cas     = (string) ($el['cas_number']   ?? '');
+                $name    = (string) ($el['chemical_name'] ?? '');
+                $ltype   = (string) ($el['limit_type']   ?? '');
+                $value   = (string) ($el['value']         ?? '');
+                $units   = (string) ($el['units']         ?? '');
+                $concPct = (string) round((float) ($el['concentration_pct'] ?? 0), 2);
+                $notes   = (string) ($el['notes']         ?? '');
+
+                // Chemical names and notes used to be substr()-truncated
+                // (28 / 25 chars); now they wrap. Row height takes the
+                // max line count across both wrapping columns so the
+                // row doesn't cut off a long notes field when the name
+                // is short, or vice versa.
+                $nameLines  = max(1, (int) $pdf->getNumLines($name,  $w[1]));
+                $notesLines = max(1, (int) $pdf->getNumLines($notes, $w[6]));
+                $rowH       = max(5, max($nameLines, $notesLines) * 4);
+
+                $pdf->MultiCell($w[0], $rowH, $cas,     1, 'C', false, 0, '', '', true, 0, false, true, $rowH, 'M');
+                $pdf->MultiCell($w[1], $rowH, $name,    1, 'L', false, 0, '', '', true, 0, false, true, $rowH, 'M');
+                $pdf->MultiCell($w[2], $rowH, $ltype,   1, 'C', false, 0, '', '', true, 0, false, true, $rowH, 'M');
+                $pdf->MultiCell($w[3], $rowH, $value,   1, 'C', false, 0, '', '', true, 0, false, true, $rowH, 'M');
+                $pdf->MultiCell($w[4], $rowH, $units,   1, 'C', false, 0, '', '', true, 0, false, true, $rowH, 'M');
+                $pdf->MultiCell($w[5], $rowH, $concPct, 1, 'C', false, 0, '', '', true, 0, false, true, $rowH, 'M');
+                $pdf->MultiCell($w[6], $rowH, $notes,   1, 'L', false, 1, '', '', true, 0, false, true, $rowH, 'M');
             }
             $pdf->Ln(2);
         }

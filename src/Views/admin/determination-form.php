@@ -50,6 +50,44 @@ $exposureLimits = json_decode($det['exposure_limits'] ?? ($old['exposure_limits_
             </div>
         </div>
 
+        <?php
+            $rawMaterials = $rawMaterials ?? [];
+            if ($mode === 'edit'):
+        ?>
+        <!-- Raw materials that contain this CAS — shows the blast radius
+             of any change to this determination. -->
+        <div class="card" style="background:#f8f9fa; border:1px solid #dee2e6; padding:0.5rem 0.75rem; margin:0.75rem 0;">
+            <strong>Raw materials containing CAS <?= e($item['cas_number']) ?>:</strong>
+            <?php if (empty($rawMaterials)): ?>
+                <span class="text-muted">None — this CAS isn't currently listed as a constituent on any raw material.</span>
+            <?php else: ?>
+                <span class="text-muted"><?= count($rawMaterials) ?> raw material<?= count($rawMaterials) === 1 ? '' : 's' ?> (<?= count(array_filter($rawMaterials, fn($r) => (int) $r['in_formula'])) ?> in a current formula)</span>
+                <table class="table table-sm" style="margin:0.5rem 0 0 0;">
+                    <thead>
+                        <tr>
+                            <th style="width:120px;">Code</th>
+                            <th>Supplier</th>
+                            <th>Supplier Product</th>
+                            <th style="width:90px;">In Formula</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($rawMaterials as $rm): ?>
+                            <tr>
+                                <td><a href="/raw-materials/<?= (int) $rm['id'] ?>/edit" target="_blank"><strong><?= e($rm['internal_code']) ?></strong></a></td>
+                                <td><?= e($rm['supplier'] ?? '') ?: '<span class="text-muted">—</span>' ?></td>
+                                <td><?= e($rm['supplier_product_name'] ?? '') ?: '<span class="text-muted">—</span>' ?></td>
+                                <td><?= (int) $rm['in_formula']
+                                    ? '<span style="color:#28a745; font-weight:bold;">Yes</span>'
+                                    : '<span class="text-muted">No</span>' ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
+
         <!-- ═══════════════ HAZARD STATEMENT SELECTION ═══════════════ -->
         <h2 class="mt-2">Hazard Classification</h2>
         <p class="text-muted mb-1">Check the hazard statements that apply. H-codes, P-codes, pictograms, and signal words will be automatically populated.</p>

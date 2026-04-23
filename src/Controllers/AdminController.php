@@ -1126,10 +1126,33 @@ class AdminController
         }
         $item['determination'] = json_decode($item['determination_json'] ?? '{}', true);
 
+        // Raw materials that carry this CAS — useful when reviewing a
+        // determination to see what's actually affected. Flag which ones
+        // are in-use by any current formula so the operator knows where
+        // changes will propagate.
+        $rawMaterials = $db->fetchAll(
+            "SELECT rm.id,
+                    rm.internal_code,
+                    rm.supplier,
+                    rm.supplier_product_name,
+                    EXISTS (
+                        SELECT 1 FROM formula_lines fl
+                        JOIN formulas f ON f.id = fl.formula_id AND f.is_current = 1
+                        WHERE fl.raw_material_id = rm.id
+                    ) AS in_formula
+             FROM raw_material_constituents rmc
+             JOIN raw_materials rm ON rm.id = rmc.raw_material_id
+             WHERE rmc.cas_number = ?
+             GROUP BY rm.id, rm.internal_code, rm.supplier, rm.supplier_product_name
+             ORDER BY rm.internal_code",
+            [$item['cas_number']]
+        );
+
         view('admin/determination-form', [
-            'pageTitle' => 'Edit CAS Determination: ' . $item['cas_number'],
-            'item'      => $item,
-            'mode'      => 'edit',
+            'pageTitle'    => 'Edit CAS Determination: ' . $item['cas_number'],
+            'item'         => $item,
+            'mode'         => 'edit',
+            'rawMaterials' => $rawMaterials,
         ]);
     }
 

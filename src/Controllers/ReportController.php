@@ -718,29 +718,20 @@ class ReportController
             return null;
         }
 
-        $vocWtPct = (float) ($calcResult['voc']['voc_weight_percent'] ?? 0);
-        $hapWtPct = 0.0;
-        $hapChemicals = [];
-        $saraReportable = [];
+        $vocWtPct    = (float) ($calcResult['voc']['voc_weight_percent'] ?? 0);
+        $composition = $calcResult['composition'] ?? [];
 
-        foreach ($calcResult['composition'] ?? [] as $c) {
-            $cas = $c['cas_number'] ?? '';
-            if ($cas === '') continue;
-
-            if (HAPService::isHAP($cas)) {
-                $hapWtPct += (float) ($c['concentration_pct'] ?? 0);
-                $hapChemicals[] = $c;
-            }
-            if (SARA313Service::isReportable($cas, (float) ($c['concentration_pct'] ?? 0))) {
-                $saraReportable[] = $c;
-            }
-        }
+        // Use the canonical analyse() services rather than per-row lookups;
+        // they apply the correct thresholds (0.01% HAP floor, SARA 313
+        // de minimis, PBT overrides) and share logic with SDS generation.
+        $hapResult  = HAPService::analyse($composition);
+        $saraResult = SARA313Service::analyse($composition);
 
         return [
-            'voc_wt_pct'     => $vocWtPct,
-            'hap_wt_pct'     => $hapWtPct,
-            'hap_chemicals'  => $hapChemicals,
-            'sara_reportable' => $saraReportable,
+            'voc_wt_pct'      => $vocWtPct,
+            'hap_wt_pct'      => (float) ($hapResult['total_hap_pct'] ?? 0),
+            'hap_chemicals'   => $hapResult['hap_chemicals'] ?? [],
+            'sara_reportable' => $saraResult['reportable']   ?? [],
         ];
     }
 }

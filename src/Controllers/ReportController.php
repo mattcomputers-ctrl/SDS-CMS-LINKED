@@ -224,30 +224,35 @@ class ReportController
         $reportItemsByProduct = [];
         $unresolvedCodes = [];
         foreach ($filtered as $row) {
-            // Use item_name (alias code) if present, otherwise item_code
-            $itemName = !empty($row['item_name']) ? $row['item_name'] : $row['item_code'];
-            $stripped = $this->stripPackExtension($itemName);
-            $resolved = $this->resolveToProductCode($stripped, $db);
+            // Use item_name (alias code) if present, otherwise item_code.
+            // Key by the FULL code including pack extension — that's what
+            // appears on the invoice / packing slip and what the customer
+            // recognizes, so the ZIP filename should match it.
+            $itemName = trim(!empty($row['item_name']) ? $row['item_name'] : $row['item_code']);
+            $resolved = $this->resolveToProductCode($itemName, $db);
             if ($resolved !== null) {
                 $productCodes[$resolved] = true;
-                $reportItemsByProduct[$resolved][$stripped] = true;
+                $reportItemsByProduct[$resolved][$itemName] = true;
             } else {
-                $unresolvedCodes[$stripped] = true;
+                $unresolvedCodes[$itemName] = true;
             }
         }
 
-        // Load aliases indexed by internal_code_base
+        // Load aliases indexed by internal_code_base. Each pack-size variant
+        // stays a distinct entry — dedupe on (internal_code_base,
+        // customer_code) rather than a stripped key so e.g. R1005-2G and
+        // R1005-50 can both export with their own filenames.
         $allAliases = $db->fetchAll("SELECT * FROM aliases ORDER BY customer_code");
         $aliasesByBase = [];
         $seenAliases = [];
         foreach ($allAliases as $alias) {
-            $baseCustomerCode = $this->stripPackExtension($alias['customer_code']);
-            $dedupeKey = $alias['internal_code_base'] . '::' . $baseCustomerCode;
+            $custCode  = trim((string) $alias['customer_code']);
+            $dedupeKey = $alias['internal_code_base'] . '::' . $custCode;
             if (isset($seenAliases[$dedupeKey])) {
                 continue;
             }
             $seenAliases[$dedupeKey] = true;
-            $alias['customer_code'] = $baseCustomerCode;
+            $alias['customer_code'] = $custCode;
             $aliasesByBase[$alias['internal_code_base']][] = $alias;
         }
         unset($seenAliases);
@@ -274,7 +279,7 @@ class ReportController
             }
 
             $versions = $db->fetchAll(
-                "SELECT sv.id, sv.version, sv.language, sv.pdf_path
+                "SELECT sv.id, sv.version, sv.language, sv.pdf_path, sv.snapshot_json
                  FROM sds_versions sv
                  WHERE sv.finished_good_id = ?
                    AND sv.status = 'published'
@@ -290,38 +295,19 @@ class ReportController
                 continue;
             }
 
-            $allAliasesForCode = $aliasesByBase[$productCode] ?? [];
-            $reportItems = $reportItemsByProduct[$productCode] ?? [];
-            $aliases = [];
-            foreach ($allAliasesForCode as $alias) {
-                if (isset($reportItems[$alias['customer_code']])) {
-                    $aliases[] = $alias;
-                }
+            // Build a lookup: customer_code (with pack ext) → alias row,
+            // for this FG only. Items that match here get an alias-branded
+            // PDF; items that don't (i.e. direct internal-coded shipments)
+            // get the published PDF as-is.
+            $aliasByCustomerCode = [];
+            foreach (($aliasesByBase[$productCode] ?? []) as $a) {
+                $aliasByCustomerCode[$a['customer_code']] = $a;
             }
 
-            if (!empty($aliases)) {
-                foreach ($aliases as $alias) {
-                    $addedLangs = [];
-                    foreach ($versions as $v) {
-                        $lang = strtolower($v['language']);
-                        if ($exportLang !== 'all' && $lang !== $exportLang) continue;
-                        if (isset($addedLangs[$lang])) continue;
-                        $addedLangs[$lang] = true;
+            $reportItems = $reportItemsByProduct[$productCode] ?? [];
+            foreach (array_keys($reportItems) as $itemCode) {
+                $matchedAlias = $aliasByCustomerCode[$itemCode] ?? null;
 
-                        $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $alias['customer_code']);
-                        $zipName  = $safeCode . '_SDS' . ($lang !== 'en' ? '_' . strtoupper($lang) : '') . '.pdf';
-                        if (isset($seen[$zipName])) continue;
-                        $seen[$zipName] = true;
-
-                        $aliasPdf = $this->generateAliasPdf($v, $alias, $basePath);
-                        if ($aliasPdf !== null) {
-                            $zip->addFile($aliasPdf, $zipName);
-                            $tempPdfs[] = $aliasPdf;
-                            $addedFiles++;
-                        }
-                    }
-                }
-            } else {
                 $addedLangs = [];
                 foreach ($versions as $v) {
                     $lang = strtolower($v['language']);
@@ -329,16 +315,30 @@ class ReportController
                     if (isset($addedLangs[$lang])) continue;
                     $addedLangs[$lang] = true;
 
-                    $pdfFullPath = $basePath . '/' . ltrim($v['pdf_path'], '/');
-                    if (!file_exists($pdfFullPath)) continue;
-
-                    $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $productCode);
+                    // Preserve the pack-extended code in the ZIP filename —
+                    // that's what the customer sees on the invoice / packing
+                    // slip, so it's what they need to find in the archive.
+                    $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $itemCode);
                     $zipName  = $safeCode . '_SDS' . ($lang !== 'en' ? '_' . strtoupper($lang) : '') . '.pdf';
                     if (isset($seen[$zipName])) continue;
                     $seen[$zipName] = true;
 
-                    $zip->addFile($pdfFullPath, $zipName);
-                    $addedFiles++;
+                    if ($matchedAlias !== null) {
+                        // Alias-branded PDF: Section 1 product identifier
+                        // rewritten to the alias customer_code (including
+                        // pack extension).
+                        $aliasPdf = $this->generateAliasPdf($v, $matchedAlias, $basePath);
+                        if ($aliasPdf !== null) {
+                            $zip->addFile($aliasPdf, $zipName);
+                            $tempPdfs[] = $aliasPdf;
+                            $addedFiles++;
+                        }
+                    } else {
+                        $pdfFullPath = $basePath . '/' . ltrim($v['pdf_path'], '/');
+                        if (!file_exists($pdfFullPath)) continue;
+                        $zip->addFile($pdfFullPath, $zipName);
+                        $addedFiles++;
+                    }
                 }
             }
         }
@@ -452,12 +452,15 @@ class ReportController
                 $description = $row['item_description'] ?? '';
             }
 
-            // Strip pack extension and resolve to FG product code
-            $strippedCode = $this->stripPackExtension($itemCode);
-            if (!isset($resolvedCodes[$strippedCode])) {
-                $resolvedCodes[$strippedCode] = $this->resolveToProductCode($strippedCode, $db) ?? $strippedCode;
+            // Resolve to FG product code. resolveToProductCode handles the
+            // pack-ext shape difference between aliases (stored with) and
+            // finished_goods (stored without), so we pass the raw item
+            // code without pre-stripping.
+            if (!isset($resolvedCodes[$itemCode])) {
+                $resolvedCodes[$itemCode] = $this->resolveToProductCode($itemCode, $db)
+                    ?? $this->stripPackExtension($itemCode);
             }
-            $productCode = $resolvedCodes[$strippedCode];
+            $productCode = $resolvedCodes[$itemCode];
 
             // Lookup VOC/HAP
             $vocWtPct = null;
@@ -631,25 +634,69 @@ class ReportController
     }
 
     /**
-     * Try to resolve a stripped item code to a finished good product code.
-     * First checks finished_goods directly, then checks aliases.
+     * Resolve an item code (as it appears on a shipment line) to a
+     * finished_goods.product_code.
+     *
+     * The two tables this walks store codes differently:
+     *   - finished_goods.product_code  — no pack extension (e.g. "E1043")
+     *   - aliases.customer_code         — WITH pack extension (e.g. "R1005-50")
+     *
+     * Shipments carry the full customer-facing code including pack ext
+     * ("R1005-50" or "E1043-50"). So we try in this order:
+     *   1. exact alias match        (most common: "R1005-50" → E1043)
+     *   2. exact FG match           (rare: some codes have no pack ext)
+     *   3. stripped FG match        (internal codes: "E1043-50" → E1043)
+     *   4. stripped alias match     (fallback for any legacy stripped rows)
+     *
+     * Previously the caller pre-stripped the code, which made step 1
+     * impossible — aliases stored as "R1005-50" never matched a
+     * stripped-to-"R1005" query, so every customer-aliased item was
+     * wrongly flagged as "not found."
      */
-    private function resolveToProductCode(string $strippedCode, Database $db): ?string
+    private function resolveToProductCode(string $rawCode, Database $db): ?string
     {
+        $raw      = trim($rawCode);
+        if ($raw === '') {
+            return null;
+        }
+        $stripped = $this->stripPackExtension($raw);
+
+        // 1. Exact alias match (customer_code carries pack extension)
+        $alias = $db->fetch(
+            "SELECT internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1",
+            [$raw]
+        );
+        if ($alias) {
+            return $alias['internal_code_base'];
+        }
+
+        // 2. Exact FG match (for codes without a pack extension)
         $fg = $db->fetch(
             "SELECT product_code FROM finished_goods WHERE product_code = ?",
-            [$strippedCode]
+            [$raw]
         );
         if ($fg) {
             return $fg['product_code'];
         }
 
-        $alias = $db->fetch(
-            "SELECT internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1",
-            [$strippedCode]
-        );
-        if ($alias) {
-            return $alias['internal_code_base'];
+        if ($stripped !== $raw) {
+            // 3. Stripped FG match (internal codes like "E1043-50" → "E1043")
+            $fg = $db->fetch(
+                "SELECT product_code FROM finished_goods WHERE product_code = ?",
+                [$stripped]
+            );
+            if ($fg) {
+                return $fg['product_code'];
+            }
+
+            // 4. Stripped alias match (defensive; most aliases carry pack ext)
+            $alias = $db->fetch(
+                "SELECT internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1",
+                [$stripped]
+            );
+            if ($alias) {
+                return $alias['internal_code_base'];
+            }
         }
 
         return null;

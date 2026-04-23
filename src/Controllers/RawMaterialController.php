@@ -191,6 +191,18 @@ class RawMaterialController
         }
 
         try {
+            // ── Optimistic-lock check FIRST, before any mutation ──────
+            // addSds() below updates raw_materials.supplier_sds_path,
+            // which bumps updated_at via ON UPDATE CURRENT_TIMESTAMP. If
+            // we left the lock check inside Model::update() (where it
+            // used to live), the bump would trigger a false "modified
+            // by another user" error for a user who did everything in
+            // a single save. Doing the check once up front, then passing
+            // _skip_lock_check to Model::update(), keeps a real concurrent
+            // edit detectable while not self-conflicting on our own writes.
+            RawMaterial::checkOptimisticLock((int) $id, $data['expected_updated_at'] ?? null);
+            $data['_skip_lock_check'] = true;
+
             // Handle SDS file upload — always adds to history, never removes old.
             // Date Received is required when an SDS file is uploaded.
             $sdsInfo = $this->handleSdsUpload();
@@ -236,7 +248,13 @@ class RawMaterialController
 
             $_SESSION['_flash']['success'] = 'Raw material updated.';
         } catch (\Throwable $e) {
-            $_SESSION['_flash']['error'] = $e->getMessage();
+            // Preserve the user's in-flight form input so they can fix
+            // the error without re-entering everything. Scalar fields
+            // come back via the old() helper; nested state (constituents,
+            // HAPs, Prop 65 manual rows) re-renders from the freshly
+            // fetched $item when the edit controller re-runs.
+            $_SESSION['_flash']['error']      = $e->getMessage();
+            $_SESSION['_flash']['_old_input'] = $_POST;
         }
 
         redirect('/raw-materials/' . $id . '/edit');

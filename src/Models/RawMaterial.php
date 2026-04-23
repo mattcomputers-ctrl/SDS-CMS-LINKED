@@ -261,22 +261,43 @@ class RawMaterial
      * @return int  Affected rows (0 means conflict or not found).
      * @throws \RuntimeException on concurrency conflict.
      */
+    /**
+     * Optimistic-locking helper: compare the DB's current updated_at for
+     * this RM against the value the edit form was rendered with. Throws
+     * on mismatch. Extracted so callers can run the check ONCE up front
+     * before any of their own mutations touch updated_at (e.g. addSds,
+     * which bumps the timestamp via ON UPDATE CURRENT_TIMESTAMP).
+     *
+     * @throws \RuntimeException on missing record or genuine concurrent edit.
+     */
+    public static function checkOptimisticLock(int $id, ?string $expectedUpdatedAt): void
+    {
+        if ($expectedUpdatedAt === null || $expectedUpdatedAt === '') {
+            return;
+        }
+        $db = Database::getInstance();
+        $current = $db->fetch("SELECT updated_at FROM raw_materials WHERE id = ?", [$id]);
+        if (!$current) {
+            throw new \RuntimeException("Raw material #{$id} not found.");
+        }
+        if ($current['updated_at'] !== $expectedUpdatedAt) {
+            throw new \RuntimeException(
+                'This record has been modified by another user. Please reload and try again.'
+            );
+        }
+    }
+
     public static function update(int $id, array $data): int
     {
         $db = Database::getInstance();
 
-        // Optimistic locking: check updated_at matches
-        $expectedUpdatedAt = $data['expected_updated_at'] ?? ($data['updated_at'] ?? null);
-        if ($expectedUpdatedAt !== null) {
-            $current = $db->fetch("SELECT updated_at FROM raw_materials WHERE id = ?", [$id]);
-            if (!$current) {
-                throw new \RuntimeException("Raw material #{$id} not found.");
-            }
-            if ($current['updated_at'] !== $expectedUpdatedAt) {
-                throw new \RuntimeException(
-                    'This record has been modified by another user. Please reload and try again.'
-                );
-            }
+        // Optimistic locking: by default compare form's expected_updated_at
+        // against the DB. Callers that have already done this check (and
+        // since then performed mutations that bump updated_at, like
+        // addSds) pass _skip_lock_check=true to avoid a false conflict.
+        if (empty($data['_skip_lock_check'])) {
+            $expectedUpdatedAt = $data['expected_updated_at'] ?? ($data['updated_at'] ?? null);
+            self::checkOptimisticLock($id, $expectedUpdatedAt);
         }
 
         // If renaming code, check uniqueness

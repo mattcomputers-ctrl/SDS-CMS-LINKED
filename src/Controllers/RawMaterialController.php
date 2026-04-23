@@ -298,7 +298,10 @@ class RawMaterialController
         CSRF::validateRequest();
 
         $today = date('Y-m-d');
-        RawMaterial::update((int) $id, ['sds_last_confirmed_at' => $today]);
+        // markSdsConfirmed deliberately preserves updated_at — confirming
+        // that an existing vendor PDF is still current is metadata, not
+        // a content change, and must not trigger downstream SDS republish.
+        RawMaterial::markSdsConfirmed((int) $id, $today);
         AuditService::log('raw_material', $id, 'sds_confirmed_current', [
             'sds_last_confirmed_at' => $today,
         ]);

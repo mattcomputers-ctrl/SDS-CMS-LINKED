@@ -489,6 +489,24 @@ class RawMaterial
     }
 
     /**
+     * Advance sds_last_confirmed_at without bumping updated_at.
+     *
+     * Used by the "Supplier Confirmed Current" button — marking an
+     * existing vendor SDS as still current is metadata, not a content
+     * change, so downstream SDSs should not be flagged stale. Same
+     * rationale as addSds()'s explicit updated_at preservation.
+     */
+    public static function markSdsConfirmed(int $id, string $dateYmd): void
+    {
+        Database::getInstance()->query(
+            "UPDATE raw_materials
+             SET sds_last_confirmed_at = ?, updated_at = updated_at
+             WHERE id = ?",
+            [$dateYmd, $id]
+        );
+    }
+
+    /**
      * Add a new SDS file to the history (never overwrites previous entries).
      *
      * @return int  New raw_material_sds ID.

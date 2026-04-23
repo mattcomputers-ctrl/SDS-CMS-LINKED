@@ -154,7 +154,11 @@ $exposureLimits = json_decode($det['exposure_limits'] ?? ($old['exposure_limits_
         </div>
 
         <!-- ═══════════════ MANUAL H-CODE SELECTION ═══════════════ -->
-        <h2 class="mt-2">Additional H-Codes <small class="text-muted" style="font-weight:400; font-size:0.8rem;">(optional — beyond auto-populated)</small></h2>
+        <details class="code-selection-details" style="margin-top: 1rem; border: 1px solid #dee2e6; border-radius: 4px;">
+            <summary style="cursor: pointer; padding: 0.6rem 0.9rem; font-size: 1.2rem; font-weight: bold; background: #f8f9fa; list-style: revert;">
+                Additional H-Codes <small class="text-muted" style="font-weight:400; font-size:0.8rem;">(optional — beyond auto-populated; click to expand)</small>
+            </summary>
+            <div style="padding: 0.5rem 0.9rem 0.9rem;">
         <p class="text-muted mb-1">Manually select additional H-codes if needed. Codes already triggered by hazard selections above are marked.</p>
 
         <div class="code-selection-grid" id="h-code-grid">
@@ -194,9 +198,15 @@ $exposureLimits = json_decode($det['exposure_limits'] ?? ($old['exposure_limits_
             </div>
             <?php endforeach; ?>
         </div>
+            </div>
+        </details>
 
         <!-- ═══════════════ MANUAL P-CODE SELECTION ═══════════════ -->
-        <h2 class="mt-2">Additional P-Codes <small class="text-muted" style="font-weight:400; font-size:0.8rem;">(optional — beyond auto-populated)</small></h2>
+        <details class="code-selection-details" style="margin-top: 0.5rem; border: 1px solid #dee2e6; border-radius: 4px;">
+            <summary style="cursor: pointer; padding: 0.6rem 0.9rem; font-size: 1.2rem; font-weight: bold; background: #f8f9fa; list-style: revert;">
+                Additional P-Codes <small class="text-muted" style="font-weight:400; font-size:0.8rem;">(optional — beyond auto-populated; click to expand)</small>
+            </summary>
+            <div style="padding: 0.5rem 0.9rem 0.9rem;">
         <p class="text-muted mb-1">Manually select additional P-codes if needed.</p>
 
         <div class="code-selection-grid" id="p-code-grid">
@@ -240,6 +250,8 @@ $exposureLimits = json_decode($det['exposure_limits'] ?? ($old['exposure_limits_
             </div>
             <?php endforeach; ?>
         </div>
+            </div>
+        </details>
 
         <!-- ═══════════════ EXPOSURE LIMITS ═══════════════ -->
         <h2 class="mt-2">Exposure Limits</h2>

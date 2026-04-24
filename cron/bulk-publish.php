@@ -46,6 +46,7 @@ use SDS\Core\App;
 use SDS\Core\Database;
 use SDS\Controllers\BulkPublishController;
 use SDS\Services\BulkPublishQueue;
+use SDS\Services\SDSAutoSendService;
 
 /**
  * Execute a single bulk publish cycle: compute eligibility, fan work
@@ -211,6 +212,35 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
     return $stats;
 }
 
+/**
+ * Post-job steps that must run AFTER every bulk publish job, so
+ * customer notifications reflect the latest published SDSs:
+ *
+ *   - SDSAutoSendService::processNewShipments(null)
+ *     Picks up shipments past the persisted auto_send.last_run_at
+ *     watermark. Idempotent via sds_send_log, so running it after
+ *     every job (and redundantly from cms-sync.php) is safe.
+ *
+ * Failures here MUST NOT propagate — the publish already succeeded
+ * and the job is marked completed by the caller. Email-sending errors
+ * are logged to stdout (captured in cms-sync.log) for diagnosis.
+ */
+function bp_runPostJobSteps(Database $db): void
+{
+    try {
+        $autoSend = new SDSAutoSendService();
+        $r = $autoSend->processNewShipments(null);
+        $sent    = (int) ($r['emails_sent'] ?? 0);
+        $queued  = (int) ($r['queued']      ?? 0);
+        $skipped = (int) ($r['skipped']     ?? 0);
+        $errors  = (int) count($r['errors'] ?? []);
+        $errTail = $errors > 0 ? ", {$errors} errors" : '';
+        echo "  Auto-send: {$sent} sent, {$queued} queued, {$skipped} skipped{$errTail}\n";
+    } catch (\Throwable $e) {
+        echo "  Auto-send failed (non-fatal): " . $e->getMessage() . "\n";
+    }
+}
+
 // ═════════════════════════════════════════════════════════════════════
 //  Top-level dispatch
 // ═════════════════════════════════════════════════════════════════════
@@ -269,6 +299,12 @@ try {
             echo "  Job #{$jobId} failed: " . $e->getMessage() . "\n";
             // Keep draining — a single failure shouldn't block the queue.
         }
+
+        // Post-job steps run regardless of publish success/failure — a
+        // failed publish job might still have some items that need
+        // customer notifications (e.g. earlier successful jobs), and
+        // processNewShipments is idempotent via sds_send_log.
+        bp_runPostJobSteps($bp_db);
     }
 } finally {
     BulkPublishQueue::releaseLock();

@@ -1,37 +1,30 @@
 #!/usr/bin/env php
 <?php
 /**
- * Bulk SDS Publish — runnable standalone, or required from cms-sync.php.
+ * Bulk SDS Publish — runnable standalone, or required from cms-sync.php,
+ * or spawned in the background by BulkPublishController::start.
  *
- * Serialized via a MySQL named lock + a `bulk_publish_jobs` queue
- * table (migration 044). Flow at every trigger:
+ * Serialized via BulkPublishQueue (MySQL GET_LOCK + bulk_publish_jobs
+ * table). At every trigger:
  *
- *   1. Enqueue a `pending` job row (coalesced — if a pending row
- *      already exists we skip the insert, since bulk publish
- *      recomputes eligibility at run time so two pending rows would
- *      do identical work).
- *   2. Try `GET_LOCK('bulk_publish_runner', 0)` (non-blocking).
- *   3. If the lock is already held: another runner is actively
- *      draining the queue — leave our pending row for it and return.
- *   4. If we acquired the lock: drain the queue one job at a time
- *      (claim oldest pending → run → mark completed/failed) until
- *      no pending rows remain. Release the lock on exit.
+ *   1. Enqueue a `pending` job (coalesced — if a pending row already
+ *      exists we reuse it; two pending rows would do identical work
+ *      because eligibility is recomputed at run time).
+ *   2. Try to acquire the runner lock non-blocking.
+ *   3. Lock held elsewhere → our pending row stays queued for the
+ *      active runner; this process exits cleanly.
+ *   4. Lock acquired → drain pending jobs one at a time. For each:
+ *      claim (UPDATE to running), run the eligibility → workers →
+ *      poll cycle, mark completed/failed with stats. RELEASE_LOCK on
+ *      exit.
  *
- * This makes double-runs impossible: a concurrent trigger (cron
- * overlapping a long run, manual admin click during cron, etc.)
- * adds a pending row if needed and the current runner picks it up
- * when it finishes the current job.
- *
- * Uses the same eligibility rules as the admin button
- * (BulkPublishController::computeEligibleFinishedGoods +
- * computeEligibleResaleItems), and fans work out to the existing
- * parallel workers (scripts/publish-worker.php). This script waits
- * for each job's workers to finish before starting the next job,
- * so downstream steps in cms-sync.php (customer auto-send) still
- * see the new SDSs when we return synchronously.
+ * The `cms_sync.auto_bulk_publish` admin toggle gates the CRON-driven
+ * path (when this script is `require`d from cms-sync.php) but does
+ * NOT affect standalone invocations — so the admin button always
+ * runs regardless of that setting.
  *
  * Usage (standalone):
- *   php cron/bulk-publish.php
+ *   php cron/bulk-publish.php [--triggered-by=cron|manual|cli] [--user-id=N]
  *
  * Usage (required from another cron script):
  *   require __DIR__ . '/bulk-publish.php';
@@ -52,70 +45,14 @@ if (!class_exists(\SDS\Core\App::class, false)) {
 use SDS\Core\App;
 use SDS\Core\Database;
 use SDS\Controllers\BulkPublishController;
-
-/**
- * Coalescing enqueue: insert a pending bulk_publish_jobs row only if
- * no pending row already exists. Returns the job id (either the new
- * one or the existing pending one we deferred to).
- */
-function bp_enqueue(Database $db, string $triggeredBy, ?int $userId): int
-{
-    $existing = $db->fetch(
-        "SELECT id FROM bulk_publish_jobs WHERE status = 'pending' ORDER BY queued_at ASC LIMIT 1"
-    );
-    if ($existing) {
-        return (int) $existing['id'];
-    }
-    return (int) $db->insert('bulk_publish_jobs', [
-        'status'               => 'pending',
-        'triggered_by'         => $triggeredBy,
-        'triggered_by_user_id' => $userId,
-    ]);
-}
-
-/**
- * Claim the oldest pending job: mark it running + stamp started_at.
- * Returns the job id, or null if no pending jobs remain.
- */
-function bp_claimNextPending(Database $db): ?int
-{
-    $row = $db->fetch(
-        "SELECT id FROM bulk_publish_jobs WHERE status = 'pending' ORDER BY queued_at ASC LIMIT 1"
-    );
-    if (!$row) {
-        return null;
-    }
-    $jobId = (int) $row['id'];
-    $db->update('bulk_publish_jobs', [
-        'status'     => 'running',
-        'started_at' => gmdate('Y-m-d H:i:s'),
-    ], 'id = ?', [$jobId]);
-    return $jobId;
-}
-
-function bp_markCompleted(Database $db, int $jobId, array $stats): void
-{
-    $db->update('bulk_publish_jobs', array_merge($stats, [
-        'status'       => 'completed',
-        'completed_at' => gmdate('Y-m-d H:i:s'),
-    ]), 'id = ?', [$jobId]);
-}
-
-function bp_markFailed(Database $db, int $jobId, string $error): void
-{
-    $db->update('bulk_publish_jobs', [
-        'status'        => 'failed',
-        'completed_at'  => gmdate('Y-m-d H:i:s'),
-        'error_message' => mb_strimwidth($error, 0, 4000, '...'),
-    ], 'id = ?', [$jobId]);
-}
+use SDS\Services\BulkPublishQueue;
 
 /**
  * Execute a single bulk publish cycle: compute eligibility, fan work
  * items out to parallel workers, poll until complete, clean up. All
- * progress goes to stdout so cms-sync.log captures it identically to
- * the pre-queue behaviour. Returns a stats array suitable for
- * bp_markCompleted().
+ * progress goes to stdout so cms-sync.log captures it. Live stats
+ * are written to bulk_publish_jobs on each polling cycle so the
+ * admin queue view can show real-time updates.
  */
 function bp_runOne(Database $db, string $basePath, int $jobId): array
 {
@@ -124,8 +61,8 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
     echo "\n[" . date('Y-m-d H:i:s') . "] Bulk SDS Publish starting (job #{$jobId})...\n";
 
     // ── Eligibility ──────────────────────────────────────────────
-    $eligibility        = BulkPublishController::computeEligibleFinishedGoods($db);
-    $resaleEligibility  = BulkPublishController::computeEligibleResaleItems($db);
+    $eligibility       = BulkPublishController::computeEligibleFinishedGoods($db);
+    $resaleEligibility = BulkPublishController::computeEligibleResaleItems($db);
 
     $fgs    = $eligibility['eligible'];
     $resale = $resaleEligibility['eligible'];
@@ -140,6 +77,7 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
         'published_count'       => 0,
         'failed_count'          => 0,
     ];
+    BulkPublishQueue::updateProgress($jobId, $stats);
 
     if (empty($fgs) && empty($resale)) {
         echo "  Nothing to publish.\n";
@@ -153,6 +91,7 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
     $totalItems  = count($workItems);
     $workerCount = BulkPublishController::getWorkerCount($totalItems);
     $stats['work_items_count'] = $totalItems;
+    BulkPublishQueue::updateProgress($jobId, $stats);
 
     echo "  Work items:       {$totalItems} (" . count($languages) . " languages × "
         . (count($fgs) + count($resale)) . " items + alias variants)\n";
@@ -188,8 +127,10 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
         $batchFiles[]    = $batchFile;
         $progressFiles[] = $progressFile;
 
+        // setsid + </dev/null so workers survive parent termination
+        // (FPM child reap would otherwise SIGHUP them before logs flush).
         $cmd = sprintf(
-            '%s %s %s %s %s > %s 2>&1 &',
+            'setsid %s %s %s %s %s < /dev/null > %s 2>&1 &',
             escapeshellarg(php_cli_binary()),
             escapeshellarg($basePath . '/scripts/publish-worker.php'),
             escapeshellarg($batchFile),
@@ -228,6 +169,13 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
             }
             if (empty($progress['complete'])) { $allComplete = false; }
         }
+
+        // Live push to the job row so the admin queue view + progress
+        // bar can tail without needing progress files.
+        BulkPublishQueue::updateProgress($jobId, [
+            'published_count' => $totalPublished,
+            'failed_count'    => $totalFailed,
+        ]);
 
         if ($allComplete) { break; }
 
@@ -270,55 +218,58 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
 $bp_db       = Database::getInstance();
 $bp_basePath = App::basePath();
 
-// Respect the admin toggle — off means "skip this cron-driven publish
-// entirely, but still allow the button-click flow on the admin page."
-$bp_row = $bp_db->fetch("SELECT `value` FROM settings WHERE `key` = 'cms_sync.auto_bulk_publish'");
-$bp_autoEnabled = $bp_row === null || ((string) $bp_row['value']) !== '0';
-if (!$bp_autoEnabled) {
-    echo "[" . date('Y-m-d H:i:s') . "] Auto bulk publish disabled via admin settings — skipping.\n";
-    return;
+// Detect whether we're being run as a top-level script vs required
+// from another script (cms-sync.php). Only the cms-sync path respects
+// the `cms_sync.auto_bulk_publish` toggle — standalone / spawned
+// invocations always run, so the admin button works even when the
+// cms-sync auto-publish is disabled.
+$bp_scriptName = basename($_SERVER['SCRIPT_FILENAME'] ?? ($_SERVER['SCRIPT_NAME'] ?? ''));
+$bp_requiredFromCmsSync = ($bp_scriptName !== '' && $bp_scriptName !== 'bulk-publish.php');
+
+if ($bp_requiredFromCmsSync) {
+    $bp_row = $bp_db->fetch("SELECT `value` FROM settings WHERE `key` = 'cms_sync.auto_bulk_publish'");
+    $bp_autoEnabled = $bp_row === null || ((string) $bp_row['value']) !== '0';
+    if (!$bp_autoEnabled) {
+        echo "[" . date('Y-m-d H:i:s') . "] Auto bulk publish disabled via admin settings — skipping.\n";
+        return;
+    }
+}
+
+// Parse optional --triggered-by / --user-id flags (used by the admin
+// button's background spawn). Defaults match cron invocation.
+$bp_triggeredBy       = 'cron';
+$bp_triggeredByUserId = null;
+foreach (array_slice($argv ?? [], 1) as $arg) {
+    if (preg_match('/^--triggered-by=(.+)$/', $arg, $m)) {
+        $bp_triggeredBy = $m[1];
+    } elseif (preg_match('/^--user-id=(\d+)$/', $arg, $m)) {
+        $bp_triggeredByUserId = (int) $m[1];
+    }
 }
 
 // 1. Enqueue (coalesced).
-$bp_jobId = bp_enqueue($bp_db, 'cron', null);
+$bp_jobId = BulkPublishQueue::enqueue($bp_triggeredBy, $bp_triggeredByUserId);
 
 // 2. Try to acquire the runner lock (non-blocking).
-$bp_lockRow  = $bp_db->fetch("SELECT GET_LOCK('bulk_publish_runner', 0) AS g");
-$bp_gotLock  = $bp_lockRow !== null && (int) ($bp_lockRow['g'] ?? 0) === 1;
-
-if (!$bp_gotLock) {
+if (!BulkPublishQueue::acquireLock()) {
     echo "[" . date('Y-m-d H:i:s') . "] Another bulk publish runner is active — job #{$bp_jobId} queued; the active runner will pick it up.\n";
     return;
 }
 
 // 3. Drain all pending jobs.
 try {
-    // If a previous runner crashed between claim and mark-done, its
-    // 'running' rows would sit there forever and never be retried.
-    // Because we just acquired the exclusive runner lock, any row
-    // still in 'running' at this point is necessarily orphaned —
-    // mark it failed so it's visible in the job history. Freshly
-    // enqueued pending rows will still run normally below.
-    $bp_db->query(
-        "UPDATE bulk_publish_jobs
-            SET status = 'failed',
-                completed_at = UTC_TIMESTAMP(),
-                error_message = CONCAT(
-                    'Orphaned: previous runner crashed (auto-failed at ', UTC_TIMESTAMP(), ')'
-                )
-          WHERE status = 'running'"
-    );
+    BulkPublishQueue::reapOrphanedRunning();
 
-    while (($jobId = bp_claimNextPending($bp_db)) !== null) {
+    while (($jobId = BulkPublishQueue::claimNextPending()) !== null) {
         try {
             $stats = bp_runOne($bp_db, $bp_basePath, $jobId);
-            bp_markCompleted($bp_db, $jobId, $stats);
+            BulkPublishQueue::markCompleted($jobId, $stats);
         } catch (\Throwable $e) {
-            bp_markFailed($bp_db, $jobId, $e->getMessage());
+            BulkPublishQueue::markFailed($jobId, $e->getMessage());
             echo "  Job #{$jobId} failed: " . $e->getMessage() . "\n";
             // Keep draining — a single failure shouldn't block the queue.
         }
     }
 } finally {
-    $bp_db->query("SELECT RELEASE_LOCK('bulk_publish_runner')");
+    BulkPublishQueue::releaseLock();
 }

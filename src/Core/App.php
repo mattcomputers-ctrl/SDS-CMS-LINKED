@@ -225,10 +225,15 @@ class App
         $router->post('/prop65/{id}/delete', 'AdminController@deleteProp65');
 
         // ── Bulk SDS Publish (permission-gated) ─────────────────────
-        $router->get('/bulk-publish',                    'BulkPublishController@page');
-        $router->post('/bulk-publish/start',             'BulkPublishController@start');
-        $router->get('/bulk-publish/progress/{token}',   'BulkPublishController@progress');
-        $router->post('/bulk-publish/stop/{token}',      'BulkPublishController@stop');
+        $router->get('/bulk-publish',                           'BulkPublishController@page');
+        $router->post('/bulk-publish/start',                    'BulkPublishController@start');
+        $router->get('/bulk-publish/progress/{token}',          'BulkPublishController@progress');
+        $router->post('/bulk-publish/stop/{token}',             'BulkPublishController@stop');
+        // ── Queue management ───────────────────────────────────────
+        $router->get('/bulk-publish/queue',                     'BulkPublishController@queue');
+        $router->get('/bulk-publish/queue/{id}/status',         'BulkPublishController@queueStatus');
+        $router->post('/bulk-publish/queue/{id}/dismiss',       'BulkPublishController@dismissQueued');
+        $router->post('/bulk-publish/queue/{id}/force-fail',    'BulkPublishController@forceFailQueued');
 
         // ── Manufacturers ────────────────────────────────────────
         $router->get('/manufacturers',                     'ManufacturerController@index');

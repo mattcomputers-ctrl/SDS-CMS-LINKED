@@ -1,5 +1,10 @@
 <?php include dirname(__DIR__) . '/layouts/main.php'; ?>
 
+<div class="d-flex justify-between align-center mb-1">
+    <h2 style="margin:0;">Bulk SDS Publish</h2>
+    <a href="/bulk-publish/queue" class="btn btn-outline">View Queue</a>
+</div>
+
 <p class="text-muted mb-1">Generate and publish a new SDS version for every eligible finished good <em>and</em> resale item (all languages). An item is eligible only when:</p>
 <ul class="text-muted" style="margin-top: 0; margin-bottom: 0.75rem;">
     <li><strong>Every</strong> raw material in its formula (or for a resale item, the source raw material itself) has been edited by a user at least once (any audit-log entry qualifies — even just adding a note). RMs that have only been imported from CMS and never reviewed block their item.</li>
@@ -109,6 +114,13 @@
 
     if (!form) return;
 
+    // The start button enqueues a job through BulkPublishQueue and
+    // returns its id. We then poll /bulk-publish/queue/{id}/status —
+    // reading job row fields instead of token-based progress files —
+    // so the UI works the same whether we're the runner or queued
+    // behind another active run.
+    var currentJobId = null;
+
     form.addEventListener('submit', function(e) {
         e.preventDefault();
         btn.disabled = true;
@@ -118,6 +130,10 @@
         errorEl.style.display    = 'none';
         errorsEl.style.display   = 'none';
         logsEl.style.display     = 'none';
+        msgEl.textContent = 'Queuing job...';
+        barEl.style.width = '0%';
+        barEl.style.background = '#003366';
+        pctEl.textContent = '0%';
 
         var formData = new FormData(form);
 
@@ -131,20 +147,20 @@
                 showError(data.error);
                 return;
             }
-            currentToken = data.token;
-            pollProgress(data.token);
+            currentJobId = data.job_id;
+            pollJobStatus(currentJobId);
         })
         .catch(function(err) {
             showError('Network error: ' + err.message);
         });
     });
 
-    // Stop button — signals workers to finish their current item and exit.
-    var currentToken = null;
+    // Stop button = force-fail the running job + SIGTERM any surviving
+    // workers. Takes effect via the queue's force-fail endpoint.
     if (stopBtn) {
         stopBtn.addEventListener('click', function() {
-            if (!currentToken) return;
-            if (!confirm('Stop this bulk publish? Already-published SDSs are kept; in-flight items finish and remaining items are cancelled.')) return;
+            if (!currentJobId) return;
+            if (!confirm('Stop this bulk publish?\n\nAlready-published SDSs are kept. Surviving publish-worker processes are sent SIGTERM — each finishes its current item before exiting.')) return;
             stopBtn.disabled   = true;
             stopBtn.textContent = 'Stopping…';
 
@@ -152,96 +168,84 @@
             var csrf = document.querySelector('input[name="_csrf_token"]');
             if (csrf) fd.append('_csrf_token', csrf.value);
 
-            fetch('/bulk-publish/stop/' + currentToken, {
+            fetch('/bulk-publish/queue/' + currentJobId + '/force-fail', {
                 method: 'POST',
                 body:   fd,
+                redirect: 'manual'
             })
-            .then(function(res) { return res.json(); })
-            .then(function(data) {
-                if (data.error) {
-                    alert('Stop failed: ' + data.error);
-                    stopBtn.disabled = false;
-                    stopBtn.textContent = 'Stop';
-                }
-            })
-            .catch(function(err) {
-                alert('Stop failed: ' + err.message);
-                stopBtn.disabled = false;
-                stopBtn.textContent = 'Stop';
+            .catch(function () { /* redirect on success, ignore */ })
+            .finally(function () {
+                // Poll will pick up the 'failed' status on next tick.
             });
         });
     }
 
-    function pollProgress(token) {
-        var interval = setInterval(function() {
-            fetch('/bulk-publish/progress/' + token)
-            .then(function(res) { return res.json(); })
-            .then(function(data) {
-                if (data.error && !data.total) {
+    function pollJobStatus(jobId) {
+        var interval = setInterval(function () {
+            fetch('/bulk-publish/queue/' + jobId + '/status')
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.error) {
                     clearInterval(interval);
                     showError(data.error);
                     return;
                 }
+                var job = data.job || {};
+                var status   = job.status || 'pending';
+                var total    = parseInt(job.work_items_count || 0, 10);
+                var pub      = parseInt(job.published_count  || 0, 10);
+                var failed   = parseInt(job.failed_count     || 0, 10);
+                var done     = pub + failed;
+                var pct      = total > 0 ? Math.round((done / total) * 1000) / 10 : 0;
 
-                var pct = data.percent || 0;
                 barEl.style.width = pct + '%';
                 pctEl.textContent = pct + '%';
-                msgEl.textContent = data.message || 'Processing...';
+                msgEl.textContent = buildStatusMessage(status, job, done, total, pub, failed);
 
-                if (data.complete) {
+                if (status === 'completed' || status === 'failed') {
                     clearInterval(interval);
-
-                    var hasProblem = data.error || (data.failed > 0);
+                    var hasProblem = (status === 'failed') || failed > 0;
 
                     barEl.style.width = '100%';
                     barEl.style.background = hasProblem ? '#dc3545' : '#28a745';
-                    pctEl.textContent = data.percent + '%';
+                    pctEl.textContent = '100%';
 
-                    completeHeading.textContent = data.error ? 'Bulk Publish Failed' : 'Bulk Publish Complete!';
+                    completeHeading.textContent = (status === 'failed') ? 'Bulk Publish Failed' : 'Bulk Publish Complete!';
                     completeAlert.className = 'alert ' + (hasProblem ? 'alert-danger' : 'alert-success');
-                    completeMsgEl.textContent = ' ' + (data.published || 0) + ' PDFs published'
-                        + (data.failed > 0 ? ', ' + data.failed + ' failed' : '') + '.';
+                    completeMsgEl.textContent = ' ' + pub + ' PDFs published'
+                        + (failed > 0 ? ', ' + failed + ' failed' : '') + '.';
                     completeEl.style.display = 'block';
 
-                    // Show error details if any
-                    if (data.errors && data.errors.length > 0) {
+                    if (job.error_message) {
                         errorListEl.innerHTML = '';
-                        data.errors.forEach(function(err) {
-                            var li = document.createElement('li');
-                            li.textContent = err;
-                            errorListEl.appendChild(li);
-                        });
+                        var li = document.createElement('li');
+                        li.textContent = job.error_message;
+                        errorListEl.appendChild(li);
                         errorsEl.style.display = 'block';
-                    }
-
-                    // Show worker logs if any
-                    if (data.worker_logs && Object.keys(data.worker_logs).length > 0) {
-                        logEntriesEl.innerHTML = '';
-                        Object.keys(data.worker_logs).forEach(function(label) {
-                            var h = document.createElement('strong');
-                            h.textContent = label;
-                            h.style.display = 'block';
-                            h.style.marginTop = '0.5rem';
-                            var pre = document.createElement('pre');
-                            pre.textContent = data.worker_logs[label];
-                            pre.style.cssText = 'background:#1e1e1e;color:#f1f1f1;padding:0.75rem;border-radius:4px;font-size:0.8rem;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all;';
-                            logEntriesEl.appendChild(h);
-                            logEntriesEl.appendChild(pre);
-                        });
-                        logsEl.style.display = 'block';
                     }
 
                     btn.disabled = false;
                     btn.textContent = 'Publish All SDS';
-                } else if (data.error) {
-                    clearInterval(interval);
-                    showError(data.message || 'Bulk publish failed.');
                 }
             })
-            .catch(function() {
-                // Network blip — keep polling
-            });
-        }, 500);
+            .catch(function () { /* network blip — keep polling */ });
+        }, 2000);
+    }
+
+    function buildStatusMessage(status, job, done, total, pub, failed) {
+        if (status === 'pending') {
+            return 'Queued as job #' + job.id + ' — waiting for an available runner.';
+        }
+        if (status === 'running') {
+            if (total > 0) {
+                return 'Running job #' + job.id + ': ' + done + ' / ' + total + ' items ('
+                    + pub + ' published, ' + failed + ' failed).';
+            }
+            return 'Running job #' + job.id + ': computing eligibility...';
+        }
+        if (status === 'completed') return 'Job #' + job.id + ' completed.';
+        if (status === 'failed')    return 'Job #' + job.id + ' failed: ' + (job.error_message || 'see logs');
+        return 'Job #' + job.id + ' — ' + status;
     }
 
     function showError(msg) {

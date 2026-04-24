@@ -8,6 +8,7 @@ use SDS\Core\App;
 use SDS\Core\CSRF;
 use SDS\Core\Database;
 use SDS\Services\AuditService;
+use SDS\Services\BulkPublishQueue;
 
 /**
  * BulkPublishController — Publish new SDS versions for all finished goods (admin only).
@@ -604,122 +605,174 @@ class BulkPublishController
         }
         CSRF::validateRequest();
 
-        $db = Database::getInstance();
+        $userId  = current_user_id();
+        $jobId   = BulkPublishQueue::enqueue('manual', $userId);
 
-        // Compute eligible FGs with full recursion through FG sub-components.
-        // See computeEligibleFinishedGoods() for the full rule set.
-        $eligibility = self::computeEligibleFinishedGoods($db);
-        $finishedGoods = $eligibility['eligible'];
-
-        // Resale items: purchased RMs sold as-is. Same review rule as FGs,
-        // but the work items point at an RM id with type='resale' so the
-        // worker knows to take the resale composition path.
-        $resaleEligibility = self::computeEligibleResaleItems($db);
-        $resaleItems       = $resaleEligibility['eligible'];
-
-        if (empty($finishedGoods) && empty($resaleItems)) {
-            $this->jsonResponse(['error' => 'No eligible finished goods or resale items to publish. Every raw material in the formula (through all FG sub-components) must have been reviewed by a user, or have an active CAS determination on one of its constituents. If a finished good or resale item already has an up-to-date SDS, it is also skipped.']);
-            return;
-        }
-
-        // Create progress directory
-        $basePath    = App::basePath();
-        $progressDir = $basePath . self::PROGRESS_DIR;
-        if (!is_dir($progressDir)) {
-            mkdir($progressDir, 0755, true);
-        }
-
-        $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
-
-        $workItems = self::buildWorkItems($db, $finishedGoods, $resaleItems, $languages);
-
-        $token       = bin2hex(random_bytes(8));
-        $totalItems  = count($workItems);
-        $workerCount = self::getWorkerCount($totalItems);
-        $userId      = current_user_id();
-
-        // Write the master progress file (used by progress endpoint)
-        $masterFile = $progressDir . '/publish_progress_' . $token . '.json';
-        file_put_contents($masterFile, json_encode([
-            'current' => 0, 'total' => $totalItems, 'percent' => 0,
-            'message' => 'Starting bulk publish with ' . $workerCount . ' workers...',
-            'complete' => false, 'error' => false, 'workers' => $workerCount,
-        ]), LOCK_EX);
-
-        // Split work items into batches and write batch files
-        $batches = array_chunk($workItems, (int) ceil($totalItems / $workerCount));
-        $workerProgressFiles = [];
-        $batchFiles = [];
-
-        for ($w = 0; $w < count($batches); $w++) {
-            $batchFile    = $progressDir . '/publish_batch_' . $token . '_' . $w . '.json';
-            $workerFile   = $progressDir . '/publish_worker_' . $token . '_' . $w . '.json';
-
-            file_put_contents($batchFile, json_encode($batches[$w]));
-            file_put_contents($workerFile, json_encode([
-                'total' => count($batches[$w]), 'processed' => 0,
-                'published' => 0, 'failed' => 0, 'errors' => [], 'complete' => false,
-            ]), LOCK_EX);
-
-            $batchFiles[] = $batchFile;
-            $workerProgressFiles[] = $workerFile;
-        }
-
-        // Write manifest so progress endpoint knows the worker + log files
-        $manifestFile = $progressDir . '/publish_manifest_' . $token . '.json';
-        $logDir       = $basePath . '/storage/logs';
-        if (!is_dir($logDir)) {
-            mkdir($logDir, 0755, true);
-        }
-        $logFiles = [];
-        for ($w = 0; $w < count($batches); $w++) {
-            $logFiles[] = $logDir . '/publish_worker_' . $token . '_' . $w . '.log';
-        }
-        file_put_contents($manifestFile, json_encode([
-            'total'          => $totalItems,
-            'worker_files'   => $workerProgressFiles,
-            'log_files'      => $logFiles,
-            'master_file'    => $masterFile,
-        ]), LOCK_EX);
-
-        // Flush JSON response to browser
-        $this->jsonResponse([
-            'token' => $token,
-            'total' => $totalItems,
-        ]);
-
+        // Flush JSON response before spawning the background runner so
+        // the admin UI doesn't block on FPM until the orchestrator exits.
+        $this->jsonResponse(['job_id' => $jobId]);
         if (function_exists('fastcgi_finish_request')) {
             fastcgi_finish_request();
         }
 
-        // Spawn parallel worker processes (stderr → log file for debugging).
+        // Spawn cron/bulk-publish.php as a detached background process.
+        // The script enqueue+drain logic handles everything from here:
+        //   - If no runner is active, it acquires the lock and runs our job.
+        //   - If a runner is active (cron mid-flight, or another manual
+        //     click), it exits cleanly and the active runner picks up our
+        //     pending row when it finishes the current job.
         //
-        // The command has to survive the end of this PHP-FPM request:
-        //  - `setsid` puts the worker in its own session so Apache can't
-        //    deliver SIGHUP when it reaps the FPM child that fired exec().
-        //  - `< /dev/null` detaches stdin so nothing on the parent end
-        //    keeps the child's pipe open.
-        //  - `> logFile 2>&1 &` redirects both streams and backgrounds,
-        //    same as before.
-        // Without setsid + </dev/null, backgrounded workers get killed
-        // by FPM before they can open their log file, which is exactly
-        // what happened here: the UI returned a token but no worker
-        // ever produced a row or a log entry.
-        $workerScript = $basePath . '/scripts/publish-worker.php';
-        $phpBin       = php_cli_binary();
+        // setsid + </dev/null detaches from the FPM child so the process
+        // survives request teardown, same pattern the worker spawn uses.
+        $basePath = App::basePath();
+        $logFile  = $basePath . '/storage/logs/cms-sync.log';
+        $cmd = sprintf(
+            'setsid %s %s --triggered-by=manual --user-id=%s < /dev/null >> %s 2>&1 &',
+            escapeshellarg(php_cli_binary()),
+            escapeshellarg($basePath . '/cron/bulk-publish.php'),
+            escapeshellarg((string) (int) $userId),
+            escapeshellarg($logFile)
+        );
+        exec($cmd);
+    }
 
-        for ($w = 0; $w < count($batches); $w++) {
-            $cmd = sprintf(
-                'setsid %s %s %s %s %s < /dev/null > %s 2>&1 &',
-                escapeshellarg($phpBin),
-                escapeshellarg($workerScript),
-                escapeshellarg($batchFiles[$w]),
-                escapeshellarg($workerProgressFiles[$w]),
-                escapeshellarg((string) $userId),
-                escapeshellarg($logFiles[$w])
-            );
-            exec($cmd);
+    /**
+     * GET /bulk-publish/queue — admin view of the publish-job queue.
+     */
+    public function queue(): void
+    {
+        if (!can_read('bulk_publish')) {
+            redirect('/');
+            return;
         }
+
+        $db = Database::getInstance();
+        $jobs = $db->fetchAll(
+            "SELECT bpj.*, u.display_name AS user_name
+             FROM bulk_publish_jobs bpj
+             LEFT JOIN users u ON u.id = bpj.triggered_by_user_id
+             ORDER BY bpj.queued_at DESC
+             LIMIT 50"
+        );
+
+        // Active worker count — helps the admin confirm a dead runner
+        // if a 'running' job has been sitting idle with no workers.
+        $activeWorkers = 0;
+        $psOutput = @shell_exec("pgrep -af 'scripts/publish-worker\\.php' 2>/dev/null");
+        if (is_string($psOutput) && $psOutput !== '') {
+            $activeWorkers = count(array_filter(explode("\n", trim($psOutput))));
+        }
+
+        view('admin/bulk-publish-queue', [
+            'pageTitle'     => 'Bulk Publish Queue',
+            'jobs'          => $jobs,
+            'activeWorkers' => $activeWorkers,
+        ]);
+    }
+
+    /**
+     * GET /bulk-publish/queue/{id}/status — JSON status for live polling.
+     */
+    public function queueStatus(string $id): void
+    {
+        if (!can_edit('bulk_publish')) {
+            $this->jsonResponse(['error' => 'Forbidden'], 403);
+            return;
+        }
+
+        $db  = Database::getInstance();
+        $job = $db->fetch(
+            "SELECT * FROM bulk_publish_jobs WHERE id = ?",
+            [(int) $id]
+        );
+        if (!$job) {
+            $this->jsonResponse(['error' => 'Job not found'], 404);
+            return;
+        }
+        $this->jsonResponse(['job' => $job]);
+    }
+
+    /**
+     * POST /bulk-publish/queue/{id}/dismiss — cancel a pending job.
+     *
+     * Safe: just marks the row failed so the drainer skips it. No
+     * processes to kill because pending jobs aren't running yet.
+     */
+    public function dismissQueued(string $id): void
+    {
+        if (!can_edit('bulk_publish')) {
+            $_SESSION['_flash']['error'] = 'Permission denied.';
+            redirect('/bulk-publish/queue');
+            return;
+        }
+        CSRF::validateRequest();
+
+        $db  = Database::getInstance();
+        $job = $db->fetch("SELECT id, status FROM bulk_publish_jobs WHERE id = ?", [(int) $id]);
+        if (!$job) {
+            $_SESSION['_flash']['error'] = 'Job not found.';
+            redirect('/bulk-publish/queue');
+            return;
+        }
+        if ($job['status'] !== 'pending') {
+            $_SESSION['_flash']['error'] = 'Only pending jobs can be dismissed. Use "Force fail" for running jobs.';
+            redirect('/bulk-publish/queue');
+            return;
+        }
+
+        $db->update('bulk_publish_jobs', [
+            'status'        => 'failed',
+            'completed_at'  => gmdate('Y-m-d H:i:s'),
+            'error_message' => 'Dismissed from queue by admin (' . (current_user_id() ?? '?') . ')',
+        ], 'id = ?', [(int) $id]);
+
+        AuditService::log('bulk_publish_job', $id, 'dismiss');
+        $_SESSION['_flash']['success'] = "Job #{$id} dismissed from the queue.";
+        redirect('/bulk-publish/queue');
+    }
+
+    /**
+     * POST /bulk-publish/queue/{id}/force-fail — force-fail a stuck
+     * running job and kill any orphaned worker processes.
+     *
+     * Use when a 'running' row has been sitting with no active workers
+     * (runner crashed) or when workers are hung and should be stopped.
+     */
+    public function forceFailQueued(string $id): void
+    {
+        if (!can_edit('bulk_publish')) {
+            $_SESSION['_flash']['error'] = 'Permission denied.';
+            redirect('/bulk-publish/queue');
+            return;
+        }
+        CSRF::validateRequest();
+
+        $db  = Database::getInstance();
+        $job = $db->fetch("SELECT id, status FROM bulk_publish_jobs WHERE id = ?", [(int) $id]);
+        if (!$job) {
+            $_SESSION['_flash']['error'] = 'Job not found.';
+            redirect('/bulk-publish/queue');
+            return;
+        }
+        if ($job['status'] !== 'running') {
+            $_SESSION['_flash']['error'] = 'Only running jobs can be force-failed.';
+            redirect('/bulk-publish/queue');
+            return;
+        }
+
+        // Kill any surviving worker processes. SIGTERM gives each worker
+        // a chance to finish its current item cleanly before exiting.
+        @shell_exec("pkill -SIGTERM -f 'scripts/publish-worker\\.php' 2>/dev/null");
+
+        $db->update('bulk_publish_jobs', [
+            'status'        => 'failed',
+            'completed_at'  => gmdate('Y-m-d H:i:s'),
+            'error_message' => 'Force-failed from queue by admin (' . (current_user_id() ?? '?') . '); workers sent SIGTERM',
+        ], 'id = ?', [(int) $id]);
+
+        AuditService::log('bulk_publish_job', $id, 'force_fail');
+        $_SESSION['_flash']['warning'] = "Job #{$id} force-failed. Any orphaned worker processes were sent SIGTERM — verify with `pgrep -af publish-worker`.";
+        redirect('/bulk-publish/queue');
     }
 
     /**

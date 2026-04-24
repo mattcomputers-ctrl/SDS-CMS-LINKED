@@ -49,6 +49,18 @@ use SDS\Services\BulkPublishQueue;
 use SDS\Services\SDSAutoSendService;
 
 /**
+ * Count publish-worker.php processes matching this run's token, so
+ * the poll loop can detect "workers died mid-batch" (via external
+ * pkill or crash) and stop waiting for a completion that will never
+ * arrive. Returns 0 if pgrep finds nothing.
+ */
+function bp_countWorkerProcesses(string $token): int
+{
+    $out = @shell_exec("pgrep -cf " . escapeshellarg('publish-worker\.php.*' . $token) . " 2>/dev/null");
+    return is_string($out) ? (int) trim($out) : 0;
+}
+
+/**
  * Execute a single bulk publish cycle: compute eligibility, fan work
  * items out to parallel workers, poll until complete, clean up. All
  * progress goes to stdout so cms-sync.log captures it. Live stats
@@ -143,10 +155,20 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
     }
 
     // ── Poll progress ────────────────────────────────────────────
-    $lastReportAt   = 0;
-    $totalPublished = 0;
-    $totalFailed    = 0;
-    $errors         = [];
+    // Deadness check: if every publish-worker process has exited and
+    // some progress files still say complete=false, the workers died
+    // mid-batch (most commonly from an external SIGTERM/SIGKILL via
+    // pkill, or a segfault) and no one will ever mark them complete.
+    // We also guard against workers that are alive but hung (no
+    // progress advancing for a long time) so the runner can't spin
+    // forever holding the queue's GET_LOCK.
+    $lastReportAt       = 0;
+    $totalPublished     = 0;
+    $totalFailed        = 0;
+    $errors             = [];
+    $lastProgressKey    = '';
+    $lastProgressChange = time();
+    $stallTimeoutSec    = 180; // 3 min of zero progress with no live workers → give up
 
     while (true) {
         $allComplete    = true;
@@ -179,6 +201,42 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
         ]);
 
         if ($allComplete) { break; }
+
+        // Track whether we've seen any forward motion.
+        $progressKey = "{$totalProcessed}:{$totalPublished}:{$totalFailed}";
+        if ($progressKey !== $lastProgressKey) {
+            $lastProgressKey    = $progressKey;
+            $lastProgressChange = time();
+        }
+
+        // If no worker processes are alive AND counts aren't moving,
+        // workers died mid-batch (pkill or crash). Throw so the caller
+        // marks this job failed — partial published/failed counts
+        // already went to the job row via updateProgress above, so
+        // the audit is preserved.
+        $workersAlive = bp_countWorkerProcesses($token);
+        $stalledFor   = time() - $lastProgressChange;
+        if ($workersAlive === 0 && $stalledFor >= 10) {
+            echo "  [" . date('H:i:s') . "] WARNING: no publish-worker processes alive "
+                . "(progress: {$totalProcessed}/{$totalTotal}) — aborting poll loop.\n";
+            foreach (array_merge($batchFiles, $progressFiles) as $file) { @unlink($file); }
+            throw new \RuntimeException(sprintf(
+                'Workers died before marking complete: %d/%d processed (published=%d, failed=%d). '
+                . 'Likely cause: external pkill or segfault. Remaining work will be picked up '
+                . 'on the next bulk publish trigger.',
+                $totalProcessed, $totalTotal, $totalPublished, $totalFailed
+            ));
+        }
+        if ($stalledFor >= $stallTimeoutSec) {
+            echo "  [" . date('H:i:s') . "] WARNING: no progress for {$stalledFor}s "
+                . "(workers alive: {$workersAlive}) — aborting poll loop.\n";
+            foreach (array_merge($batchFiles, $progressFiles) as $file) { @unlink($file); }
+            throw new \RuntimeException(sprintf(
+                'Stalled: no progress for %ds with %d workers alive. Remaining work will be '
+                . 'picked up on the next bulk publish trigger.',
+                $stalledFor, $workersAlive
+            ));
+        }
 
         if (time() - $lastReportAt >= 30) {
             echo "  [" . date('H:i:s') . "] Progress: {$totalProcessed}/{$totalTotal} "

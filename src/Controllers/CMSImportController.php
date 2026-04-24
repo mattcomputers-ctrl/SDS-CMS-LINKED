@@ -151,16 +151,19 @@ class CMSImportController
         }
 
         try {
-            $service = new CMSImportService();
+            $service    = new CMSImportService();
             $incomplete = $service->getIncompleteRawMaterials();
+            $unblockers = $service->getSingleBlockerImpact();
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = 'Could not load incomplete materials: ' . $e->getMessage();
             $incomplete = [];
+            $unblockers = [];
         }
 
         view('cms-import/incomplete', [
             'pageTitle'  => 'Incomplete Raw Materials',
             'incomplete' => $incomplete,
+            'unblockers' => $unblockers,
         ]);
     }
 }

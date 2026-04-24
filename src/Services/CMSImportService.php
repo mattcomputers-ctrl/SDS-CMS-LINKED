@@ -837,6 +837,146 @@ class CMSImportService
         return $rows;
     }
 
+    /**
+     * Unreviewed raw materials ranked by how many finished goods would
+     * become eligible for bulk SDS publish if ONLY that RM is reviewed —
+     * i.e. RMs that are the *single* remaining blocker for at least one FG.
+     *
+     * Helps prioritize review work by leverage. Reviewing the top row of
+     * this list unblocks the most SDSs per unit of effort. RMs that share
+     * blocking with another unreviewed RM (i.e. an FG has ≥2 unreviewed
+     * RMs in its formula tree) are excluded — reviewing just one of those
+     * wouldn't unblock anything on its own.
+     *
+     * Returns rows with:
+     *   id, internal_code, supplier, supplier_product_name, cms_item_code,
+     *   created_at, unblock_count, example_fgs (up to 5), all_fgs.
+     * Sorted by unblock_count DESC, then internal_code ASC.
+     */
+    public function getSingleBlockerImpact(): array
+    {
+        // RMs that are already reviewed — they can't be blockers.
+        $reviewedRms = \SDS\Services\SDSReadinessService::loadReviewedRmIds($this->db);
+
+        // Same tree-walk shape as getIncompleteRawMaterials(): build the
+        // formula graph in memory so we can accumulate the transitive
+        // RM closure per FG cheaply.
+        $linesByFormula = [];
+        foreach ($this->db->fetchAll(
+            "SELECT formula_id, raw_material_id, finished_good_component_id FROM formula_lines"
+        ) as $r) {
+            $linesByFormula[(int) $r['formula_id']][] = [
+                'rm' => $r['raw_material_id']           !== null ? (int) $r['raw_material_id']           : null,
+                'fg' => $r['finished_good_component_id'] !== null ? (int) $r['finished_good_component_id'] : null,
+            ];
+        }
+
+        $fgToFormulaId = [];
+        foreach ($this->db->fetchAll(
+            "SELECT id, finished_good_id FROM formulas WHERE is_current = 1"
+        ) as $r) {
+            $fgToFormulaId[(int) $r['finished_good_id']] = (int) $r['id'];
+        }
+
+        $activeFgs = $this->db->fetchAll(
+            "SELECT id, product_code FROM finished_goods WHERE is_active = 1"
+        );
+
+        $cache = [];
+        $walk = function (int $formulaId, array $visited) use (&$walk, $linesByFormula, $fgToFormulaId, &$cache) {
+            if (isset($cache[$formulaId])) {
+                return $cache[$formulaId];
+            }
+            if (isset($visited[$formulaId])) {
+                return []; // cycle guard
+            }
+            $visited[$formulaId] = true;
+
+            $rms = [];
+            foreach ($linesByFormula[$formulaId] ?? [] as $line) {
+                if ($line['rm'] !== null) {
+                    $rms[$line['rm']] = true;
+                } elseif ($line['fg'] !== null) {
+                    $subFormulaId = $fgToFormulaId[$line['fg']] ?? null;
+                    if ($subFormulaId !== null) {
+                        foreach ($walk($subFormulaId, $visited) as $rmId => $_) {
+                            $rms[$rmId] = true;
+                        }
+                    }
+                }
+            }
+
+            $cache[$formulaId] = $rms;
+            return $rms;
+        };
+
+        // For each active FG, find its unreviewed RMs. If the count is
+        // exactly 1, that RM is the single blocker for this FG.
+        $blockerImpact = []; // rm_id => ['fgs' => [product_code, …]]
+        foreach ($activeFgs as $fg) {
+            $formulaId = $fgToFormulaId[(int) $fg['id']] ?? null;
+            if ($formulaId === null) {
+                continue;
+            }
+
+            $sole = null;
+            foreach (array_keys($walk($formulaId, [])) as $rmId) {
+                if (isset($reviewedRms[$rmId])) {
+                    continue;
+                }
+                if ($sole === null) {
+                    $sole = $rmId;
+                } else {
+                    // Second unreviewed RM — this FG has >1 blocker.
+                    $sole = false;
+                    break;
+                }
+            }
+
+            if (is_int($sole)) {
+                $blockerImpact[$sole]['fgs'][] = $fg['product_code'];
+            }
+        }
+
+        if (empty($blockerImpact)) {
+            return [];
+        }
+
+        // Pull metadata for the RMs we care about, keeping existing
+        // cms_import_log join pattern so CMS codes appear when available.
+        $rmIds = array_keys($blockerImpact);
+        $placeholders = implode(',', array_fill(0, count($rmIds), '?'));
+        $rmsMeta = $this->db->fetchAll(
+            "SELECT rm.id, rm.internal_code, rm.supplier, rm.supplier_product_name, rm.created_at,
+                    cil.cms_item_code
+             FROM raw_materials rm
+             LEFT JOIN cms_import_log cil
+                    ON cil.entity_type = 'raw_material' AND cil.entity_id = rm.id
+             WHERE rm.id IN ({$placeholders})",
+            $rmIds
+        );
+
+        $result = [];
+        foreach ($rmsMeta as $row) {
+            $rmId = (int) $row['id'];
+            $fgs  = $blockerImpact[$rmId]['fgs'] ?? [];
+            sort($fgs);
+            $row['unblock_count'] = count($fgs);
+            $row['example_fgs']   = array_slice($fgs, 0, 5);
+            $row['all_fgs']       = $fgs;
+            $result[] = $row;
+        }
+
+        usort($result, function (array $a, array $b): int {
+            if ($a['unblock_count'] !== $b['unblock_count']) {
+                return $b['unblock_count'] <=> $a['unblock_count'];
+            }
+            return strcmp($a['internal_code'], $b['internal_code']);
+        });
+
+        return $result;
+    }
+
     /* ------------------------------------------------------------------
      *  Phase 5: Import Aliases
      * ----------------------------------------------------------------*/

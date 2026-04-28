@@ -596,16 +596,20 @@ class PDFService
                 $name  = (string) ($comp['chemical_name'] ?? '');
                 $conc  = (string) ($comp['concentration_range'] ?? '');
 
-                // Chemical names can be very long (e.g. IUPAC names with
-                // bracketed acyl groups); Cell() silently runs off the
-                // page edge. Measure wrapped height for the name column
-                // and render all four cells with matching MultiCell heights
-                // so borders line up and the row grows downward.
-                $nameLines = max(1, (int) $pdf->getNumLines($name, $w[1]));
-                $rowH      = max(5, $nameLines * 4);
+                // Use TCPDF's getStringHeight to compute the true rendered
+                // height (accounts for cellHeightRatio × font size × actual
+                // wrap behaviour). Previously used `getNumLines * 4mm`
+                // which underestimated at 8pt — MultiCell with $maxh too
+                // small would silently truncate and the overflow would
+                // bleed into adjacent columns.
+                $rowH = max(
+                    5,
+                    $pdf->getStringHeight($w[1], $name),
+                    $pdf->getStringHeight($w[3], $hCodes)
+                );
 
                 $pdf->MultiCell($w[0], $rowH, $cas,    1, 'C', false, 0, '', '', true, 0, false, true, $rowH, 'M');
-                $pdf->MultiCell($w[1], $rowH, $name,   1, 'L', false, 0, '', '', true, 0, false, true, $rowH, 'M');
+                $pdf->MultiCell($w[1], $rowH, $name,   1, 'L', false, 0, '', '', true, 0, false, true, $rowH, 'T');
                 $pdf->MultiCell($w[2], $rowH, $conc,   1, 'C', false, 0, '', '', true, 0, false, true, $rowH, 'M');
                 $pdf->MultiCell($w[3], $rowH, $hCodes, 1, 'C', false, 1, '', '', true, 0, false, true, $rowH, 'M');
             }
@@ -646,14 +650,14 @@ class PDFService
                 $concPct = (string) round((float) ($el['concentration_pct'] ?? 0), 2);
                 $notes   = (string) ($el['notes']         ?? '');
 
-                // Chemical names and notes used to be substr()-truncated
-                // (28 / 25 chars); now they wrap. Row height takes the
-                // max line count across both wrapping columns so the
-                // row doesn't cut off a long notes field when the name
-                // is short, or vice versa.
-                $nameLines  = max(1, (int) $pdf->getNumLines($name,  $w[1]));
-                $notesLines = max(1, (int) $pdf->getNumLines($notes, $w[6]));
-                $rowH       = max(5, max($nameLines, $notesLines) * 4);
+                // getStringHeight gives the actual rendered height — using
+                // getNumLines * 4 underestimated at 7pt, causing MultiCell
+                // to silently truncate long names/notes and overflow.
+                $rowH = max(
+                    5,
+                    $pdf->getStringHeight($w[1], $name),
+                    $pdf->getStringHeight($w[6], $notes)
+                );
 
                 $pdf->MultiCell($w[0], $rowH, $cas,     1, 'C', false, 0, '', '', true, 0, false, true, $rowH, 'M');
                 $pdf->MultiCell($w[1], $rowH, $name,    1, 'L', false, 0, '', '', true, 0, false, true, $rowH, 'M');

@@ -151,19 +151,22 @@ class CMSImportController
         }
 
         try {
-            $service    = new CMSImportService();
-            $incomplete = $service->getIncompleteRawMaterials();
-            $unblockers = $service->getSingleBlockerImpact();
+            $service     = new CMSImportService();
+            $incomplete  = $service->getIncompleteRawMaterials();
+            $unblockers  = $service->getSingleBlockerImpact();
+            $tradeSecret = $service->getTradeSecretRawMaterials();
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = 'Could not load incomplete materials: ' . $e->getMessage();
-            $incomplete = [];
-            $unblockers = [];
+            $incomplete  = [];
+            $unblockers  = [];
+            $tradeSecret = [];
         }
 
         view('cms-import/incomplete', [
-            'pageTitle'  => 'Incomplete Raw Materials',
-            'incomplete' => $incomplete,
-            'unblockers' => $unblockers,
+            'pageTitle'   => 'Incomplete Raw Materials',
+            'incomplete'  => $incomplete,
+            'unblockers'  => $unblockers,
+            'tradeSecret' => $tradeSecret,
         ]);
     }
 }

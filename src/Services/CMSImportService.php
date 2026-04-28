@@ -977,6 +977,172 @@ class CMSImportService
         return $result;
     }
 
+    /**
+     * Raw materials with trade-secret content — either the whole RM
+     * is in hazardous_no_cas mode (vendor refused to disclose any
+     * CAS at all, hazards live in raw_materials.manual_hazard_json),
+     * or specific constituents are flagged is_trade_secret=1 within
+     * an otherwise-disclosed composition.
+     *
+     * The federal hazard-data threshold check trips on the synthetic
+     * "TRADE_SECRET" CAS and blocks publishing when the trade-secret
+     * percentage exceeds the configured limit. This list is the
+     * vendor-outreach worklist: chase the supplier on each row to
+     * get full disclosure.
+     *
+     * Returns rows with:
+     *   id, internal_code, supplier, supplier_product_name,
+     *   supplier_product_code, cms_item_code, created_at,
+     *   ts_type      ('whole_rm' | 'constituents' | 'both'),
+     *   ts_pct       — sum of trade-secret pct in this RM (whole_rm = 100),
+     *   ts_count     — number of trade-secret constituent rows (0 if whole_rm only),
+     *   fg_total_count — distinct active FGs whose formula tree contains the RM.
+     * Sorted by fg_total_count DESC, then ts_pct DESC, so the most
+     * compliance-impactful vendors surface first.
+     */
+    public function getTradeSecretRawMaterials(): array
+    {
+        // Whole-RM trade secret: hazardous_no_cas flag set.
+        $whole = $this->db->fetchAll(
+            "SELECT rm.id, rm.internal_code, rm.supplier, rm.supplier_product_name,
+                    rm.supplier_product_code, rm.created_at, cil.cms_item_code
+             FROM raw_materials rm
+             LEFT JOIN cms_import_log cil
+                    ON cil.entity_type = 'raw_material' AND cil.entity_id = rm.id
+             WHERE rm.hazardous_no_cas = 1
+             ORDER BY rm.internal_code"
+        );
+
+        // Constituent-level trade secret: any rmc row with is_trade_secret=1.
+        // Sum pct_exact (or pct_max as fallback) so we can prioritise by
+        // how much of the RM is undisclosed.
+        $constRows = $this->db->fetchAll(
+            "SELECT rm.id, rm.internal_code, rm.supplier, rm.supplier_product_name,
+                    rm.supplier_product_code, rm.created_at, cil.cms_item_code,
+                    rm.hazardous_no_cas,
+                    COUNT(rmc.id) AS ts_count,
+                    SUM(COALESCE(rmc.pct_exact, rmc.pct_max, rmc.pct_min, 0)) AS ts_pct
+             FROM raw_materials rm
+             INNER JOIN raw_material_constituents rmc
+                     ON rmc.raw_material_id = rm.id AND rmc.is_trade_secret = 1
+             LEFT JOIN cms_import_log cil
+                    ON cil.entity_type = 'raw_material' AND cil.entity_id = rm.id
+             GROUP BY rm.id, rm.internal_code, rm.supplier, rm.supplier_product_name,
+                      rm.supplier_product_code, rm.created_at, cil.cms_item_code,
+                      rm.hazardous_no_cas
+             ORDER BY rm.internal_code"
+        );
+
+        // Merge the two sets, classifying each RM by which kind(s) of
+        // trade-secret content it has.
+        $byId = [];
+        foreach ($whole as $row) {
+            $byId[(int) $row['id']] = [
+                'id'                    => (int) $row['id'],
+                'internal_code'         => $row['internal_code'],
+                'supplier'              => $row['supplier'],
+                'supplier_product_name' => $row['supplier_product_name'],
+                'supplier_product_code' => $row['supplier_product_code'],
+                'created_at'            => $row['created_at'],
+                'cms_item_code'         => $row['cms_item_code'],
+                'ts_type'               => 'whole_rm',
+                'ts_pct'                => 100.0,
+                'ts_count'              => 0,
+            ];
+        }
+        foreach ($constRows as $row) {
+            $rmId = (int) $row['id'];
+            if (isset($byId[$rmId])) {
+                // Already in whole_rm bucket — RM has both flags somehow.
+                $byId[$rmId]['ts_type']  = 'both';
+                $byId[$rmId]['ts_count'] = (int) $row['ts_count'];
+                // Keep ts_pct = 100 because whole_rm dominates.
+            } else {
+                $byId[$rmId] = [
+                    'id'                    => $rmId,
+                    'internal_code'         => $row['internal_code'],
+                    'supplier'              => $row['supplier'],
+                    'supplier_product_name' => $row['supplier_product_name'],
+                    'supplier_product_code' => $row['supplier_product_code'],
+                    'created_at'            => $row['created_at'],
+                    'cms_item_code'         => $row['cms_item_code'],
+                    'ts_type'               => 'constituents',
+                    'ts_pct'                => round((float) $row['ts_pct'], 4),
+                    'ts_count'              => (int) $row['ts_count'],
+                ];
+            }
+        }
+
+        if (empty($byId)) {
+            return [];
+        }
+
+        // Reuse the same formula tree walk as getIncompleteRawMaterials
+        // to compute transitive FG usage per RM. Identical pattern; if
+        // this gets reused a third time it should be extracted.
+        $linesByFormula = [];
+        foreach ($this->db->fetchAll(
+            "SELECT formula_id, raw_material_id, finished_good_component_id FROM formula_lines"
+        ) as $r) {
+            $linesByFormula[(int) $r['formula_id']][] = [
+                'rm' => $r['raw_material_id']            !== null ? (int) $r['raw_material_id']            : null,
+                'fg' => $r['finished_good_component_id'] !== null ? (int) $r['finished_good_component_id'] : null,
+            ];
+        }
+        $fgToFormulaId = [];
+        foreach ($this->db->fetchAll(
+            "SELECT id, finished_good_id FROM formulas WHERE is_current = 1"
+        ) as $r) {
+            $fgToFormulaId[(int) $r['finished_good_id']] = (int) $r['id'];
+        }
+        $activeFgs = $this->db->fetchAll("SELECT id FROM finished_goods WHERE is_active = 1");
+        $cache = [];
+        $walk  = function (int $formulaId, array $visited) use (&$walk, $linesByFormula, $fgToFormulaId, &$cache) {
+            if (isset($cache[$formulaId])) { return $cache[$formulaId]; }
+            if (isset($visited[$formulaId])) { return []; }
+            $visited[$formulaId] = true;
+            $rms = [];
+            foreach ($linesByFormula[$formulaId] ?? [] as $line) {
+                if ($line['rm'] !== null) {
+                    $rms[$line['rm']] = true;
+                } elseif ($line['fg'] !== null) {
+                    $sub = $fgToFormulaId[$line['fg']] ?? null;
+                    if ($sub !== null) {
+                        foreach ($walk($sub, $visited) as $rmId => $_) { $rms[$rmId] = true; }
+                    }
+                }
+            }
+            $cache[$formulaId] = $rms;
+            return $rms;
+        };
+        $totalCounts = [];
+        foreach ($activeFgs as $fg) {
+            $formulaId = $fgToFormulaId[(int) $fg['id']] ?? null;
+            if ($formulaId === null) { continue; }
+            foreach (array_keys($walk($formulaId, [])) as $rmId) {
+                $totalCounts[$rmId] = ($totalCounts[$rmId] ?? 0) + 1;
+            }
+        }
+
+        $rows = array_values($byId);
+        foreach ($rows as &$row) {
+            $row['fg_total_count'] = $totalCounts[(int) $row['id']] ?? 0;
+        }
+        unset($row);
+
+        usort($rows, function (array $a, array $b): int {
+            if ($a['fg_total_count'] !== $b['fg_total_count']) {
+                return $b['fg_total_count'] <=> $a['fg_total_count'];
+            }
+            if ((float) $a['ts_pct'] !== (float) $b['ts_pct']) {
+                return ((float) $b['ts_pct']) <=> ((float) $a['ts_pct']);
+            }
+            return strcmp($a['internal_code'], $b['internal_code']);
+        });
+
+        return $rows;
+    }
+
     /* ------------------------------------------------------------------
      *  Phase 5: Import Aliases
      * ----------------------------------------------------------------*/

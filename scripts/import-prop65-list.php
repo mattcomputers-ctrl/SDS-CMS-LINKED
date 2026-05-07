@@ -245,6 +245,7 @@ $db = Database::getInstance();
 $sourceRef = 'OEHHA ' . date('Y-m-d');
 
 $inserted = $updated = $unchanged = $skippedManual = 0;
+$bumpCases = [];  // CASes whose insert/update touched the regulatory list
 
 foreach ($byCas as $cas => $d) {
     sort($d['toxicity']);
@@ -277,6 +278,7 @@ foreach ($byCas as $cas => $d) {
 
     if ($existing === null) {
         $inserted++;
+        $bumpCases[] = $cas;
         if (!$dryRun) {
             $db->insert('prop65_list', array_merge(['cas_number' => $cas], $newData));
         }
@@ -313,6 +315,7 @@ foreach ($byCas as $cas => $d) {
 
     if ($changed) {
         $updated++;
+        $bumpCases[] = $cas;
         if (!$dryRun) {
             $db->update('prop65_list', $newData, '`id` = ?', [$existing['id']]);
         }
@@ -321,11 +324,20 @@ foreach ($byCas as $cas => $d) {
     }
 }
 
+// Propagate list changes to RMs: any raw material whose constituents
+// include a CAS we just inserted or updated is now stale for bulk
+// publish. One batched UPDATE covers all of them.
+$bumpedRms = 0;
+if (!$dryRun && !empty($bumpCases)) {
+    $bumpedRms = \SDS\Services\RegulatoryListBumper::bumpByCasMany($bumpCases);
+}
+
 out('=== Summary ===', $quiet);
 out("  Inserted:        {$inserted}", $quiet);
 out("  Updated:         {$updated}", $quiet);
 out("  Unchanged:       {$unchanged}", $quiet);
 out("  Skipped manual:  {$skippedManual}  (source_ref='manual', preserved verbatim)", $quiet);
+out("  RMs bumped:      {$bumpedRms}  (constituents containing inserted/updated CAS)", $quiet);
 if ($dryRun) {
     out('', $quiet);
     out('DRY-RUN: no DB writes. Re-run with --confirm to apply.', $quiet);

@@ -714,8 +714,9 @@ class AdminController
 
         $db->insert('prop65_list', array_merge($data, ['source_ref' => 'manual']));
 
+        $bumped = \SDS\Services\RegulatoryListBumper::bumpByCas($data['cas_number']);
         AuditService::log('prop65_list', $data['cas_number'], 'create');
-        $_SESSION['_flash']['success'] = "Prop 65 entry added for CAS {$data['cas_number']}.";
+        $_SESSION['_flash']['success'] = "Prop 65 entry added for CAS {$data['cas_number']}." . self::bumpedTail($bumped);
         redirect('/prop65');
     }
 
@@ -778,8 +779,17 @@ class AdminController
             [(int) $id]
         );
 
+        // Bump RMs for both the old CAS (if changed) and the new CAS,
+        // since either side may now produce different SDS regulatory
+        // text. Same-CAS edits dedupe naturally inside the bumper.
+        $cases = [$data['cas_number']];
+        if ($item['cas_number'] !== $data['cas_number']) {
+            $cases[] = $item['cas_number'];
+        }
+        $bumped = \SDS\Services\RegulatoryListBumper::bumpByCasMany($cases);
+
         AuditService::log('prop65_list', $data['cas_number'], 'update');
-        $_SESSION['_flash']['success'] = 'Prop 65 entry updated.';
+        $_SESSION['_flash']['success'] = 'Prop 65 entry updated.' . self::bumpedTail($bumped);
         redirect('/prop65');
     }
 
@@ -792,8 +802,12 @@ class AdminController
         $item = $db->fetch("SELECT cas_number FROM prop65_list WHERE id = ?", [(int) $id]);
         $db->query("DELETE FROM prop65_list WHERE id = ?", [(int) $id]);
 
+        $bumped = isset($item['cas_number'])
+            ? \SDS\Services\RegulatoryListBumper::bumpByCas($item['cas_number'])
+            : 0;
+
         AuditService::log('prop65_list', $item['cas_number'] ?? $id, 'delete');
-        $_SESSION['_flash']['success'] = 'Prop 65 entry removed.';
+        $_SESSION['_flash']['success'] = 'Prop 65 entry removed.' . self::bumpedTail($bumped);
         redirect('/prop65');
     }
 
@@ -940,8 +954,9 @@ class AdminController
 
         $db->insert('hap_list', array_merge($data, ['source_ref' => 'manual']));
 
+        $bumped = \SDS\Services\RegulatoryListBumper::bumpByCas($data['cas_number']);
         AuditService::log('hap_list', $data['cas_number'], 'create');
-        $_SESSION['_flash']['success'] = "HAP entry added for CAS {$data['cas_number']}.";
+        $_SESSION['_flash']['success'] = "HAP entry added for CAS {$data['cas_number']}." . self::bumpedTail($bumped);
         redirect('/haps');
     }
 
@@ -1003,8 +1018,14 @@ class AdminController
             [(int) $id]
         );
 
+        $cases = [$data['cas_number']];
+        if ($item['cas_number'] !== $data['cas_number']) {
+            $cases[] = $item['cas_number'];
+        }
+        $bumped = \SDS\Services\RegulatoryListBumper::bumpByCasMany($cases);
+
         AuditService::log('hap_list', $data['cas_number'], 'update');
-        $_SESSION['_flash']['success'] = 'HAP entry updated.';
+        $_SESSION['_flash']['success'] = 'HAP entry updated.' . self::bumpedTail($bumped);
         redirect('/haps');
     }
 
@@ -1017,9 +1038,27 @@ class AdminController
         $item = $db->fetch("SELECT cas_number FROM hap_list WHERE id = ?", [(int) $id]);
         $db->query("DELETE FROM hap_list WHERE id = ?", [(int) $id]);
 
+        $bumped = isset($item['cas_number'])
+            ? \SDS\Services\RegulatoryListBumper::bumpByCas($item['cas_number'])
+            : 0;
+
         AuditService::log('hap_list', $item['cas_number'] ?? $id, 'delete');
-        $_SESSION['_flash']['success'] = 'HAP entry removed.';
+        $_SESSION['_flash']['success'] = 'HAP entry removed.' . self::bumpedTail($bumped);
         redirect('/haps');
+    }
+
+    /**
+     * Suffix for success flash messages reporting how many RMs were
+     * bumped. Empty when zero — keeps the common "no constituents
+     * carry this CAS yet" case from cluttering the message.
+     */
+    private static function bumpedTail(int $bumped): string
+    {
+        if ($bumped <= 0) {
+            return '';
+        }
+        $unit = $bumped === 1 ? 'raw material' : 'raw materials';
+        return " {$bumped} {$unit} flagged for re-publish.";
     }
 
     /**

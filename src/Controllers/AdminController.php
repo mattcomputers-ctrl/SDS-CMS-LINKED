@@ -855,6 +855,202 @@ class AdminController
     }
 
     /* ------------------------------------------------------------------
+     *  EPA HAP List (Clean Air Act §112(b))
+     *
+     *  Same pattern as the Prop 65 admin page. Entries saved through
+     *  this UI are tagged source_ref='manual' so a future EPA-list
+     *  importer (when it lands) can refresh seed-loaded rows without
+     *  trampling operator additions.
+     * ----------------------------------------------------------------*/
+
+    public function haps(): void
+    {
+        $this->requirePageAccess('hap_list');
+        $db = Database::getInstance();
+
+        $q      = trim((string) ($_GET['q'] ?? ''));
+        $source = (string) ($_GET['source'] ?? 'all');
+
+        $where  = [];
+        $params = [];
+        if ($q !== '') {
+            $where[]  = '(cas_number LIKE ? OR chemical_name LIKE ? OR category LIKE ?)';
+            $params[] = '%' . $q . '%';
+            $params[] = '%' . $q . '%';
+            $params[] = '%' . $q . '%';
+        }
+        if ($source === 'manual') {
+            $where[] = "source_ref = 'manual'";
+        } elseif ($source === 'seed') {
+            $where[] = "(source_ref IS NULL OR source_ref <> 'manual')";
+        }
+        $sql = 'SELECT * FROM hap_list';
+        if ($where !== []) {
+            $sql .= ' WHERE ' . implode(' AND ', $where);
+        }
+        $sql .= ' ORDER BY chemical_name';
+
+        $items = $db->fetchAll($sql, $params);
+
+        $counts = $db->fetch(
+            "SELECT
+                SUM(CASE WHEN source_ref = 'manual'                          THEN 1 ELSE 0 END) AS manual,
+                SUM(CASE WHEN source_ref IS NULL OR source_ref <> 'manual'   THEN 1 ELSE 0 END) AS seed,
+                COUNT(*) AS total
+             FROM hap_list"
+        );
+
+        view('admin/haps', [
+            'pageTitle' => 'EPA HAP List',
+            'items'     => $items,
+            'q'         => $q,
+            'source'    => $source,
+            'counts'    => $counts,
+        ]);
+    }
+
+    public function createHap(): void
+    {
+        $this->requirePageAccess('hap_list', 'full');
+        view('admin/haps-form', [
+            'pageTitle' => 'Add HAP Entry',
+            'item'      => null,
+            'mode'      => 'create',
+        ]);
+    }
+
+    public function storeHap(): void
+    {
+        $this->requirePageAccess('hap_list', 'full');
+        CSRF::validateRequest();
+
+        $db   = Database::getInstance();
+        $data = $this->collectHapInput();
+        if ($data === null) {
+            redirect('/haps/create');
+            return;
+        }
+
+        $existing = $db->fetch("SELECT id FROM hap_list WHERE cas_number = ?", [$data['cas_number']]);
+        if ($existing) {
+            $_SESSION['_flash']['error'] = "CAS {$data['cas_number']} is already in the HAP list. Edit the existing entry instead.";
+            redirect('/haps');
+            return;
+        }
+
+        $db->insert('hap_list', array_merge($data, ['source_ref' => 'manual']));
+
+        AuditService::log('hap_list', $data['cas_number'], 'create');
+        $_SESSION['_flash']['success'] = "HAP entry added for CAS {$data['cas_number']}.";
+        redirect('/haps');
+    }
+
+    public function editHap(string $id): void
+    {
+        $this->requirePageAccess('hap_list', 'full');
+        $db = Database::getInstance();
+
+        $item = $db->fetch("SELECT * FROM hap_list WHERE id = ?", [(int) $id]);
+        if (!$item) {
+            $_SESSION['_flash']['error'] = 'HAP entry not found.';
+            redirect('/haps');
+            return;
+        }
+
+        view('admin/haps-form', [
+            'pageTitle' => 'Edit HAP Entry: ' . $item['cas_number'],
+            'item'      => $item,
+            'mode'      => 'edit',
+        ]);
+    }
+
+    public function updateHap(string $id): void
+    {
+        $this->requirePageAccess('hap_list', 'full');
+        CSRF::validateRequest();
+        $db = Database::getInstance();
+
+        $item = $db->fetch("SELECT * FROM hap_list WHERE id = ?", [(int) $id]);
+        if (!$item) {
+            $_SESSION['_flash']['error'] = 'HAP entry not found.';
+            redirect('/haps');
+            return;
+        }
+
+        $data = $this->collectHapInput();
+        if ($data === null) {
+            redirect('/haps/' . (int) $id . '/edit');
+            return;
+        }
+
+        // CAS-uniqueness check on rename.
+        if ($data['cas_number'] !== $item['cas_number']) {
+            $clash = $db->fetch(
+                "SELECT id FROM hap_list WHERE cas_number = ? AND id <> ?",
+                [$data['cas_number'], (int) $id]
+            );
+            if ($clash) {
+                $_SESSION['_flash']['error'] = "CAS {$data['cas_number']} is already in the HAP list.";
+                redirect('/haps/' . (int) $id . '/edit');
+                return;
+            }
+        }
+
+        $db->update(
+            'hap_list',
+            array_merge($data, ['source_ref' => 'manual']),
+            'id = ?',
+            [(int) $id]
+        );
+
+        AuditService::log('hap_list', $data['cas_number'], 'update');
+        $_SESSION['_flash']['success'] = 'HAP entry updated.';
+        redirect('/haps');
+    }
+
+    public function deleteHap(string $id): void
+    {
+        $this->requirePageAccess('hap_list', 'full');
+        CSRF::validateRequest();
+        $db = Database::getInstance();
+
+        $item = $db->fetch("SELECT cas_number FROM hap_list WHERE id = ?", [(int) $id]);
+        $db->query("DELETE FROM hap_list WHERE id = ?", [(int) $id]);
+
+        AuditService::log('hap_list', $item['cas_number'] ?? $id, 'delete');
+        $_SESSION['_flash']['success'] = 'HAP entry removed.';
+        redirect('/haps');
+    }
+
+    /**
+     * Collect, validate, and normalize HAP form input. Returns null
+     * and sets a flash error on validation failure.
+     */
+    private function collectHapInput(): ?array
+    {
+        $cas      = trim((string) ($_POST['cas_number']    ?? ''));
+        $name     = trim((string) ($_POST['chemical_name'] ?? ''));
+        $category = trim((string) ($_POST['category']      ?? ''));
+
+        if ($cas === '' || !preg_match('/^\d{1,7}-\d{2}-\d$/', $cas)) {
+            $_SESSION['_flash']['error']     = 'A valid CAS number is required (e.g. 75-07-0).';
+            $_SESSION['_flash']['_old_input'] = $_POST;
+            return null;
+        }
+        if ($name === '') {
+            $_SESSION['_flash']['error']     = 'Chemical name is required.';
+            $_SESSION['_flash']['_old_input'] = $_POST;
+            return null;
+        }
+
+        return [
+            'cas_number'    => $cas,
+            'chemical_name' => $name,
+            'category'      => $category !== '' ? $category : null,
+        ];
+    }
+
+    /* ------------------------------------------------------------------
      *  Competent Person Determinations
      * ----------------------------------------------------------------*/
 

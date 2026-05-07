@@ -91,7 +91,7 @@
                     <?php endif; ?>
 
                     <!-- Regulatory Data — chemistry & compliance reference tables -->
-                    <?php if (can_read('cas_determinations') || can_read('exempt_vocs') || can_read('prop65_list') || can_manage_users()): ?>
+                    <?php if (can_read('cas_determinations') || can_read('exempt_vocs') || can_read('prop65_list') || can_read('hap_list') || can_manage_users()): ?>
                     <li class="sidebar-section-label">Regulatory Data</li>
                     <?php endif; ?>
                     <?php if (can_read('cas_determinations')): ?>
@@ -102,6 +102,9 @@
                     <?php endif; ?>
                     <?php if (can_read('prop65_list')): ?>
                     <li><a href="/prop65" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/prop65') ? 'active' : '' ?>"><span class="menu-icon">&#128203;</span> Prop 65 List</a></li>
+                    <?php endif; ?>
+                    <?php if (can_read('hap_list')): ?>
+                    <li><a href="/haps" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/haps') ? 'active' : '' ?>"><span class="menu-icon">&#127981;</span> HAP List</a></li>
                     <?php endif; ?>
                     <?php if (can_manage_users()): ?>
                     <li><a href="/admin/pictograms" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/pictograms' ? 'active' : '' ?>"><span class="menu-icon">&#9888;</span> Pictograms</a></li>

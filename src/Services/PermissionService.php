@@ -40,6 +40,7 @@ class PermissionService
         'bulk_export'        => 'Bulk SDS Export',
         'exempt_vocs'        => 'Exempt VOC Library',
         'prop65_list'        => 'California Prop 65 List',
+        'hap_list'           => 'EPA HAP List (CAA §112(b))',
         'manufacturers'      => 'Manufacturers',
         'private_label'      => 'Private Label SDS',
         'sds_updates'        => 'SDS Update Required',

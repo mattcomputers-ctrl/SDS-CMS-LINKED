@@ -224,6 +224,14 @@ class App
         $router->post('/prop65/{id}',        'AdminController@updateProp65');
         $router->post('/prop65/{id}/delete', 'AdminController@deleteProp65');
 
+        // ── EPA HAP List (permission-gated) ─────────────────────────
+        $router->get('/haps',              'AdminController@haps');
+        $router->get('/haps/create',       'AdminController@createHap');
+        $router->post('/haps',             'AdminController@storeHap');
+        $router->get('/haps/{id}/edit',    'AdminController@editHap');
+        $router->post('/haps/{id}',        'AdminController@updateHap');
+        $router->post('/haps/{id}/delete', 'AdminController@deleteHap');
+
         // ── Bulk SDS Publish (permission-gated) ─────────────────────
         $router->get('/bulk-publish',                           'BulkPublishController@page');
         $router->post('/bulk-publish/start',                    'BulkPublishController@start');

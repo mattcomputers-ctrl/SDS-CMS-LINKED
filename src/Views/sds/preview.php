@@ -28,6 +28,9 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
         <h3 class="sds-section-title"><?= e($sectionPrefix) ?> <?= $num ?>: <?= e(strtoupper($section['title'] ?? '')) ?></h3>
 
         <?php if ($num === 2): // ── Hazard Identification ── ?>
+            <?php if (empty($section['is_classified'])): ?>
+                <p style="margin: 0.5rem 0;"><?= e($section['not_classified_text'] ?? 'Not a hazardous substance or mixture.') ?></p>
+            <?php endif; ?>
             <?php if (!empty($section['signal_word'])): ?>
                 <p class="signal-word signal-<?= strtolower($section['signal_word_en'] ?? $section['signal_word']) ?>" style="font-size: 1.3rem; font-weight: bold; color: <?= ($section['signal_word_en'] ?? $section['signal_word']) === 'Danger' ? '#DC0000' : '#FF8C00' ?>;">
                     <?= e(strtoupper($section['signal_word'])) ?>

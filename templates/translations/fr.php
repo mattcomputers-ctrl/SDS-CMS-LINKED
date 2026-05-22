@@ -9,8 +9,9 @@ return [
         'restrictions'    => 'Usage professionnel/industriel uniquement. Non destiné à un usage domestique.',
     ],
     'section2' => [
-        'title'         => 'Identification des Dangers',
-        'other_hazards' => 'Aucun connu.',
+        'title'          => 'Identification des Dangers',
+        'other_hazards'  => 'Aucun connu.',
+        'not_classified' => 'N\'est pas une substance ou un mélange dangereux.',
     ],
     'section3' => [
         'title'            => 'Composition / Information sur les Ingrédients',

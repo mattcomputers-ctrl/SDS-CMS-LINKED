@@ -9,8 +9,9 @@ return [
         'restrictions'    => 'For professional/industrial use only. Not for household consumer use.',
     ],
     'section2' => [
-        'title'         => 'Hazard(s) Identification',
-        'other_hazards' => 'None known.',
+        'title'          => 'Hazard(s) Identification',
+        'other_hazards'  => 'None known.',
+        'not_classified' => 'Not a hazardous substance or mixture.',
     ],
     'section3' => [
         'title'            => 'Composition / Information on Ingredients',

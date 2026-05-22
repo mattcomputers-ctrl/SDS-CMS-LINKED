@@ -9,8 +9,9 @@ return [
         'restrictions'    => 'Nur für den professionellen/industriellen Gebrauch. Nicht für den Haushaltsgebrauch.',
     ],
     'section2' => [
-        'title'         => 'Mögliche Gefahren',
-        'other_hazards' => 'Keine bekannt.',
+        'title'          => 'Mögliche Gefahren',
+        'other_hazards'  => 'Keine bekannt.',
+        'not_classified' => 'Kein gefährlicher Stoff oder gefährliches Gemisch.',
     ],
     'section3' => [
         'title'            => 'Zusammensetzung / Angaben zu Bestandteilen',

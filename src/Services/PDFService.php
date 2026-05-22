@@ -263,6 +263,12 @@ class PDFService
             $pdf->AddPage();
         }
 
+        // Not classified statement
+        if (empty($s['is_classified'])) {
+            $pdf->SetFont('helvetica', '', 9);
+            $pdf->MultiCell(0, 5, $s['not_classified_text'] ?? 'Not a hazardous substance or mixture.', 0, 'L');
+        }
+
         // Signal word
         if (!empty($s['signal_word'])) {
             $pdf->SetFont('helvetica', 'B', 14);

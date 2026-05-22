@@ -595,8 +595,15 @@ class SDSGenerator
 
         $customOtherHazards = $overrides[2]['other_hazards'] ?? null;
 
+        $isClassified = !empty($hazard['signal_word'])
+            || !empty($hazard['pictograms'])
+            || !empty($hazard['hazard_classes'])
+            || !empty($hazard['h_statements']);
+
         return [
             'title'               => $this->t->get('section2.title'),
+            'is_classified'       => $isClassified,
+            'not_classified_text' => $this->t->get('section2.not_classified'),
             'signal_word'         => $hazard['signal_word'],
             'signal_word_en'      => $hazard['signal_word_en'] ?? $hazard['signal_word'],
             'pictograms'          => $hazard['pictograms'],

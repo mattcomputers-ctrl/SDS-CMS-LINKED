@@ -280,6 +280,7 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                     <th>% Exact</th>
                     <th>Trade Secret</th>
                     <th>TS Description</th>
+                    <th>TS H Codes</th>
                     <th>Non-Hazardous</th>
                     <th></th>
                 </tr>
@@ -308,6 +309,7 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                             <?php endforeach; ?>
                         </select>
                     </td>
+                    <td><input type="text" name="trade_secret_h_codes[<?= $i ?>]" value="<?= e($c['trade_secret_h_codes'] ?? '') ?>" placeholder="H302, H315" class="input-sm ts-hcodes-input" <?= ((int) ($c['is_trade_secret'] ?? 0)) ? '' : 'disabled' ?>></td>
                     <td><input type="checkbox" name="is_non_hazardous[<?= $i ?>]" value="1" <?= ((int) ($c['is_non_hazardous'] ?? 0)) ? 'checked' : '' ?>></td>
                     <td><button type="button" class="btn btn-sm btn-danger remove-row">X</button></td>
                 </tr>
@@ -334,6 +336,7 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                             <?php endforeach; ?>
                         </select>
                     </td>
+                    <td><input type="text" name="trade_secret_h_codes[0]" placeholder="H302, H315" class="input-sm ts-hcodes-input" disabled></td>
                     <td><input type="checkbox" name="is_non_hazardous[0]" value="1"></td>
                     <td><button type="button" class="btn btn-sm btn-danger remove-row">X</button></td>
                 </tr>
@@ -795,6 +798,7 @@ document.getElementById('addRow').addEventListener('click', function() {
         '<td><input type="number" name="pct_exact[' + idx + ']" step="0.0001" class="input-xs"></td>' +
         '<td><input type="checkbox" name="is_trade_secret[' + idx + ']" value="1" class="ts-checkbox"></td>' +
         '<td>' + buildTsDescSelect(idx) + '</td>' +
+        '<td><input type="text" name="trade_secret_h_codes[' + idx + ']" placeholder="H302, H315" class="input-sm ts-hcodes-input" disabled></td>' +
         '<td><input type="checkbox" name="is_non_hazardous[' + idx + ']" value="1"></td>' +
         '<td><button type="button" class="btn btn-sm btn-danger remove-row">X</button></td>';
     tbody.appendChild(tr);
@@ -978,14 +982,19 @@ document.querySelectorAll('.cas-input').forEach(function(input) {
     }
 });
 
-// ── Trade secret checkbox toggles description dropdown ──────
+// ── Trade secret checkbox toggles description dropdown + H codes input ──
 document.addEventListener('change', function(e) {
     if (e.target.classList.contains('ts-checkbox')) {
         var row = e.target.closest('tr');
         var sel = row.querySelector('.ts-desc-select');
+        var hcodes = row.querySelector('.ts-hcodes-input');
         if (sel) {
             sel.disabled = !e.target.checked;
             if (!e.target.checked) sel.value = '';
+        }
+        if (hcodes) {
+            hcodes.disabled = !e.target.checked;
+            if (!e.target.checked) hcodes.value = '';
         }
     }
 });

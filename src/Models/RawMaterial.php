@@ -419,6 +419,7 @@ class RawMaterial
                     'is_trade_secret'        => (int) ($c['is_trade_secret'] ?? 0),
                     'is_non_hazardous'       => (int) ($c['is_non_hazardous'] ?? 0),
                     'trade_secret_description' => !empty($c['trade_secret_description']) ? trim($c['trade_secret_description']) : null,
+                    'trade_secret_h_codes'   => !empty($c['trade_secret_h_codes']) ? trim($c['trade_secret_h_codes']) : null,
                     'sort_order'             => (int) ($c['sort_order'] ?? $i + 1),
                 ]);
             }

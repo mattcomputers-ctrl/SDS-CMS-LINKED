@@ -289,7 +289,7 @@ class Formula
                     rmc.cas_number, rmc.chemical_name,
                     rmc.pct_exact, rmc.pct_min, rmc.pct_max,
                     rmc.is_trade_secret, rmc.is_non_hazardous,
-                    rmc.trade_secret_description
+                    rmc.trade_secret_description, rmc.trade_secret_h_codes
              FROM formula_lines fl
              JOIN raw_materials rm ON rm.id = fl.raw_material_id
              JOIN raw_material_constituents rmc ON rmc.raw_material_id = fl.raw_material_id
@@ -302,11 +302,32 @@ class Formula
 
         // Aggregate by CAS number
         $casBuckets = [];
+        $tsConstituentHazards = [];
+
         foreach ($rows as $row) {
             $cas = $row['cas_number'];
+            $isTs = (int) $row['is_trade_secret'] === 1;
 
             $constituentPct = self::resolveConstituentPct($row);
             $contribution = ($scaleFactor * (float) $row['line_pct'] / 100.0) * $constituentPct;
+
+            // Trade secret constituent with no CAS but with H codes —
+            // route into the TRADE_SECRET bucket instead of a CAS bucket.
+            if ($isTs && $cas === '' && !empty($row['trade_secret_h_codes'])) {
+                $tsConstituentHazards[] = [
+                    'h_codes'      => $row['trade_secret_h_codes'],
+                    'description'  => $row['trade_secret_description'] ?? ($row['chemical_name'] ?: 'Trade Secret'),
+                    'contribution' => $contribution,
+                    'raw_material_id' => (int) $row['raw_material_id'],
+                    'internal_code'   => $row['internal_code'],
+                    'pct_in_rm'       => $constituentPct,
+                ];
+                continue;
+            }
+
+            if ($cas === '') {
+                continue;
+            }
 
             if (!isset($casBuckets[$cas])) {
                 $casBuckets[$cas] = [
@@ -322,7 +343,7 @@ class Formula
 
             $casBuckets[$cas]['concentration_pct'] += $contribution;
 
-            if ((int) $row['is_trade_secret'] === 1) {
+            if ($isTs) {
                 $casBuckets[$cas]['is_trade_secret'] = true;
                 if (!empty($row['trade_secret_description'])) {
                     $casBuckets[$cas]['trade_secret_description'] = $row['trade_secret_description'];
@@ -390,6 +411,42 @@ class Formula
                     'internal_code'   => $row['internal_code'],
                     'pct_in_rm'       => 100.0,
                     'pct_in_formula'  => $contribution,
+                ];
+            }
+        }
+
+        // --- Trade-secret constituent lines with H codes (no CAS) ---
+        // These come from per-constituent trade secrets where the vendor
+        // withheld the chemical identity but disclosed H codes.
+        if (!empty($tsConstituentHazards)) {
+            $tsKey = 'TRADE_SECRET';
+            if (!isset($casBuckets[$tsKey])) {
+                $casBuckets[$tsKey] = [
+                    'cas_number'               => 'TRADE_SECRET',
+                    'chemical_name'            => 'Trade Secret',
+                    'concentration_pct'        => 0.0,
+                    'is_trade_secret'          => true,
+                    'is_non_hazardous'         => false,
+                    'trade_secret_description' => 'Trade Secret',
+                    'manual_hazard_json'       => [],
+                    'contributing_materials'    => [],
+                ];
+            }
+
+            foreach ($tsConstituentHazards as $tsLine) {
+                $casBuckets[$tsKey]['concentration_pct'] += $tsLine['contribution'];
+
+                $hCodes = array_filter(array_map('trim', explode(',', $tsLine['h_codes'])));
+                if (!empty($hCodes)) {
+                    $casBuckets[$tsKey]['manual_hazard_json'][] =
+                        self::buildHazardJsonFromHCodes($hCodes);
+                }
+
+                $casBuckets[$tsKey]['contributing_materials'][] = [
+                    'raw_material_id' => $tsLine['raw_material_id'],
+                    'internal_code'   => $tsLine['internal_code'],
+                    'pct_in_rm'       => $tsLine['pct_in_rm'],
+                    'pct_in_formula'  => $tsLine['contribution'],
                 ];
             }
         }
@@ -672,5 +729,51 @@ class Formula
             return (float) $row['pct_max'];
         }
         return 0.0;
+    }
+
+    /**
+     * Build a manual_hazard_json structure from a list of H codes.
+     * Reverse-looks up GHS hazard classifications to derive the full
+     * set of P codes, pictograms, and signal word.
+     */
+    private static function buildHazardJsonFromHCodes(array $hCodes): array
+    {
+        $ghsData = \SDS\Services\GHSHazardData::HAZARD_CLASSIFICATIONS;
+
+        $selectedHazards = [];
+        $allH = [];
+        $allP = [];
+        $allPictograms = [];
+        $signalWord = null;
+
+        foreach ($ghsData as $key => $entry) {
+            $entryHCodes = $entry['h_codes'] ?? [];
+            if (!empty(array_intersect($hCodes, $entryHCodes))) {
+                $selectedHazards[] = $key;
+                foreach ($entryHCodes as $h) {
+                    $allH[$h] = true;
+                }
+                foreach ($entry['p_codes'] ?? [] as $p) {
+                    $allP[$p] = true;
+                }
+                foreach ($entry['pictograms'] ?? [] as $pic) {
+                    $allPictograms[$pic] = true;
+                }
+                $sw = $entry['signal_word'] ?? null;
+                if ($sw === 'Danger') {
+                    $signalWord = 'Danger';
+                } elseif ($sw === 'Warning' && $signalWord !== 'Danger') {
+                    $signalWord = 'Warning';
+                }
+            }
+        }
+
+        return [
+            'selected_hazards' => json_encode($selectedHazards),
+            'h_statements'     => implode(',', array_keys($allH)),
+            'p_statements'     => implode(',', array_keys($allP)),
+            'pictograms'       => implode(',', array_keys($allPictograms)),
+            'signal_word'      => $signalWord,
+        ];
     }
 }

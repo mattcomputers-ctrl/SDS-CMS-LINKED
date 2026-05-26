@@ -491,22 +491,27 @@ class RawMaterialController
         $pctExacts    = $_POST['pct_exact'] ?? [];
         $secrets      = $_POST['is_trade_secret'] ?? [];
         $tsDescs      = $_POST['trade_secret_description'] ?? [];
+        $tsHCodes     = $_POST['trade_secret_h_codes'] ?? [];
         $nonHazardous = $_POST['is_non_hazardous'] ?? [];
 
         foreach ($casNumbers as $i => $cas) {
-            $cas = trim($cas);
-            if ($cas === '') {
+            $cas         = trim($cas);
+            $isSecret    = isset($secrets[$i]);
+            $description = trim($chemNames[$i] ?? '');
+
+            if ($cas === '' && !$isSecret) {
                 continue;
             }
 
             $constituents[] = [
                 'cas_number'               => $cas,
-                'chemical_name'            => trim($chemNames[$i] ?? ''),
+                'chemical_name'            => $description,
                 'pct_min'                  => ($pctMins[$i] ?? '') !== '' ? (float) $pctMins[$i] : null,
                 'pct_max'                  => ($pctMaxs[$i] ?? '') !== '' ? (float) $pctMaxs[$i] : null,
                 'pct_exact'                => ($pctExacts[$i] ?? '') !== '' ? (float) $pctExacts[$i] : null,
-                'is_trade_secret'          => isset($secrets[$i]) ? 1 : 0,
-                'trade_secret_description' => isset($secrets[$i]) ? trim($tsDescs[$i] ?? '') : null,
+                'is_trade_secret'          => $isSecret ? 1 : 0,
+                'trade_secret_description' => $isSecret ? trim($tsDescs[$i] ?? '') : null,
+                'trade_secret_h_codes'     => $isSecret ? trim($tsHCodes[$i] ?? '') : null,
                 'is_non_hazardous'         => isset($nonHazardous[$i]) ? 1 : 0,
                 'sort_order'               => $i + 1,
             ];

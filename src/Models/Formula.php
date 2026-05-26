@@ -448,6 +448,9 @@ class Formula
 
             foreach ($tsConstituentHazards as $tsLine) {
                 $casBuckets[$tsKey]['concentration_pct'] += $tsLine['contribution'];
+                if (!empty($tsLine['description'])) {
+                    $casBuckets[$tsKey]['trade_secret_description'] = $tsLine['description'];
+                }
 
                 $hCodes = array_filter(array_map('trim', explode(',', $tsLine['h_codes'])));
                 if (!empty($hCodes)) {

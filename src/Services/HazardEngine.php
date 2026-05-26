@@ -606,6 +606,8 @@ class HazardEngine
             // The composition row was synthesized by Formula::getExpandedComposition
             // for one or more raw materials flagged `hazardous_no_cas = 1`.
             // Merge each contributing RM's hazard JSON the same way a CPD would.
+            // Use 100% concentration to bypass cutoff checks — the vendor has
+            // explicitly declared these hazards apply regardless of dilution.
             if (!empty($component['manual_hazard_json']) && is_array($component['manual_hazard_json'])) {
                 $hasHazards = false;
                 foreach ($component['manual_hazard_json'] as $detJson) {
@@ -614,9 +616,9 @@ class HazardEngine
                     }
                     $parsed = $this->parseDeterminationStructure(
                         $detJson,
-                        $cas,        // '' for trade-secret rows
-                        $name,       // 'Trade Secret'
-                        $conc,
+                        $cas,
+                        $name,
+                        100.0,
                         'manual (trade secret)'
                     );
 

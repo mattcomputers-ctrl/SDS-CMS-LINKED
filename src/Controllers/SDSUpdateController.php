@@ -211,6 +211,34 @@ class SDSUpdateController
                         'queued_by'        => $userId,
                     ]);
                     $queued++;
+                } else {
+                    // Check if any upstream finished good component has changes
+                    $fgCompLines = $db->fetchAll(
+                        "SELECT fl.finished_good_component_id
+                         FROM formula_lines fl
+                         JOIN formulas f ON f.id = fl.formula_id AND f.is_current = 1 AND f.finished_good_id = ?
+                         WHERE fl.finished_good_component_id IS NOT NULL",
+                        [$fgId]
+                    );
+
+                    foreach ($fgCompLines as $compLine) {
+                        $reason = $this->hasUpstreamChanges(
+                            $db,
+                            (int) $compLine['finished_good_component_id'],
+                            $lastPublished
+                        );
+                        if ($reason !== null) {
+                            $db->insert('sds_update_queue', [
+                                'finished_good_id' => $fgId,
+                                'reason'           => $reason,
+                                'source_type'      => 'finished_good',
+                                'source_id'        => (int) $compLine['finished_good_component_id'],
+                                'queued_by'        => $userId,
+                            ]);
+                            $queued++;
+                            break;
+                        }
+                    }
                 }
             }
         }
@@ -549,6 +577,73 @@ class SDSUpdateController
     /* ------------------------------------------------------------------
      *  Private helpers
      * ----------------------------------------------------------------*/
+
+    /**
+     * Recursively check if an upstream finished good component has had
+     * formula or raw material changes since $since. Walks the full
+     * dependency tree so transitive changes (A→B→C) are detected.
+     *
+     * @return string|null  Human-readable reason, or null if no changes.
+     */
+    private function hasUpstreamChanges(
+        Database $db,
+        int $fgId,
+        string $since,
+        array $visited = []
+    ): ?string {
+        if (in_array($fgId, $visited, true)) {
+            return null;
+        }
+        $visited[] = $fgId;
+
+        $formula = $db->fetch(
+            "SELECT id, version, created_at FROM formulas WHERE finished_good_id = ? AND is_current = 1",
+            [$fgId]
+        );
+        if (!$formula) {
+            return null;
+        }
+
+        $fgCode = $db->fetch("SELECT product_code FROM finished_goods WHERE id = ?", [$fgId]);
+        $code = $fgCode['product_code'] ?? (string) $fgId;
+
+        if ($formula['created_at'] > $since) {
+            return 'Component ' . $code . ' formula updated to v' . $formula['version'];
+        }
+
+        $staleRM = $db->fetch(
+            "SELECT rm.internal_code
+             FROM formula_lines fl
+             JOIN raw_materials rm ON rm.id = fl.raw_material_id
+             WHERE fl.formula_id = ? AND fl.raw_material_id IS NOT NULL AND rm.updated_at > ?
+             LIMIT 1",
+            [(int) $formula['id'], $since]
+        );
+        if ($staleRM) {
+            return 'Component ' . $code . ': raw material ' . $staleRM['internal_code'] . ' updated';
+        }
+
+        $fgComps = $db->fetchAll(
+            "SELECT finished_good_component_id
+             FROM formula_lines
+             WHERE formula_id = ? AND finished_good_component_id IS NOT NULL",
+            [(int) $formula['id']]
+        );
+
+        foreach ($fgComps as $comp) {
+            $reason = $this->hasUpstreamChanges(
+                $db,
+                (int) $comp['finished_good_component_id'],
+                $since,
+                $visited
+            );
+            if ($reason !== null) {
+                return $reason . ' (via ' . $code . ')';
+            }
+        }
+
+        return null;
+    }
 
     /**
      * Publish alias SDSs for a finished good (same logic as SDSController).

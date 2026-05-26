@@ -752,8 +752,9 @@ class Formula
         if ($row['pct_exact'] !== null) {
             return (float) $row['pct_exact'];
         }
+        // Use the maximum of the range for conservative hazard assessment
         if ($row['pct_min'] !== null && $row['pct_max'] !== null) {
-            return ((float) $row['pct_min'] + (float) $row['pct_max']) / 2.0;
+            return (float) $row['pct_max'];
         }
         if ($row['pct_min'] !== null) {
             return (float) $row['pct_min'];

@@ -398,7 +398,7 @@ if (file_exists($saraFile)) {
             'deminimis_pct'    => (isset($row[3]) && $row[3] !== '') ? (float) $row[3] : 1.0,
             'is_pbt'           => (isset($row[4]) && strtolower(trim($row[4])) === 'yes') ? 1 : 0,
             'pbt_threshold_pct' => (isset($row[5]) && $row[5] !== '') ? (float) $row[5] : null,
-            'source_ref'       => 'EPA TRI Program (seed data)',
+            'source_ref'       => 'EPA Consolidated List of Lists, April 2025',
             'last_updated_at'  => date('Y-m-d H:i:s'),
         ];
 

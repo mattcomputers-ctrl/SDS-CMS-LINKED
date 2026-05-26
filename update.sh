@@ -170,11 +170,20 @@ BACKUP_TS=$(date '+%Y%m%d_%H%M%S')
 BACKUP_DIR="$INSTALL_DIR/storage/backups"
 mkdir -p "$BACKUP_DIR"
 
-# Database backup
+# Database backup (exclude large regulatory seed tables and audit log — these can be re-seeded)
 print_step "Backing up database..."
 DB_BACKUP_FILE="$BACKUP_DIR/pre_update_${BACKUP_TS}.sql.gz"
 mysqldump --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" --password="$DB_PASS" \
-    --single-transaction --routines --triggers "$DB_NAME" 2>/dev/null | gzip > "$DB_BACKUP_FILE"
+    --single-transaction --routines --triggers "$DB_NAME" \
+    --ignore-table="$DB_NAME.cas_master" \
+    --ignore-table="$DB_NAME.prop65_list" \
+    --ignore-table="$DB_NAME.carcinogen_list" \
+    --ignore-table="$DB_NAME.hap_list" \
+    --ignore-table="$DB_NAME.sara313_list" \
+    --ignore-table="$DB_NAME.exposure_limits" \
+    --ignore-table="$DB_NAME.dot_transport_info" \
+    --ignore-table="$DB_NAME.audit_log" \
+    2>/dev/null | gzip > "$DB_BACKUP_FILE"
 
 if [ -s "$DB_BACKUP_FILE" ]; then
     BACKUP_SIZE=$(du -h "$DB_BACKUP_FILE" | cut -f1)

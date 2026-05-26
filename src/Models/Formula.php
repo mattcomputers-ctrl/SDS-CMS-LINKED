@@ -334,6 +334,8 @@ class Formula
                     'cas_number'               => $cas,
                     'chemical_name'            => $row['chemical_name'],
                     'concentration_pct'        => 0.0,
+                    'concentration_min'        => null,
+                    'concentration_max'        => null,
                     'is_trade_secret'          => false,
                     'is_non_hazardous'         => true,
                     'trade_secret_description' => null,
@@ -342,6 +344,17 @@ class Formula
             }
 
             $casBuckets[$cas]['concentration_pct'] += $contribution;
+
+            // Preserve original min/max range when available
+            $lineScale = $scaleFactor * (float) $row['line_pct'] / 100.0;
+            if ($row['pct_min'] !== null && $row['pct_max'] !== null) {
+                $contribMin = $lineScale * (float) $row['pct_min'];
+                $contribMax = $lineScale * (float) $row['pct_max'];
+                $casBuckets[$cas]['concentration_min'] =
+                    ($casBuckets[$cas]['concentration_min'] ?? 0) + $contribMin;
+                $casBuckets[$cas]['concentration_max'] =
+                    ($casBuckets[$cas]['concentration_max'] ?? 0) + $contribMax;
+            }
 
             if ($isTs) {
                 $casBuckets[$cas]['is_trade_secret'] = true;
@@ -548,6 +561,12 @@ class Formula
         // Round concentrations and sort by descending concentration
         foreach ($casBuckets as &$bucket) {
             $bucket['concentration_pct'] = round($bucket['concentration_pct'], 4);
+            if (isset($bucket['concentration_min'])) {
+                $bucket['concentration_min'] = round($bucket['concentration_min'], 4);
+            }
+            if (isset($bucket['concentration_max'])) {
+                $bucket['concentration_max'] = round($bucket['concentration_max'], 4);
+            }
         }
         unset($bucket);
 

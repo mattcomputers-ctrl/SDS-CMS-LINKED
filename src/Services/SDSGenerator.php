@@ -679,6 +679,18 @@ class SDSGenerator
             }
         }
 
+        // Collect H codes attributed to TRADE_SECRET from hazard results
+        $tradeSecretHCodes = [];
+        foreach (($hazardResult['hazard_classes'] ?? []) as $hc) {
+            if ((string) ($hc['cas'] ?? '') === 'TRADE_SECRET') {
+                foreach (($hc['h_codes'] ?? []) as $code) {
+                    if ($code !== '') {
+                        $tradeSecretHCodes[$code] = true;
+                    }
+                }
+            }
+        }
+
         $disclosed      = [];
         $tradeSecretBuckets = []; // group trade secrets by description
 
@@ -708,9 +720,17 @@ class SDSGenerator
                         'cas_number'        => 'TRADE SECRET',
                         'chemical_name'     => $desc ?: 'Trade Secret',
                         'concentration_pct' => 0.0,
+                        'concentration_min' => null,
+                        'concentration_max' => null,
                     ];
                 }
                 $tradeSecretBuckets[$desc]['concentration_pct'] += $conc;
+                if (isset($c['concentration_min']) && isset($c['concentration_max'])) {
+                    $tradeSecretBuckets[$desc]['concentration_min'] =
+                        ($tradeSecretBuckets[$desc]['concentration_min'] ?? 0) + $c['concentration_min'];
+                    $tradeSecretBuckets[$desc]['concentration_max'] =
+                        ($tradeSecretBuckets[$desc]['concentration_max'] ?? 0) + $c['concentration_max'];
+                }
                 continue;
             }
 
@@ -718,7 +738,7 @@ class SDSGenerator
                 'cas_number'          => $cas,
                 'chemical_name'       => $c['chemical_name'],
                 'concentration_pct'   => $conc,
-                'concentration_range' => $this->concentrationRange($conc),
+                'concentration_range' => $this->formatConcentration($c),
                 'h_codes'             => array_keys($casToHCodes[$cas] ?? []),
             ];
         }
@@ -729,8 +749,8 @@ class SDSGenerator
                 'cas_number'          => 'TRADE SECRET',
                 'chemical_name'       => $bucket['chemical_name'],
                 'concentration_pct'   => round($bucket['concentration_pct'], 4),
-                'concentration_range' => $this->concentrationRange($bucket['concentration_pct']),
-                'h_codes'             => [],
+                'concentration_range' => $this->formatConcentration($bucket),
+                'h_codes'             => array_keys($tradeSecretHCodes),
             ];
         }
 
@@ -1389,6 +1409,30 @@ class SDSGenerator
         }
 
         return [];
+    }
+
+    /**
+     * Format concentration for Section 3 display.
+     * Uses actual min/max range when available from the supplier SDS,
+     * otherwise falls back to GHS-standard banding.
+     */
+    private function formatConcentration(array $component): string
+    {
+        $min = $component['concentration_min'] ?? null;
+        $max = $component['concentration_max'] ?? null;
+
+        if ($min !== null && $max !== null) {
+            $min = round((float) $min, 1);
+            $max = round((float) $max, 1);
+            if ($min == $max) {
+                return rtrim(rtrim(number_format($min, 1), '0'), '.') . '%';
+            }
+            $fmtMin = rtrim(rtrim(number_format($min, 1), '0'), '.');
+            $fmtMax = rtrim(rtrim(number_format($max, 1), '0'), '.');
+            return "{$fmtMin} - {$fmtMax}%";
+        }
+
+        return $this->concentrationRange((float) ($component['concentration_pct'] ?? 0));
     }
 
     private function concentrationRange(float $pct): string

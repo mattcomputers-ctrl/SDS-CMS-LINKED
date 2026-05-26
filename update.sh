@@ -166,33 +166,40 @@ fi
 # ============================================================
 print_header "Step 2: Pre-Update Backup"
 
-BACKUP_TS=$(date '+%Y%m%d_%H%M%S')
-BACKUP_DIR="$INSTALL_DIR/storage/backups"
-mkdir -p "$BACKUP_DIR"
+read -rp "Create a database backup before updating? [Y/n]: " DO_BACKUP
+DO_BACKUP="${DO_BACKUP:-Y}"
 
-# Database backup
-print_step "Backing up database..."
-DB_BACKUP_FILE="$BACKUP_DIR/pre_update_${BACKUP_TS}.sql.gz"
-mysqldump --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" --password="$DB_PASS" \
-    --single-transaction --routines --triggers "$DB_NAME" 2>/dev/null | gzip > "$DB_BACKUP_FILE"
+if [[ "$DO_BACKUP" =~ ^[Yy]$ ]]; then
+    BACKUP_TS=$(date '+%Y%m%d_%H%M%S')
+    BACKUP_DIR="$INSTALL_DIR/storage/backups"
+    mkdir -p "$BACKUP_DIR"
 
-if [ -s "$DB_BACKUP_FILE" ]; then
-    BACKUP_SIZE=$(du -h "$DB_BACKUP_FILE" | cut -f1)
-    print_success "Database backed up ($BACKUP_SIZE): $DB_BACKUP_FILE"
+    # Database backup
+    print_step "Backing up database..."
+    DB_BACKUP_FILE="$BACKUP_DIR/pre_update_${BACKUP_TS}.sql.gz"
+    mysqldump --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" --password="$DB_PASS" \
+        --single-transaction --routines --triggers "$DB_NAME" 2>/dev/null | gzip > "$DB_BACKUP_FILE"
+
+    if [ -s "$DB_BACKUP_FILE" ]; then
+        BACKUP_SIZE=$(du -h "$DB_BACKUP_FILE" | cut -f1)
+        print_success "Database backed up ($BACKUP_SIZE): $DB_BACKUP_FILE"
+    else
+        print_warn "Database backup may be empty. Continuing anyway..."
+    fi
+
+    # Config backup
+    print_step "Backing up configuration..."
+    CONFIG_BACKUP="$BACKUP_DIR/config_backup_${BACKUP_TS}.php"
+    cp "$INSTALL_DIR/config/config.php" "$CONFIG_BACKUP"
+    print_success "Config backed up: $CONFIG_BACKUP"
+
+    echo ""
+    print_info "Pre-update backups saved to: $BACKUP_DIR"
+    print_info "If anything goes wrong, restore the database with:"
+    print_info "  gunzip < $DB_BACKUP_FILE | $MYSQL_CMD $MYSQL_AUTH $DB_NAME"
 else
-    print_warn "Database backup may be empty. Continuing anyway..."
+    print_warn "Skipping backup. Proceeding without a safety net."
 fi
-
-# Config backup
-print_step "Backing up configuration..."
-CONFIG_BACKUP="$BACKUP_DIR/config_backup_${BACKUP_TS}.php"
-cp "$INSTALL_DIR/config/config.php" "$CONFIG_BACKUP"
-print_success "Config backed up: $CONFIG_BACKUP"
-
-echo ""
-print_info "Pre-update backups saved to: $BACKUP_DIR"
-print_info "If anything goes wrong, restore the database with:"
-print_info "  gunzip < $DB_BACKUP_FILE | $MYSQL_CMD $MYSQL_AUTH $DB_NAME"
 
 # ============================================================
 # Step 3: Update application files

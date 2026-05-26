@@ -518,7 +518,39 @@ class RawMaterialController
         }
 
         RawMaterial::saveConstituents($rmId, $constituents);
+
+        $this->autoSaveTradeSecretDescriptions($constituents);
+
         return count($constituents);
+    }
+
+    /**
+     * Auto-add any new trade secret descriptions to the saved list.
+     */
+    private function autoSaveTradeSecretDescriptions(array $constituents): void
+    {
+        $existing = $this->loadTradeSecretDescriptions();
+        $newDescs = [];
+
+        foreach ($constituents as $c) {
+            $desc = trim($c['trade_secret_description'] ?? '');
+            if ($desc !== '' && !in_array($desc, $existing, true) && !in_array($desc, $newDescs, true)) {
+                $newDescs[] = $desc;
+            }
+        }
+
+        if (empty($newDescs)) {
+            return;
+        }
+
+        $all = array_merge($existing, $newDescs);
+        sort($all);
+        $db = \SDS\Core\Database::getInstance();
+        $db->query(
+            "INSERT INTO settings (`key`, `value`) VALUES ('sds.trade_secret_descriptions', ?)
+             ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)",
+            [implode("\n", $all)]
+        );
     }
 
     /**

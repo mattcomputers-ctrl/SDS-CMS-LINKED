@@ -281,7 +281,7 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                     <th>Trade Secret</th>
                     <th>TS Description</th>
                     <th>TS H Codes</th>
-                    <th>Non-Hazardous</th>
+                    <th>Non-Haz</th>
                     <th></th>
                 </tr>
             </thead>
@@ -302,14 +302,13 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                     <td><input type="number" name="pct_exact[<?= $i ?>]" value="<?= e((string) ($c['pct_exact'] ?? '')) ?>" step="0.0001" class="input-xs"></td>
                     <td><input type="checkbox" name="is_trade_secret[<?= $i ?>]" value="1" class="ts-checkbox" <?= ((int) ($c['is_trade_secret'] ?? 0)) ? 'checked' : '' ?>></td>
                     <td>
-                        <select name="trade_secret_description[<?= $i ?>]" class="input-sm ts-desc-select" <?= ((int) ($c['is_trade_secret'] ?? 0)) ? '' : 'disabled' ?>>
-                            <option value="">—</option>
-                            <?php foreach ($tradeSecretDescriptions ?? [] as $tsd): ?>
-                                <option value="<?= e($tsd) ?>" <?= ($c['trade_secret_description'] ?? '') === $tsd ? 'selected' : '' ?>><?= e($tsd) ?></option>
-                            <?php endforeach; ?>
-                        </select>
+                        <input type="text" name="trade_secret_description[<?= $i ?>]" list="ts-desc-list" value="<?= e($c['trade_secret_description'] ?? '') ?>" placeholder="Type or select..." class="input-sm ts-desc-input" <?= ((int) ($c['is_trade_secret'] ?? 0)) ? '' : 'disabled' ?>>
                     </td>
-                    <td><input type="text" name="trade_secret_h_codes[<?= $i ?>]" value="<?= e($c['trade_secret_h_codes'] ?? '') ?>" placeholder="H302, H315" class="input-sm ts-hcodes-input" <?= ((int) ($c['is_trade_secret'] ?? 0)) ? '' : 'disabled' ?>></td>
+                    <td>
+                        <input type="hidden" name="trade_secret_h_codes[<?= $i ?>]" value="<?= e($c['trade_secret_h_codes'] ?? '') ?>" class="ts-hcodes-hidden">
+                        <span class="ts-hcodes-summary" style="font-size:0.8rem;"><?= e($c['trade_secret_h_codes'] ?? '') ?></span>
+                        <button type="button" class="btn btn-sm ts-hcodes-btn" <?= ((int) ($c['is_trade_secret'] ?? 0)) ? '' : 'disabled' ?> style="margin-top:2px;">Select</button>
+                    </td>
                     <td><input type="checkbox" name="is_non_hazardous[<?= $i ?>]" value="1" <?= ((int) ($c['is_non_hazardous'] ?? 0)) ? 'checked' : '' ?>></td>
                     <td><button type="button" class="btn btn-sm btn-danger remove-row">X</button></td>
                 </tr>
@@ -329,14 +328,13 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                     <td><input type="number" name="pct_exact[0]" step="0.0001" class="input-xs"></td>
                     <td><input type="checkbox" name="is_trade_secret[0]" value="1" class="ts-checkbox"></td>
                     <td>
-                        <select name="trade_secret_description[0]" class="input-sm ts-desc-select" disabled>
-                            <option value="">—</option>
-                            <?php foreach ($tradeSecretDescriptions ?? [] as $tsd): ?>
-                                <option value="<?= e($tsd) ?>"><?= e($tsd) ?></option>
-                            <?php endforeach; ?>
-                        </select>
+                        <input type="text" name="trade_secret_description[0]" list="ts-desc-list" placeholder="Type or select..." class="input-sm ts-desc-input" disabled>
                     </td>
-                    <td><input type="text" name="trade_secret_h_codes[0]" placeholder="H302, H315" class="input-sm ts-hcodes-input" disabled></td>
+                    <td>
+                        <input type="hidden" name="trade_secret_h_codes[0]" value="" class="ts-hcodes-hidden">
+                        <span class="ts-hcodes-summary" style="font-size:0.8rem;"></span>
+                        <button type="button" class="btn btn-sm ts-hcodes-btn" disabled style="margin-top:2px;">Select</button>
+                    </td>
                     <td><input type="checkbox" name="is_non_hazardous[0]" value="1"></td>
                     <td><button type="button" class="btn btn-sm btn-danger remove-row">X</button></td>
                 </tr>
@@ -347,6 +345,48 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
         <div style="margin-bottom: 1.5rem;">
             <button type="button" id="addRow" class="btn btn-sm btn-outline">+ Add Row</button>
         </div>
+
+        <!-- Datalist for trade secret descriptions (autocomplete from saved list) -->
+        <datalist id="ts-desc-list">
+            <?php foreach ($tradeSecretDescriptions ?? [] as $tsd): ?>
+                <option value="<?= e($tsd) ?>">
+            <?php endforeach; ?>
+        </datalist>
+
+        <!-- H Codes picker modal -->
+        <div id="tsHcodesModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; z-index:9999; background:rgba(0,0,0,0.5);">
+            <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:#fff; border-radius:8px; width:700px; max-width:95vw; max-height:85vh; display:flex; flex-direction:column;">
+                <div style="padding:12px 16px; border-bottom:1px solid #e0e0e0; display:flex; justify-content:space-between; align-items:center;">
+                    <strong>Select Hazard Classifications</strong>
+                    <button type="button" id="tsHcodesModalClose" style="background:none; border:none; font-size:1.2rem; cursor:pointer;">&times;</button>
+                </div>
+                <div id="tsHcodesModalBody" style="padding:12px 16px; overflow-y:auto; flex:1;">
+                    <?php
+                    $tsGrouped = \SDS\Services\GHSHazardData::groupedByClass();
+                    foreach ($tsGrouped as $className => $entries):
+                    ?>
+                    <div class="hazard-class-group" style="margin-bottom:8px;">
+                        <div style="font-weight:600; border-bottom:1px solid #ddd; padding:4px 0; margin-bottom:4px;"><?= e($className) ?></div>
+                        <?php foreach ($entries as $key => $entry): ?>
+                        <label style="display:block; padding:2px 4px; font-size:0.875rem;">
+                            <input type="checkbox" class="ts-modal-hazard-cb" data-key="<?= e($key) ?>" data-hcodes="<?= e(implode(',', $entry['h_codes'])) ?>">
+                            <strong><?= e($entry['category']) ?></strong>
+                            — <?= e(implode(', ', $entry['h_codes'])) ?>
+                            <?php if ($entry['signal_word']): ?>
+                                <em class="text-muted">(<?= e($entry['signal_word']) ?>)</em>
+                            <?php endif; ?>
+                        </label>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <div style="padding:12px 16px; border-top:1px solid #e0e0e0; text-align:right;">
+                    <button type="button" id="tsHcodesModalApply" class="btn btn-primary btn-sm">Apply</button>
+                    <button type="button" id="tsHcodesModalCancel" class="btn btn-sm" style="margin-left:6px;">Cancel</button>
+                </div>
+            </div>
+        </div>
+
         </div><!-- /#cas-constituents-section -->
 
         <!-- California Proposition 65 — Auto (derived) + Manual (overrides) -->
@@ -755,17 +795,6 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
 </style>
 <script>
 // Trade secret description options from admin settings
-var tsDescOptions = <?= json_encode($tradeSecretDescriptions ?? []) ?>;
-
-function buildTsDescSelect(idx) {
-    var html = '<select name="trade_secret_description[' + idx + ']" class="input-sm ts-desc-select" disabled><option value="">—</option>';
-    for (var i = 0; i < tsDescOptions.length; i++) {
-        html += '<option value="' + tsDescOptions[i].replace(/"/g, '&quot;') + '">' + tsDescOptions[i].replace(/</g, '&lt;') + '</option>';
-    }
-    html += '</select>';
-    return html;
-}
-
 // Toggle visibility of CAS constituents vs manual hazard picker
 (function() {
     var checkbox = document.getElementById('hazardous_no_cas');
@@ -797,8 +826,8 @@ document.getElementById('addRow').addEventListener('click', function() {
         '<td><input type="number" name="pct_max[' + idx + ']" step="0.0001" class="input-xs"></td>' +
         '<td><input type="number" name="pct_exact[' + idx + ']" step="0.0001" class="input-xs"></td>' +
         '<td><input type="checkbox" name="is_trade_secret[' + idx + ']" value="1" class="ts-checkbox"></td>' +
-        '<td>' + buildTsDescSelect(idx) + '</td>' +
-        '<td><input type="text" name="trade_secret_h_codes[' + idx + ']" placeholder="H302, H315" class="input-sm ts-hcodes-input" disabled></td>' +
+        '<td><input type="text" name="trade_secret_description[' + idx + ']" list="ts-desc-list" placeholder="Type or select..." class="input-sm ts-desc-input" disabled></td>' +
+        '<td><input type="hidden" name="trade_secret_h_codes[' + idx + ']" value="" class="ts-hcodes-hidden"><span class="ts-hcodes-summary" style="font-size:0.8rem;"></span><button type="button" class="btn btn-sm ts-hcodes-btn" disabled style="margin-top:2px;">Select</button></td>' +
         '<td><input type="checkbox" name="is_non_hazardous[' + idx + ']" value="1"></td>' +
         '<td><button type="button" class="btn btn-sm btn-danger remove-row">X</button></td>';
     tbody.appendChild(tr);
@@ -982,22 +1011,83 @@ document.querySelectorAll('.cas-input').forEach(function(input) {
     }
 });
 
-// ── Trade secret checkbox toggles description dropdown + H codes input ──
+// ── Trade secret checkbox toggles description + H codes picker ──
 document.addEventListener('change', function(e) {
     if (e.target.classList.contains('ts-checkbox')) {
         var row = e.target.closest('tr');
-        var sel = row.querySelector('.ts-desc-select');
-        var hcodes = row.querySelector('.ts-hcodes-input');
-        if (sel) {
-            sel.disabled = !e.target.checked;
-            if (!e.target.checked) sel.value = '';
+        var descInput = row.querySelector('.ts-desc-input');
+        var hcodesBtn = row.querySelector('.ts-hcodes-btn');
+        if (descInput) {
+            descInput.disabled = !e.target.checked;
+            if (!e.target.checked) descInput.value = '';
         }
-        if (hcodes) {
-            hcodes.disabled = !e.target.checked;
-            if (!e.target.checked) hcodes.value = '';
+        if (hcodesBtn) {
+            hcodesBtn.disabled = !e.target.checked;
+            if (!e.target.checked) {
+                var hidden = row.querySelector('.ts-hcodes-hidden');
+                var summary = row.querySelector('.ts-hcodes-summary');
+                if (hidden) hidden.value = '';
+                if (summary) summary.textContent = '';
+            }
         }
     }
 });
+
+// ── H Codes picker modal logic ──
+(function() {
+    var modal = document.getElementById('tsHcodesModal');
+    var activeRow = null;
+
+    document.addEventListener('click', function(e) {
+        if (e.target.classList.contains('ts-hcodes-btn')) {
+            e.preventDefault();
+            activeRow = e.target.closest('tr');
+            var hidden = activeRow.querySelector('.ts-hcodes-hidden');
+            var currentCodes = (hidden && hidden.value) ? hidden.value.split(',').map(function(s){return s.trim();}) : [];
+
+            // Reset all checkboxes, then check matching ones
+            modal.querySelectorAll('.ts-modal-hazard-cb').forEach(function(cb) {
+                var cbHCodes = cb.getAttribute('data-hcodes').split(',');
+                cb.checked = cbHCodes.some(function(c) { return currentCodes.indexOf(c) !== -1; });
+            });
+
+            modal.style.display = 'block';
+        }
+    });
+
+    document.getElementById('tsHcodesModalClose').addEventListener('click', function() {
+        modal.style.display = 'none';
+        activeRow = null;
+    });
+    document.getElementById('tsHcodesModalCancel').addEventListener('click', function() {
+        modal.style.display = 'none';
+        activeRow = null;
+    });
+
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+            modal.style.display = 'none';
+            activeRow = null;
+        }
+    });
+
+    document.getElementById('tsHcodesModalApply').addEventListener('click', function() {
+        if (!activeRow) return;
+        var codes = {};
+        modal.querySelectorAll('.ts-modal-hazard-cb:checked').forEach(function(cb) {
+            cb.getAttribute('data-hcodes').split(',').forEach(function(c) {
+                codes[c.trim()] = true;
+            });
+        });
+        var codeList = Object.keys(codes).sort().join(', ');
+        var hidden = activeRow.querySelector('.ts-hcodes-hidden');
+        var summary = activeRow.querySelector('.ts-hcodes-summary');
+        if (hidden) hidden.value = codeList;
+        if (summary) summary.textContent = codeList;
+        modal.style.display = 'none';
+        activeRow = null;
+    });
+})();
 
 // ── VOC <1% checkbox toggle ────────────────────────────────
 document.getElementById('vocLessThanOne').addEventListener('change', function() {

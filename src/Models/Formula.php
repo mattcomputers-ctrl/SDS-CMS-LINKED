@@ -314,10 +314,13 @@ class Formula
             // Trade secret constituent with no CAS but with H codes —
             // route into the TRADE_SECRET bucket instead of a CAS bucket.
             if ($isTs && $cas === '' && !empty($row['trade_secret_h_codes'])) {
+                $lineScale = $scaleFactor * (float) $row['line_pct'] / 100.0;
                 $tsConstituentHazards[] = [
                     'h_codes'      => $row['trade_secret_h_codes'],
                     'description'  => $row['trade_secret_description'] ?? ($row['chemical_name'] ?: 'Trade Secret'),
                     'contribution' => $contribution,
+                    'contrib_min'  => ($row['pct_min'] !== null) ? $lineScale * (float) $row['pct_min'] : null,
+                    'contrib_max'  => ($row['pct_max'] !== null) ? $lineScale * (float) $row['pct_max'] : null,
                     'raw_material_id' => (int) $row['raw_material_id'],
                     'internal_code'   => $row['internal_code'],
                     'pct_in_rm'       => $constituentPct,
@@ -438,6 +441,8 @@ class Formula
                     'cas_number'               => 'TRADE_SECRET',
                     'chemical_name'            => 'Trade Secret',
                     'concentration_pct'        => 0.0,
+                    'concentration_min'        => null,
+                    'concentration_max'        => null,
                     'is_trade_secret'          => true,
                     'is_non_hazardous'         => false,
                     'trade_secret_description' => 'Trade Secret',
@@ -448,6 +453,12 @@ class Formula
 
             foreach ($tsConstituentHazards as $tsLine) {
                 $casBuckets[$tsKey]['concentration_pct'] += $tsLine['contribution'];
+                if ($tsLine['contrib_min'] !== null && $tsLine['contrib_max'] !== null) {
+                    $casBuckets[$tsKey]['concentration_min'] =
+                        ($casBuckets[$tsKey]['concentration_min'] ?? 0) + $tsLine['contrib_min'];
+                    $casBuckets[$tsKey]['concentration_max'] =
+                        ($casBuckets[$tsKey]['concentration_max'] ?? 0) + $tsLine['contrib_max'];
+                }
                 if (!empty($tsLine['description'])) {
                     $casBuckets[$tsKey]['trade_secret_description'] = $tsLine['description'];
                 }

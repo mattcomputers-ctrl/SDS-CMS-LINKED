@@ -325,6 +325,15 @@ class App
             $r->get('/purge-data',  'AdminController@purgeData');
             $r->post('/purge-data', 'AdminController@executePurgeData');
 
+            // SARA 313 List Management
+            $r->get('/sara313',              'AdminController@sara313List');
+            $r->get('/sara313/create',       'AdminController@createSara313');
+            $r->post('/sara313',             'AdminController@storeSara313');
+            $r->get('/sara313/{id}/edit',    'AdminController@editSara313');
+            $r->post('/sara313/{id}',        'AdminController@updateSara313');
+            $r->post('/sara313/{id}/delete', 'AdminController@deleteSara313');
+            $r->post('/sara313/import',      'AdminController@importSara313');
+
             // SNUR List Management
             $r->get('/snur-list',              'AdminController@snurList');
             $r->post('/snur-list',             'AdminController@storeSnur');

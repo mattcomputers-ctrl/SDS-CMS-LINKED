@@ -1944,4 +1944,193 @@ class AdminController
 
         redirect('/admin/snur-list');
     }
+
+    /* ------------------------------------------------------------------
+     *  SARA 313 List Management
+     * ----------------------------------------------------------------*/
+
+    public function sara313List(): void
+    {
+        $this->requireAdmin();
+
+        $db = Database::getInstance();
+        $search = trim($_GET['search'] ?? '');
+        $pbtFilter = $_GET['is_pbt'] ?? '';
+
+        $where = [];
+        $params = [];
+
+        if ($search !== '') {
+            $where[] = '(cas_number LIKE ? OR chemical_name LIKE ?)';
+            $term = '%' . $search . '%';
+            $params[] = $term;
+            $params[] = $term;
+        }
+        if ($pbtFilter !== '') {
+            $where[] = 'is_pbt = ?';
+            $params[] = (int) $pbtFilter;
+        }
+
+        $whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+
+        $items = $db->fetchAll(
+            "SELECT * FROM sara313_list {$whereSQL} ORDER BY chemical_name ASC",
+            $params
+        );
+
+        $totalCount = $db->fetch("SELECT COUNT(*) AS cnt FROM sara313_list");
+
+        view('admin/sara313-list', [
+            'pageTitle'  => 'SARA 313 List',
+            'items'      => $items,
+            'totalCount' => (int) ($totalCount['cnt'] ?? 0),
+            'search'     => $search,
+            'pbtFilter'  => $pbtFilter,
+        ]);
+    }
+
+    public function createSara313(): void
+    {
+        $this->requireAdmin();
+
+        view('admin/sara313-form', [
+            'pageTitle' => 'Add SARA 313 Chemical',
+            'item'      => null,
+            'mode'      => 'create',
+        ]);
+    }
+
+    public function storeSara313(): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+
+        $db = Database::getInstance();
+        $cas = trim($_POST['cas_number'] ?? '');
+
+        if ($cas === '' || !preg_match('/^\d{1,7}-\d{2}-\d$/', $cas)) {
+            $_SESSION['_flash']['error'] = 'A valid CAS number is required (format: digits-digits-digit).';
+            $_SESSION['_flash']['_old_input'] = $_POST;
+            redirect('/admin/sara313/create');
+            return;
+        }
+
+        $existing = $db->fetch("SELECT id FROM sara313_list WHERE cas_number = ?", [$cas]);
+        if ($existing) {
+            $_SESSION['_flash']['error'] = "CAS {$cas} is already in the SARA 313 list.";
+            redirect('/admin/sara313');
+            return;
+        }
+
+        $db->insert('sara313_list', [
+            'cas_number'        => $cas,
+            'chemical_name'     => trim($_POST['chemical_name'] ?? ''),
+            'category_code'     => trim($_POST['category_code'] ?? '') ?: null,
+            'deminimis_pct'     => ($_POST['deminimis_pct'] ?? '') !== '' ? (float) $_POST['deminimis_pct'] : 1.0,
+            'is_pbt'            => !empty($_POST['is_pbt']) ? 1 : 0,
+            'pbt_threshold_pct' => ($_POST['pbt_threshold_pct'] ?? '') !== '' ? (float) $_POST['pbt_threshold_pct'] : null,
+            'source_ref'        => trim($_POST['source_ref'] ?? '') ?: null,
+            'last_updated_at'   => date('Y-m-d H:i:s'),
+        ]);
+
+        AuditService::log('sara313_list', $cas, 'create');
+        $_SESSION['_flash']['success'] = "SARA 313 chemical {$cas} added.";
+        redirect('/admin/sara313');
+    }
+
+    public function editSara313(string $id): void
+    {
+        $this->requireAdmin();
+        $db = Database::getInstance();
+        $item = $db->fetch("SELECT * FROM sara313_list WHERE id = ?", [(int) $id]);
+        if (!$item) {
+            $_SESSION['_flash']['error'] = 'SARA 313 entry not found.';
+            redirect('/admin/sara313');
+            return;
+        }
+
+        view('admin/sara313-form', [
+            'pageTitle' => 'Edit SARA 313: ' . $item['cas_number'],
+            'item'      => $item,
+            'mode'      => 'edit',
+        ]);
+    }
+
+    public function updateSara313(string $id): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+        $db = Database::getInstance();
+
+        $item = $db->fetch("SELECT * FROM sara313_list WHERE id = ?", [(int) $id]);
+        if (!$item) {
+            $_SESSION['_flash']['error'] = 'SARA 313 entry not found.';
+            redirect('/admin/sara313');
+            return;
+        }
+
+        $db->update('sara313_list', [
+            'chemical_name'     => trim($_POST['chemical_name'] ?? ''),
+            'category_code'     => trim($_POST['category_code'] ?? '') ?: null,
+            'deminimis_pct'     => ($_POST['deminimis_pct'] ?? '') !== '' ? (float) $_POST['deminimis_pct'] : 1.0,
+            'is_pbt'            => !empty($_POST['is_pbt']) ? 1 : 0,
+            'pbt_threshold_pct' => ($_POST['pbt_threshold_pct'] ?? '') !== '' ? (float) $_POST['pbt_threshold_pct'] : null,
+            'source_ref'        => trim($_POST['source_ref'] ?? '') ?: null,
+            'last_updated_at'   => date('Y-m-d H:i:s'),
+        ], 'id = ?', [(int) $id]);
+
+        AuditService::log('sara313_list', $item['cas_number'], 'update');
+        $_SESSION['_flash']['success'] = 'SARA 313 entry updated.';
+        redirect('/admin/sara313');
+    }
+
+    public function deleteSara313(string $id): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+        $db = Database::getInstance();
+
+        $item = $db->fetch("SELECT cas_number FROM sara313_list WHERE id = ?", [(int) $id]);
+        if ($item) {
+            $db->query("DELETE FROM sara313_list WHERE id = ?", [(int) $id]);
+            AuditService::log('sara313_list', $item['cas_number'], 'delete');
+            $_SESSION['_flash']['success'] = 'SARA 313 entry removed.';
+        }
+
+        redirect('/admin/sara313');
+    }
+
+    public function importSara313(): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+
+        if (!isset($_FILES['sara313_file']) || $_FILES['sara313_file']['error'] !== UPLOAD_ERR_OK) {
+            $_SESSION['_flash']['error'] = 'Please select a valid CSV file.';
+            redirect('/admin/sara313');
+            return;
+        }
+
+        $ext = strtolower(pathinfo($_FILES['sara313_file']['name'], PATHINFO_EXTENSION));
+        if (!in_array($ext, ['csv', 'txt'], true)) {
+            $_SESSION['_flash']['error'] = 'Only CSV files are supported.';
+            redirect('/admin/sara313');
+            return;
+        }
+
+        $result = SARA313Service::importFromCsv($_FILES['sara313_file']['tmp_name']);
+
+        AuditService::log('sara313_list', '0', 'import', [
+            'inserted' => $result['inserted'],
+            'updated'  => $result['updated'],
+        ]);
+
+        $msg = "CSV imported: {$result['inserted']} added, {$result['updated']} updated.";
+        if (!empty($result['errors'])) {
+            $msg .= ' ' . count($result['errors']) . ' error(s): ' . implode('; ', array_slice($result['errors'], 0, 5));
+        }
+
+        $_SESSION['_flash']['success'] = $msg;
+        redirect('/admin/sara313');
+    }
 }

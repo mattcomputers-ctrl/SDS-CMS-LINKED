@@ -94,6 +94,12 @@ class FormulaController
                 }
 
                 $fg = FinishedGood::findByProductCode($code);
+                if (!$fg) {
+                    $baseCode = strip_pack_extension($code);
+                    if ($baseCode !== $code) {
+                        $fg = FinishedGood::findByProductCode($baseCode);
+                    }
+                }
                 if ($fg) {
                     $line['finished_good_component_id'] = (int) $fg['id'];
                     $lines[] = $line;

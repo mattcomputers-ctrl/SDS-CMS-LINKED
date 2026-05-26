@@ -281,8 +281,14 @@ class FinishedGoodController
             return;
         }
 
-        // Check finished goods
+        // Check finished goods (exact match, then strip pack extension)
         $fg = FinishedGood::findByProductCode($code);
+        if (!$fg) {
+            $baseCode = strip_pack_extension($code);
+            if ($baseCode !== $code) {
+                $fg = FinishedGood::findByProductCode($baseCode);
+            }
+        }
         if ($fg) {
             echo json_encode([
                 'found'       => true,

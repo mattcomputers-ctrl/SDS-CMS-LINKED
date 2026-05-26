@@ -11,4 +11,4 @@ EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
 -- Track in schema_migrations
-INSERT INTO schema_migrations (migration) VALUES ('045_add_trade_secret_h_codes') ON DUPLICATE KEY UPDATE migration = migration;
+INSERT INTO schema_migrations (`version`) VALUES ('045_add_trade_secret_h_codes') ON DUPLICATE KEY UPDATE `version` = `version`;

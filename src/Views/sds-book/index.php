@@ -44,7 +44,7 @@
                     <?php endif; ?>
                 </td>
                 <td style="white-space: nowrap;">
-                    <a href="<?= e($r['view_url']) ?>" target="_blank" class="btn btn-sm btn-primary">View PDF</a>
+                    <a href="<?= e($r['view_url']) ?>" class="btn btn-sm btn-primary pdf-link">View PDF</a>
                 </td>
             </tr>
         <?php endforeach; ?>

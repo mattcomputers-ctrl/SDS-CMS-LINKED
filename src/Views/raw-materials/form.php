@@ -46,7 +46,7 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
             <div class="form-group full-width">
                 <?php if ($isEdit && !empty($item['supplier_sds_path'])): ?>
                     <div style="margin-bottom: 0.5rem; padding: 0.5rem; background: #f0f4f8; border-radius: 4px;">
-                        <a href="/raw-materials/<?= (int) $item['id'] ?>/sds" target="_blank" class="btn btn-sm btn-primary">View Current SDS</a>
+                        <a href="/raw-materials/<?= (int) $item['id'] ?>/sds" class="btn btn-sm btn-primary pdf-link">View Current SDS</a>
                         <span class="text-muted" style="margin-left: 0.5rem;"><?= e(basename($item['supplier_sds_path'])) ?></span>
                     </div>
                 <?php endif; ?>
@@ -108,7 +108,7 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                     <td><?= format_date($sds['uploaded_at'], 'm/d/Y H:i') ?></td>
                     <td><?= !empty($sds['sds_date_received']) ? e($sds['sds_date_received']) : '<span class="text-muted">—</span>' ?></td>
                     <td>
-                        <a href="/raw-materials/sds-version/<?= (int) $sds['id'] ?>" target="_blank" class="btn btn-sm">View</a>
+                        <a href="/raw-materials/sds-version/<?= (int) $sds['id'] ?>" class="btn btn-sm pdf-link">View</a>
                     </td>
                 </tr>
             <?php endforeach; ?>

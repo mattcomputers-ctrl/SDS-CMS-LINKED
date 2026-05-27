@@ -34,7 +34,7 @@
         }
 
         function applyPdfLinkTargets(newTab) {
-            var links = document.querySelectorAll('a[href*="/download"]');
+            var links = document.querySelectorAll('.pdf-link');
             for (var i = 0; i < links.length; i++) {
                 if (newTab) {
                     links[i].setAttribute('target', '_blank');

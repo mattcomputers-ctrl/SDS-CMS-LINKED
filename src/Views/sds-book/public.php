@@ -42,7 +42,7 @@
                     <tr>
                         <td><strong><?= e($r['product_name']) ?></strong></td>
                         <td>
-                            <a href="<?= e($r['view_url']) ?>" target="_blank" class="btn btn-sm btn-primary">View SDS</a>
+                            <a href="<?= e($r['view_url']) ?>" class="btn btn-sm btn-primary pdf-link">View SDS</a>
                         </td>
                     </tr>
                 <?php endforeach; ?>

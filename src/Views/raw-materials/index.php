@@ -37,7 +37,7 @@
             <td><?= $item['flash_point_c'] !== null ? number_format((float) $item['flash_point_c'], 1) : '<span class="text-muted">—</span>' ?></td>
             <td>
                 <?php if (!empty($item['supplier_sds_path'])): ?>
-                    <a href="/raw-materials/<?= (int) $item['id'] ?>/sds" target="_blank" title="View Supplier SDS" class="btn btn-sm btn-outline">PDF</a>
+                    <a href="/raw-materials/<?= (int) $item['id'] ?>/sds" title="View Supplier SDS" class="btn btn-sm btn-outline pdf-link">PDF</a>
                 <?php else: ?>
                     <span class="text-muted">—</span>
                 <?php endif; ?>

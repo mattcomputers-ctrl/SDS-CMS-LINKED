@@ -13,10 +13,10 @@
         var label  = document.getElementById('pdfModeLabel');
         if (!toggle) return;
 
-        var isNewTab = document.cookie.indexOf('sds_pdf_download=1') === -1;
-        toggle.checked = isNewTab;
-        updateLabel(isNewTab);
-        applyPdfLinkTargets(isNewTab);
+        var downloadMode = document.cookie.indexOf('sds_pdf_download=1') !== -1;
+        toggle.checked = !downloadMode;
+        updateLabel(!downloadMode);
+        applyPdfLinkTargets(!downloadMode);
 
         toggle.addEventListener('change', function() {
             var newTab = toggle.checked;
@@ -41,10 +41,24 @@
                     links[i].removeAttribute('download');
                 } else {
                     links[i].removeAttribute('target');
-                    links[i].setAttribute('download', '');
+                    links[i].removeAttribute('download');
                 }
             }
         }
+
+        document.addEventListener('click', function(e) {
+            if (document.cookie.indexOf('sds_pdf_download=1') === -1) return;
+            var link = e.target.closest('.pdf-link');
+            if (!link) return;
+            e.preventDefault();
+            var a = document.createElement('a');
+            a.href = link.href;
+            a.download = '';
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        });
     })();
     </script>
 </body>

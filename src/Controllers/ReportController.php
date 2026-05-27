@@ -295,13 +295,31 @@ class ReportController
                 continue;
             }
 
-            // Build a lookup: customer_code (with pack ext) → alias row,
-            // for this FG only. Items that match here get an alias-branded
-            // PDF; items that don't (i.e. direct internal-coded shipments)
-            // get the published PDF as-is.
             $aliasByCustomerCode = [];
             foreach (($aliasesByBase[$productCode] ?? []) as $a) {
                 $aliasByCustomerCode[$a['customer_code']] = $a;
+            }
+
+            // Pre-load published alias PDFs for this FG so we can grab
+            // them directly instead of regenerating on the fly.
+            $aliasPublishedPdfs = [];
+            $aliasRows = $db->fetchAll(
+                "SELECT sv.alias_id, sv.language, sv.pdf_path, sv.version
+                 FROM sds_versions sv
+                 WHERE sv.finished_good_id = ?
+                   AND sv.alias_id IS NOT NULL
+                   AND sv.status = 'published'
+                   AND sv.is_deleted = 0
+                   AND sv.pdf_path IS NOT NULL
+                   AND sv.pdf_path != ''
+                 ORDER BY sv.version DESC",
+                [(int) $fg['id']]
+            );
+            foreach ($aliasRows as $ar) {
+                $key = (int) $ar['alias_id'] . '::' . $ar['language'];
+                if (!isset($aliasPublishedPdfs[$key])) {
+                    $aliasPublishedPdfs[$key] = $ar['pdf_path'];
+                }
             }
 
             $reportItems = $reportItemsByProduct[$productCode] ?? [];
@@ -315,28 +333,29 @@ class ReportController
                     if (isset($addedLangs[$lang])) continue;
                     $addedLangs[$lang] = true;
 
-                    // Preserve the pack-extended code in the ZIP filename —
-                    // that's what the customer sees on the invoice / packing
-                    // slip, so it's what they need to find in the archive.
                     $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $itemCode);
                     $zipName  = $safeCode . '_SDS' . ($lang !== 'en' ? '_' . strtoupper($lang) : '') . '.pdf';
                     if (isset($seen[$zipName])) continue;
                     $seen[$zipName] = true;
 
                     if ($matchedAlias !== null) {
-                        // Alias-branded PDF: Section 1 product identifier
-                        // rewritten to the alias customer_code (including
-                        // pack extension).
+                        $aliasKey = (int) $matchedAlias['id'] . '::' . $lang;
+                        $prebuiltPath = $aliasPublishedPdfs[$aliasKey] ?? null;
+                        if ($prebuiltPath !== null) {
+                            $fullPath = $basePath . '/' . ltrim($prebuiltPath, '/');
+                            if (file_exists($fullPath)) {
+                                $zip->addFile($fullPath, $zipName);
+                                $addedFiles++;
+                                continue;
+                            }
+                        }
+                        // Fallback: regenerate if no pre-built alias PDF
                         $aliasPdf = $this->generateAliasPdf($v, $matchedAlias, $basePath);
                         if ($aliasPdf !== null) {
                             $zip->addFile($aliasPdf, $zipName);
                             $tempPdfs[] = $aliasPdf;
                             $addedFiles++;
                         } else {
-                            // Failure is logged via error_log inside
-                            // generateAliasPdf; surface it here so the
-                            // customer-visible _MISSING_ITEMS.csv explains
-                            // why an item didn't make the ZIP.
                             $missingItems[$itemCode] = 'SDS generation failed (alias rebrand error)';
                         }
                     } else {

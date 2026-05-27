@@ -157,6 +157,13 @@ class CMSImportService
             // Check recipe ingredients for new raw materials
             $ingredients = $this->getRecipeIngredients((int) $item['cms_recipe_pk']);
 
+            // Pre-load FG product codes for pack extension matching
+            static $fgProductCodes = null;
+            if ($fgProductCodes === null) {
+                $fgRows = $this->db->fetchAll("SELECT product_code FROM finished_goods");
+                $fgProductCodes = array_flip(array_column($fgRows, 'product_code'));
+            }
+
             foreach ($ingredients as $ing) {
                 if ($this->isFinishedGoodIngredient($ing)) {
                     continue; // This is a FG sub-component, not a RM
@@ -167,6 +174,12 @@ class CMSImportService
                     continue;
                 }
                 $seenRmCodes[$code] = true;
+
+                // Skip if this code matches a finished good (with pack extension stripping)
+                $baseCode = strip_pack_extension($code);
+                if (isset($fgProductCodes[$code]) || isset($fgProductCodes[$baseCode])) {
+                    continue;
+                }
 
                 if (in_array($code, $existingRmCodes, true)) {
                     $rmExisting[] = $code;
@@ -405,6 +418,16 @@ class CMSImportService
                 if (isset($existingRms[$code])) {
                     $rmMap[$code] = $existingRms[$code];
                     $results['rm_skipped'][] = $code;
+                    continue;
+                }
+
+                // Skip if this code matches a finished good (with pack extension stripping)
+                $baseCode = strip_pack_extension($code);
+                $fgMatch = $this->db->fetch(
+                    "SELECT id FROM finished_goods WHERE product_code IN (?, ?)",
+                    [$code, $baseCode]
+                );
+                if ($fgMatch) {
                     continue;
                 }
 
@@ -663,16 +686,33 @@ class CMSImportService
                     'sort_order'                 => $sortOrder++,
                 ];
             } else {
-                $rmId = $rmMap[$ingCode] ?? null;
-                if ($rmId === null) {
-                    $results['errors'][] = "Formula for {$code}: raw material '{$ingCode}' not found.";
-                    continue;
+                // Check if this ingredient is actually a finished good (with pack extension)
+                $fgComponentId = $fgMap[$ingCode] ?? null;
+                if ($fgComponentId === null) {
+                    $baseCode = strip_pack_extension($ingCode);
+                    if ($baseCode !== $ingCode) {
+                        $fgComponentId = $fgMap[$baseCode] ?? null;
+                    }
                 }
-                $lines[] = [
-                    'raw_material_id' => $rmId,
-                    'pct'             => $pct,
-                    'sort_order'      => $sortOrder++,
-                ];
+
+                if ($fgComponentId !== null) {
+                    $lines[] = [
+                        'finished_good_component_id' => $fgComponentId,
+                        'pct'                        => $pct,
+                        'sort_order'                 => $sortOrder++,
+                    ];
+                } else {
+                    $rmId = $rmMap[$ingCode] ?? null;
+                    if ($rmId === null) {
+                        $results['errors'][] = "Formula for {$code}: raw material '{$ingCode}' not found.";
+                        continue;
+                    }
+                    $lines[] = [
+                        'raw_material_id' => $rmId,
+                        'pct'             => $pct,
+                        'sort_order'      => $sortOrder++,
+                    ];
+                }
             }
         }
 

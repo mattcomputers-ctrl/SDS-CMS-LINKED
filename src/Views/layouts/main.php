@@ -141,6 +141,13 @@
         </nav>
 
         <div class="sidebar-footer">
+            <div class="sidebar-pref">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="pdfModeToggle">
+                    <span class="toggle-slider"></span>
+                </label>
+                <span class="sidebar-pref-label" id="pdfModeLabel">Open PDFs in new tab</span>
+            </div>
             <div class="sidebar-user">
                 <div class="sidebar-user-info">
                     <span class="sidebar-user-name"><?= e($_SESSION['_user']['display_name'] ?: $_SESSION['_user']['username']) ?></span>

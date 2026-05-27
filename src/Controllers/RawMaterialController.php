@@ -333,8 +333,9 @@ class RawMaterialController
             redirect('/raw-materials/' . $id . '/edit');
         }
 
+        $disposition = !empty($_COOKIE['sds_pdf_download']) ? 'attachment' : 'inline';
         header('Content-Type: application/pdf');
-        header('Content-Disposition: inline; filename="SDS_' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $item['internal_code']) . '.pdf"');
+        header('Content-Disposition: ' . $disposition . '; filename="SDS_' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $item['internal_code']) . '.pdf"');
         header('Content-Length: ' . filesize($pdfPath));
         readfile($pdfPath);
         exit;
@@ -366,8 +367,9 @@ class RawMaterialController
             redirect('/raw-materials/' . $sds['raw_material_id'] . '/edit');
         }
 
+        $disposition = !empty($_COOKIE['sds_pdf_download']) ? 'attachment' : 'inline';
         header('Content-Type: application/pdf');
-        header('Content-Disposition: inline; filename="SDS_' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $sds['internal_code']) . '_v' . $sds['id'] . '.pdf"');
+        header('Content-Disposition: ' . $disposition . '; filename="SDS_' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $sds['internal_code']) . '_v' . $sds['id'] . '.pdf"');
         header('Content-Length: ' . filesize($pdfPath));
         readfile($pdfPath);
         exit;

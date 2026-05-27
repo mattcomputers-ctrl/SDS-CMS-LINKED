@@ -370,8 +370,9 @@ class PrivateLabelController
         $safeMfg  = preg_replace('/[^A-Za-z0-9_\-]/', '_', $version['manufacturer_name']);
         $filename = 'PL_SDS_' . $safeCode . '_' . $safeMfg . '_v' . $version['version'] . '_' . $version['language'] . '.pdf';
 
+        $disposition = !empty($_COOKIE['sds_pdf_download']) ? 'attachment' : 'inline';
         header('Content-Type: application/pdf');
-        header('Content-Disposition: inline; filename="' . $filename . '"');
+        header('Content-Disposition: ' . $disposition . '; filename="' . $filename . '"');
         header('Content-Length: ' . filesize($pdfPath));
         readfile($pdfPath);
         exit;

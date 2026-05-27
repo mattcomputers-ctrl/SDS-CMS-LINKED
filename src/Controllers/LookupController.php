@@ -90,8 +90,9 @@ class LookupController
                    ?? 'SDS';
         $displayCode = strip_pack_extension($sourceCode);
 
+        $disposition = !empty($_COOKIE['sds_pdf_download']) ? 'attachment' : 'inline';
         header('Content-Type: application/pdf');
-        header('Content-Disposition: inline; filename="SDS_' . $displayCode . '_v' . $version['version'] . '.pdf"');
+        header('Content-Disposition: ' . $disposition . '; filename="SDS_' . $displayCode . '_v' . $version['version'] . '.pdf"');
         header('Content-Length: ' . filesize($pdfPath));
         readfile($pdfPath);
         exit;

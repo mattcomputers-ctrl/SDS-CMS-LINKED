@@ -142,6 +142,62 @@ h1, h2, h3 { font-weight: 600; margin-bottom: 0.5rem; color: var(--text); }
     flex-shrink: 0;
 }
 
+.sidebar-pref {
+    padding: 0.6rem 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-bottom: 1px solid var(--sidebar-border);
+}
+
+.sidebar-pref-label {
+    font-size: 0.75rem;
+    color: var(--sidebar-text);
+    white-space: nowrap;
+    user-select: none;
+    cursor: pointer;
+}
+
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 32px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+.toggle-switch input { display: none; }
+
+.toggle-slider {
+    position: absolute;
+    inset: 0;
+    background: #3a4a5e;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    left: 2px;
+    bottom: 2px;
+    background: #8899b0;
+    border-radius: 50%;
+    transition: transform 0.2s, background 0.2s;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background: var(--primary-light);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+    transform: translateX(14px);
+    background: #fff;
+}
+
 .sidebar-user {
     padding: 0.85rem 1.25rem;
     display: flex;

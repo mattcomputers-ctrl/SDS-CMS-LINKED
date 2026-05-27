@@ -266,30 +266,64 @@ class BulkPublishController
             $lastPublishedByFg[(int) $r['finished_good_id']] = $r['last'];
         }
 
-        // ── Recursive walker (memoized) returning upstream RM set + max formula timestamp ──
+        // RM code lookup — re-check ingredients that were stored as raw
+        // materials but actually match a finished good (with pack extension).
+        $rmCodeById = [];
+        foreach ($db->fetchAll("SELECT id, internal_code FROM raw_materials") as $r) {
+            $rmCodeById[(int) $r['id']] = $r['internal_code'];
+        }
+        $fgIdByCode = [];
+        foreach ($db->fetchAll("SELECT id, product_code FROM finished_goods WHERE is_active = 1") as $r) {
+            $fgIdByCode[$r['product_code']] = (int) $r['id'];
+        }
+
+        // ── Recursive walker (memoized) ──
+        // Returns upstream RM set, FG component dependencies, and max
+        // formula timestamp. RM lines whose code matches a finished good
+        // (with pack extension stripping) are re-routed as FG deps.
         $cache = [];
-        $walk = function (int $formulaId, array $visited) use (&$walk, $linesByFormula, $fgToFormulaId, $formulaCreatedAt, &$cache) {
+        $walk = function (int $formulaId, array $visited) use (
+            &$walk, $linesByFormula, $fgToFormulaId, $formulaCreatedAt,
+            $rmCodeById, $fgIdByCode, &$cache
+        ) {
             if (isset($cache[$formulaId])) {
                 return $cache[$formulaId];
             }
             if (isset($visited[$formulaId])) {
-                // Cycle guard — return an empty contribution
-                return ['rms' => [], 'max_ts' => null];
+                return ['rms' => [], 'fg_deps' => [], 'max_ts' => null];
             }
             $visited[$formulaId] = true;
 
-            $rms   = [];
-            $maxTs = $formulaCreatedAt[$formulaId] ?? null;
+            $rms    = [];
+            $fgDeps = [];
+            $maxTs  = $formulaCreatedAt[$formulaId] ?? null;
 
             foreach ($linesByFormula[$formulaId] ?? [] as $line) {
+                $targetFgId = null;
+
                 if ($line['rm'] !== null) {
-                    $rms[$line['rm']] = true;
+                    $rmCode  = $rmCodeById[$line['rm']] ?? '';
+                    $baseCode = strip_pack_extension($rmCode);
+                    $targetFgId = $fgIdByCode[$rmCode] ?? $fgIdByCode[$baseCode] ?? null;
+
+                    if ($targetFgId === null) {
+                        $rms[$line['rm']] = true;
+                        continue;
+                    }
                 } elseif ($line['fg'] !== null) {
-                    $subFormulaId = $fgToFormulaId[$line['fg']] ?? null;
+                    $targetFgId = $line['fg'];
+                }
+
+                if ($targetFgId !== null) {
+                    $fgDeps[$targetFgId] = true;
+                    $subFormulaId = $fgToFormulaId[$targetFgId] ?? null;
                     if ($subFormulaId !== null) {
                         $sub = $walk($subFormulaId, $visited);
                         foreach ($sub['rms'] as $rmId => $_) {
                             $rms[$rmId] = true;
+                        }
+                        foreach ($sub['fg_deps'] as $depId => $_) {
+                            $fgDeps[$depId] = true;
                         }
                         if ($sub['max_ts'] !== null && ($maxTs === null || $sub['max_ts'] > $maxTs)) {
                             $maxTs = $sub['max_ts'];
@@ -298,7 +332,7 @@ class BulkPublishController
                 }
             }
 
-            $cache[$formulaId] = ['rms' => $rms, 'max_ts' => $maxTs];
+            $cache[$formulaId] = ['rms' => $rms, 'fg_deps' => $fgDeps, 'max_ts' => $maxTs];
             return $cache[$formulaId];
         };
 
@@ -337,6 +371,49 @@ class BulkPublishController
             }
 
             $eligible[] = $entry;
+        }
+
+        // ── Rule 3: upstream FG components must be published or eligible ──
+        // A downstream FG is blocked if any FG it depends on (directly or
+        // transitively) is neither already published nor in the eligible set.
+        // Iterate until stable — removing one FG may cascade to others.
+        $maxPropPasses = 10;
+        for ($propPass = 0; $propPass < $maxPropPasses; $propPass++) {
+            $eligibleIds = array_flip(array_column($eligible, 'id'));
+            $changed = false;
+            $stillEligible = [];
+
+            foreach ($eligible as $entry) {
+                $formulaId = $fgToFormulaId[$entry['id']] ?? null;
+                if ($formulaId === null) {
+                    $blocked[] = $entry;
+                    $changed = true;
+                    continue;
+                }
+
+                $result = $walk($formulaId, []);
+                $allDepsReady = true;
+                foreach ($result['fg_deps'] as $depFgId => $_) {
+                    $isPublished = isset($lastPublishedByFg[$depFgId]);
+                    $isEligible  = isset($eligibleIds[$depFgId]);
+                    if (!$isPublished && !$isEligible) {
+                        $allDepsReady = false;
+                        break;
+                    }
+                }
+
+                if ($allDepsReady) {
+                    $stillEligible[] = $entry;
+                } else {
+                    $blocked[] = $entry;
+                    $changed = true;
+                }
+            }
+
+            $eligible = $stillEligible;
+            if (!$changed) {
+                break;
+            }
         }
 
         return ['eligible' => $eligible, 'blocked' => $blocked];

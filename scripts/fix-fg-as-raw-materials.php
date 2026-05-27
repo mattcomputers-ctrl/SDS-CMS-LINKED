@@ -19,7 +19,7 @@ require __DIR__ . '/../vendor/autoload.php';
 use SDS\Core\Database;
 use SDS\Core\App;
 
-App::boot();
+new App();
 $db = Database::getInstance();
 $dryRun = !in_array('--confirm', $argv, true);
 

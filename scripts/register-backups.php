@@ -14,7 +14,7 @@ require __DIR__ . '/../vendor/autoload.php';
 use SDS\Core\App;
 use SDS\Core\Database;
 
-App::boot();
+new App();
 $db = Database::getInstance();
 
 $backupDir = App::basePath() . '/storage/backups';

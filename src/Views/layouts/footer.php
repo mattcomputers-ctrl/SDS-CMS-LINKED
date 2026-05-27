@@ -38,8 +38,10 @@
             for (var i = 0; i < links.length; i++) {
                 if (newTab) {
                     links[i].setAttribute('target', '_blank');
+                    links[i].removeAttribute('download');
                 } else {
                     links[i].removeAttribute('target');
+                    links[i].setAttribute('download', '');
                 }
             }
         }

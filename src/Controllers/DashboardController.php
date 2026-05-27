@@ -4,19 +4,25 @@ declare(strict_types=1);
 
 namespace SDS\Controllers;
 
+use SDS\Core\Database;
+
 class DashboardController
 {
-    /**
-     * Landing page — two quick-find search cards, one for finished-good SDSs
-     * and one for raw-material SDSs. No database queries on load; the
-     * former stat-counts / recent-activity dashboard was slow at scale
-     * (14k+ SDSs) and the information wasn't actionable from the dashboard
-     * anyway. Both forms submit to existing list/search endpoints.
-     */
     public function index(): void
     {
+        $db = Database::getInstance();
+
+        $row = $db->fetch(
+            "SELECT COUNT(DISTINCT finished_good_id) AS fg_count,
+                    COUNT(DISTINCT raw_material_id) AS rm_count
+             FROM sds_versions
+             WHERE status = 'published' AND is_deleted = 0"
+        );
+
         view('dashboard/index', [
-            'pageTitle' => 'Dashboard',
+            'pageTitle'    => 'Dashboard',
+            'publishedFgCount' => (int) ($row['fg_count'] ?? 0),
+            'publishedRmCount' => (int) ($row['rm_count'] ?? 0),
         ]);
     }
 }

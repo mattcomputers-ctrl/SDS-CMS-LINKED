@@ -1,5 +1,24 @@
 <?php include dirname(__DIR__) . '/layouts/main.php'; ?>
 
+<?php
+    $totalSds = ($publishedFgCount ?? 0) + ($publishedRmCount ?? 0);
+?>
+
+<div class="dashboard-stats">
+    <div class="stat-tile">
+        <span class="stat-number"><?= number_format($totalSds) ?></span>
+        <span class="stat-label">Published SDSs</span>
+        <?php if (($publishedFgCount ?? 0) > 0 || ($publishedRmCount ?? 0) > 0): ?>
+        <span class="stat-detail">
+            <?= number_format($publishedFgCount ?? 0) ?> finished goods
+            <?php if (($publishedRmCount ?? 0) > 0): ?>
+                &middot; <?= number_format($publishedRmCount ?? 0) ?> resale
+            <?php endif; ?>
+        </span>
+        <?php endif; ?>
+    </div>
+</div>
+
 <div class="quick-find-grid">
     <div class="card quick-find-card">
         <h2 class="card-title">Find a Finished Good SDS</h2>
@@ -44,6 +63,36 @@
 </div>
 
 <style>
+    .dashboard-stats {
+        max-width: 56rem;
+        margin: 2rem auto 0;
+    }
+    .stat-tile {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background: var(--card-bg, #fff);
+        border: 1px solid var(--border-color, #dee2e6);
+        border-radius: 0.5rem;
+        padding: 1.5rem 2rem;
+        text-align: center;
+    }
+    .stat-number {
+        font-size: 2.5rem;
+        font-weight: 700;
+        line-height: 1.1;
+        color: var(--primary, #0d6efd);
+    }
+    .stat-label {
+        font-size: 1.1rem;
+        font-weight: 500;
+        margin-top: 0.25rem;
+    }
+    .stat-detail {
+        font-size: 0.85rem;
+        color: var(--text-muted, #6c757d);
+        margin-top: 0.25rem;
+    }
     .quick-find-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));

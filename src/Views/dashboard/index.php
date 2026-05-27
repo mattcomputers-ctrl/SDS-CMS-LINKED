@@ -1,21 +1,9 @@
 <?php include dirname(__DIR__) . '/layouts/main.php'; ?>
 
-<?php
-    $totalSds = ($publishedFgCount ?? 0) + ($publishedRmCount ?? 0);
-?>
-
 <div class="dashboard-stats">
     <div class="stat-tile">
-        <span class="stat-number"><?= number_format($totalSds) ?></span>
+        <span class="stat-number"><?= number_format($publishedCount ?? 0) ?></span>
         <span class="stat-label">Published SDSs</span>
-        <?php if (($publishedFgCount ?? 0) > 0 || ($publishedRmCount ?? 0) > 0): ?>
-        <span class="stat-detail">
-            <?= number_format($publishedFgCount ?? 0) ?> finished goods
-            <?php if (($publishedRmCount ?? 0) > 0): ?>
-                &middot; <?= number_format($publishedRmCount ?? 0) ?> resale
-            <?php endif; ?>
-        </span>
-        <?php endif; ?>
     </div>
 </div>
 

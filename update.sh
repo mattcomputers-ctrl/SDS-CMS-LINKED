@@ -199,6 +199,20 @@ if [[ "$DO_BACKUP" =~ ^[Yy]$ ]]; then
     cp "$INSTALL_DIR/config/config.php" "$CONFIG_BACKUP"
     print_success "Config backed up: $CONFIG_BACKUP"
 
+    # Register any older pre-update backups that were never recorded
+    for OLD_BACKUP in "$BACKUP_DIR"/pre_update_*.sql.gz; do
+        [ -f "$OLD_BACKUP" ] || continue
+        OLD_BASENAME=$(basename "$OLD_BACKUP")
+        ALREADY=$($MYSQL_CMD $MYSQL_AUTH -N -e \
+            "SELECT COUNT(*) FROM \`$DB_NAME\`.backups WHERE filename = '$OLD_BASENAME'" 2>/dev/null || echo "0")
+        if [ "$ALREADY" = "0" ]; then
+            OLD_BYTES=$(stat -c%s "$OLD_BACKUP" 2>/dev/null || stat -f%z "$OLD_BACKUP" 2>/dev/null || echo 0)
+            OLD_MTIME=$(date -r "$OLD_BACKUP" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "$(date '+%Y-%m-%d %H:%M:%S')")
+            $MYSQL_CMD $MYSQL_AUTH "$DB_NAME" -e \
+                "INSERT INTO backups (filename, backup_type, file_size, notes, created_by, created_at) VALUES ('$OLD_BASENAME', 'full', $OLD_BYTES, 'Pre-update backup (retroactive)', NULL, '$OLD_MTIME')" 2>/dev/null || true
+        fi
+    done
+
     echo ""
     print_info "Pre-update backups saved to: $BACKUP_DIR"
     print_info "If anything goes wrong, restore the database with:"

@@ -922,8 +922,18 @@ class CMSImportService
             "SELECT id, product_code FROM finished_goods WHERE is_active = 1"
         );
 
+        // RM code → FG match lookup (skip fake RMs that are actually FGs)
+        $rmCodeById = [];
+        foreach ($this->db->fetchAll("SELECT id, internal_code FROM raw_materials") as $r) {
+            $rmCodeById[(int) $r['id']] = $r['internal_code'];
+        }
+        $fgIdByCode = [];
+        foreach ($activeFgs as $r) {
+            $fgIdByCode[$r['product_code']] = (int) $r['id'];
+        }
+
         $cache = [];
-        $walk = function (int $formulaId, array $visited) use (&$walk, $linesByFormula, $fgToFormulaId, &$cache) {
+        $walk = function (int $formulaId, array $visited) use (&$walk, $linesByFormula, $fgToFormulaId, $rmCodeById, $fgIdByCode, &$cache) {
             if (isset($cache[$formulaId])) {
                 return $cache[$formulaId];
             }
@@ -935,7 +945,20 @@ class CMSImportService
             $rms = [];
             foreach ($linesByFormula[$formulaId] ?? [] as $line) {
                 if ($line['rm'] !== null) {
-                    $rms[$line['rm']] = true;
+                    $rmCode = $rmCodeById[$line['rm']] ?? '';
+                    $baseCode = strip_pack_extension($rmCode);
+                    $matchedFgId = $fgIdByCode[$rmCode] ?? $fgIdByCode[$baseCode] ?? null;
+
+                    if ($matchedFgId !== null) {
+                        $subFormulaId = $fgToFormulaId[$matchedFgId] ?? null;
+                        if ($subFormulaId !== null) {
+                            foreach ($walk($subFormulaId, $visited) as $rmId => $_) {
+                                $rms[$rmId] = true;
+                            }
+                        }
+                    } else {
+                        $rms[$line['rm']] = true;
+                    }
                 } elseif ($line['fg'] !== null) {
                     $subFormulaId = $fgToFormulaId[$line['fg']] ?? null;
                     if ($subFormulaId !== null) {

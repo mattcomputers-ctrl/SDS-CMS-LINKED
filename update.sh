@@ -182,7 +182,13 @@ if [[ "$DO_BACKUP" =~ ^[Yy]$ ]]; then
 
     if [ -s "$DB_BACKUP_FILE" ]; then
         BACKUP_SIZE=$(du -h "$DB_BACKUP_FILE" | cut -f1)
+        BACKUP_BYTES=$(stat -c%s "$DB_BACKUP_FILE" 2>/dev/null || stat -f%z "$DB_BACKUP_FILE" 2>/dev/null || echo 0)
         print_success "Database backed up ($BACKUP_SIZE): $DB_BACKUP_FILE"
+
+        # Register in the backups table so it appears on the Backups page
+        BACKUP_BASENAME=$(basename "$DB_BACKUP_FILE")
+        $MYSQL_CMD $MYSQL_AUTH "$DB_NAME" -e \
+            "INSERT INTO backups (filename, backup_type, file_size, notes, created_by, created_at) VALUES ('$BACKUP_BASENAME', 'full', $BACKUP_BYTES, 'Pre-update backup', NULL, NOW())" 2>/dev/null || true
     else
         print_warn "Database backup may be empty. Continuing anyway..."
     fi

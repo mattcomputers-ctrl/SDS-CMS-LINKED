@@ -36,9 +36,10 @@
         function applyPdfLinkTargets(newTab) {
             var links = document.querySelectorAll('a[href*="/download"]');
             for (var i = 0; i < links.length; i++) {
-                var href = links[i].getAttribute('href') || '';
-                if (href.match(/\/(download|lookup\/download)\//)) {
-                    links[i].target = newTab ? '_blank' : '_self';
+                if (newTab) {
+                    links[i].setAttribute('target', '_blank');
+                } else {
+                    links[i].removeAttribute('target');
                 }
             }
         }

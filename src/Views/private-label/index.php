@@ -57,7 +57,7 @@
                     <?php endif; ?>
                 </td>
                 <td>
-                    <a href="/private-label/<?= (int) $item['id'] ?>/download" class="btn btn-sm btn-primary">Download</a>
+                    <a href="/private-label/<?= (int) $item['id'] ?>/download" class="btn btn-sm btn-primary" target="_blank">View PDF</a>
                     <a href="/private-label/<?= (int) $item['id'] ?>/preview" class="btn btn-sm btn-outline" target="_blank">Preview</a>
                 </td>
             </tr>

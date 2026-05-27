@@ -371,7 +371,7 @@ class PrivateLabelController
         $filename = 'PL_SDS_' . $safeCode . '_' . $safeMfg . '_v' . $version['version'] . '_' . $version['language'] . '.pdf';
 
         header('Content-Type: application/pdf');
-        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Content-Disposition: inline; filename="' . $filename . '"');
         header('Content-Length: ' . filesize($pdfPath));
         readfile($pdfPath);
         exit;

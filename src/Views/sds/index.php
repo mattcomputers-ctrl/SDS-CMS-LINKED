@@ -65,7 +65,7 @@
                         $links = [];
                         foreach ($langLabels as $langCode => $langName) {
                             if (isset($group['languages'][$langCode]) && $group['languages'][$langCode]['pdf_path']) {
-                                $links[] = '<a href="/sds/version/' . (int) $group['languages'][$langCode]['id'] . '/download" class="btn btn-sm">Download ' . $langName . ' PDF</a>';
+                                $links[] = '<a href="/sds/version/' . (int) $group['languages'][$langCode]['id'] . '/download" class="btn btn-sm" target="_blank">' . $langName . ' PDF</a>';
                             }
                         }
                         echo implode(' ', $links);
@@ -148,7 +148,7 @@
                                 $links = [];
                                 foreach ($langLabels as $langCode => $langName) {
                                     if (isset($group['languages'][$langCode]) && $group['languages'][$langCode]['pdf_path']) {
-                                        $links[] = '<a href="/sds/version/' . (int) $group['languages'][$langCode]['id'] . '/download" class="btn btn-sm">Download ' . $langName . ' PDF</a>';
+                                        $links[] = '<a href="/sds/version/' . (int) $group['languages'][$langCode]['id'] . '/download" class="btn btn-sm" target="_blank">' . $langName . ' PDF</a>';
                                     }
                                 }
                                 echo implode(' ', $links);

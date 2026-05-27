@@ -48,16 +48,16 @@
                     <td><?= (int) $r['is_active'] ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-muted">Inactive</span>' ?></td>
                     <td><?= $r['latest_version'] ? 'v' . (int) $r['latest_version'] . ' (' . format_date($r['latest_date'], 'm/d/Y') . ')' : '—' ?></td>
                     <td><?php if ($r['has_en'] && !empty($r['sds_id_en'])): ?>
-                        <a href="/lookup/download/<?= (int) $r['sds_id_en'] ?>" class="badge badge-success" title="Download English SDS v<?= (int) $r['ver_en'] ?>">PDF</a>
+                        <a href="/lookup/download/<?= (int) $r['sds_id_en'] ?>" class="badge badge-success" target="_blank" title=" English SDS v<?= (int) $r['ver_en'] ?>">PDF</a>
                     <?php else: ?>—<?php endif; ?></td>
                     <td><?php if ($r['has_es'] && !empty($r['sds_id_es'])): ?>
-                        <a href="/lookup/download/<?= (int) $r['sds_id_es'] ?>" class="badge badge-success" title="Download Spanish SDS v<?= (int) $r['ver_es'] ?>">PDF</a>
+                        <a href="/lookup/download/<?= (int) $r['sds_id_es'] ?>" class="badge badge-success" target="_blank" title=" Spanish SDS v<?= (int) $r['ver_es'] ?>">PDF</a>
                     <?php else: ?>—<?php endif; ?></td>
                     <td><?php if ($r['has_fr'] && !empty($r['sds_id_fr'])): ?>
-                        <a href="/lookup/download/<?= (int) $r['sds_id_fr'] ?>" class="badge badge-success" title="Download French SDS v<?= (int) $r['ver_fr'] ?>">PDF</a>
+                        <a href="/lookup/download/<?= (int) $r['sds_id_fr'] ?>" class="badge badge-success" target="_blank" title=" French SDS v<?= (int) $r['ver_fr'] ?>">PDF</a>
                     <?php else: ?>—<?php endif; ?></td>
                     <td><?php if ($r['has_de'] && !empty($r['sds_id_de'])): ?>
-                        <a href="/lookup/download/<?= (int) $r['sds_id_de'] ?>" class="badge badge-success" title="Download German SDS v<?= (int) $r['ver_de'] ?>">PDF</a>
+                        <a href="/lookup/download/<?= (int) $r['sds_id_de'] ?>" class="badge badge-success" target="_blank" title=" German SDS v<?= (int) $r['ver_de'] ?>">PDF</a>
                     <?php else: ?>—<?php endif; ?></td>
                 </tr>
             <?php endforeach; ?>

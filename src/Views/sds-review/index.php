@@ -172,7 +172,7 @@
                         <td><?= strtoupper(e($v['language'])) ?></td>
                         <td><?= e(format_date($v['published_at'], 'Y-m-d H:i')) ?></td>
                         <td>
-                            <a href="/lookup/download/<?= (int) $v['id'] ?>" class="btn btn-sm btn-outline">Download</a>
+                            <a href="/lookup/download/<?= (int) $v['id'] ?>" class="btn btn-sm btn-outline" target="_blank">View PDF</a>
                         </td>
                     </tr>
                 <?php endforeach; ?>

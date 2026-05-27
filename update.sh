@@ -182,13 +182,7 @@ if [[ "$DO_BACKUP" =~ ^[Yy]$ ]]; then
 
     if [ -s "$DB_BACKUP_FILE" ]; then
         BACKUP_SIZE=$(du -h "$DB_BACKUP_FILE" | cut -f1)
-        BACKUP_BYTES=$(stat -c%s "$DB_BACKUP_FILE" 2>/dev/null || stat -f%z "$DB_BACKUP_FILE" 2>/dev/null || echo 0)
         print_success "Database backed up ($BACKUP_SIZE): $DB_BACKUP_FILE"
-
-        # Register in the backups table so it appears on the Backups page
-        BACKUP_BASENAME=$(basename "$DB_BACKUP_FILE")
-        $MYSQL_CMD $MYSQL_AUTH "$DB_NAME" -e \
-            "INSERT INTO backups (filename, backup_type, file_size, notes, created_by, created_at) VALUES ('$BACKUP_BASENAME', 'full', $BACKUP_BYTES, 'Pre-update backup', NULL, NOW())" 2>/dev/null || true
     else
         print_warn "Database backup may be empty. Continuing anyway..."
     fi
@@ -198,20 +192,6 @@ if [[ "$DO_BACKUP" =~ ^[Yy]$ ]]; then
     CONFIG_BACKUP="$BACKUP_DIR/config_backup_${BACKUP_TS}.php"
     cp "$INSTALL_DIR/config/config.php" "$CONFIG_BACKUP"
     print_success "Config backed up: $CONFIG_BACKUP"
-
-    # Register any older pre-update backups that were never recorded
-    for OLD_BACKUP in "$BACKUP_DIR"/pre_update_*.sql.gz; do
-        [ -f "$OLD_BACKUP" ] || continue
-        OLD_BASENAME=$(basename "$OLD_BACKUP")
-        ALREADY=$($MYSQL_CMD $MYSQL_AUTH -N -e \
-            "SELECT COUNT(*) FROM \`$DB_NAME\`.backups WHERE filename = '$OLD_BASENAME'" 2>/dev/null || echo "0")
-        if [ "$ALREADY" = "0" ]; then
-            OLD_BYTES=$(stat -c%s "$OLD_BACKUP" 2>/dev/null || stat -f%z "$OLD_BACKUP" 2>/dev/null || echo 0)
-            OLD_MTIME=$(date -r "$OLD_BACKUP" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "$(date '+%Y-%m-%d %H:%M:%S')")
-            $MYSQL_CMD $MYSQL_AUTH "$DB_NAME" -e \
-                "INSERT INTO backups (filename, backup_type, file_size, notes, created_by, created_at) VALUES ('$OLD_BASENAME', 'full', $OLD_BYTES, 'Pre-update backup (retroactive)', NULL, '$OLD_MTIME')" 2>/dev/null || true
-        fi
-    done
 
     echo ""
     print_info "Pre-update backups saved to: $BACKUP_DIR"
@@ -563,6 +543,16 @@ elif [ -f "$INSTALL_DIR/seeds/echa_m_factors.csv.example" ] && [ ! -f "$ECHA_CSV
     print_info "ECHA M-factor CSV not found. Copy seeds/echa_m_factors.csv.example"
     print_info "to seeds/echa_m_factors.csv and populate with values from ECHA"
     print_info "CLP Annex VI Table 3.1 if your catalog needs aquatic M-factor data."
+fi
+
+# ── Register backup files on the Backups page ─────────────
+# Runs after migrations so the backups table definitely exists.
+# Finds any pre_update_*.sql.gz files not yet in the DB.
+if [ -f "$INSTALL_DIR/scripts/register-backups.php" ]; then
+    print_step "Registering backup files on the Backups page..."
+    COMPOSER_ALLOW_SUPERUSER=1 php "$INSTALL_DIR/scripts/register-backups.php" 2>&1 | while IFS= read -r line; do
+        echo "  $line"
+    done
 fi
 
 # ============================================================

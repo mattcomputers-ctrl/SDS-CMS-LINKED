@@ -33,6 +33,13 @@ if (($config['schedule_enabled'] ?? '') !== '1') {
     exit(0);
 }
 
+require_once __DIR__ . '/cron-helpers.php';
+$db = Database::getInstance();
+if (cron_in_blackout($db)) {
+    echo "[" . date('Y-m-d H:i:s') . "] In blackout window — skipping.\n";
+    exit(0);
+}
+
 $force = in_array('--force', $argv ?? [], true);
 
 // Check if it's time to run based on schedule_frequency

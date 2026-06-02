@@ -306,6 +306,13 @@ function bp_runPostJobSteps(Database $db): void
 $bp_db       = Database::getInstance();
 $bp_basePath = App::basePath();
 
+// Blackout window check
+require_once __DIR__ . '/cron-helpers.php';
+if (cron_in_blackout($bp_db)) {
+    echo "[" . date('Y-m-d H:i:s') . "] In blackout window — skipping bulk publish.\n";
+    return;
+}
+
 // Detect whether we're being run as a top-level script vs required
 // from another script (cms-sync.php). Only the cms-sync path respects
 // the `cms_sync.auto_bulk_publish` toggle — standalone / spawned

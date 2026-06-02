@@ -761,6 +761,38 @@ h1, h2, h3 { font-weight: 600; margin-bottom: 0.5rem; color: var(--text); }
 .dropdown-menu a { color: var(--text); padding: 0.5rem 1rem; font-size: 0.85rem; display: block; }
 .dropdown-menu a:hover { background: var(--bg); color: var(--primary); text-decoration: none; }
 
+/* ---- Hour grid (cron schedule settings) ---- */
+.hour-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 0.35rem;
+}
+
+.hour-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.35rem 0.25rem;
+    font-size: 0.8rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+    background: var(--bg);
+    color: var(--text-muted);
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.hour-toggle input { display: none; }
+
+.hour-toggle.active,
+.hour-toggle:has(input:checked) {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+    font-weight: 600;
+}
+
 /* ============================================================
    Responsive — Tablet & below (≤ 900px)
    ============================================================ */
@@ -797,6 +829,8 @@ h1, h2, h3 { font-weight: 600; margin-bottom: 0.5rem; color: var(--text); }
     html { font-size: 13px; }
     .content { padding: 1rem 0.85rem; }
     .page-title { font-size: 1.25rem; }
+
+    .hour-grid { grid-template-columns: repeat(4, 1fr); }
 
     .card { padding: 1rem; border-radius: var(--radius); }
     .stats-grid { grid-template-columns: 1fr 1fr; gap: 0.75rem; }

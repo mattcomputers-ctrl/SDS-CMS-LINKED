@@ -16,6 +16,12 @@ echo "[" . date('Y-m-d H:i:s') . "] Starting housekeeping...\n";
 
 $db = Database::getInstance();
 
+require_once __DIR__ . '/cron-helpers.php';
+if (cron_in_blackout($db)) {
+    echo "[" . date('Y-m-d H:i:s') . "] In blackout window — skipping.\n";
+    exit(0);
+}
+
 // Purge old audit log entries beyond retention period
 $retentionDays = (int) (App::config('cron.log_retention_days', 365));
 $cutoffDate = date('Y-m-d H:i:s', strtotime("-{$retentionDays} days"));

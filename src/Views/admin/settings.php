@@ -163,23 +163,79 @@
         </div>
 
         <h2>CMS Sync Schedule</h2>
-        <p class="text-muted mb-1">Controls how often the CMS sync runs and how much shipment history to import.</p>
-        <div class="form-grid-2col">
-            <div class="form-group"><label>Sync Interval (hours)</label><input type="number" name="cms_sync__interval_hours" min="1" step="1" value="<?= e($settings['cms_sync.interval_hours'] ?? '1') ?>"><small class="text-muted">How often the CMS sync runs (default: every 1 hour)</small></div>
-            <div class="form-group"><label>Shipment History (days)</label><input type="number" name="cms_sync__shipment_days" min="1" step="1" value="<?= e($settings['cms_sync.shipment_days'] ?? '1095') ?>"><small class="text-muted">How many days of shipment history to import from CMS</small></div>
-        </div>
+        <p class="text-muted mb-1">Controls when and how often the CMS sync runs. The system crontab triggers the script every hour; these settings control whether it actually executes.</p>
+
         <div class="form-group">
-            <?php // Hidden-first pattern: unchecked checkboxes don't POST, so
-                  // a hidden "0" with the same name flips the setting to 0
-                  // when the box is unchecked. ?>
             <input type="hidden" name="cms_sync__enabled" value="0">
             <label style="font-weight: normal;">
                 <input type="checkbox" name="cms_sync__enabled" value="1"
                     <?= ((string) ($settings['cms_sync.enabled'] ?? '1')) !== '0' ? 'checked' : '' ?>>
                 Enable CMS sync
             </label>
-            <small class="text-muted">Uncheck to stop the hourly CMS sync cron from doing anything (it still starts, reads this setting, and exits). Leave checked in normal operation.</small>
+            <small class="text-muted">Uncheck to stop the cron from doing anything. Leave checked in normal operation.</small>
         </div>
+
+        <?php $syncFreq = $settings['cms_sync.frequency'] ?? 'hourly'; ?>
+        <div class="form-grid-2col">
+            <div class="form-group">
+                <label>Frequency</label>
+                <select name="cms_sync__frequency" id="cmsSyncFrequency">
+                    <option value="hourly" <?= $syncFreq === 'hourly' ? 'selected' : '' ?>>Hourly</option>
+                    <option value="daily" <?= $syncFreq === 'daily' ? 'selected' : '' ?>>Daily</option>
+                    <option value="weekly" <?= $syncFreq === 'weekly' ? 'selected' : '' ?>>Weekly</option>
+                </select>
+            </div>
+            <div class="form-group" id="cmsSyncMinuteGroup">
+                <label>Minute Past the Hour</label>
+                <input type="number" name="cms_sync__run_minute" min="0" max="59" value="<?= e($settings['cms_sync.run_minute'] ?? '7') ?>">
+                <small class="text-muted">0–59. The cron fires every hour; this controls at which minute it runs.</small>
+            </div>
+            <div class="form-group" id="cmsSyncTimeGroup" style="display: none;">
+                <label>Time of Day</label>
+                <input type="time" name="cms_sync__run_time" value="<?= e($settings['cms_sync.run_time'] ?? '06:00') ?>">
+                <small class="text-muted">24-hour time. The sync will run within a 30-minute window of this time.</small>
+            </div>
+            <div class="form-group" id="cmsSyncDayGroup" style="display: none;">
+                <label>Day of Week</label>
+                <select name="cms_sync__run_day">
+                    <?php
+                    $days = ['0' => 'Sunday', '1' => 'Monday', '2' => 'Tuesday', '3' => 'Wednesday', '4' => 'Thursday', '5' => 'Friday', '6' => 'Saturday'];
+                    $currentDay = $settings['cms_sync.run_day'] ?? '1';
+                    foreach ($days as $val => $label): ?>
+                        <option value="<?= $val ?>" <?= $currentDay === $val ? 'selected' : '' ?>><?= $label ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="form-group"><label>Shipment History (days)</label><input type="number" name="cms_sync__shipment_days" min="1" step="1" value="<?= e($settings['cms_sync.shipment_days'] ?? '1095') ?>"><small class="text-muted">How many days of shipment history to import from CMS</small></div>
+        </div>
+
+        <div class="form-group">
+            <label>Active Hours</label>
+            <p class="text-muted" style="margin: 0 0 0.5rem; font-size: 0.85rem;">
+                Select which hours the sync is allowed to run. Uncheck hours when backups or other heavy I/O operations are scheduled.
+                Only applies to Hourly frequency.
+            </p>
+            <?php
+            $activeHoursRaw = $settings['cms_sync.active_hours'] ?? '';
+            $activeHours = $activeHoursRaw !== '' ? array_map('intval', explode(',', $activeHoursRaw)) : range(0, 23);
+            ?>
+            <div class="hour-grid">
+                <?php for ($h = 0; $h < 24; $h++):
+                    $checked = in_array($h, $activeHours) ? 'checked' : '';
+                    $label = sprintf('%02d:00', $h);
+                ?>
+                    <label class="hour-toggle <?= $checked ? 'active' : '' ?>">
+                        <input type="checkbox" name="cms_sync__active_hours[]" value="<?= $h ?>" <?= $checked ?>>
+                        <?= $label ?>
+                    </label>
+                <?php endfor; ?>
+            </div>
+            <div style="margin-top: 0.5rem;">
+                <button type="button" class="btn btn-sm btn-outline" onclick="toggleAllHours(true)">Select All</button>
+                <button type="button" class="btn btn-sm btn-outline" onclick="toggleAllHours(false)">Deselect All</button>
+            </div>
+        </div>
+
         <div class="form-group">
             <input type="hidden" name="cms_sync__auto_bulk_publish" value="0">
             <label style="font-weight: normal;">
@@ -187,8 +243,40 @@
                     <?= ((string) ($settings['cms_sync.auto_bulk_publish'] ?? '1')) !== '0' ? 'checked' : '' ?>>
                 Auto-run Bulk SDS Publish after every CMS sync
             </label>
-            <small class="text-muted">Uses the same eligibility rules as the <a href="/bulk-publish">Bulk SDS Publish</a> page — every RM in a formula (or the source RM of a resale item) must be user-reviewed, and the item must not already have an up-to-date SDS. Runs before the customer auto-send step.</small>
+            <small class="text-muted">Uses the same eligibility rules as the <a href="/bulk-publish">Bulk SDS Publish</a> page.</small>
         </div>
+
+        <?php if (!empty($settings['cms_sync.last_run_at'])): ?>
+        <div class="alert alert-muted" style="margin-top: 0.5rem; font-size: 0.85rem;">
+            Last sync ran at <strong><?= e($settings['cms_sync.last_run_at']) ?></strong>
+        </div>
+        <?php endif; ?>
+
+        <h2>Blackout Windows</h2>
+        <p class="text-muted mb-1">
+            All cron jobs (CMS sync, bulk publish, housekeeping, scheduled backups) will skip execution if they start during a blackout window.
+            Use this to avoid conflicts with PVE/Proxmox backups or other heavy I/O operations.
+            Server timezone: <strong><?= e(date_default_timezone_get()) ?></strong>
+        </p>
+        <?php
+        $blackoutWindows = json_decode($settings['cron.blackout_windows'] ?? '[]', true);
+        if (!is_array($blackoutWindows)) $blackoutWindows = [];
+        while (count($blackoutWindows) < 3) $blackoutWindows[] = ['start' => '', 'end' => ''];
+        ?>
+        <?php foreach ($blackoutWindows as $i => $win): ?>
+        <div class="form-grid-2col" style="max-width: 500px; margin-bottom: 0.25rem;">
+            <div class="form-group">
+                <label>Window <?= $i + 1 ?> Start</label>
+                <input type="time" name="blackout_start[]" value="<?= e($win['start'] ?? '') ?>">
+            </div>
+            <div class="form-group">
+                <label>Window <?= $i + 1 ?> End</label>
+                <input type="time" name="blackout_end[]" value="<?= e($win['end'] ?? '') ?>">
+            </div>
+        </div>
+        <?php endforeach; ?>
+        <small class="text-muted">Leave both fields blank to disable a window. Wraps around midnight (e.g. 23:00–01:00 covers 23:00–23:59 and 00:00–00:59).</small>
+        <input type="hidden" name="cron__blackout_windows" id="blackout-windows-json" value="<?= e($settings['cron.blackout_windows'] ?? '[]') ?>">
 
         <h2>Raw Material SDS Staleness</h2>
         <p class="text-muted mb-1">Controls the threshold used by the <a href="/stale-rm-sds">Stale RM SDS</a> page. Raw materials whose supplier SDS hasn't been confirmed current within this window are surfaced for vendor follow-up.</p>
@@ -212,5 +300,54 @@
         </div>
     </form>
 </div>
+
+<script>
+(function() {
+    var freq = document.getElementById('cmsSyncFrequency');
+    var minuteGroup = document.getElementById('cmsSyncMinuteGroup');
+    var timeGroup = document.getElementById('cmsSyncTimeGroup');
+    var dayGroup = document.getElementById('cmsSyncDayGroup');
+    var hourGrid = document.querySelector('.hour-grid');
+    var hourGridParent = hourGrid ? hourGrid.closest('.form-group') : null;
+
+    function updateFrequencyUI() {
+        var v = freq.value;
+        minuteGroup.style.display = v === 'hourly' ? '' : 'none';
+        timeGroup.style.display = v !== 'hourly' ? '' : 'none';
+        dayGroup.style.display = v === 'weekly' ? '' : 'none';
+        if (hourGridParent) hourGridParent.style.display = v === 'hourly' ? '' : 'none';
+    }
+
+    freq.addEventListener('change', updateFrequencyUI);
+    updateFrequencyUI();
+
+    // Hour toggle visual state
+    document.querySelectorAll('.hour-toggle input').forEach(function(cb) {
+        cb.addEventListener('change', function() {
+            this.closest('.hour-toggle').classList.toggle('active', this.checked);
+        });
+    });
+
+    // Serialize blackout windows into hidden field on submit
+    document.querySelector('form').addEventListener('submit', function() {
+        var starts = document.querySelectorAll('input[name="blackout_start[]"]');
+        var ends = document.querySelectorAll('input[name="blackout_end[]"]');
+        var windows = [];
+        for (var i = 0; i < starts.length; i++) {
+            if (starts[i].value && ends[i].value) {
+                windows.push({start: starts[i].value, end: ends[i].value});
+            }
+        }
+        document.getElementById('blackout-windows-json').value = JSON.stringify(windows);
+    });
+})();
+
+function toggleAllHours(state) {
+    document.querySelectorAll('.hour-toggle input').forEach(function(cb) {
+        cb.checked = state;
+        cb.closest('.hour-toggle').classList.toggle('active', state);
+    });
+}
+</script>
 
 <?php include dirname(__DIR__) . '/layouts/footer.php'; ?>

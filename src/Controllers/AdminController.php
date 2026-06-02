@@ -373,14 +373,28 @@ class AdminController
             if (in_array($key, ['_csrf_token', 'remove_logo', 'remove_login_logo'], true)) {
                 continue;
             }
-            $key = preg_replace('/[^a-zA-Z0-9_.]/', '', $key);
+            $key = preg_replace('/[^a-zA-Z0-9_.\[\]]/', '', $key);
+            $key = rtrim($key, '[]');
             if ($key === '') {
                 continue;
             }
             // Convert double-underscore separator back to dot for DB storage
             $key = str_replace('__', '.', $key);
 
+            if (is_array($value)) {
+                if ($key === 'cms_sync.active_hours') {
+                    $value = implode(',', array_map('intval', $value));
+                } else {
+                    continue;
+                }
+            }
+
             $this->saveSetting($db, $key, $value);
+        }
+
+        // If no active hours checkboxes were checked, save empty string
+        if (!isset($_POST['cms_sync__active_hours'])) {
+            $this->saveSetting($db, 'cms_sync.active_hours', '');
         }
 
         AuditService::log('settings', 'global', 'update');

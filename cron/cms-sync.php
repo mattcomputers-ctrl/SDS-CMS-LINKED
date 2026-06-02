@@ -55,26 +55,66 @@ try {
         exit(0);
     }
 
+    // Blackout window check
+    require_once __DIR__ . '/cron-helpers.php';
+    if (cron_in_blackout($db)) {
+        echo "[{$timestamp}] In blackout window — skipping.\n";
+        exit(0);
+    }
+
     // Check if CMS database is configured
     if (!CMSDatabase::isConfigured()) {
         echo "[{$timestamp}] CMS database not configured. Skipping sync.\n";
         exit(0);
     }
 
-    // Check sync interval — skip if it hasn't been long enough since last run
-    $intervalRow = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'cms_sync.interval_hours'");
-    $intervalHours = (int) ($intervalRow['value'] ?? 1);
+    // ── Schedule gate ──────────────────────────────────────────────
+    // The system crontab fires this script every hour. These settings
+    // control whether it actually runs: frequency, active hours,
+    // day-of-week, and time-of-day.
+    $schedRows = $db->fetchAll("SELECT `key`, `value` FROM settings WHERE `key` LIKE 'cms_sync.%'");
+    $sched = [];
+    foreach ($schedRows as $r) {
+        $sched[$r['key']] = $r['value'];
+    }
 
-    $lastRunRow = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'cms_sync.last_run_at'");
-    $lastRunAt = $lastRunRow['value'] ?? null;
+    $frequency   = $sched['cms_sync.frequency'] ?? 'hourly';
+    $currentHour = (int) date('H');
+    $currentDay  = (int) date('w'); // 0=Sun, 6=Sat
 
-    if ($lastRunAt !== null && $intervalHours > 1) {
-        $nextRunAfter = strtotime($lastRunAt) + ($intervalHours * 3600);
-        if (time() < $nextRunAfter) {
-            echo "[{$timestamp}] Skipping — next sync after " . date('Y-m-d H:i:s', $nextRunAfter) . " (interval: {$intervalHours}h)\n";
+    if ($frequency === 'hourly') {
+        // Active hours check
+        $activeHoursRaw = $sched['cms_sync.active_hours'] ?? '';
+        if ($activeHoursRaw !== '') {
+            $activeHours = array_map('intval', explode(',', $activeHoursRaw));
+            if (!in_array($currentHour, $activeHours, true)) {
+                echo "[{$timestamp}] Hour {$currentHour} is not in active hours — skipping.\n";
+                exit(0);
+            }
+        }
+    } elseif ($frequency === 'daily' || $frequency === 'weekly') {
+        // Weekly: check day of week
+        if ($frequency === 'weekly') {
+            $runDay = (int) ($sched['cms_sync.run_day'] ?? 1);
+            if ($currentDay !== $runDay) {
+                echo "[{$timestamp}] Not the scheduled day (current: {$currentDay}, scheduled: {$runDay}) — skipping.\n";
+                exit(0);
+            }
+        }
+
+        // Daily/weekly: check time of day (30-minute window)
+        $runTime = $sched['cms_sync.run_time'] ?? '06:00';
+        $parts = explode(':', $runTime);
+        $schedMinutes = ((int) ($parts[0] ?? 6)) * 60 + (int) ($parts[1] ?? 0);
+        $currentMinutes = (int) date('H') * 60 + (int) date('i');
+        if (abs($currentMinutes - $schedMinutes) > 30) {
+            echo "[{$timestamp}] Not within run window (scheduled: {$runTime}, current: " . date('H:i') . ") — skipping.\n";
             exit(0);
         }
     }
+
+    $lastRunRow = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'cms_sync.last_run_at'");
+    $lastRunAt = $lastRunRow['value'] ?? null;
 
     // Record this run time
     if ($lastRunRow) {

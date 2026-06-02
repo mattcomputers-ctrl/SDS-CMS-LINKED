@@ -309,9 +309,23 @@ class AdminController
             $settings[$row['key']] = $row['value'];
         }
 
+        // Resolve inhalation-only CAS names from prop65_list
+        $inhalationCasNames = [];
+        $casSetting = $settings['sds.inhalation_only_cas'] ?? "1333-86-4\n13463-67-7";
+        $casLines = array_filter(array_map('trim', explode("\n", $casSetting)));
+        foreach ($casLines as $line) {
+            if ($line === '' || str_starts_with($line, '#')) continue;
+            // Support legacy "CAS | Name" format — extract just the CAS
+            $cas = trim(explode('|', $line, 2)[0]);
+            if ($cas === '') continue;
+            $p65 = $db->fetch("SELECT chemical_name FROM prop65_list WHERE cas_number = ?", [$cas]);
+            $inhalationCasNames[$cas] = $p65 ? $p65['chemical_name'] : '(not in Prop 65 list)';
+        }
+
         view('admin/settings', [
             'pageTitle' => 'System Settings',
             'settings'  => $settings,
+            'inhalationCasNames' => $inhalationCasNames,
         ]);
     }
 
@@ -400,6 +414,55 @@ class AdminController
         AuditService::log('settings', 'global', 'update');
         $_SESSION['_flash']['success'] = 'Settings saved.';
         redirect('/admin/settings');
+    }
+
+    /**
+     * AJAX: bump all SDSs containing inhalation-only CAS numbers.
+     */
+    public function bumpInhalationCas(): void
+    {
+        $this->requireAdmin();
+
+        header('Content-Type: application/json');
+        $input = json_decode(file_get_contents('php://input'), true);
+        $csrfToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+        if (!CSRF::validate($csrfToken)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Invalid CSRF token.']);
+            return;
+        }
+
+        $casText = trim($input['cas_list'] ?? '');
+        if ($casText === '') {
+            echo json_encode(['success' => false, 'message' => 'No CAS numbers provided.']);
+            return;
+        }
+
+        $casList = [];
+        foreach (explode("\n", $casText) as $line) {
+            $line = trim($line);
+            if ($line === '' || str_starts_with($line, '#')) continue;
+            $cas = trim(explode('|', $line, 2)[0]);
+            if ($cas !== '') {
+                $casList[] = $cas;
+            }
+        }
+
+        if (empty($casList)) {
+            echo json_encode(['success' => false, 'message' => 'No valid CAS numbers found.']);
+            return;
+        }
+
+        $bumped = \SDS\Services\RegulatoryListBumper::bumpByCasMany($casList);
+
+        AuditService::log('settings', 'inhalation_only_cas', 'bump', [
+            'cas_list' => $casList,
+            'raw_materials_bumped' => $bumped,
+        ]);
+
+        $casCount = count($casList);
+        $msg = "Bumped {$bumped} raw material(s) across {$casCount} CAS number(s). Affected SDSs will regenerate on next bulk publish.";
+        echo json_encode(['success' => true, 'message' => $msg, 'bumped' => $bumped]);
     }
 
     /**

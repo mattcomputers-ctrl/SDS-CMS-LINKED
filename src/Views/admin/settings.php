@@ -295,11 +295,34 @@
             CAS numbers listed here are treated as inhalation-only hazards. Their Prop 65 warnings,
             carcinogen classifications (H351), and Section 11 findings are <strong>suppressed</strong>
             when the finished product contains any non-solid/non-powder ingredient (liquid, paste, gel, etc.),
-            because the particulate is no longer airborne. Enter one per line: <code>CAS Number | Chemical Name</code>
+            because the particulate is no longer airborne. Enter one CAS number per line.
+            Chemical names are resolved automatically from the Prop 65 list.
         </p>
         <div class="form-group">
-            <textarea name="sds__inhalation_only_cas" rows="6" style="font-family: monospace; font-size: 0.9rem;"
-                      placeholder="1333-86-4 | Carbon Black&#10;13463-67-7 | Titanium Dioxide"><?= e($settings['sds.inhalation_only_cas'] ?? "1333-86-4 | Carbon Black\n13463-67-7 | Titanium Dioxide") ?></textarea>
+            <textarea name="sds__inhalation_only_cas" id="inhalationOnlyCas" rows="6" style="font-family: monospace; font-size: 0.9rem;"
+                      placeholder="1333-86-4&#10;13463-67-7"><?= e($settings['sds.inhalation_only_cas'] ?? "1333-86-4\n13463-67-7") ?></textarea>
+        </div>
+        <?php if (!empty($inhalationCasNames)): ?>
+        <table class="table" style="max-width: 500px; margin-bottom: 1rem;">
+            <thead><tr><th>CAS Number</th><th>Chemical Name</th></tr></thead>
+            <tbody>
+            <?php foreach ($inhalationCasNames as $cas => $name): ?>
+                <tr>
+                    <td style="font-family: monospace;"><?= e($cas) ?></td>
+                    <td><?= e($name) ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php endif; ?>
+        <div class="form-group" style="margin-top: 0.5rem;">
+            <button type="button" class="btn btn-secondary" id="bumpInhalationSds" style="font-size: 0.85rem;">
+                Bump Affected SDSs
+            </button>
+            <small class="text-muted" style="display: block; margin-top: 0.25rem;">
+                Marks all SDSs containing these CAS numbers as stale so they get regenerated on next bulk publish.
+            </small>
+            <div id="bumpResult" style="margin-top: 0.5rem;"></div>
         </div>
 
         <h2>Maintenance</h2>
@@ -360,6 +383,40 @@ function toggleAllHours(state) {
         cb.closest('.hour-toggle').classList.toggle('active', state);
     });
 }
+
+document.getElementById('bumpInhalationSds').addEventListener('click', function() {
+    var btn = this;
+    var resultDiv = document.getElementById('bumpResult');
+    var cas = document.getElementById('inhalationOnlyCas').value.trim();
+    if (!cas) {
+        resultDiv.innerHTML = '<span style="color:#c00;">No CAS numbers entered.</span>';
+        return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Bumping...';
+    resultDiv.innerHTML = '';
+
+    fetch('/admin/settings/bump-inhalation-cas', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': document.querySelector('input[name="_csrf_token"]').value},
+        body: JSON.stringify({cas_list: cas})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        btn.disabled = false;
+        btn.textContent = 'Bump Affected SDSs';
+        if (data.success) {
+            resultDiv.innerHTML = '<span style="color:#080;">' + data.message + '</span>';
+        } else {
+            resultDiv.innerHTML = '<span style="color:#c00;">' + (data.message || 'Error') + '</span>';
+        }
+    })
+    .catch(function() {
+        btn.disabled = false;
+        btn.textContent = 'Bump Affected SDSs';
+        resultDiv.innerHTML = '<span style="color:#c00;">Request failed.</span>';
+    });
+});
 </script>
 
 <?php include dirname(__DIR__) . '/layouts/footer.php'; ?>

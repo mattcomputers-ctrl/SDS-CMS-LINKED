@@ -328,6 +328,7 @@ class App
             // Settings
             $r->get('/settings',  'AdminController@settings');
             $r->post('/settings', 'AdminController@saveSettings');
+            $r->post('/settings/bump-inhalation-cas', 'AdminController@bumpInhalationCas');
 
             // Federal data
             $r->get('/federal-data',          'AdminController@federalData');

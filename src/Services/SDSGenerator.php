@@ -1604,19 +1604,39 @@ class SDSGenerator
             return self::$inhalationOnlyCas;
         }
 
-        $map = [];
+        $casList = [];
         foreach (explode("\n", $row['value']) as $line) {
             $line = trim($line);
             if ($line === '' || str_starts_with($line, '#')) continue;
-            $parts = explode('|', $line, 2);
-            $cas = trim($parts[0]);
-            $name = isset($parts[1]) ? trim($parts[1]) : $cas;
+            // Support both "CAS" and legacy "CAS | Name" format
+            $cas = trim(explode('|', $line, 2)[0]);
             if ($cas !== '') {
-                $map[$cas] = $name;
+                $casList[] = $cas;
             }
         }
 
-        self::$inhalationOnlyCas = !empty($map) ? $map : $defaults;
+        if (empty($casList)) {
+            self::$inhalationOnlyCas = $defaults;
+            return self::$inhalationOnlyCas;
+        }
+
+        // Resolve names from prop65_list
+        $placeholders = implode(',', array_fill(0, count($casList), '?'));
+        $p65Rows = $db->fetchAll(
+            "SELECT cas_number, chemical_name FROM prop65_list WHERE cas_number IN ({$placeholders})",
+            $casList
+        );
+        $p65Map = [];
+        foreach ($p65Rows as $r) {
+            $p65Map[$r['cas_number']] = $r['chemical_name'];
+        }
+
+        $map = [];
+        foreach ($casList as $cas) {
+            $map[$cas] = $p65Map[$cas] ?? $cas;
+        }
+
+        self::$inhalationOnlyCas = $map;
         return self::$inhalationOnlyCas;
     }
 

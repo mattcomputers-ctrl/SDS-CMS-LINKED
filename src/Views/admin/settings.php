@@ -290,6 +290,18 @@
             <div class="form-group"><label>Auto-Trace Threshold (%)</label><input type="number" name="prop65__auto_trace_threshold_pct" min="0" step="0.01" value="<?= e($settings['prop65.auto_trace_threshold_pct'] ?? '0.1') ?>"><small class="text-muted">Default 0.1 % — matches the OSHA HazCom Section 3 disclosure threshold for CMR chemicals.</small></div>
         </div>
 
+        <h2>Airborne/Unbound Particles P65 Override</h2>
+        <p class="text-muted mb-1">
+            CAS numbers listed here are treated as inhalation-only hazards. Their Prop 65 warnings,
+            carcinogen classifications (H351), and Section 11 findings are <strong>suppressed</strong>
+            when the finished product contains any non-solid/non-powder ingredient (liquid, paste, gel, etc.),
+            because the particulate is no longer airborne. Enter one per line: <code>CAS Number | Chemical Name</code>
+        </p>
+        <div class="form-group">
+            <textarea name="sds__inhalation_only_cas" rows="6" style="font-family: monospace; font-size: 0.9rem;"
+                      placeholder="1333-86-4 | Carbon Black&#10;13463-67-7 | Titanium Dioxide"><?= e($settings['sds.inhalation_only_cas'] ?? "1333-86-4 | Carbon Black\n13463-67-7 | Titanium Dioxide") ?></textarea>
+        </div>
+
         <h2>Maintenance</h2>
         <div class="form-grid-2col">
             <div class="form-group"><label>Audit Log Retention (days)</label><input type="number" name="cron__log_retention_days" value="<?= e($settings['cron.log_retention_days'] ?? '365') ?>"></div>

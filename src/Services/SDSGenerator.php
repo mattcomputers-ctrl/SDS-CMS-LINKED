@@ -77,6 +77,7 @@ class SDSGenerator
         // Apply Carcinogen Category 2 (H351) only if Carbon Black is the only
         // ingredient OR all other ingredients are powders. If mixed with any
         // non-powder material, do not apply the carcinogen classification.
+        // Titanium Dioxide (CAS 13463-67-7) follows the same rule.
         $this->applyCarbonBlackLogic($hazardResult, $calcResult);
 
         // Run carcinogen analysis (IARC/NTP/OSHA)
@@ -1583,39 +1584,61 @@ class SDSGenerator
      * If mixed with any non-powder material, the Carcinogen Category 2
      * classification is removed (but Carbon Black is still listed in Section 3).
      */
-    private function applyCarbonBlackLogic(array &$hazardResult, array $calcResult): void
-    {
-        $carbonBlackCas = '1333-86-4';
+    private static ?array $inhalationOnlyCas = null;
 
-        // Check if Carbon Black is in the composition
-        $hasCarbonBlack = false;
-        foreach ($calcResult['composition'] as $c) {
-            if (($c['cas_number'] ?? '') === $carbonBlackCas) {
-                $hasCarbonBlack = true;
-                break;
+    private static function getInhalationOnlyCas(): array
+    {
+        if (self::$inhalationOnlyCas !== null) {
+            return self::$inhalationOnlyCas;
+        }
+
+        $defaults = [
+            '1333-86-4'  => 'Carbon Black',
+            '13463-67-7' => 'Titanium Dioxide',
+        ];
+
+        $db = \SDS\Core\Database::getInstance();
+        $row = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'sds.inhalation_only_cas'");
+        if (!$row || trim((string) $row['value']) === '') {
+            self::$inhalationOnlyCas = $defaults;
+            return self::$inhalationOnlyCas;
+        }
+
+        $map = [];
+        foreach (explode("\n", $row['value']) as $line) {
+            $line = trim($line);
+            if ($line === '' || str_starts_with($line, '#')) continue;
+            $parts = explode('|', $line, 2);
+            $cas = trim($parts[0]);
+            $name = isset($parts[1]) ? trim($parts[1]) : $cas;
+            if ($cas !== '') {
+                $map[$cas] = $name;
             }
         }
 
-        if (!$hasCarbonBlack) {
+        self::$inhalationOnlyCas = !empty($map) ? $map : $defaults;
+        return self::$inhalationOnlyCas;
+    }
+
+    private function applyCarbonBlackLogic(array &$hazardResult, array $calcResult): void
+    {
+        // Find which inhalation-only CAS numbers are present in the composition
+        $presentCas = [];
+        foreach ($calcResult['composition'] as $c) {
+            $cas = $c['cas_number'] ?? '';
+            if (isset(self::getInhalationOnlyCas()[$cas])) {
+                $presentCas[$cas] = self::getInhalationOnlyCas()[$cas];
+            }
+        }
+
+        if (empty($presentCas)) {
             return;
         }
 
-        // Check enriched lines: are ALL materials (including the CB line
-        // itself) solid or powder? We consider CB's own RM state too —
-        // if CB is delivered via a paste (e.g. a pigment dispersion),
-        // the finished product inherits the paste matrix and CB is no
-        // longer a dry inhalation hazard, even before considering other
-        // coincident materials.
         $enrichedLines = $calcResult['formula_props']['enriched_lines'] ?? [];
         $hasNonPowder = false;
 
         foreach ($enrichedLines as $line) {
-            // Per the Carbon Black rule: only "powder" or "solid" RMs
-            // keep the carcinogen classification in play. Liquids, pastes,
-            // gels, gases, and unknown states all cause H351 / Prop 65
-            // to be suppressed because the CB particulate can't become an
-            // inhalation hazard when locked inside (or dispersed through)
-            // a non-solid matrix.
             $state = strtolower((string) ($line['physical_state'] ?? ''));
             if ($state !== 'powder' && $state !== 'solid') {
                 $hasNonPowder = true;
@@ -1623,11 +1646,9 @@ class SDSGenerator
             }
         }
 
-        // Determine if carcinogen classification should apply
-        $onlyPowders = !$hasNonPowder; // true if every line (CB's and others) is powder/solid
+        $onlyPowders = !$hasNonPowder;
 
         if ($onlyPowders) {
-            // Add Carcinogen Category 2 + H351 if not already present
             $hasH351 = false;
             foreach ($hazardResult['h_statements'] as $stmt) {
                 if (($stmt['code'] ?? '') === 'H351') {
@@ -1642,27 +1663,26 @@ class SDSGenerator
                     'text' => GHSStatements::hText('H351'),
                 ];
 
-                $hazardResult['hazard_classes'][] = [
-                    'class'             => 'Carcinogenicity',
-                    'category'          => 'Category 2',
-                    'cas'               => $carbonBlackCas,
-                    'chemical'          => 'Carbon Black',
-                    'concentration_pct' => 0,
-                    'cutoff_pct'        => 0,
-                    'source'            => 'Carbon Black powder logic',
-                ];
+                foreach ($presentCas as $cas => $name) {
+                    $hazardResult['hazard_classes'][] = [
+                        'class'             => 'Carcinogenicity',
+                        'category'          => 'Category 2',
+                        'cas'               => $cas,
+                        'chemical'          => $name,
+                        'concentration_pct' => 0,
+                        'cutoff_pct'        => 0,
+                        'source'            => $name . ' powder logic',
+                    ];
+                }
 
-                // Ensure GHS08 (Health Hazard) pictogram is present
                 if (!in_array('GHS08', $hazardResult['pictograms'])) {
                     $hazardResult['pictograms'][] = 'GHS08';
                 }
 
-                // Ensure 'Warning' signal word at minimum
                 if ($hazardResult['signal_word'] === null) {
                     $hazardResult['signal_word'] = 'Warning';
                 }
 
-                // Add P-statements for Carcinogenicity Cat 2
                 $carcinPCodes = ['P201', 'P202', 'P281', 'P308+P313', 'P405', 'P501'];
                 $existingPCodes = array_map(fn($s) => $s['code'] ?? '', $hazardResult['p_statements']);
                 foreach ($carcinPCodes as $pCode) {
@@ -1675,37 +1695,33 @@ class SDSGenerator
                 }
             }
         } else {
-            // Remove Carcinogen Cat 2 for Carbon Black if it was added by HazardEngine
+            // Remove Carcinogen Cat 2 for these CAS numbers if added by HazardEngine
             $hazardResult['h_statements'] = array_values(array_filter(
                 $hazardResult['h_statements'],
-                function ($stmt) use ($hazardResult, $carbonBlackCas) {
+                function ($stmt) use ($hazardResult, $presentCas) {
                     if (($stmt['code'] ?? '') !== 'H351') {
                         return true;
                     }
-                    // Only remove H351 if Carbon Black is the sole source
+                    // Only remove H351 if inhalation-only CAS are the sole source
                     foreach ($hazardResult['hazard_classes'] as $hc) {
-                        if (($hc['cas'] ?? '') !== $carbonBlackCas
+                        if (!isset($presentCas[$hc['cas'] ?? ''])
                             && stripos($hc['class'] ?? '', 'Carcinogen') !== false
                             && stripos($hc['category'] ?? '', '2') !== false) {
-                            return true; // Another CAS also has Cat 2 carcinogen — keep H351
+                            return true;
                         }
                     }
                     return false;
                 }
             ));
 
-            // Remove Carbon Black carcinogenicity from hazard_classes
             $hazardResult['hazard_classes'] = array_values(array_filter(
                 $hazardResult['hazard_classes'],
                 fn($hc) => !(
-                    ($hc['cas'] ?? '') === $carbonBlackCas
+                    isset($presentCas[$hc['cas'] ?? ''])
                     && stripos($hc['class'] ?? '', 'Carcinogen') !== false
                 )
             ));
 
-            // Remove GHS08 pictogram if no remaining H-codes warrant it.
-            // GHS08 applies to: respiratory sensitization, germ cell mutagenicity,
-            // carcinogenicity, reproductive toxicity, STOT, aspiration hazard.
             $ghs08Codes = ['H334','H340','H341','H350','H351','H360','H361','H362',
                            'H370','H371','H372','H373','H304','H305'];
             $remainingHCodes = array_map(fn($s) => $s['code'] ?? '', $hazardResult['h_statements']);
@@ -1810,8 +1826,8 @@ class SDSGenerator
         // qualifies for the generic solid-powder filter. This check runs
         // first so it can fire independently of the early-return below,
         // which only concerns the generic suppression set.
-        if ($this->shouldSuppressCarbonBlackProp65($calcResult)) {
-            $this->removeCarbonBlackFromResults($carcinogenResult, $prop65Result);
+        if ($this->shouldSuppressInhalationOnlyProp65($calcResult)) {
+            $this->removeInhalationOnlyFromResults($carcinogenResult, $prop65Result);
         }
 
         $suppressedCas = $this->getSolidPowderCasInLiquidMixture($calcResult);
@@ -1857,33 +1873,45 @@ class SDSGenerator
             fn($el) => !isset($suppressedSet[$el['cas_number']])
         ));
 
-        // Carbon Black Prop 65 + Section 11 suppression ran at the top
-        // of this method, independent of $suppressedCas. Nothing else to
-        // do for CB here.
+        // Inhalation-only Prop 65 + Section 11 suppression ran at the top
+        // of this method, independent of $suppressedCas.
     }
 
     /**
-     * Remove Carbon Black (CAS 1333-86-4) from the carcinogen and Prop 65
-     * result arrays. Called when the finished formula contains any
-     * non-solid-non-powder component — per the operator rule that CB is
-     * only a dry-particulate inhalation hazard in pure solid/powder form.
+     * Remove inhalation-only CAS numbers (Carbon Black, Titanium Dioxide)
+     * from the carcinogen and Prop 65 result arrays. Called when the
+     * finished formula contains any non-solid-non-powder component —
+     * these substances are only inhalation hazards in dry particulate form.
      */
-    private function removeCarbonBlackFromResults(array &$carcinogenResult, array &$prop65Result): void
+    private function removeInhalationOnlyFromResults(array &$carcinogenResult, array &$prop65Result): void
     {
-        $carbonBlackCas = '1333-86-4';
+        $casSet = self::getInhalationOnlyCas();
+        $namePatterns = array_map('strtolower', array_values($casSet));
 
         // ── Prop 65 ──
         $prop65Result['listed_chemicals'] = array_values(array_filter(
             $prop65Result['listed_chemicals'] ?? [],
-            fn($lc) => ($lc['cas_number'] ?? '') !== $carbonBlackCas
+            fn($lc) => !isset($casSet[$lc['cas_number'] ?? ''])
         ));
         $prop65Result['cancer_chemicals'] = array_values(array_filter(
             $prop65Result['cancer_chemicals'] ?? [],
-            fn($name) => stripos((string) $name, 'carbon black') === false
+            function ($name) use ($namePatterns) {
+                $lower = strtolower((string) $name);
+                foreach ($namePatterns as $pattern) {
+                    if (str_contains($lower, $pattern)) return false;
+                }
+                return true;
+            }
         ));
         $prop65Result['repro_chemicals'] = array_values(array_filter(
             $prop65Result['repro_chemicals'] ?? [],
-            fn($name) => stripos((string) $name, 'carbon black') === false
+            function ($name) use ($namePatterns) {
+                $lower = strtolower((string) $name);
+                foreach ($namePatterns as $pattern) {
+                    if (str_contains($lower, $pattern)) return false;
+                }
+                return true;
+            }
         ));
         $prop65Result['requires_warning'] = !empty($prop65Result['cancer_chemicals'])
                                           || !empty($prop65Result['repro_chemicals']);
@@ -1897,10 +1925,10 @@ class SDSGenerator
         // ── Carcinogen findings (Section 11) ──
         $carcinogenResult['findings'] = array_values(array_filter(
             $carcinogenResult['findings'] ?? [],
-            fn($f) => ($f['cas_number'] ?? '') !== $carbonBlackCas
+            fn($f) => !isset($casSet[$f['cas_number'] ?? ''])
         ));
-        if (isset($carcinogenResult['component_texts'][$carbonBlackCas])) {
-            unset($carcinogenResult['component_texts'][$carbonBlackCas]);
+        foreach (array_keys($casSet) as $cas) {
+            unset($carcinogenResult['component_texts'][$cas]);
         }
         $carcinogenResult['has_carcinogens'] = !empty($carcinogenResult['findings']);
         if ($carcinogenResult['has_carcinogens']) {
@@ -1923,24 +1951,21 @@ class SDSGenerator
     }
 
     /**
-     * True iff the finished formula contains Carbon Black (CAS 1333-86-4)
+     * True iff the finished formula contains any inhalation-only CAS
      * AND at least one raw-material line is in a non-solid-non-powder
-     * state (liquid, paste, gel, gas, or unknown). Used to decide whether
-     * to suppress the CB Prop 65 listing independent of which specific RM
-     * contributes the CB.
+     * state. Used to decide whether to suppress Prop 65 listings for
+     * those CAS numbers.
      */
-    private function shouldSuppressCarbonBlackProp65(array $calcResult): bool
+    private function shouldSuppressInhalationOnlyProp65(array $calcResult): bool
     {
-        $carbonBlackCas = '1333-86-4';
-
-        $hasCarbonBlack = false;
+        $hasMatch = false;
         foreach (($calcResult['composition'] ?? []) as $c) {
-            if (($c['cas_number'] ?? '') === $carbonBlackCas) {
-                $hasCarbonBlack = true;
+            if (isset(self::getInhalationOnlyCas()[$c['cas_number'] ?? ''])) {
+                $hasMatch = true;
                 break;
             }
         }
-        if (!$hasCarbonBlack) {
+        if (!$hasMatch) {
             return false;
         }
 

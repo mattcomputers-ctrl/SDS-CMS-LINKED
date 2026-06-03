@@ -410,8 +410,9 @@ class FinishedGood
 
         if ($searchTerm !== '') {
             $like     = '%' . $searchTerm . '%';
-            // WHERE for outer queries using alias "a"
-            $where[]  = '(a.customer_code LIKE ? OR a.description LIKE ? OR SUBSTRING_INDEX(a.customer_code, \'-\', 1) LIKE ?)';
+            $where[]  = '(a.customer_code LIKE ? OR a.description LIKE ? OR SUBSTRING_INDEX(a.customer_code, \'-\', 1) LIKE ? OR a.internal_code_base LIKE ? OR fg.description LIKE ?)';
+            $params[] = $like;
+            $params[] = $like;
             $params[] = $like;
             $params[] = $like;
             $params[] = $like;
@@ -423,7 +424,9 @@ class FinishedGood
         $where2 = [sprintf($publishedExists, 'a2')];
         $params2 = [];
         if ($searchTerm !== '') {
-            $where2[] = '(a2.customer_code LIKE ? OR a2.description LIKE ? OR SUBSTRING_INDEX(a2.customer_code, \'-\', 1) LIKE ?)';
+            $where2[] = '(a2.customer_code LIKE ? OR a2.description LIKE ? OR SUBSTRING_INDEX(a2.customer_code, \'-\', 1) LIKE ? OR a2.internal_code_base LIKE ? OR fg2.description LIKE ?)';
+            $params2[] = $like;
+            $params2[] = $like;
             $params2[] = $like;
             $params2[] = $like;
             $params2[] = $like;

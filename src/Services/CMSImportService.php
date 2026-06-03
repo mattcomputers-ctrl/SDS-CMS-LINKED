@@ -189,13 +189,47 @@ class CMSImportService
             }
         }
 
+        // GL group raw materials not yet in the SDS system
+        $rmGlToCreate = [];
+        try {
+            $cmsGlRMs = $this->cms->fetchAll(
+                "SELECT i.ItemCode
+                 FROM CMS.dbo.Item i
+                 INNER JOIN CMS.dbo.GLGroup g ON g.GLGroup = i.GLGroup
+                 WHERE g.Description = 'Raw Material'
+                   AND i.ItemCode IS NOT NULL
+                 ORDER BY i.ItemCode"
+            );
+            $fgCodes = array_flip(array_column(
+                $this->db->fetchAll("SELECT product_code FROM finished_goods"),
+                'product_code'
+            ));
+            foreach ($cmsGlRMs as $r) {
+                $code = trim($r['ItemCode']);
+                if ($code === '' || in_array($code, $existingRmCodes, true)) {
+                    continue;
+                }
+                if (isset($seenRmCodes[$code])) {
+                    continue;
+                }
+                $baseCode = strip_pack_extension($code);
+                if (isset($fgCodes[$code]) || isset($fgCodes[$baseCode])) {
+                    continue;
+                }
+                $rmGlToCreate[] = $code;
+            }
+        } catch (\Throwable $e) {
+            // Non-fatal — preview still works without GL group data
+        }
+
         return [
-            'fg_to_create'   => $fgToCreate,
-            'fg_to_update'   => $fgToUpdate,
-            'fg_current'     => $fgCurrent,
-            'rm_to_create'   => array_unique($rmToCreate),
-            'rm_existing'    => array_unique($rmExisting),
-            'total_items'    => count($items),
+            'fg_to_create'      => $fgToCreate,
+            'fg_to_update'      => $fgToUpdate,
+            'fg_current'        => $fgCurrent,
+            'rm_to_create'      => array_unique($rmToCreate),
+            'rm_existing'       => array_unique($rmExisting),
+            'rm_gl_to_create'   => $rmGlToCreate,
+            'total_items'       => count($items),
         ];
     }
 
@@ -235,8 +269,11 @@ class CMSImportService
         // Phase 1: Create all finished goods first (so sub-components exist)
         $fgMap = $this->importFinishedGoods($items, $userId, $results);
 
-        // Phase 2: Collect and create all raw materials
+        // Phase 2: Collect and create all raw materials from formulas
         $rmMap = $this->importRawMaterials($items, $userId, $results);
+
+        // Phase 2a: Import all CMS items in the Raw Material GL group
+        $this->importRawMaterialsByGLGroup($userId, $results);
 
         // Phase 2b: Refresh RM metadata (description, preferred supplier, Their Code)
         $this->refreshRawMaterialMetadata($results);
@@ -458,6 +495,77 @@ class CMSImportService
         }
 
         return $rmMap;
+    }
+
+    /* ------------------------------------------------------------------
+     *  Phase 2a: Import all CMS items in the Raw Material GL group
+     *
+     *  Creates raw_materials for any CMS Item whose GLGroup description
+     *  is 'Raw Material' that doesn't already exist in the SDS system.
+     *  This lets operators enter RM data ahead of time, before the RM
+     *  appears in any finished good formula.
+     * ----------------------------------------------------------------*/
+
+    private function importRawMaterialsByGLGroup(?int $userId, array &$results): void
+    {
+        try {
+            $cmsRMs = $this->cms->fetchAll(
+                "SELECT i.ItemCode, i.Description
+                 FROM CMS.dbo.Item i
+                 INNER JOIN CMS.dbo.GLGroup g ON g.GLGroup = i.GLGroup
+                 WHERE g.Description = 'Raw Material'
+                   AND i.ItemCode IS NOT NULL
+                 ORDER BY i.ItemCode"
+            );
+        } catch (\Throwable $e) {
+            $results['errors'][] = 'GL group RM import failed: ' . $e->getMessage();
+            return;
+        }
+
+        if (empty($cmsRMs)) {
+            return;
+        }
+
+        $existingCodes = [];
+        foreach ($this->db->fetchAll("SELECT internal_code FROM raw_materials") as $r) {
+            $existingCodes[$r['internal_code']] = true;
+        }
+
+        $fgCodes = [];
+        foreach ($this->db->fetchAll("SELECT product_code FROM finished_goods") as $r) {
+            $fgCodes[$r['product_code']] = true;
+        }
+
+        $created = 0;
+        foreach ($cmsRMs as $cmsRM) {
+            $code = trim($cmsRM['ItemCode']);
+            if ($code === '' || isset($existingCodes[$code])) {
+                continue;
+            }
+
+            $baseCode = strip_pack_extension($code);
+            if (isset($fgCodes[$code]) || isset($fgCodes[$baseCode])) {
+                continue;
+            }
+
+            try {
+                RawMaterial::create([
+                    'internal_code'         => $code,
+                    'supplier'              => '',
+                    'supplier_product_name' => $cmsRM['Description'] ?? '',
+                    'created_by'            => $userId,
+                ]);
+                $existingCodes[$code] = true;
+                $results['rm_created'][] = $code;
+                $created++;
+            } catch (\Throwable $e) {
+                $results['errors'][] = "GL group RM create [{$code}]: " . $e->getMessage();
+            }
+        }
+
+        if ($created > 0) {
+            $results['rm_gl_group_created'] = $created;
+        }
     }
 
     /* ------------------------------------------------------------------

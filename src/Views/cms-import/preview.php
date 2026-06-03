@@ -30,6 +30,12 @@
                 <td><strong>Raw materials already in system</strong></td>
                 <td><span class="badge badge-muted"><?= count($preview['rm_existing']) ?></span></td>
             </tr>
+            <?php if (!empty($preview['rm_gl_to_create'])): ?>
+            <tr>
+                <td><strong>Raw materials from GL group (not in formulas)</strong></td>
+                <td><span class="badge badge-success"><?= count($preview['rm_gl_to_create']) ?></span></td>
+            </tr>
+            <?php endif; ?>
         </tbody>
     </table>
 </div>
@@ -71,9 +77,20 @@
 
 <?php if (!empty($preview['rm_to_create'])): ?>
 <details style="margin-bottom: 16px;">
-    <summary><strong><?= count($preview['rm_to_create']) ?> New Raw Materials</strong></summary>
+    <summary><strong><?= count($preview['rm_to_create']) ?> New Raw Materials (from formulas)</strong></summary>
     <ul style="margin-top: 8px; column-count: 3;">
         <?php foreach ($preview['rm_to_create'] as $code): ?>
+            <li><?= e($code) ?></li>
+        <?php endforeach; ?>
+    </ul>
+</details>
+<?php endif; ?>
+
+<?php if (!empty($preview['rm_gl_to_create'])): ?>
+<details style="margin-bottom: 16px;">
+    <summary><strong><?= count($preview['rm_gl_to_create']) ?> New Raw Materials (from CMS Raw Material GL group)</strong></summary>
+    <ul style="margin-top: 8px; column-count: 3;">
+        <?php foreach ($preview['rm_gl_to_create'] as $code): ?>
             <li><?= e($code) ?></li>
         <?php endforeach; ?>
     </ul>

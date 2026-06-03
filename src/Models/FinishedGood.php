@@ -394,10 +394,10 @@ class FinishedGood
     {
         $db = Database::getInstance();
 
-        // Only list aliases that actually have at least one published SDS —
-        // otherwise the lookup page shows "no SDS available" rows for every
-        // product whose formula hasn't been published yet, which isn't useful
-        // to operators hunting for a published document.
+        $like = $searchTerm !== '' ? '%' . $searchTerm . '%' : '';
+
+        // ── 1. Alias-based results (alias-branded SDSs) ────────────
+
         $publishedExists = 'EXISTS (
                 SELECT 1 FROM sds_versions sv_ex
                  WHERE sv_ex.alias_id = %s.id
@@ -409,7 +409,6 @@ class FinishedGood
         $params = [];
 
         if ($searchTerm !== '') {
-            $like     = '%' . $searchTerm . '%';
             $where[]  = '(a.customer_code LIKE ? OR a.description LIKE ? OR SUBSTRING_INDEX(a.customer_code, \'-\', 1) LIKE ? OR a.internal_code_base LIKE ? OR fg.description LIKE ?)';
             $params[] = $like;
             $params[] = $like;
@@ -420,7 +419,6 @@ class FinishedGood
 
         $whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
-        // Build a matching WHERE for the representative subquery (alias "a2")
         $where2 = [sprintf($publishedExists, 'a2')];
         $params2 = [];
         if ($searchTerm !== '') {
@@ -433,9 +431,6 @@ class FinishedGood
         }
         $whereSQL2 = $where2 ? 'WHERE ' . implode(' AND ', $where2) : '';
 
-        // Count total unique base customer codes (pack extension agnostic).
-        // LEFT JOIN so resale aliases (whose internal_code_base points
-        // at a raw material, not an FG) still appear in the lookup.
         $countRow = $db->fetch(
             "SELECT COUNT(DISTINCT SUBSTRING_INDEX(a.customer_code, '-', 1)) AS cnt
              FROM aliases a
@@ -443,12 +438,37 @@ class FinishedGood
              {$whereSQL}",
             $params
         );
-        $total = (int) ($countRow['cnt'] ?? 0);
+        $aliasTotal = (int) ($countRow['cnt'] ?? 0);
 
+        // ── 2. FG-direct results (base SDSs, alias_id IS NULL) ─────
+
+        $fgPublished = "EXISTS (
+                SELECT 1 FROM sds_versions sv_ex
+                 WHERE sv_ex.finished_good_id = fg_d.id
+                   AND sv_ex.alias_id IS NULL
+                   AND sv_ex.status = 'published'
+                   AND sv_ex.is_deleted = 0
+            )";
+        $fgWhere  = [$fgPublished];
+        $fgParams = [];
+        if ($searchTerm !== '') {
+            $fgWhere[]  = '(fg_d.product_code LIKE ? OR fg_d.description LIKE ?)';
+            $fgParams[] = $like;
+            $fgParams[] = $like;
+        }
+        $fgWhereSQL = 'WHERE ' . implode(' AND ', $fgWhere);
+
+        $fgCountRow = $db->fetch(
+            "SELECT COUNT(*) AS cnt FROM finished_goods fg_d {$fgWhereSQL}",
+            $fgParams
+        );
+        $fgTotal = (int) ($fgCountRow['cnt'] ?? 0);
+
+        $total  = $aliasTotal + $fgTotal;
         $offset = ($page - 1) * $perPage;
 
-        // Pick one representative alias per base customer code (lowest id)
-        // This ensures we show one row per product regardless of pack extensions
+        // ── 3. Fetch alias rows ────────────────────────────────────
+
         $representativeAlias = "INNER JOIN (
                 SELECT MIN(a2.id) AS rep_id
                 FROM aliases a2
@@ -459,7 +479,6 @@ class FinishedGood
                 LIMIT {$perPage} OFFSET {$offset}
             ) rep ON rep.rep_id = a.id";
 
-        // Latest version subquery per language, scoped to alias_id
         $latestVersionJoin = function (string $alias, string $lang) {
             return "LEFT JOIN (
                 SELECT sv.alias_id, sv.id AS sds_id, sv.version, sv.published_at
@@ -477,8 +496,6 @@ class FinishedGood
             ) {$alias} ON {$alias}.alias_id = a.id";
         };
 
-        // The representative alias subquery already handles pagination and filtering,
-        // so we don't need WHERE or LIMIT/OFFSET on the outer query
         $sql = "SELECT a.id AS alias_id, a.customer_code, a.description AS alias_description,
                        fg.id AS fg_id, fg.family, fg.is_active,
                        sv_en.version AS ver_en, sv_en.published_at AS date_en, sv_en.sds_id AS sds_id_en,
@@ -494,15 +511,8 @@ class FinishedGood
                 {$latestVersionJoin('sv_de', 'de')}
                 ORDER BY a.customer_code ASC";
 
-        // The representative subquery uses its own params (a2 alias)
-        $queryParams = $params2;
-        $rows = $db->fetchAll($sql, $queryParams);
+        $rows = $db->fetchAll($sql, $params2);
 
-        // Post-process: strip pack extension from displayed product code.
-        // Rows where fg_id is NULL are resale aliases (internal_code_base
-        // points at a raw material). Mark them so the view can badge
-        // accordingly; default is_active to 1 because these aliases
-        // don't inherit an FG's active flag.
         foreach ($rows as &$row) {
             $baseCode = strpos($row['customer_code'], '-') !== false
                 ? substr($row['customer_code'], 0, strpos($row['customer_code'], '-'))
@@ -521,6 +531,61 @@ class FinishedGood
             $row['latest_date']    = $row['date_en'] ?? $row['date_es'] ?? $row['date_fr'] ?? $row['date_de'];
         }
         unset($row);
+
+        // ── 4. Fetch FG-direct rows (base SDSs) ───────────────────
+
+        $fgRemaining = $perPage - count($rows);
+        $fgOffset    = max(0, $offset - $aliasTotal);
+
+        if ($fgRemaining > 0 && ($offset + $perPage) > $aliasTotal) {
+            $fgLatestJoin = function (string $alias, string $lang) {
+                return "LEFT JOIN (
+                    SELECT sv.finished_good_id, sv.id AS sds_id, sv.version, sv.published_at
+                    FROM sds_versions sv
+                    INNER JOIN (
+                        SELECT finished_good_id, MAX(version) AS max_ver
+                        FROM sds_versions
+                        WHERE status = 'published' AND language = '{$lang}' AND is_deleted = 0 AND alias_id IS NULL
+                        GROUP BY finished_good_id
+                    ) mx ON sv.finished_good_id = mx.finished_good_id
+                         AND sv.version = mx.max_ver
+                         AND sv.language = '{$lang}'
+                         AND sv.status = 'published'
+                         AND sv.is_deleted = 0
+                         AND sv.alias_id IS NULL
+                ) {$alias} ON {$alias}.finished_good_id = fg_d.id";
+            };
+
+            $fgSql = "SELECT fg_d.id AS fg_id, fg_d.product_code, fg_d.description,
+                             fg_d.family, fg_d.is_active,
+                             sv_en.version AS ver_en, sv_en.published_at AS date_en, sv_en.sds_id AS sds_id_en,
+                             sv_es.version AS ver_es, sv_es.published_at AS date_es, sv_es.sds_id AS sds_id_es,
+                             sv_fr.version AS ver_fr, sv_fr.published_at AS date_fr, sv_fr.sds_id AS sds_id_fr,
+                             sv_de.version AS ver_de, sv_de.published_at AS date_de, sv_de.sds_id AS sds_id_de
+                      FROM finished_goods fg_d
+                      {$fgLatestJoin('sv_en', 'en')}
+                      {$fgLatestJoin('sv_es', 'es')}
+                      {$fgLatestJoin('sv_fr', 'fr')}
+                      {$fgLatestJoin('sv_de', 'de')}
+                      {$fgWhereSQL}
+                      ORDER BY fg_d.product_code ASC
+                      LIMIT {$fgRemaining} OFFSET {$fgOffset}";
+
+            $fgRows = $db->fetchAll($fgSql, $fgParams);
+
+            foreach ($fgRows as &$row) {
+                $row['is_resale']       = false;
+                $row['has_en']          = $row['ver_en'] !== null;
+                $row['has_es']          = $row['ver_es'] !== null;
+                $row['has_fr']          = $row['ver_fr'] !== null;
+                $row['has_de']          = $row['ver_de'] !== null;
+                $row['latest_version']  = $row['ver_en'] ?? $row['ver_es'] ?? $row['ver_fr'] ?? $row['ver_de'];
+                $row['latest_date']     = $row['date_en'] ?? $row['date_es'] ?? $row['date_fr'] ?? $row['date_de'];
+            }
+            unset($row);
+
+            $rows = array_merge($rows, $fgRows);
+        }
 
         return ['rows' => $rows, 'total' => $total];
     }

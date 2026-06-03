@@ -651,8 +651,16 @@ class CMSImportService
             }
         }
 
-        // Update each raw material in a single transaction. ~500 UPDATEs
-        // is still sub-second on local MySQL.
+        // Only update rows where a value actually changed — unconditional
+        // UPDATEs bump updated_at (ON UPDATE CURRENT_TIMESTAMP), which
+        // makes bulk publish think every FG is stale.
+        $currentData = [];
+        foreach ($this->db->fetchAll(
+            "SELECT id, supplier, supplier_product_name, supplier_product_code FROM raw_materials"
+        ) as $r) {
+            $currentData[(int) $r['id']] = $r;
+        }
+
         $pdo = $this->db->getPdo();
         $stmt = $pdo->prepare(
             "UPDATE `raw_materials`
@@ -669,13 +677,20 @@ class CMSImportService
                 $info  = $itemInfo[$code]        ?? ['description' => null, 'supplier' => null];
                 $their = $theirCodeByCode[$code] ?? null;
 
-                // Fall back to empty string for NOT NULL columns, NULL for the new column
-                $stmt->execute([
-                    $info['supplier']    ?? '',
-                    $info['description'] ?? '',
-                    $their,
-                    $rmId,
-                ]);
+                $newSupplier = $info['supplier']    ?? '';
+                $newDesc     = $info['description'] ?? '';
+                $newTheirCode = $their;
+
+                $cur = $currentData[$rmId] ?? null;
+                if ($cur !== null
+                    && $cur['supplier'] === $newSupplier
+                    && $cur['supplier_product_name'] === $newDesc
+                    && $cur['supplier_product_code'] === $newTheirCode
+                ) {
+                    continue;
+                }
+
+                $stmt->execute([$newSupplier, $newDesc, $newTheirCode, $rmId]);
                 $total++;
             }
             $pdo->commit();

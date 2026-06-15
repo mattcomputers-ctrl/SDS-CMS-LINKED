@@ -383,7 +383,7 @@ class ReportController
                 $msg = is_string($reason) && $reason !== ''
                     ? $reason
                     : 'Not found in SDS system — needs to be entered';
-                $missingCsv .= '"' . str_replace('"', '""', $code)
+                $missingCsv .= '"' . str_replace('"', '""', (string) $code)
                              . '","' . str_replace('"', '""', $msg) . '"' . "\n";
             }
             $zip->addFromString('_MISSING_ITEMS.csv', $missingCsv);

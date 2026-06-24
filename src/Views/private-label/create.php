@@ -11,37 +11,32 @@
     <?php else: ?>
     <form method="POST" action="/private-label/generate" id="privateLabelForm">
         <?= csrf_field() ?>
+        <input type="hidden" name="finished_good_id" id="resolved_fg_id">
+        <input type="hidden" name="alias_id" id="resolved_alias_id">
 
-        <h3>Product Selection</h3>
+        <h3>Product</h3>
         <div class="form-group">
-            <label for="finished_good_id">Base Product <span class="text-danger">*</span></label>
-            <select name="finished_good_id" id="finished_good_id" class="searchable-select" required>
-                <option value="">— Select a product —</option>
-                <?php foreach ($finishedGoods as $fg): ?>
-                    <option value="<?= (int) $fg['id'] ?>" data-product-code="<?= e($fg['product_code']) ?>"><?= e($fg['product_code']) ?> — <?= e($fg['description']) ?></option>
+            <label for="product_search">Product Code or Alias <span class="text-danger">*</span></label>
+            <select id="product_search" class="searchable-select" required>
+                <option value="">— Search by product code or alias —</option>
+                <?php foreach ($products as $p): ?>
+                    <?php if ($p['type'] === 'fg'): ?>
+                        <option value="fg:<?= (int) $p['fg_id'] ?>"
+                                data-fg-id="<?= (int) $p['fg_id'] ?>"
+                                data-alias-id=""
+                                ><?= e($p['code']) ?> — <?= e($p['description']) ?></option>
+                    <?php else: ?>
+                        <option value="alias:<?= (int) $p['alias_id'] ?>"
+                                data-fg-id="<?= (int) $p['fg_id'] ?>"
+                                data-alias-id="<?= (int) $p['alias_id'] ?>"
+                                ><?= e($p['code']) ?> — <?= e($p['description']) ?> (base: <?= e($p['base_code']) ?>)</option>
+                    <?php endif; ?>
                 <?php endforeach; ?>
             </select>
-            <small class="text-muted">The product whose formula and hazard data will be used</small>
+            <small class="text-muted">Type a base product code or alias / item code</small>
         </div>
-
-        <div class="form-group" style="margin-top: 0.5rem;">
-            <label style="display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                <input type="checkbox" name="use_alias" id="use_alias" value="1">
-                <span>Use alias / item code instead of base product code</span>
-            </label>
-        </div>
-
-        <div class="form-group" id="aliasSelectGroup" style="display: none;">
-            <label for="alias_id">Alias / Item Code</label>
-            <select name="alias_id" id="alias_id" class="searchable-select">
-                <option value="">— Select an alias —</option>
-                <?php foreach ($aliases as $a): ?>
-                    <option value="<?= (int) $a['id'] ?>" data-base="<?= e($a['internal_code_base']) ?>">
-                        <?= e($a['customer_code']) ?> — <?= e($a['description']) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-            <small class="text-muted">The alias product code and description will appear on the SDS instead of the base product code</small>
+        <div id="productInfo" style="display: none; margin-top: -0.5rem; margin-bottom: 1rem;">
+            <small id="productInfoText" class="text-muted"></small>
         </div>
 
         <h3>Manufacturer</h3>
@@ -75,77 +70,61 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    var useAliasCheckbox = document.getElementById('use_alias');
-    var aliasGroup = document.getElementById('aliasSelectGroup');
-    var fgSelect = document.getElementById('finished_good_id');
-    var aliasSelect = document.getElementById('alias_id');
+    var productSelect = document.getElementById('product_search');
+    var fgIdInput     = document.getElementById('resolved_fg_id');
+    var aliasIdInput  = document.getElementById('resolved_alias_id');
+    var infoDiv       = document.getElementById('productInfo');
+    var infoText      = document.getElementById('productInfoText');
+    var form          = document.getElementById('privateLabelForm');
 
-    // Store all alias options for filtering
-    var allAliasOptions = [];
-    if (aliasSelect) {
-        for (var i = 1; i < aliasSelect.options.length; i++) {
-            allAliasOptions.push({
-                value: aliasSelect.options[i].value,
-                text: aliasSelect.options[i].text,
-                base: aliasSelect.options[i].getAttribute('data-base')
-            });
+    function syncHiddenInputs() {
+        if (!productSelect) return;
+        var opt = productSelect.options[productSelect.selectedIndex];
+        if (!opt || !opt.value) {
+            fgIdInput.value = '';
+            aliasIdInput.value = '';
+            if (infoDiv) infoDiv.style.display = 'none';
+            return;
+        }
+
+        fgIdInput.value = opt.getAttribute('data-fg-id') || '';
+        aliasIdInput.value = opt.getAttribute('data-alias-id') || '';
+
+        if (infoDiv && infoText) {
+            if (aliasIdInput.value) {
+                infoText.textContent = 'Alias selected — the alias product code and description will appear on the SDS.';
+            } else {
+                infoText.textContent = 'Base product selected — the base product code will appear on the SDS.';
+            }
+            infoDiv.style.display = 'block';
         }
     }
 
-    function filterAliases() {
-        if (!aliasSelect || !fgSelect) return;
-
-        var selectedOption = fgSelect.options[fgSelect.selectedIndex];
-        var productCode = selectedOption ? selectedOption.getAttribute('data-product-code') : '';
-
-        // Clear existing options (keep the placeholder)
-        while (aliasSelect.options.length > 1) {
-            aliasSelect.remove(1);
-        }
-        aliasSelect.value = '';
-
-        // Add only aliases matching the selected product
-        allAliasOptions.forEach(function(opt) {
-            if (productCode && opt.base === productCode) {
-                var option = document.createElement('option');
-                option.value = opt.value;
-                option.text = opt.text;
-                option.setAttribute('data-base', opt.base);
-                aliasSelect.add(option);
-            }
-        });
+    if (productSelect) {
+        productSelect.addEventListener('change', syncHiddenInputs);
     }
 
-    if (useAliasCheckbox && aliasGroup) {
-        useAliasCheckbox.addEventListener('change', function() {
-            aliasGroup.style.display = this.checked ? 'block' : 'none';
-            if (!this.checked && aliasSelect) {
-                aliasSelect.value = '';
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            if (!fgIdInput.value) {
+                e.preventDefault();
+                alert('Please select a product or alias.');
             }
-            if (this.checked) {
-                filterAliases();
-            }
-        });
-    }
-
-    if (fgSelect) {
-        fgSelect.addEventListener('change', function() {
-            filterAliases();
         });
     }
 
     var previewBtn = document.getElementById('livePreviewBtn');
     if (previewBtn) {
         previewBtn.addEventListener('click', function() {
-            var fgId = fgSelect ? fgSelect.value : '';
+            var fgId = fgIdInput ? fgIdInput.value : '';
             var mfgId = document.getElementById('manufacturer_id') ? document.getElementById('manufacturer_id').value : '';
             if (!fgId || !mfgId) {
                 alert('Please select a product and manufacturer before previewing.');
                 return;
             }
             var params = 'finished_good_id=' + fgId + '&manufacturer_id=' + mfgId;
-            if (useAliasCheckbox && useAliasCheckbox.checked && aliasSelect && aliasSelect.value) {
-                params += '&alias_id=' + aliasSelect.value;
+            if (aliasIdInput && aliasIdInput.value) {
+                params += '&alias_id=' + aliasIdInput.value;
             }
             window.open('/private-label/live-preview?' + params, '_blank');
         });

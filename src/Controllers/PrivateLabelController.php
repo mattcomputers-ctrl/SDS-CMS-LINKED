@@ -161,17 +161,19 @@ class PrivateLabelController
             redirect('/private-label');
         }
 
-        $finishedGoods = FinishedGood::all([
-            'per_page' => 999,
-            'sort'     => 'product_code',
-            'dir'      => 'asc',
-            'is_active' => 1,
-        ]);
-
-        $manufacturers = Manufacturer::all();
-
-        // Load aliases, deduplicated by base customer code (pack extension stripped)
         $db = Database::getInstance();
+
+        $finishedGoods = $db->fetchAll(
+            "SELECT id, product_code, description
+             FROM finished_goods
+             WHERE is_active = 1
+             ORDER BY product_code ASC"
+        );
+        $fgByCode = [];
+        foreach ($finishedGoods as $fg) {
+            $fgByCode[$fg['product_code']] = (int) $fg['id'];
+        }
+
         $aliasRows = $db->fetchAll(
             "SELECT a.id, a.customer_code, a.description, a.internal_code_base
              FROM aliases a
@@ -179,11 +181,38 @@ class PrivateLabelController
         );
         $aliases = self::deduplicateAliasesByBaseCode($aliasRows);
 
+        $products = [];
+        foreach ($finishedGoods as $fg) {
+            $products[] = [
+                'type'         => 'fg',
+                'fg_id'        => (int) $fg['id'],
+                'alias_id'     => null,
+                'code'         => $fg['product_code'],
+                'description'  => $fg['description'],
+                'base_code'    => null,
+            ];
+        }
+        foreach ($aliases as $a) {
+            $fgId = $fgByCode[$a['internal_code_base']] ?? null;
+            if ($fgId === null) {
+                continue;
+            }
+            $products[] = [
+                'type'         => 'alias',
+                'fg_id'        => $fgId,
+                'alias_id'     => (int) $a['id'],
+                'code'         => $a['customer_code'],
+                'description'  => $a['description'],
+                'base_code'    => $a['internal_code_base'],
+            ];
+        }
+
+        $manufacturers = Manufacturer::all();
+
         view('private-label/create', [
             'pageTitle'     => 'Create Private Label SDS',
-            'finishedGoods' => $finishedGoods,
+            'products'      => $products,
             'manufacturers' => $manufacturers,
-            'aliases'       => $aliases,
         ]);
     }
 
@@ -200,7 +229,6 @@ class PrivateLabelController
         $manufacturerId = (int) ($_POST['manufacturer_id'] ?? 0);
         $aliasId        = (int) ($_POST['alias_id'] ?? 0) ?: null;
         $changeSummary  = trim($_POST['change_summary'] ?? '');
-        $useAlias       = !empty($_POST['use_alias']);
 
         // Validate product
         $fg = FinishedGood::findById($finishedGoodId);
@@ -216,21 +244,17 @@ class PrivateLabelController
             redirect('/private-label/create');
         }
 
-        // If using alias, validate it and strip pack extension from customer code
+        // If alias selected, validate and strip pack extension
         $alias = null;
-        if ($useAlias && $aliasId !== null) {
-            $db = Database::getInstance();
+        $db = Database::getInstance();
+        if ($aliasId !== null) {
             $alias = $db->fetch("SELECT * FROM aliases WHERE id = ?", [$aliasId]);
             if ($alias === null) {
                 $_SESSION['_flash']['error'] = 'Selected alias not found.';
                 redirect('/private-label/create');
             }
             $alias['customer_code'] = self::stripPackExtension($alias['customer_code']);
-        } else {
-            $aliasId = null;
         }
-
-        $db = Database::getInstance();
         $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
         $mfgInfo = Manufacturer::toCompanyInfo($manufacturer);
 

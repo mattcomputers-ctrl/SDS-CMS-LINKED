@@ -547,7 +547,6 @@ class HazardEngine
         $signalWord    = null;
         $exposureLimits = [];
         $hazardousCas   = [];
-        $componentHCodes = [];
 
         $this->traceStep('start', 'Beginning hazard classification', [
             'component_count' => count($composition),
@@ -700,11 +699,6 @@ class HazardEngine
                     // class clears its cutoff — so hazard_classes is the sole
                     // authoritative "did anything trigger" flag. h_statements
                     // is no longer a valid tie-breaker.
-                    // Track substance-level H-codes for Section 3
-                    foreach ($cpdResult['substance_h_codes'] ?? [] as $hc) {
-                        $componentHCodes[$cas][$hc] = true;
-                    }
-
                     $hasHazards = !empty($cpdResult['hazard_classes']);
                     if (!$hasHazards) {
                         $this->traceStep('cpd_no_hazards', "CAS {$cas} has determination but no hazard class cleared its cutoff", [
@@ -777,16 +771,6 @@ class HazardEngine
                     $this->traceStep('class_name_unmapped', "CAS {$cas} class_name '{$className}' not in alias table; using default cutoff", [
                         'cas' => $cas, 'class_name' => $className, 'category' => $category,
                     ]);
-                }
-
-                // Track substance-level H-codes for Section 3 disclosure
-                // (regardless of whether this component triggers at its
-                // concentration in the mixture).
-                if ($canonical !== null && $categoryCanon !== null && $categoryCanon !== '') {
-                    $defs = $this->getDefaultsForClassCategory($canonical, $categoryCanon);
-                    foreach ($defs['h_codes'] ?? [] as $hc) {
-                        $componentHCodes[$cas][$hc] = true;
-                    }
                 }
 
                 // Check against GHS concentration cutoffs
@@ -1007,7 +991,6 @@ class HazardEngine
             // limit, regardless of the source data's cleanliness.
             'exposure_limits'     => self::dedupeExposureLimits($exposureLimits),
             'hazardous_cas'       => array_keys($hazardousCas),
-            'component_h_codes'   => array_map('array_keys', $componentHCodes),
             'ppe_recommendations' => $ppeRecommendations,
             'trace'               => $this->trace,
         ];
@@ -2286,7 +2269,6 @@ class HazardEngine
         // the whole CPD contribution (H/P-codes, pictograms, signal word)
         // is suppressed — see below.
         $anyTriggered = false;
-        $substanceHCodes = [];
 
         if (!empty($selectedHazards)) {
             foreach ($selectedHazards as $key) {
@@ -2295,12 +2277,6 @@ class HazardEngine
 
                 $canonical     = HazardClassAliases::normalize($entry['class']);
                 $categoryCanon = HazardClassAliases::normalizeCategory($entry['category']);
-                if ($canonical !== null && $categoryCanon !== '') {
-                    $defs = $this->getDefaultsForClassCategory($canonical, $categoryCanon);
-                    foreach ($defs['h_codes'] ?? [] as $hc) {
-                        $substanceHCodes[$hc] = true;
-                    }
-                }
                 $cutoff        = $this->getCutoff($canonical ?? '', $categoryCanon);
 
                 // Feed the summation buffer for every CPD-declared
@@ -2371,10 +2347,6 @@ class HazardEngine
                 ];
             }
         } else {
-            // Free-text path: substance H-codes come from the raw h_statements
-            foreach ($hStmts as $code => $_) {
-                $substanceHCodes[$code] = true;
-            }
             $classRaw = array_filter(array_map('trim', explode(',', $det['hazard_classes'] ?? '')));
             foreach ($classRaw as $classStr) {
                 $canonical = HazardClassAliases::normalize($classStr);
@@ -2480,7 +2452,6 @@ class HazardEngine
             'pictograms'       => $pictograms,
             'signal_word'      => $signalWord,
             'hazard_classes'   => $hazardClasses,
-            'substance_h_codes' => array_keys($substanceHCodes),
             'exposure_limits'  => $exposureLimits,
         ];
     }

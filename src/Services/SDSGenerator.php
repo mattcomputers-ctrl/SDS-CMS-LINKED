@@ -680,6 +680,15 @@ class SDSGenerator
             }
         }
 
+        // Merge substance-level H-codes (from vendor data or CPD, regardless
+        // of GHS mixture cutoffs) so Section 3 shows each component's full
+        // classification rather than only the codes that triggered.
+        foreach (($hazardResult['component_h_codes'] ?? []) as $cas => $codes) {
+            foreach ($codes as $code) {
+                $casToHCodes[$cas][$code] = true;
+            }
+        }
+
         // Collect H codes attributed to TRADE_SECRET from hazard results
         $tradeSecretHCodes = [];
         foreach (($hazardResult['hazard_classes'] ?? []) as $hc) {

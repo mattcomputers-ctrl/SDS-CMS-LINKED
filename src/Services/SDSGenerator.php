@@ -1687,6 +1687,7 @@ class SDSGenerator
                     $hazardResult['hazard_classes'][] = [
                         'class'             => 'Carcinogenicity',
                         'category'          => 'Category 2',
+                        'h_codes'           => ['H351'],
                         'cas'               => $cas,
                         'chemical'          => $name,
                         'concentration_pct' => 0,
@@ -2119,6 +2120,7 @@ class SDSGenerator
             $hazardResult['hazard_classes'][] = [
                 'class'             => 'Carcinogenicity',
                 'category'          => $category,
+                'h_codes'           => [$hCode],
                 'cas'               => $cas,
                 'chemical'          => $name,
                 'concentration_pct' => $conc,

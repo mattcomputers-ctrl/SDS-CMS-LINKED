@@ -330,6 +330,7 @@ class App
             $r->get('/settings',  'AdminController@settings');
             $r->post('/settings', 'AdminController@saveSettings');
             $r->post('/settings/bump-inhalation-cas', 'AdminController@bumpInhalationCas');
+            $r->post('/settings/bump-all-sds', 'AdminController@bumpAllUnblockedSds');
 
             // Federal data
             $r->get('/federal-data',          'AdminController@federalData');

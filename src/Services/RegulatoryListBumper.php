@@ -93,6 +93,115 @@ class RegulatoryListBumper
     }
 
     /**
+     * Proactively enqueue an SDS-update review item for every published,
+     * active finished good whose current formula uses a raw material that
+     * lists one of the given CASes as a constituent. This surfaces the
+     * affected products on the SDS Updates page immediately when a
+     * regulatory list changes, without waiting for a manual scan.
+     *
+     * Walks the formula tree transitively: a finished good is affected if any
+     * raw material in its own formula OR in any nested sub-formula (via
+     * finished_good_component_id) carries one of the CASes. Deduped against
+     * existing pending queue rows (one pending row per FG, matching the
+     * scan's behaviour). Returns the number of finished goods newly queued.
+     *
+     * @param string[] $casList
+     */
+    public static function queueSdsUpdatesByCas(array $casList, ?int $userId, string $reason): int
+    {
+        $casList = array_values(array_unique(array_filter(
+            array_map('trim', $casList),
+            static fn(string $c): bool => $c !== ''
+        )));
+        if (empty($casList)) {
+            return 0;
+        }
+
+        $db = Database::getInstance();
+
+        // 1. Direct hits: FGs whose current formula uses a raw material that
+        //    lists one of these CASes as a constituent.
+        $placeholders = implode(',', array_fill(0, count($casList), '?'));
+        $affected = [];
+        foreach ($db->fetchAll(
+            "SELECT DISTINCT f.finished_good_id AS fg_id
+             FROM raw_material_constituents rmc
+             JOIN formula_lines fl ON fl.raw_material_id = rmc.raw_material_id
+             JOIN formulas f ON f.id = fl.formula_id AND f.is_current = 1
+             WHERE rmc.cas_number IN ({$placeholders})",
+            $casList
+        ) as $r) {
+            $affected[(int) $r['fg_id']] = true;
+        }
+        if (empty($affected)) {
+            return 0;
+        }
+
+        // 2. Transitive closure upward: any FG whose current formula uses an
+        //    already-affected FG as a sub-component. Repeat to a fixpoint so
+        //    arbitrarily-deep nesting is covered; the guard bounds cyclic data.
+        for ($guard = 0; $guard < 50; $guard++) {
+            $ids = array_keys($affected);
+            $ph  = implode(',', array_fill(0, count($ids), '?'));
+            $grew = false;
+            foreach ($db->fetchAll(
+                "SELECT DISTINCT f.finished_good_id AS fg_id
+                 FROM formula_lines fl
+                 JOIN formulas f ON f.id = fl.formula_id AND f.is_current = 1
+                 WHERE fl.finished_good_component_id IN ({$ph})",
+                $ids
+            ) as $r) {
+                $fgId = (int) $r['fg_id'];
+                if (!isset($affected[$fgId])) {
+                    $affected[$fgId] = true;
+                    $grew = true;
+                }
+            }
+            if (!$grew) {
+                break;
+            }
+        }
+
+        // 3. Enqueue the affected FGs that are active and already have a
+        //    published (non-alias) SDS, deduped against pending queue rows.
+        $ids = array_keys($affected);
+        $ph  = implode(',', array_fill(0, count($ids), '?'));
+        $publishable = $db->fetchAll(
+            "SELECT fg.id
+             FROM finished_goods fg
+             WHERE fg.is_active = 1 AND fg.id IN ({$ph})
+               AND EXISTS (
+                   SELECT 1 FROM sds_versions sv
+                   WHERE sv.finished_good_id = fg.id
+                     AND sv.status = 'published' AND sv.is_deleted = 0 AND sv.alias_id IS NULL
+               )",
+            $ids
+        );
+
+        $queued = 0;
+        foreach ($publishable as $row) {
+            $fgId = (int) $row['id'];
+            $existing = $db->fetch(
+                "SELECT id FROM sds_update_queue WHERE finished_good_id = ? AND status = 'pending'",
+                [$fgId]
+            );
+            if ($existing) {
+                continue;
+            }
+            $db->insert('sds_update_queue', [
+                'finished_good_id' => $fgId,
+                'reason'           => mb_substr($reason, 0, 500),
+                'source_type'      => 'constituent',
+                'source_id'        => null,
+                'queued_by'        => $userId,
+            ]);
+            $queued++;
+        }
+
+        return $queued;
+    }
+
+    /**
      * @param int[] $ids
      */
     private static function bumpRmIds(array $ids): int

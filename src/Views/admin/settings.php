@@ -330,6 +330,20 @@
             <div class="form-group"><label>Audit Log Retention (days)</label><input type="number" name="cron__log_retention_days" value="<?= e($settings['cron.log_retention_days'] ?? '365') ?>"></div>
         </div>
 
+        <div class="form-group" style="margin-top: 1rem;">
+            <label>Regenerate every SDS</label>
+            <button type="button" class="btn btn-secondary" id="bumpAllSds" style="font-size: 0.85rem;">
+                Bump ALL unblocked SDSs
+            </button>
+            <div class="alert alert-warning" style="margin-top: 0.5rem; font-size: 0.85rem;">
+                <strong>&#9888; Warning:</strong> This marks every <em>unblocked</em> finished good (all raw
+                materials reviewed) as needing regeneration. The next <strong>Bulk SDS Publish</strong> will then
+                regenerate all of them, and <strong>will take a long time to complete &mdash; likely several
+                hours</strong>. Blocked products (with an unreviewed raw material) are not affected.
+            </div>
+            <div id="bumpAllResult" style="margin-top: 0.5rem;"></div>
+        </div>
+
         <div class="form-actions">
             <button type="submit" class="btn btn-primary">Save Settings</button>
         </div>
@@ -414,6 +428,34 @@ document.getElementById('bumpInhalationSds').addEventListener('click', function(
     .catch(function() {
         btn.disabled = false;
         btn.textContent = 'Bump Affected SDSs';
+        resultDiv.innerHTML = '<span style="color:#c00;">Request failed.</span>';
+    });
+});
+
+document.getElementById('bumpAllSds').addEventListener('click', function() {
+    if (!confirm('Bump ALL unblocked SDSs?\n\nThe next Bulk SDS Publish will regenerate every unblocked finished good and may take several hours to complete. Continue?')) {
+        return;
+    }
+    var btn = this;
+    var resultDiv = document.getElementById('bumpAllResult');
+    btn.disabled = true;
+    btn.textContent = 'Bumping...';
+    resultDiv.innerHTML = '';
+
+    fetch('/admin/settings/bump-all-sds', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': document.querySelector('input[name="_csrf_token"]').value},
+        body: JSON.stringify({})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        btn.disabled = false;
+        btn.textContent = 'Bump ALL unblocked SDSs';
+        resultDiv.innerHTML = '<span style="color:' + (data.success ? '#080' : '#c00') + ';">' + (data.message || 'Error') + '</span>';
+    })
+    .catch(function() {
+        btn.disabled = false;
+        btn.textContent = 'Bump ALL unblocked SDSs';
         resultDiv.innerHTML = '<span style="color:#c00;">Request failed.</span>';
     });
 });

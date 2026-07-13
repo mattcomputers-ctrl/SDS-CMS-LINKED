@@ -466,6 +466,55 @@ class AdminController
     }
 
     /**
+     * Bump every raw material so all unblocked finished goods are marked
+     * stale and get regenerated at the next Bulk SDS Publish.
+     *
+     * Blocked finished goods (those with a raw material that has never been
+     * user-reviewed) stay blocked and are skipped by bulk publish's own
+     * eligibility gate, so this only causes unblocked FGs to republish.
+     */
+    public function bumpAllUnblockedSds(): void
+    {
+        $this->requireAdmin();
+
+        header('Content-Type: application/json');
+        $csrfToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+        if (!CSRF::validate($csrfToken)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Invalid CSRF token.']);
+            return;
+        }
+
+        $db = Database::getInstance();
+
+        // Bump the upstream timestamp on every raw material. Bulk publish's
+        // staleness check (published_at vs MAX upstream updated_at) then sees
+        // every unblocked FG as stale; blocked FGs remain blocked regardless.
+        $bumped = $db->query("UPDATE raw_materials SET updated_at = UTC_TIMESTAMP()")->rowCount();
+
+        // Best-effort count of how many FGs will actually be regenerated.
+        $eligibleCount = null;
+        try {
+            $result = BulkPublishController::computeEligibleFinishedGoods($db);
+            $eligibleCount = count($result['eligible'] ?? []);
+        } catch (\Throwable $e) {
+            // Non-fatal — the bump already succeeded.
+        }
+
+        AuditService::log('settings', 'bump_all_unblocked_sds', 'bump', [
+            'raw_materials_bumped' => $bumped,
+            'eligible_fg'          => $eligibleCount,
+        ]);
+
+        $countPart = $eligibleCount !== null
+            ? "{$eligibleCount} unblocked finished good(s) will be regenerated"
+            : 'All unblocked finished goods will be regenerated';
+        $msg = "Bumped {$bumped} raw material(s). {$countPart} at the next Bulk SDS Publish — "
+             . 'expect it to take a long time to complete, likely several hours.';
+        echo json_encode(['success' => true, 'message' => $msg, 'eligible' => $eligibleCount]);
+    }
+
+    /**
      * Upsert a single setting key/value.
      */
     private function saveSetting(Database $db, string $key, string $value): void

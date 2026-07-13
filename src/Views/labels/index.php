@@ -6,27 +6,23 @@
 
     <form method="POST" action="/labels/generate" id="labelForm" target="_blank">
         <?= csrf_field() ?>
+        <input type="hidden" name="finished_good_id" id="resolved_fg_id">
+        <input type="hidden" name="resale_code" id="resolved_resale_code">
 
         <div class="form-group">
-            <label for="finished_good_id">Product</label>
-            <select name="finished_good_id" id="finished_good_id" class="searchable-select">
-                <option value="">— Select a finished good —</option>
-                <?php foreach ($finishedGoods as $fg): ?>
-                    <option value="<?= (int) $fg['id'] ?>"><?= e($fg['product_code']) ?> — <?= e($fg['description']) ?></option>
+            <label for="product_search">Product <span class="text-danger">*</span></label>
+            <select id="product_search" class="searchable-select">
+                <option value="">— Search by product code, alias, or resale code —</option>
+                <?php foreach ($products as $p): ?>
+                    <option value="<?= e($p['type'] . ':' . ($p['type'] === 'fg' ? (string) $p['fg_id'] : $p['resale_code'])) ?>"
+                            data-fg-id="<?= $p['type'] === 'fg' ? (int) $p['fg_id'] : '' ?>"
+                            data-resale-code="<?= e($p['type'] === 'fg' ? '' : $p['resale_code']) ?>"
+                            ><?= e($p['code']) ?> — <?= e($p['description']) ?><?php if ($p['type'] === 'alias'): ?> (alias)<?php elseif ($p['type'] === 'rm'): ?> (resale)<?php endif; ?></option>
                 <?php endforeach; ?>
             </select>
-            <small class="text-muted">Pick a finished good above, or enter a resale code below.</small>
-        </div>
-
-        <div class="form-group">
-            <label for="resale_code">Or enter a resale code</label>
-            <input type="text" name="resale_code" id="resale_code" class="input"
-                   placeholder="Alias customer code, RM code (e.g. DSS0100), or pack variant"
-                   autocomplete="off" spellcheck="false">
             <small class="text-muted">
-                For resale items sold as-is (alias) or the raw material itself.
+                Finished goods, aliases, and resale raw materials all appear here.
                 Pack extensions are ignored &mdash; DSS0100 and DSS0100-20 produce identical labels.
-                Leave blank if you've chosen a finished good above.
             </small>
         </div>
 
@@ -81,6 +77,20 @@
                 <small class="text-muted">Number of pages</small>
                 <small id="totalUnitsHelper" class="text-muted" style="display: none; margin-top: 0.25rem;"></small>
             </div>
+        </div>
+
+        <div class="form-group" style="margin-top: 0.5rem;">
+            <label for="color_code">Color Block</label>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <span id="colorSwatch" aria-hidden="true"
+                      style="display: inline-block; width: 1.6rem; height: 1.6rem; border-radius: 3px; border: 2px solid #000; background: #fff; flex: 0 0 auto;"></span>
+                <select name="color_code" id="color_code" class="input" style="max-width: 220px;">
+                    <?php foreach ($colorOptions as $key => $label): ?>
+                        <option value="<?= e($key) ?>"><?= e($label) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <small class="text-muted">A colored ID block printed on the label to help shipping and production identify the product. "No Color" prints a black outline only.</small>
         </div>
 
         <?php if (!empty($manufacturers)): ?>
@@ -154,6 +164,58 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Unified product search → resolve to the hidden finished_good_id /
+    // resale_code inputs the generate endpoint expects.
+    var productSelect = document.getElementById('product_search');
+    var fgIdInput     = document.getElementById('resolved_fg_id');
+    var resaleInput   = document.getElementById('resolved_resale_code');
+    var labelForm     = document.getElementById('labelForm');
+
+    function syncProduct() {
+        if (!productSelect) return;
+        var opt = productSelect.options[productSelect.selectedIndex];
+        if (!opt || !opt.value) {
+            fgIdInput.value = '';
+            resaleInput.value = '';
+            return;
+        }
+        fgIdInput.value = opt.getAttribute('data-fg-id') || '';
+        resaleInput.value = opt.getAttribute('data-resale-code') || '';
+    }
+
+    if (productSelect) productSelect.addEventListener('change', syncProduct);
+
+    if (labelForm) {
+        labelForm.addEventListener('submit', function(e) {
+            if (!fgIdInput.value && !resaleInput.value) {
+                e.preventDefault();
+                alert('Please select a product.');
+            }
+        });
+    }
+
+    // Color block swatch preview
+    var colorSelect = document.getElementById('color_code');
+    var colorSwatch = document.getElementById('colorSwatch');
+    var colorHex = {
+        none: null, yellow: '#FFDD00', magenta: '#EC008C', cyan: '#009EE0',
+        black: '#000000', brown: '#7B3F00', orange: '#F47920',
+        green: '#009245', purple: '#662D91'
+    };
+    function updateSwatch() {
+        if (!colorSelect || !colorSwatch) return;
+        var hex = colorHex[colorSelect.value];
+        if (!hex) {
+            colorSwatch.style.background = '#fff';
+            colorSwatch.style.border = '2px solid #000';
+        } else {
+            colorSwatch.style.background = hex;
+            colorSwatch.style.border = '1px solid #999';
+        }
+    }
+    if (colorSelect) colorSelect.addEventListener('change', updateSwatch);
+    updateSwatch();
+
     // Only allow digits in lot number field
     var lotInput = document.getElementById('lot_number');
     if (lotInput) {

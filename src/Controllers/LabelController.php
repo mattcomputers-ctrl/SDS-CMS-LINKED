@@ -16,17 +16,86 @@ class LabelController
 {
     public function index(): void
     {
-        $finishedGoods = FinishedGood::all([
-            'per_page' => 999,
-            'sort'     => 'product_code',
-            'dir'      => 'asc',
-            'is_active' => 1,
-        ]);
+        $db = Database::getInstance();
+
+        // Unified product search: a single list combining every printable
+        // target — finished goods, aliases (customer codes), and resale raw
+        // materials. Each entry carries the fields the generate() endpoint
+        // needs: an FG id (formula products) or a resale code (aliases / RMs).
+        // A direct query is used instead of FinishedGood::all() so the list
+        // isn't capped at the model's 100-row pagination limit.
+        $finishedGoods = $db->fetchAll(
+            "SELECT id, product_code, description
+             FROM finished_goods
+             WHERE is_active = 1
+             ORDER BY product_code ASC"
+        );
+
+        $aliasRows = $db->fetchAll(
+            "SELECT id, customer_code, description, internal_code_base
+             FROM aliases
+             ORDER BY customer_code ASC"
+        );
+
+        $rawMaterials = $db->fetchAll(
+            "SELECT id, internal_code, supplier_product_name
+             FROM raw_materials
+             ORDER BY internal_code ASC"
+        );
+
+        $products = [];
+
+        foreach ($finishedGoods as $fg) {
+            $products[] = [
+                'type'        => 'fg',
+                'fg_id'       => (int) $fg['id'],
+                'resale_code' => '',
+                'code'        => $fg['product_code'],
+                'description' => $fg['description'],
+            ];
+        }
+
+        // Aliases: dedupe to one entry per base customer code (pack variants
+        // print identical labels). The resale code is the base customer_code;
+        // resolveLabelTarget() routes it to the right formula/resale source.
+        $seenAlias = [];
+        foreach ($aliasRows as $a) {
+            $base = AliasResolver::stripPack((string) $a['customer_code']);
+            if ($base === '' || isset($seenAlias[$base])) {
+                continue;
+            }
+            $seenAlias[$base] = true;
+            $products[] = [
+                'type'        => 'alias',
+                'fg_id'       => null,
+                'resale_code' => $base,
+                'code'        => $base,
+                'description' => $a['description'],
+            ];
+        }
+
+        // Resale raw materials: printable directly under their own code.
+        // Dedupe by base code — pack variants (DSS0100, DSS0100-20) share
+        // hazard data and print identical labels.
+        $seenRm = [];
+        foreach ($rawMaterials as $rm) {
+            $code = AliasResolver::stripPack((string) $rm['internal_code']);
+            if ($code === '' || isset($seenRm[$code])) {
+                continue;
+            }
+            $seenRm[$code] = true;
+            $products[] = [
+                'type'        => 'rm',
+                'fg_id'       => null,
+                'resale_code' => $code,
+                'code'        => $code,
+                'description' => $rm['supplier_product_name'] ?? '',
+            ];
+        }
 
         $templates = LabelTemplate::all();
 
         // Load net weight unit options from admin settings
-        $db = Database::getInstance();
         $unitRow = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'label.net_weight_units'");
         $netWeightUnits = [];
         if ($unitRow && trim($unitRow['value']) !== '') {
@@ -37,10 +106,11 @@ class LabelController
 
         view('labels/index', [
             'pageTitle'      => 'GHS Labels',
-            'finishedGoods'  => $finishedGoods,
+            'products'       => $products,
             'templates'      => $templates,
             'netWeightUnits' => $netWeightUnits,
             'manufacturers'  => $manufacturers,
+            'colorOptions'   => LabelPDFService::colorOptions(),
         ]);
     }
 
@@ -56,6 +126,13 @@ class LabelController
         $netWeight       = $netWeightValue !== '' ? $netWeightValue . ($netWeightUnit !== '' ? ' ' . $netWeightUnit : '') : '';
         $privateLabel    = !empty($_POST['private_label']);
         $manufacturerId  = (int) ($_POST['manufacturer_id'] ?? 0);
+
+        // Product-identification color block. Validate against the known
+        // options; anything unexpected falls back to 'none' (outline only).
+        $colorCode = strtolower(trim($_POST['color_code'] ?? 'none'));
+        if (!array_key_exists($colorCode, LabelPDFService::colorOptions())) {
+            $colorCode = 'none';
+        }
 
         // Resolve the label target. Three input modes, checked in order:
         //   1. resale_code — an alias customer_code, an RM base code, or
@@ -132,7 +209,7 @@ class LabelController
 
             // Generate PDF
             $pdfService = new LabelPDFService();
-            $pdfContent = $pdfService->generateFromTemplate($sdsData, $fg, $lotNumber, $template, $quantity, $netWeight, $privateLabel);
+            $pdfContent = $pdfService->generateFromTemplate($sdsData, $fg, $lotNumber, $template, $quantity, $netWeight, $privateLabel, $colorCode);
 
             // Output PDF
             $filename = $productCode . '_label_' . $lotNumber . '.pdf';

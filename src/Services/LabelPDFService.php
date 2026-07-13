@@ -30,6 +30,45 @@ class LabelPDFService
     /** Minimum font size (pt) for hazard and precautionary statements per OSHA requirements. */
     private const MIN_STATEMENT_FONT_SIZE = 6.0;
 
+    /**
+     * RGB fill values for the product-identification color block.
+     * Keyed by the value submitted from the labels form. The 'none' option
+     * has no entry — it renders as a black outline only. Values approximate
+     * common process/spot ink colors so shipping and production can match a
+     * printed swatch at a glance.
+     */
+    private const COLOR_BLOCK_RGB = [
+        'yellow'  => [255, 221, 0],
+        'magenta' => [236, 0, 140],
+        'cyan'    => [0, 158, 224],
+        'black'   => [0, 0, 0],
+        'brown'   => [123, 63, 0],
+        'orange'  => [244, 121, 32],
+        'green'   => [0, 146, 69],
+        'purple'  => [102, 45, 145],
+    ];
+
+    /**
+     * Ordered color choices for the labels form dropdown: value => label.
+     * Single source of truth shared by the view (options), the controller
+     * (validation), and this service (rendering). 'none' means no fill —
+     * just a black outline of the block area.
+     */
+    public static function colorOptions(): array
+    {
+        return [
+            'none'    => 'No Color',
+            'yellow'  => 'Yellow',
+            'magenta' => 'Magenta',
+            'cyan'    => 'Cyan',
+            'black'   => 'Black',
+            'brown'   => 'Brown',
+            'orange'  => 'Orange',
+            'green'   => 'Green',
+            'purple'  => 'Purple/Violet',
+        ];
+    }
+
     // Legacy label specs (kept for backward compatibility)
     private const LABELS = [
         'big' => [
@@ -66,7 +105,8 @@ class LabelPDFService
         array $template,
         int $quantity,
         string $netWeight = '',
-        bool $privateLabel = false
+        bool $privateLabel = false,
+        string $colorCode = 'none'
     ): string {
         $labelW = (float) $template['label_width'];
         $labelH = (float) $template['label_height'];
@@ -96,8 +136,17 @@ class LabelPDFService
         $supplierAddress = $section1['manufacturer_address'] ?? '';
         $supplierPhone   = $section1['manufacturer_phone'] ?? '';
 
-        // Extract Prop 65 warning text (if present)
-        $prop65Text = $sdsData['prop65_result']['warning_text'] ?? '';
+        // Prop 65 warning — labels use the amended short-form warning (built
+        // from the current cancer/repro chemical lists), while the SDS keeps
+        // the full safe-harbor warning in $sdsData['prop65_result']['warning_text'].
+        $prop65Result = $sdsData['prop65_result'] ?? [];
+        $prop65Text = '';
+        if (!empty($prop65Result['requires_warning'])) {
+            $prop65Text = Prop65Service::shortFormWarning(
+                $prop65Result['cancer_chemicals'] ?? [],
+                $prop65Result['repro_chemicals'] ?? []
+            );
+        }
 
         // Create TCPDF instance
         $pdf = new \TCPDF('P', 'mm', 'LETTER', true, 'UTF-8', false);
@@ -128,7 +177,7 @@ class LabelPDFService
                 $itemCode, $lotNumber, $signalWord,
                 $pictograms, $hStatements, $pStatements,
                 $supplierName, $supplierAddress, $supplierPhone,
-                $netWeight, $privateLabel, $prop65Text
+                $netWeight, $privateLabel, $prop65Text, $colorCode
             );
 
             $labelIndex++;
@@ -150,11 +199,17 @@ class LabelPDFService
         string $itemCode, string $lotNumber, ?string $signalWord,
         array $pictograms, array $hStatements, array $pStatements,
         string $supplierName, string $supplierAddress, string $supplierPhone,
-        string $netWeight, bool $privateLabel, string $prop65Text = ''
+        string $netWeight, bool $privateLabel, string $prop65Text = '',
+        string $colorCode = 'none'
     ): void {
         $pad = 1.0; // mm padding inside label
 
         foreach ($layout as $fieldType => $pos) {
+            // The color block is drawn last (below) so it's never covered by
+            // another field and its z-order is deterministic.
+            if ($fieldType === 'color_block') {
+                continue;
+            }
             if (!isset($pos['x'], $pos['y'], $pos['width'], $pos['height'])) {
                 continue;
             }
@@ -219,6 +274,83 @@ class LabelPDFService
                     break;
             }
         }
+
+        // ── Product-identification color block (drawn last, on top) ──────
+        $this->renderColorBlockForLabel(
+            $pdf, $labelX, $labelY, $labelW, $labelH, $pad, $layout, $colorCode
+        );
+    }
+
+    /**
+     * Draw the product color block for a single label.
+     *
+     * Position priority:
+     *   1. A 'color_block' field explicitly placed in the template layout.
+     *   2. Otherwise a default square in the top-right corner — only when a
+     *      real color is chosen. With no placed field and 'none', there is no
+     *      defined block area, so nothing is drawn.
+     *
+     * When a block IS drawn, 'none' (or an unknown code) renders as a black
+     * outline of the block area; a named color fills it with a thin border.
+     */
+    private function renderColorBlockForLabel(
+        \TCPDF $pdf,
+        float $labelX, float $labelY, float $labelW, float $labelH,
+        float $pad, array $layout, string $colorCode
+    ): void {
+        $pos = $layout['color_block'] ?? null;
+
+        if (is_array($pos) && isset($pos['x'], $pos['y'], $pos['width'], $pos['height'])) {
+            $bx = $labelX + $pad + ($pos['x'] / 100) * ($labelW - 2 * $pad);
+            $by = $labelY + $pad + ($pos['y'] / 100) * ($labelH - 2 * $pad);
+            $bw = ($pos['width'] / 100) * ($labelW - 2 * $pad);
+            $bh = ($pos['height'] / 100) * ($labelH - 2 * $pad);
+            if ($bw < 1 || $bh < 1) {
+                return;
+            }
+            $this->renderColorBlock($pdf, $bx, $by, $bw, $bh, $colorCode);
+            return;
+        }
+
+        // No placed field: only draw a default block when an actual color is
+        // selected (there is no block area to outline otherwise).
+        $key = strtolower(trim($colorCode));
+        if ($key === '' || $key === 'none') {
+            return;
+        }
+
+        $size = min($labelW - 2 * $pad, $labelH - 2 * $pad) * 0.16;
+        $size = max(3.0, min($size, 8.0)); // clamp to a sensible 3–8 mm square
+        $bx = $labelX + $labelW - $pad - $size;
+        $by = $labelY + $pad;
+        $this->renderColorBlock($pdf, $bx, $by, $size, $size, $colorCode);
+    }
+
+    /**
+     * Render the color block rectangle. A known color fills the box with a
+     * thin black border; 'none' / unknown draws only the black outline.
+     * Restores TCPDF draw/fill/line defaults before returning.
+     */
+    private function renderColorBlock(\TCPDF $pdf, float $x, float $y, float $w, float $h, string $colorCode): void
+    {
+        $key = strtolower(trim($colorCode));
+        $rgb = self::COLOR_BLOCK_RGB[$key] ?? null;
+
+        $pdf->SetLineWidth(0.3);
+        $pdf->SetDrawColor(0, 0, 0);
+
+        if ($rgb === null) {
+            // No Color — outline only.
+            $pdf->Rect($x, $y, $w, $h, 'D');
+        } else {
+            $pdf->SetFillColor($rgb[0], $rgb[1], $rgb[2]);
+            $pdf->Rect($x, $y, $w, $h, 'DF');
+        }
+
+        // Restore defaults so later drawing (e.g. dividers) is unaffected.
+        $pdf->SetLineWidth(0.2);
+        $pdf->SetDrawColor(0, 0, 0);
+        $pdf->SetFillColor(0, 0, 0);
     }
 
     // ── Template-based field renderers ────────────────────────────────────

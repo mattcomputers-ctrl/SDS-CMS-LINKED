@@ -36,6 +36,19 @@ class Prop65Service
     public const WARNING_COMBINED = 'WARNING: This product can expose you to chemicals including %s, which is/are known to the State of California to cause birth defects or other reproductive harm and chemicals including %s, which is/are known to the State of California to cause cancer. For more information go to www.P65Warnings.ca.gov.';
 
     /**
+     * Prop 65 short-form warnings (amended 2023, effective 2025). Used on
+     * product labels where space is limited — the full safe-harbor warning
+     * above is still used in the SDS. Each names at least one chemical for
+     * the relevant endpoint(s), per the amended short-form requirements.
+     * The "%s" is the chemical name(s). The leading warning triangle symbol
+     * is supplied by the label's Prop 65 pictogram, so it is not embedded
+     * in the text.
+     */
+    public const WARNING_SHORT_CANCER   = 'WARNING: Risk of cancer from exposure to %s. See www.P65Warnings.ca.gov.';
+    public const WARNING_SHORT_REPRO    = 'WARNING: Risk of reproductive harm from exposure to %s. See www.P65Warnings.ca.gov.';
+    public const WARNING_SHORT_COMBINED = 'WARNING: Risk of cancer and reproductive harm from exposure to %s. See www.P65Warnings.ca.gov.';
+
+    /**
      * Default auto-trace threshold (percent). Any CAS-matched Prop 65
      * chemical whose composition concentration is below this figure is
      * treated as "trace" — the "(trace)" suffix is appended to its name
@@ -298,6 +311,34 @@ class Prop65Service
             }
             return $name;
         }, $chemNames);
+    }
+
+    /**
+     * Build the Prop 65 short-form warning for product labels.
+     *
+     * Names at least one chemical for the applicable endpoint(s). Returns
+     * an empty string when neither endpoint applies. Combined warnings list
+     * the union of cancer- and reproductive-toxicant names.
+     */
+    public static function shortFormWarning(array $cancerChems, array $reproChems): string
+    {
+        $hasCancer = !empty($cancerChems);
+        $hasRepro  = !empty($reproChems);
+
+        if (!$hasCancer && !$hasRepro) {
+            return '';
+        }
+
+        if ($hasCancer && $hasRepro) {
+            $chems = array_values(array_unique(array_merge($cancerChems, $reproChems)));
+            return sprintf(self::WARNING_SHORT_COMBINED, implode(', ', $chems));
+        }
+
+        if ($hasCancer) {
+            return sprintf(self::WARNING_SHORT_CANCER, implode(', ', $cancerChems));
+        }
+
+        return sprintf(self::WARNING_SHORT_REPRO, implode(', ', $reproChems));
     }
 
     /**

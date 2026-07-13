@@ -13,6 +13,7 @@ $fieldIcons = [
     'precautionary_statements' => '&#128309;',
     'net_weight'               => '&#9878;',
     'supplier_info'            => '&#127963;',
+    'color_block'              => '&#127912;',
 ];
 ?>
 

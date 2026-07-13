@@ -70,6 +70,7 @@ class LabelTemplate
             'net_weight'               => 'Net Weight',
             'prop65_warning'           => 'Prop 65 Warning',
             'supplier_info'            => 'Supplier Info',
+            'color_block'              => 'Color Block',
         ];
     }
 }

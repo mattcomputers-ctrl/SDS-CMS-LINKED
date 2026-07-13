@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace SDS\Controllers;
 
+use SDS\Core\App;
 use SDS\Core\Database;
 use SDS\Models\FinishedGood;
 use SDS\Models\LabelTemplate;
@@ -104,6 +105,14 @@ class LabelController
 
         $manufacturers = Manufacturer::all();
 
+        // Company name (from admin settings, falling back to config) so the
+        // manufacturer dropdown's default option reads as the real company
+        // rather than a generic "Default (company settings)" label.
+        $companyRow  = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'company.name'");
+        $companyName = ($companyRow['value'] ?? '') !== ''
+            ? $companyRow['value']
+            : App::config('company.name', 'Company default');
+
         view('labels/index', [
             'pageTitle'      => 'GHS Labels',
             'products'       => $products,
@@ -111,6 +120,7 @@ class LabelController
             'netWeightUnits' => $netWeightUnits,
             'manufacturers'  => $manufacturers,
             'colorOptions'   => LabelPDFService::colorOptions(),
+            'companyName'    => $companyName,
         ]);
     }
 

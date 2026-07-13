@@ -159,9 +159,16 @@ class Prop65Service
 
             $types = array_map('trim', explode(',', $row['toxicity_type']));
 
+            // The Prop 65 list is the authoritative source for the chemical's
+            // display name in warnings — prefer it over the composition /
+            // constituent name so edits to the list (e.g. removing stray
+            // footnote text) flow through. Fall back to the component name
+            // only when the list entry has no name of its own.
+            $displayName = ($row['chemical_name'] ?? '') !== '' ? $row['chemical_name'] : $name;
+
             $entry = [
                 'cas_number'    => $cas,
-                'chemical_name' => $name ?: $row['chemical_name'],
+                'chemical_name' => $displayName,
                 'concentration_pct' => $conc,
                 'toxicity_type' => $types,
                 'nsrl_ug'       => $row['nsrl_ug'],
@@ -170,8 +177,6 @@ class Prop65Service
             ];
 
             $listedChemicals[] = $entry;
-
-            $displayName = $name ?: $row['chemical_name'];
 
             // Auto-trace: a CAS-matched Prop 65 chemical is considered
             // trace if its effective concentration in the composition

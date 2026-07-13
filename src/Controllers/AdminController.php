@@ -841,8 +841,14 @@ class AdminController
         $db->insert('prop65_list', array_merge($data, ['source_ref' => 'manual']));
 
         $bumped = \SDS\Services\RegulatoryListBumper::bumpByCas($data['cas_number']);
+        $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByCas(
+            [$data['cas_number']],
+            current_user_id(),
+            'Prop 65 listing added for CAS ' . $data['cas_number']
+                . (($data['chemical_name'] ?? '') !== '' ? ' (' . $data['chemical_name'] . ')' : '')
+        );
         AuditService::log('prop65_list', $data['cas_number'], 'create');
-        $_SESSION['_flash']['success'] = "Prop 65 entry added for CAS {$data['cas_number']}." . self::bumpedTail($bumped);
+        $_SESSION['_flash']['success'] = "Prop 65 entry added for CAS {$data['cas_number']}." . self::bumpedTail($bumped) . self::queuedTail($queued);
         redirect('/prop65');
     }
 
@@ -914,8 +920,17 @@ class AdminController
         }
         $bumped = \SDS\Services\RegulatoryListBumper::bumpByCasMany($cases);
 
+        // Flag downstream published SDSs for review/regeneration so the
+        // updated Prop 65 text (name, toxicity) propagates.
+        $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByCas(
+            $cases,
+            current_user_id(),
+            'Prop 65 list updated for CAS ' . $data['cas_number']
+                . (($data['chemical_name'] ?? '') !== '' ? ' (' . $data['chemical_name'] . ')' : '')
+        );
+
         AuditService::log('prop65_list', $data['cas_number'], 'update');
-        $_SESSION['_flash']['success'] = 'Prop 65 entry updated.' . self::bumpedTail($bumped);
+        $_SESSION['_flash']['success'] = 'Prop 65 entry updated.' . self::bumpedTail($bumped) . self::queuedTail($queued);
         redirect('/prop65');
     }
 
@@ -928,12 +943,19 @@ class AdminController
         $item = $db->fetch("SELECT cas_number FROM prop65_list WHERE id = ?", [(int) $id]);
         $db->query("DELETE FROM prop65_list WHERE id = ?", [(int) $id]);
 
-        $bumped = isset($item['cas_number'])
-            ? \SDS\Services\RegulatoryListBumper::bumpByCas($item['cas_number'])
-            : 0;
+        $bumped = 0;
+        $queued = 0;
+        if (isset($item['cas_number'])) {
+            $bumped = \SDS\Services\RegulatoryListBumper::bumpByCas($item['cas_number']);
+            $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByCas(
+                [$item['cas_number']],
+                current_user_id(),
+                'Prop 65 listing removed for CAS ' . $item['cas_number']
+            );
+        }
 
         AuditService::log('prop65_list', $item['cas_number'] ?? $id, 'delete');
-        $_SESSION['_flash']['success'] = 'Prop 65 entry removed.' . self::bumpedTail($bumped);
+        $_SESSION['_flash']['success'] = 'Prop 65 entry removed.' . self::bumpedTail($bumped) . self::queuedTail($queued);
         redirect('/prop65');
     }
 
@@ -1185,6 +1207,15 @@ class AdminController
         }
         $unit = $bumped === 1 ? 'raw material' : 'raw materials';
         return " {$bumped} {$unit} flagged for re-publish.";
+    }
+
+    private static function queuedTail(int $queued): string
+    {
+        if ($queued <= 0) {
+            return '';
+        }
+        $unit = $queued === 1 ? 'SDS' : 'SDSs';
+        return " {$queued} {$unit} queued for update (see SDS Updates).";
     }
 
     /**

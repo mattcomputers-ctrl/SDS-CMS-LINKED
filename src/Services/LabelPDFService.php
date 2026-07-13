@@ -56,16 +56,18 @@ class LabelPDFService
      */
     public static function colorOptions(): array
     {
+        // "No Color" stays first so it remains the default selection; the
+        // actual colors follow in alphabetical order by label.
         return [
             'none'    => 'No Color',
-            'yellow'  => 'Yellow',
-            'magenta' => 'Magenta',
-            'cyan'    => 'Cyan',
             'black'   => 'Black',
             'brown'   => 'Brown',
-            'orange'  => 'Orange',
+            'cyan'    => 'Cyan',
             'green'   => 'Green',
+            'magenta' => 'Magenta',
+            'orange'  => 'Orange',
             'purple'  => 'Purple/Violet',
+            'yellow'  => 'Yellow',
         ];
     }
 

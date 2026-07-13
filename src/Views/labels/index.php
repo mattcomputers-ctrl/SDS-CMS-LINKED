@@ -97,7 +97,7 @@
         <div class="form-group" style="margin-top: 0.5rem;">
             <label for="manufacturer_id">Manufacturer on Label</label>
             <select name="manufacturer_id" id="manufacturer_id" class="input">
-                <option value="">— Default (company settings) —</option>
+                <option value=""><?= e($companyName) ?></option>
                 <?php foreach ($manufacturers as $mfg): ?>
                     <option value="<?= (int) $mfg['id'] ?>">
                         <?= e($mfg['name']) ?>

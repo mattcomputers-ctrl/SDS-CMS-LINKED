@@ -76,6 +76,20 @@ class LabelTemplateController
         redirect('/label-templates');
     }
 
+    public function setDefault(string $id): void
+    {
+        $template = LabelTemplate::findById((int) $id);
+        if (!$template) {
+            $_SESSION['_flash']['error'] = 'Template not found.';
+            redirect('/label-templates');
+            return;
+        }
+
+        LabelTemplate::setDefault((int) $id);
+        $_SESSION['_flash']['success'] = 'Default label template set to "' . $template['name'] . '".';
+        redirect('/label-templates');
+    }
+
     public function delete(string $id): void
     {
         $template = LabelTemplate::findById((int) $id);
@@ -86,6 +100,9 @@ class LabelTemplateController
         }
 
         LabelTemplate::delete((int) $id);
+        // If the deleted template was the default, promote another so the
+        // labels page always has a default to pre-select.
+        LabelTemplate::ensureDefaultExists();
         $_SESSION['_flash']['success'] = 'Label template deleted.';
         redirect('/label-templates');
     }

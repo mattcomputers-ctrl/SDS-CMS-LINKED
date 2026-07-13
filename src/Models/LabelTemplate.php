@@ -45,6 +45,35 @@ class LabelTemplate
     }
 
     /**
+     * Mark one template as the default, clearing the flag on all others so
+     * exactly one template is ever the default.
+     */
+    public static function setDefault(int $id): void
+    {
+        $db = Database::getInstance();
+        $db->query('UPDATE label_templates SET is_default = 0 WHERE is_default = 1');
+        $db->update('label_templates', ['is_default' => 1], 'id = ?', [$id]);
+    }
+
+    /**
+     * Guarantee a default exists: if none is currently flagged (e.g. the
+     * default template was just deleted) but templates remain, promote the
+     * first one by name. No-op when a default already exists or there are
+     * no templates.
+     */
+    public static function ensureDefaultExists(): void
+    {
+        $db = Database::getInstance();
+        if ($db->fetch('SELECT id FROM label_templates WHERE is_default = 1 LIMIT 1')) {
+            return;
+        }
+        $first = $db->fetch('SELECT id FROM label_templates ORDER BY name ASC LIMIT 1');
+        if ($first) {
+            $db->update('label_templates', ['is_default' => 1], 'id = ?', [(int) $first['id']]);
+        }
+    }
+
+    /**
      * Return the field layout as an associative array.
      */
     public static function decodeLayout(array $template): array

@@ -301,6 +301,7 @@ class App
         $router->get('/label-templates/{id}/edit',    'LabelTemplateController@edit');
         $router->post('/label-templates/{id}',        'LabelTemplateController@update');
         $router->post('/label-templates/{id}/delete', 'LabelTemplateController@delete');
+        $router->post('/label-templates/{id}/set-default', 'LabelTemplateController@setDefault');
 
         // ── Bulk SDS Export (permission-gated) ──────────────────────
         $router->get('/bulk-export',                      'ExportController@exportPage');

@@ -4,7 +4,9 @@
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <div>
             <h2>Label Templates</h2>
-            <p class="text-muted">Manage label sheet templates and field layouts for GHS label printing.</p>
+            <p class="text-muted">Manage label sheet templates and field layouts for GHS label printing.
+               The template marked <span class="badge badge-admin">Default</span> is pre-selected on the
+               Generate Labels page. Use <strong>Set as Default</strong> to change it.</p>
         </div>
         <a href="/label-templates/create" class="btn btn-primary">+ New Template</a>
     </div>
@@ -39,6 +41,12 @@
                     <td><?= (int) $t['cols'] * (int) $t['rows'] ?></td>
                     <td><?= number_format((float) $t['default_font_size'], 1) ?>pt</td>
                     <td>
+                        <?php if (!$t['is_default']): ?>
+                        <form method="POST" action="/label-templates/<?= (int) $t['id'] ?>/set-default" style="display: inline;">
+                            <?= csrf_field() ?>
+                            <button type="submit" class="btn btn-sm">Set as Default</button>
+                        </form>
+                        <?php endif; ?>
                         <a href="/label-templates/<?= (int) $t['id'] ?>/edit" class="btn btn-sm">Edit</a>
                         <form method="POST" action="/label-templates/<?= (int) $t['id'] ?>/delete" style="display: inline;"
                               onsubmit="return confirm('Delete this template?')">

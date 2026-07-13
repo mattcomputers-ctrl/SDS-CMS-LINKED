@@ -12,7 +12,7 @@
         <div class="form-group">
             <label for="product_search">Product <span class="text-danger">*</span></label>
             <select id="product_search" class="searchable-select">
-                <option value="">— Search by product code, alias, or resale code —</option>
+                <option value="">— Select a product code, alias, or resale code —</option>
                 <?php foreach ($products as $p): ?>
                     <option value="<?= e($p['type'] . ':' . ($p['type'] === 'fg' ? (string) $p['fg_id'] : $p['resale_code'])) ?>"
                             data-fg-id="<?= $p['type'] === 'fg' ? (int) $p['fg_id'] : '' ?>"

@@ -8,14 +8,27 @@
 -- adding color_block and narrowing the neighbouring field so the two don't
 -- overlap. Templates without a color_block field fall back to a default
 -- top-right block at render time.
+--
+-- NOTE ON NAMES: migration 018 renamed the original 'OL575WR' to
+-- 'Old Big Label — OL575WR' and added 'OL2097WR' as the new default Big
+-- Label, so both of those names are matched below (not 'OL575WR').
 
--- OL575WR (big, 2x4): narrow net weight, place block in the top-right corner.
+-- OL2097WR (current default, 6"x2" wrap-around, 1x5): narrow net weight and
+-- place the block in the top-right corner clear of it.
+UPDATE `label_templates`
+SET `field_layout` = JSON_MERGE_PATCH(
+    `field_layout`,
+    '{"net_weight": {"width": 33}, "color_block": {"x": 92, "y": 0, "width": 7, "height": 12}}'
+)
+WHERE `name` = 'OL2097WR';
+
+-- Old Big Label — OL575WR (2x4): narrow net weight, block in the top-right.
 UPDATE `label_templates`
 SET `field_layout` = JSON_MERGE_PATCH(
     `field_layout`,
     '{"net_weight": {"width": 19}, "color_block": {"x": 90, "y": 1, "width": 9, "height": 12}}'
 )
-WHERE `name` = 'OL575WR';
+WHERE `name` = 'Old Big Label — OL575WR';
 
 -- OL800WX (small, 3x6): same treatment, block sized for the shorter label.
 UPDATE `label_templates`

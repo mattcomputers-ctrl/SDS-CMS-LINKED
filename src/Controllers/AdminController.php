@@ -1584,7 +1584,7 @@ class AdminController
 
     public function pictograms(): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('pictograms');
 
         $codes = \SDS\Services\PictogramHelper::ALL_CODES;
         $names = \SDS\Services\PictogramHelper::NAMES;
@@ -1607,7 +1607,7 @@ class AdminController
 
     public function uploadPictogram(string $code): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('pictograms', 'full');
         CSRF::validateRequest();
 
         if (!in_array($code, \SDS\Services\PictogramHelper::ALL_CODES, true)) {
@@ -1665,7 +1665,7 @@ class AdminController
 
     public function deletePictogram(string $code): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('pictograms', 'full');
         CSRF::validateRequest();
 
         if (!in_array($code, \SDS\Services\PictogramHelper::ALL_CODES, true)) {
@@ -1694,7 +1694,7 @@ class AdminController
      */
     public function echaImport(): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('federal_data');
 
         $db = Database::getInstance();
 
@@ -1732,7 +1732,7 @@ class AdminController
      */
     public function uploadEchaCsv(): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('federal_data', 'full');
         CSRF::validateRequest();
 
         $file = $_FILES['echa_csv'] ?? null;
@@ -1798,7 +1798,7 @@ class AdminController
 
     public function federalData(): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('federal_data');
 
         $db = Database::getInstance();
 
@@ -1822,7 +1822,7 @@ class AdminController
 
     public function refreshFederalData(): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('federal_data', 'full');
         CSRF::validateRequest();
 
         $source = $_POST['source'] ?? '';
@@ -2575,7 +2575,7 @@ class AdminController
 
     public function snurList(): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('snur_list');
 
         $db = Database::getInstance();
         $snurs = $db->fetchAll("SELECT * FROM snur_list ORDER BY cas_number ASC");
@@ -2588,7 +2588,7 @@ class AdminController
 
     public function storeSnur(): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('snur_list', 'full');
         CSRF::validateRequest();
 
         $db = Database::getInstance();
@@ -2634,7 +2634,7 @@ class AdminController
 
     public function deleteSnur(string $id): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('snur_list', 'full');
         CSRF::validateRequest();
 
         $db = Database::getInstance();
@@ -2654,7 +2654,7 @@ class AdminController
 
     public function sara313List(): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('sara313');
 
         $db = Database::getInstance();
         $search = trim($_GET['search'] ?? '');
@@ -2694,7 +2694,7 @@ class AdminController
 
     public function createSara313(): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('sara313', 'full');
 
         view('admin/sara313-form', [
             'pageTitle' => 'Add SARA 313 Chemical',
@@ -2705,7 +2705,7 @@ class AdminController
 
     public function storeSara313(): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('sara313', 'full');
         CSRF::validateRequest();
 
         $db = Database::getInstance();
@@ -2743,7 +2743,7 @@ class AdminController
 
     public function editSara313(string $id): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('sara313', 'full');
         $db = Database::getInstance();
         $item = $db->fetch("SELECT * FROM sara313_list WHERE id = ?", [(int) $id]);
         if (!$item) {
@@ -2761,7 +2761,7 @@ class AdminController
 
     public function updateSara313(string $id): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('sara313', 'full');
         CSRF::validateRequest();
         $db = Database::getInstance();
 
@@ -2789,7 +2789,7 @@ class AdminController
 
     public function deleteSara313(string $id): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('sara313', 'full');
         CSRF::validateRequest();
         $db = Database::getInstance();
 
@@ -2805,7 +2805,7 @@ class AdminController
 
     public function importSara313(): void
     {
-        $this->requireAdmin();
+        $this->requirePageAccess('sara313', 'full');
         CSRF::validateRequest();
 
         if (!isset($_FILES['sara313_file']) || $_FILES['sara313_file']['error'] !== UPLOAD_ERR_OK) {

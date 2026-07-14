@@ -95,7 +95,7 @@
                     <?php endif; ?>
 
                     <!-- Regulatory Data — chemistry & compliance reference tables -->
-                    <?php if (can_read('cas_determinations') || can_read('exempt_vocs') || can_read('prop65_list') || can_read('hap_list') || can_manage_users()): ?>
+                    <?php if (can_read('cas_determinations') || can_read('exempt_vocs') || can_read('prop65_list') || can_read('hap_list') || can_read('sara313') || can_read('snur_list') || can_read('pictograms') || can_read('federal_data')): ?>
                     <li class="sidebar-section-label">Regulatory Data</li>
                     <?php endif; ?>
                     <?php if (can_read('cas_determinations')): ?>
@@ -110,9 +110,16 @@
                     <?php if (can_read('hap_list')): ?>
                     <li><a href="/haps" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/haps') ? 'active' : '' ?>"><span class="menu-icon">&#127981;</span> HAP List</a></li>
                     <?php endif; ?>
-                    <?php if (can_manage_users()): ?>
-                    <li><a href="/admin/pictograms" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/pictograms' ? 'active' : '' ?>"><span class="menu-icon">&#9888;</span> Pictograms</a></li>
+                    <?php if (can_read('sara313')): ?>
+                    <li><a href="/admin/sara313" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/admin/sara313') ? 'active' : '' ?>"><span class="menu-icon">&#128220;</span> SARA 313 List</a></li>
+                    <?php endif; ?>
+                    <?php if (can_read('snur_list')): ?>
                     <li><a href="/admin/snur-list" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/admin/snur-list') ? 'active' : '' ?>"><span class="menu-icon">&#128220;</span> SNUR List</a></li>
+                    <?php endif; ?>
+                    <?php if (can_read('pictograms')): ?>
+                    <li><a href="/admin/pictograms" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/pictograms' ? 'active' : '' ?>"><span class="menu-icon">&#9888;</span> Pictograms</a></li>
+                    <?php endif; ?>
+                    <?php if (can_read('federal_data')): ?>
                     <li><a href="/admin/federal-data" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/admin/federal-data') || str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/admin/echa-import') ? 'active' : '' ?>"><span class="menu-icon">&#127963;</span> Federal Data</a></li>
                     <?php endif; ?>
 
@@ -128,10 +135,6 @@
                     <li><a href="/admin/users" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/users' ? 'active' : '' ?>"><span class="menu-icon">&#128101;</span> Users</a></li>
                     <li><a href="/admin/groups" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/admin/groups') ? 'active' : '' ?>"><span class="menu-icon">&#128274;</span> Permission Groups</a></li>
                     <li><a href="/admin/settings" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/settings' ? 'active' : '' ?>"><span class="menu-icon">&#9881;</span> Settings</a></li>
-                    <li><a href="/admin/pictograms" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/pictograms' ? 'active' : '' ?>"><span class="menu-icon">&#9888;</span> Pictograms</a></li>
-                    <li><a href="/admin/sara313" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/admin/sara313') ? 'active' : '' ?>"><span class="menu-icon">&#128220;</span> SARA 313 List</a></li>
-                    <li><a href="/admin/snur-list" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/admin/snur-list') ? 'active' : '' ?>"><span class="menu-icon">&#128220;</span> SNUR List</a></li>
-                    <li><a href="/admin/federal-data" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/admin/federal-data') ? 'active' : '' ?>"><span class="menu-icon">&#127963;</span> Federal Data</a></li>
                     <li><a href="/admin/network-settings" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/network-settings' ? 'active' : '' ?>"><span class="menu-icon">&#127760;</span> Network Settings</a></li>
                     <li><a href="/admin/audit-log" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/audit-log' ? 'active' : '' ?>"><span class="menu-icon">&#128203;</span> Audit Log</a></li>
                     <li><a href="/admin/sds-versions" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/admin/sds-versions') ? 'active' : '' ?>"><span class="menu-icon">&#128195;</span> SDS Versions</a></li>

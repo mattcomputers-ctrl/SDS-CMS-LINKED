@@ -626,25 +626,32 @@ class SDSAutoSendService
 
         $basePath = App::basePath();
         $languages = \SDS\Models\Customer::getLanguages($customer);
-        $pdfService = new PDFService();
 
         $attachments = [];
         $tempFiles = [];
         $seenAttachNames = [];
 
+        $pdfService = new PDFService();
+
         // For each item in the order, collect PDFs in all requested languages
         foreach ($items as $orderItem) {
             $itemIdentifier = $orderItem['item_identifier'];
             $fg = $orderItem['fg'];
-            $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $itemIdentifier);
 
             $alias = $this->db->fetch(
                 "SELECT * FROM aliases WHERE customer_code = ? LIMIT 1",
                 [$itemIdentifier]
             );
 
+            // Strip pack extension for filename (R1055-84 → R1055)
+            $displayCode = $alias
+                ? (str_contains($itemIdentifier, '-') ? substr($itemIdentifier, 0, strpos($itemIdentifier, '-')) : $itemIdentifier)
+                : $itemIdentifier;
+            $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $displayCode);
+
             foreach ($languages as $lang) {
                 $langVersion = null;
+                $isAliasSds = false;
                 if ($alias) {
                     $langVersion = $this->db->fetch(
                         "SELECT * FROM sds_versions
@@ -652,6 +659,9 @@ class SDSAutoSendService
                          ORDER BY version DESC LIMIT 1",
                         [(int) $alias['id'], $lang]
                     );
+                    if ($langVersion) {
+                        $isAliasSds = true;
+                    }
                 }
                 if (!$langVersion) {
                     $langVersion = $this->db->fetch(
@@ -667,6 +677,23 @@ class SDSAutoSendService
                 }
 
                 $pdfPath = $basePath . '/' . ltrim($langVersion['pdf_path'] ?? '', '/');
+
+                // If this is an alias but only the base FG SDS exists,
+                // generate an alias variant so the customer's code appears
+                if ($alias && !$isAliasSds) {
+                    $snapshot = json_decode($langVersion['snapshot_json'] ?? '{}', true);
+                    if ($snapshot) {
+                        $snapshot = SDSGenerator::createAliasVariant(
+                            $snapshot,
+                            $displayCode,
+                            $alias['description'] ?? ''
+                        );
+                        $tempPdf = tempnam(sys_get_temp_dir(), 'sds_send_') . '.pdf';
+                        file_put_contents($tempPdf, $pdfService->generateString($snapshot));
+                        $pdfPath = $tempPdf;
+                        $tempFiles[] = $tempPdf;
+                    }
+                }
 
                 if (!file_exists($pdfPath)) {
                     continue;

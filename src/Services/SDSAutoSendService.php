@@ -582,17 +582,25 @@ class SDSAutoSendService
     {
         // Check if this identifier is an alias
         $alias = $this->db->fetch(
-            "SELECT id FROM aliases WHERE customer_code = ? LIMIT 1",
+            "SELECT id, internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1",
             [$itemIdentifier]
         );
 
         if ($alias) {
-            // Look for alias-specific published SDS
+            // Bulk publish deduplicates aliases by base code (stripping the
+            // pack extension) and publishes under the first alias id (ORDER
+            // BY customer_code ASC). Use the same canonical id here.
+            $canonicalAlias = $this->db->fetch(
+                "SELECT id FROM aliases WHERE internal_code_base = ? ORDER BY customer_code ASC LIMIT 1",
+                [$alias['internal_code_base']]
+            );
+            $aliasId = $canonicalAlias ? (int) $canonicalAlias['id'] : (int) $alias['id'];
+
             $version = $this->db->fetch(
                 "SELECT * FROM sds_versions
                  WHERE alias_id = ? AND status = 'published' AND is_deleted = 0 AND language = 'en'
                  ORDER BY version DESC LIMIT 1",
-                [(int) $alias['id']]
+                [$aliasId]
             );
             if ($version) {
                 return $version;
@@ -647,14 +655,27 @@ class SDSAutoSendService
                 : $itemIdentifier;
             $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $displayCode);
 
+            // Bulk publish deduplicates aliases by base code and publishes
+            // under the first alias id (ORDER BY customer_code ASC). Match
+            // that so we find the published alias SDS regardless of which
+            // pack-extension variant the shipment used.
+            $publishedAliasId = null;
+            if ($alias) {
+                $canonicalAlias = $this->db->fetch(
+                    "SELECT id FROM aliases WHERE internal_code_base = ? ORDER BY customer_code ASC LIMIT 1",
+                    [$alias['internal_code_base']]
+                );
+                $publishedAliasId = $canonicalAlias ? (int) $canonicalAlias['id'] : (int) $alias['id'];
+            }
+
             foreach ($languages as $lang) {
                 $langVersion = null;
-                if ($alias) {
+                if ($publishedAliasId !== null) {
                     $langVersion = $this->db->fetch(
                         "SELECT * FROM sds_versions
                          WHERE alias_id = ? AND language = ? AND status = 'published' AND is_deleted = 0
                          ORDER BY version DESC LIMIT 1",
-                        [(int) $alias['id'], $lang]
+                        [$publishedAliasId, $lang]
                     );
                 }
                 if (!$langVersion) {

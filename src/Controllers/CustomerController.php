@@ -7,6 +7,8 @@ namespace SDS\Controllers;
 use SDS\Core\CSRF;
 use SDS\Models\Customer;
 use SDS\Services\AuditService;
+use SDS\Services\MailService;
+use SDS\Services\SDSAutoSendService;
 
 class CustomerController
 {
@@ -109,9 +111,24 @@ class CustomerController
         CSRF::validateRequest();
 
         try {
+            $before = Customer::findById((int) $id);
             Customer::update((int) $id, $_POST);
             AuditService::log('customer', $id, 'update', $_POST);
-            $_SESSION['_flash']['success'] = 'Customer updated.';
+
+            $hadEmail = !empty($before['regulatory_email']);
+            $newEmail = trim($_POST['regulatory_email'] ?? '');
+
+            if (!$hadEmail && $newEmail !== '' && MailService::isConfigured()) {
+                $svc = new SDSAutoSendService();
+                $backlog = $svc->processCustomerBacklog((int) $id);
+                if ($backlog['emails_sent'] > 0 || $backlog['queued'] > 0) {
+                    $_SESSION['_flash']['success'] = "Customer updated. Backlog processed: {$backlog['emails_sent']} email(s) sent, {$backlog['queued']} item(s) queued for review.";
+                } else {
+                    $_SESSION['_flash']['success'] = 'Customer updated.';
+                }
+            } else {
+                $_SESSION['_flash']['success'] = 'Customer updated.';
+            }
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = $e->getMessage();
         }

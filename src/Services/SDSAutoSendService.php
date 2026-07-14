@@ -847,6 +847,105 @@ class SDSAutoSendService
         return null;
     }
 
+    /**
+     * Re-process all shipments for a single customer, ignoring the
+     * imported_at watermark.  Called when an admin sets the regulatory
+     * email on a customer whose shipments were previously skipped.
+     */
+    public function processCustomerBacklog(int $customerId): array
+    {
+        $customer = Customer::findById($customerId);
+        if ($customer === null
+            || empty($customer['regulatory_email'])
+            || !$customer['is_active']) {
+            return ['emails_sent' => 0, 'queued' => 0, 'skipped' => 0, 'errors' => []];
+        }
+
+        $results = ['emails_sent' => 0, 'queued' => 0, 'skipped' => 0, 'errors' => []];
+
+        $shipments = $this->db->fetchAll(
+            "SELECT sd.* FROM shipment_detail sd
+             WHERE sd.ship_to = ?
+             ORDER BY sd.date_shipped",
+            [$customer['ship_to']]
+        );
+
+        $fgCache = [];
+        $orders  = [];
+
+        foreach ($shipments as $row) {
+            $itemName = (!empty($row['item_name']) && $row['item_name'] !== $row['item_code'])
+                ? $row['item_name']
+                : $row['item_code'];
+
+            $fgProductCode = $this->resolveToProductCode($itemName);
+            if ($fgProductCode === null) {
+                $results['skipped']++;
+                continue;
+            }
+
+            if (!isset($fgCache[$fgProductCode])) {
+                $fgCache[$fgProductCode] = FinishedGood::findByProductCode($fgProductCode);
+            }
+            $fg = $fgCache[$fgProductCode];
+            if ($fg === null) {
+                $results['skipped']++;
+                continue;
+            }
+
+            if (!$this->shouldSend($customer, (int) $fg['id'], $itemName)) {
+                $results['skipped']++;
+                continue;
+            }
+
+            $sdsVersion = $this->getLatestPublishedSds((int) $fg['id'], $itemName);
+
+            if ($sdsVersion === null) {
+                $this->queueForReview($customer, $row, 'SDS not available — missing raw material data or CAS determination');
+                $results['queued']++;
+                continue;
+            }
+
+            $orderKey = $customer['id'] . '::' . ($row['order_number'] ?? '') . '::' . ($row['date_shipped'] ?? '');
+
+            if (!isset($orders[$orderKey])) {
+                $orders[$orderKey] = [
+                    'customer'     => $customer,
+                    'order_number' => $row['order_number'] ?? '',
+                    'date_shipped' => $row['date_shipped'] ?? '',
+                    'items'        => [],
+                ];
+            }
+
+            $alreadyInOrder = false;
+            foreach ($orders[$orderKey]['items'] as $existing) {
+                if ($existing['item_identifier'] === $itemName) {
+                    $alreadyInOrder = true;
+                    break;
+                }
+            }
+
+            if (!$alreadyInOrder) {
+                $orders[$orderKey]['items'][] = [
+                    'item_identifier' => $itemName,
+                    'fg'              => $fg,
+                    'sds_version'     => $sdsVersion,
+                ];
+            }
+        }
+
+        foreach ($orders as $order) {
+            try {
+                $this->sendOrderEmail($order['customer'], $order['items'], $order['date_shipped']);
+                $results['emails_sent']++;
+            } catch (\Throwable $e) {
+                $results['errors'][] = "Send to {$order['customer']['ship_to']}: " . $e->getMessage();
+            }
+        }
+
+        return $results;
+    }
+
     private function getLastRunTimestamp(): ?string
     {
         $row = $this->db->fetch("SELECT `value` FROM settings WHERE `key` = 'auto_send.last_run_at'");

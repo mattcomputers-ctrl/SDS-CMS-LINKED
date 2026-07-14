@@ -94,11 +94,33 @@ class CustomerController
             [(int) $id]
         );
 
+        $shipmentOrders = [];
+        $shipments = $db->fetchAll(
+            "SELECT sd.order_number, sd.date_shipped, sd.item_code, sd.item_name,
+                    sd.item_description, sd.item_name_description, sd.quantity_shipped
+             FROM shipment_detail sd
+             WHERE sd.ship_to = ?
+             ORDER BY sd.date_shipped DESC, sd.order_number",
+            [$item['ship_to']]
+        );
+        foreach ($shipments as $s) {
+            $key = ($s['order_number'] ?? '') . '::' . ($s['date_shipped'] ?? '');
+            if (!isset($shipmentOrders[$key])) {
+                $shipmentOrders[$key] = [
+                    'order_number' => $s['order_number'] ?? '',
+                    'date_shipped' => $s['date_shipped'] ?? '',
+                    'items'        => [],
+                ];
+            }
+            $shipmentOrders[$key]['items'][] = $s;
+        }
+
         view('customers/form', [
-            'pageTitle'   => 'Edit: ' . ($item['ship_to_name'] ?: $item['ship_to']),
-            'item'        => $item,
-            'mode'        => 'edit',
-            'sendHistory' => $sendHistory,
+            'pageTitle'      => 'Edit: ' . ($item['ship_to_name'] ?: $item['ship_to']),
+            'item'           => $item,
+            'mode'           => 'edit',
+            'sendHistory'    => $sendHistory,
+            'shipmentOrders' => $shipmentOrders,
         ]);
     }
 
@@ -111,26 +133,50 @@ class CustomerController
         CSRF::validateRequest();
 
         try {
-            $before = Customer::findById((int) $id);
             Customer::update((int) $id, $_POST);
             AuditService::log('customer', $id, 'update', $_POST);
-
-            $hadEmail = !empty($before['regulatory_email']);
-            $newEmail = trim($_POST['regulatory_email'] ?? '');
-
-            if (!$hadEmail && $newEmail !== '' && MailService::isConfigured()) {
-                $svc = new SDSAutoSendService();
-                $backlog = $svc->processCustomerBacklog((int) $id);
-                if ($backlog['emails_sent'] > 0 || $backlog['queued'] > 0) {
-                    $_SESSION['_flash']['success'] = "Customer updated. Backlog processed: {$backlog['emails_sent']} email(s) sent, {$backlog['queued']} item(s) queued for review.";
-                } else {
-                    $_SESSION['_flash']['success'] = 'Customer updated.';
-                }
-            } else {
-                $_SESSION['_flash']['success'] = 'Customer updated.';
-            }
+            $_SESSION['_flash']['success'] = 'Customer updated.';
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = $e->getMessage();
+        }
+
+        redirect('/customers/' . $id . '/edit');
+    }
+
+    public function sendForOrders(string $id): void
+    {
+        if (!can_edit('customers')) {
+            redirect('/customers');
+        }
+
+        CSRF::validateRequest();
+
+        $orderKeys = $_POST['orders'] ?? [];
+        if (empty($orderKeys)) {
+            $_SESSION['_flash']['error'] = 'No orders selected.';
+            redirect('/customers/' . $id . '/edit');
+            return;
+        }
+
+        if (!MailService::isConfigured()) {
+            $_SESSION['_flash']['error'] = 'Mail is not configured. Check SMTP settings.';
+            redirect('/customers/' . $id . '/edit');
+            return;
+        }
+
+        $svc = new SDSAutoSendService();
+        $result = $svc->sendForOrderKeys((int) $id, $orderKeys);
+
+        if (!empty($result['errors'])) {
+            $_SESSION['_flash']['error'] = implode('; ', $result['errors']);
+        } elseif ($result['emails_sent'] > 0) {
+            $msg = "{$result['emails_sent']} email(s) sent.";
+            if ($result['queued'] > 0) {
+                $msg .= " {$result['queued']} item(s) queued for review (no published SDS).";
+            }
+            $_SESSION['_flash']['success'] = $msg;
+        } else {
+            $_SESSION['_flash']['info'] = 'No SDSs needed sending for the selected orders.';
         }
 
         redirect('/customers/' . $id . '/edit');

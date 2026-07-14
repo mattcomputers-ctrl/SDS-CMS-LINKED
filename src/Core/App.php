@@ -258,6 +258,7 @@ class App
         $router->get('/customers/{id}/edit',      'CustomerController@edit');
         $router->post('/customers/{id}',          'CustomerController@update');
         $router->post('/customers/{id}/delete',   'CustomerController@delete');
+        $router->post('/customers/{id}/send-orders', 'CustomerController@sendForOrders');
 
         // ── SDS Send Queue ──────────────────────────────────────
         $router->get('/sds-send-queue',                'SDSSendQueueController@index');

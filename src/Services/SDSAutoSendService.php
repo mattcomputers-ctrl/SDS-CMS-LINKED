@@ -848,17 +848,16 @@ class SDSAutoSendService
     }
 
     /**
-     * Re-process all shipments for a single customer, ignoring the
-     * imported_at watermark.  Called when an admin sets the regulatory
-     * email on a customer whose shipments were previously skipped.
+     * Send SDSs for specific orders selected by the user.
+     *
+     * @param string[] $orderKeys  Each key is "order_number::date_shipped"
      */
-    public function processCustomerBacklog(int $customerId): array
+    public function sendForOrderKeys(int $customerId, array $orderKeys): array
     {
         $customer = Customer::findById($customerId);
-        if ($customer === null
-            || empty($customer['regulatory_email'])
-            || !$customer['is_active']) {
-            return ['emails_sent' => 0, 'queued' => 0, 'skipped' => 0, 'errors' => []];
+        if ($customer === null || empty($customer['regulatory_email'])) {
+            return ['emails_sent' => 0, 'queued' => 0, 'skipped' => 0,
+                    'errors' => ['Customer not found or has no regulatory email.']];
         }
 
         $results = ['emails_sent' => 0, 'queued' => 0, 'skipped' => 0, 'errors' => []];
@@ -870,10 +869,16 @@ class SDSAutoSendService
             [$customer['ship_to']]
         );
 
+        $allowed = array_flip($orderKeys);
         $fgCache = [];
         $orders  = [];
 
         foreach ($shipments as $row) {
+            $key = ($row['order_number'] ?? '') . '::' . ($row['date_shipped'] ?? '');
+            if (!isset($allowed[$key])) {
+                continue;
+            }
+
             $itemName = (!empty($row['item_name']) && $row['item_name'] !== $row['item_code'])
                 ? $row['item_name']
                 : $row['item_code'];
@@ -893,11 +898,6 @@ class SDSAutoSendService
                 continue;
             }
 
-            if (!$this->shouldSend($customer, (int) $fg['id'], $itemName)) {
-                $results['skipped']++;
-                continue;
-            }
-
             $sdsVersion = $this->getLatestPublishedSds((int) $fg['id'], $itemName);
 
             if ($sdsVersion === null) {
@@ -906,10 +906,8 @@ class SDSAutoSendService
                 continue;
             }
 
-            $orderKey = $customer['id'] . '::' . ($row['order_number'] ?? '') . '::' . ($row['date_shipped'] ?? '');
-
-            if (!isset($orders[$orderKey])) {
-                $orders[$orderKey] = [
+            if (!isset($orders[$key])) {
+                $orders[$key] = [
                     'customer'     => $customer,
                     'order_number' => $row['order_number'] ?? '',
                     'date_shipped' => $row['date_shipped'] ?? '',
@@ -918,7 +916,7 @@ class SDSAutoSendService
             }
 
             $alreadyInOrder = false;
-            foreach ($orders[$orderKey]['items'] as $existing) {
+            foreach ($orders[$key]['items'] as $existing) {
                 if ($existing['item_identifier'] === $itemName) {
                     $alreadyInOrder = true;
                     break;
@@ -926,7 +924,7 @@ class SDSAutoSendService
             }
 
             if (!$alreadyInOrder) {
-                $orders[$orderKey]['items'][] = [
+                $orders[$key]['items'][] = [
                     'item_identifier' => $itemName,
                     'fg'              => $fg,
                     'sds_version'     => $sdsVersion,
@@ -939,7 +937,7 @@ class SDSAutoSendService
                 $this->sendOrderEmail($order['customer'], $order['items'], $order['date_shipped']);
                 $results['emails_sent']++;
             } catch (\Throwable $e) {
-                $results['errors'][] = "Send to {$order['customer']['ship_to']}: " . $e->getMessage();
+                $results['errors'][] = "Order {$order['order_number']}: " . $e->getMessage();
             }
         }
 

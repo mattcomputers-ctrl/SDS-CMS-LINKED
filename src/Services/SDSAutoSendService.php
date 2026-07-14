@@ -678,7 +678,7 @@ class SDSAutoSendService
                             $alias['description']
                         );
                         $tempPdf = tempnam(sys_get_temp_dir(), 'sds_send_') . '.pdf';
-                        $pdfService->generateToFile($snapshot, $tempPdf);
+                        file_put_contents($tempPdf, $pdfService->generateString($snapshot));
                         $pdfPath = $tempPdf;
                         $tempFiles[] = $tempPdf;
                     }

@@ -237,6 +237,11 @@ if (file_exists($prop65File)) {
             if ($existing) {
                 $updateData = $data;
                 unset($updateData['cas_number']);
+                // Never overwrite the chemical name (description) on an
+                // existing row. Operators clean these up by hand; the seed
+                // CSV would otherwise re-introduce footnote text on every
+                // update.sh run. Regulatory facts still refresh.
+                unset($updateData['chemical_name']);
                 $db->update('prop65_list', $updateData, 'cas_number = ?', [$cas]);
                 $updated++;
             } else {

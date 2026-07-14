@@ -285,6 +285,12 @@ foreach ($byCas as $cas => $d) {
         continue;
     }
 
+    // Never overwrite the chemical name (description) on an existing row.
+    // Operators curate these by hand and OEHHA's raw names re-introduce
+    // footnote cruft ("[Click here for the basis...]"). Regulatory facts
+    // (toxicity, mechanism, dates, limits) still refresh below.
+    $newData['chemical_name'] = $existing['chemical_name'];
+
     // Never overwrite an existing non-null value with null — if OEHHA
     // omits a field that was populated by a prior seed, keep the seeded
     // value. (In practice OEHHA always has date + mechanism, but this
@@ -296,7 +302,7 @@ foreach ($byCas as $cas => $d) {
     }
 
     $changed = false;
-    foreach (['chemical_name', 'toxicity_type', 'listing_mechanism', 'date_listed'] as $f) {
+    foreach (['toxicity_type', 'listing_mechanism', 'date_listed'] as $f) {
         if ((string) ($existing[$f] ?? '') !== (string) ($newData[$f] ?? '')) {
             $changed = true;
             break;

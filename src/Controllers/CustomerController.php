@@ -97,7 +97,7 @@ class CustomerController
         $shipmentOrders = [];
         $shipments = $db->fetchAll(
             "SELECT sd.order_number, sd.date_shipped, sd.item_code, sd.item_name,
-                    sd.item_description, sd.item_name_description, sd.quantity_shipped
+                    sd.item_description, sd.item_name_description, sd.qty_shipped
              FROM shipment_detail sd
              WHERE sd.ship_to = ?
              ORDER BY sd.date_shipped DESC, sd.order_number",

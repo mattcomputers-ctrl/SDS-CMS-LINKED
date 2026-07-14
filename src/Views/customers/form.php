@@ -131,7 +131,7 @@ $action = $isEdit ? '/customers/' . (int) $item['id'] : '/customers';
                                     <td><?= e($lineItem['item_code'] ?? '') ?></td>
                                     <td><?= e($lineItem['item_name'] ?? '') ?></td>
                                     <td><?= e($lineItem['item_description'] ?: ($lineItem['item_name_description'] ?? '')) ?></td>
-                                    <td><?= e($lineItem['quantity_shipped'] ?? '') ?></td>
+                                    <td><?= e($lineItem['qty_shipped'] ?? '') ?></td>
                                 </tr>
                             <?php endforeach; ?>
                             </tbody>

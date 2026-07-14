@@ -176,7 +176,17 @@ class CustomerController
             }
             $_SESSION['_flash']['success'] = $msg;
         } else {
-            $_SESSION['_flash']['info'] = 'No SDSs needed sending for the selected orders.';
+            $msg = 'No SDSs were sent for the selected orders.';
+            if ($result['skipped'] > 0) {
+                $msg .= " {$result['skipped']} item(s) skipped.";
+            }
+            if ($result['queued'] > 0) {
+                $msg .= " {$result['queued']} item(s) queued for review.";
+            }
+            if (!empty($result['skip_reasons'])) {
+                $msg .= ' Details: ' . implode('; ', $result['skip_reasons']);
+            }
+            $_SESSION['_flash']['error'] = $msg;
         }
 
         redirect('/customers/' . $id . '/edit');

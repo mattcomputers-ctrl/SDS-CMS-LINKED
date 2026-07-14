@@ -872,6 +872,7 @@ class SDSAutoSendService
         $allowed = array_flip($orderKeys);
         $fgCache = [];
         $orders  = [];
+        $skipReasons = [];
 
         foreach ($shipments as $row) {
             $key = ($row['order_number'] ?? '') . '::' . ($row['date_shipped'] ?? '');
@@ -885,6 +886,7 @@ class SDSAutoSendService
 
             $fgProductCode = $this->resolveToProductCode($itemName);
             if ($fgProductCode === null) {
+                $skipReasons[] = "{$itemName}: no matching product";
                 $results['skipped']++;
                 continue;
             }
@@ -894,6 +896,7 @@ class SDSAutoSendService
             }
             $fg = $fgCache[$fgProductCode];
             if ($fg === null) {
+                $skipReasons[] = "{$itemName} ({$fgProductCode}): product not in database";
                 $results['skipped']++;
                 continue;
             }
@@ -939,6 +942,10 @@ class SDSAutoSendService
             } catch (\Throwable $e) {
                 $results['errors'][] = "Order {$order['order_number']}: " . $e->getMessage();
             }
+        }
+
+        if (!empty($skipReasons)) {
+            $results['skip_reasons'] = $skipReasons;
         }
 
         return $results;

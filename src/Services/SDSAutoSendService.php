@@ -668,22 +668,6 @@ class SDSAutoSendService
 
                 $pdfPath = $basePath . '/' . ltrim($langVersion['pdf_path'] ?? '', '/');
 
-                // If alias and SDS is non-alias, generate alias PDF on the fly
-                if ($alias && empty($langVersion['alias_id'])) {
-                    $snapshot = json_decode($langVersion['snapshot_json'] ?? '{}', true);
-                    if ($snapshot) {
-                        $snapshot = SDSGenerator::createAliasVariant(
-                            $snapshot,
-                            $alias['customer_code'],
-                            $alias['description']
-                        );
-                        $tempPdf = tempnam(sys_get_temp_dir(), 'sds_send_') . '.pdf';
-                        file_put_contents($tempPdf, $pdfService->generateString($snapshot));
-                        $pdfPath = $tempPdf;
-                        $tempFiles[] = $tempPdf;
-                    }
-                }
-
                 if (!file_exists($pdfPath)) {
                     continue;
                 }

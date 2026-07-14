@@ -17,6 +17,11 @@ class LabelController
 {
     public function index(): void
     {
+        if (!can_read('labels')) {
+            $_SESSION['_flash']['error'] = 'You do not have permission to access GHS Labels.';
+            redirect('/');
+        }
+
         $db = Database::getInstance();
 
         // Unified product search: a single list combining every printable
@@ -126,6 +131,11 @@ class LabelController
 
     public function generate(): void
     {
+        if (!can_read('labels')) {
+            $_SESSION['_flash']['error'] = 'You do not have permission to generate labels.';
+            redirect('/');
+        }
+
         $finishedGoodId  = (int) ($_POST['finished_good_id'] ?? 0);
         $resaleCode      = trim($_POST['resale_code'] ?? '');
         $lotNumber       = trim($_POST['lot_number'] ?? '');

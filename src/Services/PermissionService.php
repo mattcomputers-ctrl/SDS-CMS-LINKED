@@ -26,6 +26,8 @@ class PermissionService
         'dashboard'        => 'Dashboard',
         'raw_materials'    => 'Raw Materials',
         'finished_goods'   => 'Finished Goods',
+        'labels'           => 'GHS Labels',
+        'label_templates'  => 'Label Templates',
         'fg_sds_lookup'    => 'FG SDS Lookup',
         'sds_review'       => 'SDS Creation Readiness Check',
         'rm_sds_book'      => 'RM SDS Book',

@@ -10,6 +10,11 @@ class LabelTemplateController
 {
     public function index(): void
     {
+        if (!can_read('label_templates')) {
+            $_SESSION['_flash']['error'] = 'You do not have permission to access Label Templates.';
+            redirect('/');
+        }
+
         $templates = LabelTemplate::all();
 
         view('label-templates/index', [
@@ -20,6 +25,11 @@ class LabelTemplateController
 
     public function create(): void
     {
+        if (!can_edit('label_templates')) {
+            $_SESSION['_flash']['error'] = 'You do not have permission to manage label templates.';
+            redirect('/label-templates');
+        }
+
         view('label-templates/edit', [
             'pageTitle'  => 'Create Label Template',
             'template'   => null,
@@ -29,6 +39,11 @@ class LabelTemplateController
 
     public function store(): void
     {
+        if (!can_edit('label_templates')) {
+            $_SESSION['_flash']['error'] = 'You do not have permission to manage label templates.';
+            redirect('/label-templates');
+        }
+
         $data = $this->validateInput();
         if ($data === null) {
             redirect('/label-templates/create');
@@ -42,6 +57,11 @@ class LabelTemplateController
 
     public function edit(string $id): void
     {
+        if (!can_read('label_templates')) {
+            $_SESSION['_flash']['error'] = 'You do not have permission to access Label Templates.';
+            redirect('/');
+        }
+
         $template = LabelTemplate::findById((int) $id);
         if (!$template) {
             $_SESSION['_flash']['error'] = 'Template not found.';
@@ -58,6 +78,11 @@ class LabelTemplateController
 
     public function update(string $id): void
     {
+        if (!can_edit('label_templates')) {
+            $_SESSION['_flash']['error'] = 'You do not have permission to manage label templates.';
+            redirect('/label-templates');
+        }
+
         $template = LabelTemplate::findById((int) $id);
         if (!$template) {
             $_SESSION['_flash']['error'] = 'Template not found.';
@@ -78,6 +103,11 @@ class LabelTemplateController
 
     public function setDefault(string $id): void
     {
+        if (!can_edit('label_templates')) {
+            $_SESSION['_flash']['error'] = 'You do not have permission to manage label templates.';
+            redirect('/label-templates');
+        }
+
         $template = LabelTemplate::findById((int) $id);
         if (!$template) {
             $_SESSION['_flash']['error'] = 'Template not found.';
@@ -92,6 +122,11 @@ class LabelTemplateController
 
     public function delete(string $id): void
     {
+        if (!can_edit('label_templates')) {
+            $_SESSION['_flash']['error'] = 'You do not have permission to manage label templates.';
+            redirect('/label-templates');
+        }
+
         $template = LabelTemplate::findById((int) $id);
         if (!$template) {
             $_SESSION['_flash']['error'] = 'Template not found.';

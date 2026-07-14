@@ -84,10 +84,14 @@
                     <?php endif; ?>
 
                     <!-- Labels — product-label workflow -->
-                    <?php if (can_read('finished_goods')): ?>
+                    <?php if (can_read('labels') || can_read('label_templates')): ?>
                     <li class="sidebar-section-label">Labels</li>
+                    <?php if (can_read('labels')): ?>
                     <li><a href="/labels" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/labels') && !str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/label-templates') ? 'active' : '' ?>"><span class="menu-icon">&#127991;</span> GHS Labels</a></li>
+                    <?php endif; ?>
+                    <?php if (can_read('label_templates')): ?>
                     <li><a href="/label-templates" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/label-templates') ? 'active' : '' ?>"><span class="menu-icon">&#128196;</span> Label Templates</a></li>
+                    <?php endif; ?>
                     <?php endif; ?>
 
                     <!-- Regulatory Data — chemistry & compliance reference tables -->

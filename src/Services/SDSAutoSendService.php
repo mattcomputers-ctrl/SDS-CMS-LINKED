@@ -886,7 +886,8 @@ class SDSAutoSendService
 
             $fgProductCode = $this->resolveToProductCode($itemName);
             if ($fgProductCode === null) {
-                $skipReasons[] = "{$itemName}: no matching product";
+                $stripped = str_contains($itemName, '-') ? substr($itemName, 0, strpos($itemName, '-')) : $itemName;
+                $skipReasons[] = "{$itemName} (looked up '{$stripped}' from item_name='{$row['item_name']}', item_code='{$row['item_code']}'): no matching product";
                 $results['skipped']++;
                 continue;
             }

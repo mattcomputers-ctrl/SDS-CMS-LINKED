@@ -832,6 +832,13 @@ class SDSAutoSendService
 
     private function resolveToProductCode(string $code): ?string
     {
+        // Try full code as an alias first (aliases store the pack extension)
+        $alias = $this->db->fetch("SELECT internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1", [$code]);
+        if ($alias) {
+            return $alias['internal_code_base'];
+        }
+
+        // Strip pack extension (e.g. R1055-84 → R1055) and try as product code
         $stripped = str_contains($code, '-') ? substr($code, 0, strpos($code, '-')) : $code;
 
         $fg = $this->db->fetch("SELECT product_code FROM finished_goods WHERE product_code = ?", [$stripped]);
@@ -839,9 +846,12 @@ class SDSAutoSendService
             return $fg['product_code'];
         }
 
-        $alias = $this->db->fetch("SELECT internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1", [$stripped]);
-        if ($alias) {
-            return $alias['internal_code_base'];
+        // Try stripped code as alias too
+        if ($stripped !== $code) {
+            $alias = $this->db->fetch("SELECT internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1", [$stripped]);
+            if ($alias) {
+                return $alias['internal_code_base'];
+            }
         }
 
         return null;

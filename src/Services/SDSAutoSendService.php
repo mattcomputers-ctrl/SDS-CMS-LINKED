@@ -467,7 +467,7 @@ class SDSAutoSendService
             }
 
             // Check if we need to send based on mode
-            if (!$this->shouldSend($customer, (int) $fg['id'], $itemName)) {
+            if (!$this->shouldSend($customer, (int) $fg['id'], $itemName, $row['date_shipped'] ?? null)) {
                 $results['skipped']++;
                 continue;
             }
@@ -534,11 +534,24 @@ class SDSAutoSendService
     /**
      * Determine if an SDS should be sent based on the customer's send mode.
      */
-    private function shouldSend(array $customer, int $fgId, string $itemIdentifier): bool
+    private function shouldSend(array $customer, int $fgId, string $itemIdentifier, ?string $shipmentDate = null): bool
     {
         $mode = $customer['sds_send_mode'];
 
         if ($mode === 'every_order') {
+            // Send once per shipment — check if we already sent for
+            // this exact item + shipment date combination.
+            if ($shipmentDate !== null) {
+                $alreadySent = $this->db->fetch(
+                    "SELECT id FROM sds_send_log
+                     WHERE customer_id = ? AND item_identifier = ? AND shipment_date = ?
+                     LIMIT 1",
+                    [(int) $customer['id'], $itemIdentifier, $shipmentDate]
+                );
+                if ($alreadySent) {
+                    return false;
+                }
+            }
             return true;
         }
 

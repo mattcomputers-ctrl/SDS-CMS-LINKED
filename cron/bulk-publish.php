@@ -365,11 +365,15 @@ try {
             // Keep draining — a single failure shouldn't block the queue.
         }
 
-        // Post-job steps run regardless of publish success/failure — a
-        // failed publish job might still have some items that need
-        // customer notifications (e.g. earlier successful jobs), and
-        // processNewShipments is idempotent via sds_send_log.
-        bp_runPostJobSteps($bp_db);
+        // Post-job auto-send only when bulk-publish runs standalone
+        // (admin button). When require'd from cms-sync.php, the parent
+        // script calls processNewShipments with the correct $timestamp
+        // watermark right after this file returns — running it here too
+        // causes duplicate sends because the null watermark falls back
+        // to auto_send.last_run_at which may be stale.
+        if (!$bp_requiredFromCmsSync) {
+            bp_runPostJobSteps($bp_db);
+        }
     }
 } finally {
     BulkPublishQueue::releaseLock();

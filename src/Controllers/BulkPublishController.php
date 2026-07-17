@@ -799,7 +799,7 @@ class BulkPublishController
 
         $db->update('bulk_publish_jobs', [
             'status'        => 'failed',
-            'completed_at'  => gmdate('Y-m-d H:i:s'),
+            'completed_at'  => date('Y-m-d H:i:s'),
             'error_message' => 'Dismissed from queue by admin (' . (current_user_id() ?? '?') . ')',
         ], 'id = ?', [(int) $id]);
 
@@ -843,7 +843,7 @@ class BulkPublishController
 
         $db->update('bulk_publish_jobs', [
             'status'        => 'failed',
-            'completed_at'  => gmdate('Y-m-d H:i:s'),
+            'completed_at'  => date('Y-m-d H:i:s'),
             'error_message' => 'Force-failed from queue by admin (' . (current_user_id() ?? '?') . '); workers sent SIGTERM',
         ], 'id = ?', [(int) $id]);
 

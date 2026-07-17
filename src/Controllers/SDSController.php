@@ -339,11 +339,7 @@ class SDSController
             $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
 
             $publishedVersions = [];
-            // UTC — matches MySQL's CURRENT_TIMESTAMP columns; date()
-            // would drift by app-local timezone offset and make the
-            // freshness check on /bulk-publish treat freshly-published
-            // FGs as still-eligible.
-            $now = gmdate('Y-m-d H:i:s');
+            $now = date('Y-m-d H:i:s');
 
             foreach ($generated as $item) {
                 $lang = $item['language'];
@@ -353,7 +349,7 @@ class SDSController
                     'language'         => $lang,
                     'version'          => $nextVersion,
                     'status'           => 'published',
-                    'effective_date'   => gmdate('Y-m-d'),
+                    'effective_date'   => date('Y-m-d'),
                     'published_by'     => current_user_id(),
                     'published_at'     => $now,
                     'snapshot_json'    => json_encode($item['sdsData'], JSON_UNESCAPED_UNICODE),
@@ -636,7 +632,7 @@ class SDSController
             $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
 
             $publishedVersions = [];
-            $now = gmdate('Y-m-d H:i:s');
+            $now = date('Y-m-d H:i:s');
 
             foreach ($languages as $lang) {
                 if (!($pdfResults[$lang]['ok'] ?? false)) {
@@ -654,7 +650,7 @@ class SDSController
                     'language'         => $lang,
                     'version'          => $nextVersion,
                     'status'           => 'published',
-                    'effective_date'   => gmdate('Y-m-d'),
+                    'effective_date'   => date('Y-m-d'),
                     'published_by'     => current_user_id(),
                     'published_at'     => $now,
                     'snapshot_json'    => json_encode($langData[$lang], JSON_UNESCAPED_UNICODE),
@@ -779,7 +775,7 @@ class SDSController
                     'language'         => $lang,
                     'version'          => $nextVersion,
                     'status'           => 'published',
-                    'effective_date'   => gmdate('Y-m-d'),
+                    'effective_date'   => date('Y-m-d'),
                     'published_by'     => current_user_id(),
                     'published_at'     => $now,
                     'snapshot_json'    => json_encode($aliasSds, JSON_UNESCAPED_UNICODE),
@@ -869,7 +865,7 @@ class SDSController
                     'language'         => $lang,
                     'version'          => $nextVersion,
                     'status'           => 'published',
-                    'effective_date'   => gmdate('Y-m-d'),
+                    'effective_date'   => date('Y-m-d'),
                     'published_by'     => current_user_id(),
                     'published_at'     => $now,
                     'snapshot_json'    => json_encode($aliasSds, JSON_UNESCAPED_UNICODE),

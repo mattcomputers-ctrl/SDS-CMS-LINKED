@@ -40,7 +40,7 @@ class App
         }
         self::$config = require $configFile;
 
-        // Timezone
+        // Timezone — config default until DB is available
         date_default_timezone_set(self::config('app.timezone', 'America/New_York'));
 
         // Error reporting based on debug flag
@@ -54,6 +54,17 @@ class App
 
         // Initialise database singleton
         self::$database = Database::init(self::$config['db']);
+
+        // Override timezone from DB setting if present, then align MySQL
+        try {
+            $tzRow = self::$database->fetch("SELECT `value` FROM settings WHERE `key` = 'app.timezone'");
+            if ($tzRow && !empty($tzRow['value'])) {
+                date_default_timezone_set($tzRow['value']);
+            }
+            self::$database->getPdo()->exec("SET time_zone = '" . date('P') . "'");
+        } catch (\Throwable $e) {
+            // Non-fatal — fall back to PHP-only timezone
+        }
 
         // Initialise and start session
         self::$session = new Session();

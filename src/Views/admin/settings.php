@@ -252,11 +252,26 @@
         </div>
         <?php endif; ?>
 
+        <h2>Timezone</h2>
+        <p class="text-muted mb-1">All timestamps, schedules, and cron windows use this timezone.</p>
+        <div class="form-grid-2col">
+            <div class="form-group">
+                <label>Timezone</label>
+                <select name="app__timezone">
+                    <?php
+                    $currentTz = $settings['app.timezone'] ?? date_default_timezone_get();
+                    foreach (DateTimeZone::listIdentifiers() as $tz): ?>
+                        <option value="<?= e($tz) ?>" <?= $tz === $currentTz ? 'selected' : '' ?>><?= e($tz) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+        </div>
+
         <h2>Blackout Windows</h2>
         <p class="text-muted mb-1">
             All cron jobs (CMS sync, bulk publish, housekeeping, scheduled backups) will skip execution if they start during a blackout window.
             Use this to avoid conflicts with PVE/Proxmox backups or other heavy I/O operations.
-            Server timezone: <strong><?= e(date_default_timezone_get()) ?></strong>
+            Timezone: <strong><?= e(date_default_timezone_get()) ?></strong>
         </p>
         <?php
         $blackoutWindows = json_decode($settings['cron.blackout_windows'] ?? '[]', true);

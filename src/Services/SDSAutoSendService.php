@@ -497,10 +497,15 @@ class SDSAutoSendService
                 ];
             }
 
-            // Deduplicate: don't add the same item identifier twice to an order
+            // Deduplicate by alias without pack extension — different
+            // pack sizes (Y1011-50, Y1011-84) map to the same SDS.
+            $strippedName = str_contains($itemName, '-') ? substr($itemName, 0, strpos($itemName, '-')) : $itemName;
             $alreadyInOrder = false;
             foreach ($orders[$orderKey]['items'] as $existing) {
-                if ($existing['item_identifier'] === $itemName) {
+                $existingStripped = str_contains($existing['item_identifier'], '-')
+                    ? substr($existing['item_identifier'], 0, strpos($existing['item_identifier'], '-'))
+                    : $existing['item_identifier'];
+                if ($existingStripped === $strippedName) {
                     $alreadyInOrder = true;
                     break;
                 }
@@ -938,9 +943,15 @@ class SDSAutoSendService
                 ];
             }
 
+            // Deduplicate by alias without pack extension — different
+            // pack sizes (Y1011-50, Y1011-84) map to the same SDS.
+            $strippedName = str_contains($itemName, '-') ? substr($itemName, 0, strpos($itemName, '-')) : $itemName;
             $alreadyInOrder = false;
             foreach ($orders[$key]['items'] as $existing) {
-                if ($existing['item_identifier'] === $itemName) {
+                $existingStripped = str_contains($existing['item_identifier'], '-')
+                    ? substr($existing['item_identifier'], 0, strpos($existing['item_identifier'], '-'))
+                    : $existing['item_identifier'];
+                if ($existingStripped === $strippedName) {
                     $alreadyInOrder = true;
                     break;
                 }

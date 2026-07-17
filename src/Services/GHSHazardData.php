@@ -549,11 +549,43 @@ class GHSHazardData
             'pictograms'  => ['GHS08'],
             'signal_word' => 'Danger',
         ],
+        'Respiratory Sensitization - Category 1A' => [
+            'class'       => 'Respiratory Sensitization',
+            'category'    => 'Category 1A',
+            'h_codes'     => ['H334'],
+            'p_codes'     => ['P261', 'P284', 'P304+P341', 'P342+P311', 'P501'],
+            'pictograms'  => ['GHS08'],
+            'signal_word' => 'Danger',
+        ],
+        'Respiratory Sensitization - Category 1B' => [
+            'class'       => 'Respiratory Sensitization',
+            'category'    => 'Category 1B',
+            'h_codes'     => ['H334'],
+            'p_codes'     => ['P261', 'P284', 'P304+P341', 'P342+P311', 'P501'],
+            'pictograms'  => ['GHS08'],
+            'signal_word' => 'Danger',
+        ],
 
         // ── Skin Sensitization ──────────────────────────────────────
         'Skin Sensitization - Category 1' => [
             'class'       => 'Skin Sensitization',
             'category'    => 'Category 1 (1A/1B)',
+            'h_codes'     => ['H317'],
+            'p_codes'     => ['P261', 'P272', 'P280', 'P302+P352', 'P333+P313', 'P321', 'P363', 'P501'],
+            'pictograms'  => ['GHS07'],
+            'signal_word' => 'Warning',
+        ],
+        'Skin Sensitization - Category 1A' => [
+            'class'       => 'Skin Sensitization',
+            'category'    => 'Category 1A',
+            'h_codes'     => ['H317'],
+            'p_codes'     => ['P261', 'P272', 'P280', 'P302+P352', 'P333+P313', 'P321', 'P363', 'P501'],
+            'pictograms'  => ['GHS07'],
+            'signal_word' => 'Warning',
+        ],
+        'Skin Sensitization - Category 1B' => [
+            'class'       => 'Skin Sensitization',
+            'category'    => 'Category 1B',
             'h_codes'     => ['H317'],
             'p_codes'     => ['P261', 'P272', 'P280', 'P302+P352', 'P333+P313', 'P321', 'P363', 'P501'],
             'pictograms'  => ['GHS07'],

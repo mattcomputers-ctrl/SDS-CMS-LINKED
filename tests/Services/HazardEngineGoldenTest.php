@@ -591,8 +591,9 @@ try {
     assertContains('sum-no-dup: GHS08 present', picts($result), 'GHS08');
 
     // ──────────────────────────────────────────────────────────────────
-    echo "\n[21] Phase 3 — Mixed Skin Sens Cat 1 contributors sum to trigger (0.1% threshold).\n";
-    // Two distinct Skin Sens Cat 1 CASes at 0.06% each → sum 0.12% > 0.1%
+    echo "\n[21] Phase 3 — Mixed Skin Sens Cat 1 contributors sum to trigger (1.0% OSHA threshold).\n";
+    // OSHA HazCom: Cat 1 (no subcategory) uses 1.0% summation threshold.
+    // Two at 0.6% each → sum 1.2% > 1.0% → triggers.
     $seeded['sum_sens_a'] = seedClassification(
         $db, '99999-33-3', 'Skin Sensitization', 'Category 1',
         ['H317'], ['P261'], ['GHS07'], 'Warning'
@@ -602,8 +603,8 @@ try {
         ['H317'], ['P261'], ['GHS07'], 'Warning'
     );
     $result = $engine->classify([
-        ['cas_number' => '99999-33-3', 'chemical_name' => 'Sens A', 'concentration_pct' => 0.06],
-        ['cas_number' => '99999-34-4', 'chemical_name' => 'Sens B', 'concentration_pct' => 0.06],
+        ['cas_number' => '99999-33-3', 'chemical_name' => 'Sens A', 'concentration_pct' => 0.6],
+        ['cas_number' => '99999-34-4', 'chemical_name' => 'Sens B', 'concentration_pct' => 0.6],
     ]);
     assertContains('sum-skin-sens: GHS07 via summation', picts($result), 'GHS07');
     assertContains('sum-skin-sens: H317 via summation', hCodes($result), 'H317');
@@ -975,9 +976,69 @@ try {
         traceSteps($result), 'aquatic_per_component_skipped');
 
     // ──────────────────────────────────────────────────────────────────
-    echo "\n[38] engine version stamp is v1.6.1-cpd-code-filter.\n";
-    assertEquals('ENGINE_VERSION is v1.6.1-cpd-code-filter',
-        'v1.6.1-cpd-code-filter', \SDS\Services\HazardEngine::ENGINE_VERSION);
+    // Phase 6: OSHA HazCom GCL validation
+    // ──────────────────────────────────────────────────────────────────
+
+    echo "\n[38] Phase 6 — Repro Tox Cat 2 at 0.231% triggers (OSHA cutoff 0.1%, was CLP 0.3%).\n";
+    $seeded['repro_cat2'] = seedClassification(
+        $db, '99999-80-0', 'Reproductive Toxicity', 'Category 2',
+        ['H361'], ['P201'], ['GHS08'], 'Warning'
+    );
+    $result = $engine->classify([
+        ['cas_number' => '99999-80-0', 'chemical_name' => 'Repro Tox Test', 'concentration_pct' => 0.231],
+    ]);
+    assertContains('osha-repro: GHS08 at 0.231%', picts($result), 'GHS08');
+    assertContains('osha-repro: H361 at 0.231%', hCodes($result), 'H361');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[39] Phase 6 — Repro Tox Cat 2 summation at 0.06% × 2 = 0.12% triggers (threshold 0.1%).\n";
+    $seeded['repro_cat2_b'] = seedClassification(
+        $db, '99999-81-1', 'Reproductive Toxicity', 'Category 2',
+        ['H361'], ['P201'], ['GHS08'], 'Warning'
+    );
+    $result = $engine->classify([
+        ['cas_number' => '99999-80-0', 'chemical_name' => 'Repro A', 'concentration_pct' => 0.06],
+        ['cas_number' => '99999-81-1', 'chemical_name' => 'Repro B', 'concentration_pct' => 0.06],
+    ]);
+    assertContains('osha-repro-sum: H361 via summation', hCodes($result), 'H361');
+    assertContains('osha-repro-sum: summation_triggered', traceSteps($result), 'summation_triggered');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[40] Phase 6 — Skin Sens Cat 1 at 0.5% does NOT trigger (OSHA cutoff 1.0% for non-1A).\n";
+    $result = $engine->classify([
+        ['cas_number' => '99999-33-3', 'chemical_name' => 'Sens below OSHA', 'concentration_pct' => 0.5],
+    ]);
+    assertNotContains('osha-sens-below: no GHS07 at 0.5%', picts($result), 'GHS07');
+    assertNotContains('osha-sens-below: no H317 at 0.5%', hCodes($result), 'H317');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[41] Phase 6 — Skin Sens Cat 1A at 0.15% triggers (potent sensitizer cutoff 0.1%).\n";
+    $seeded['skin_sens_1a'] = seedClassification(
+        $db, '99999-82-2', 'Skin Sensitization', 'Category 1A',
+        ['H317'], ['P261'], ['GHS07'], 'Warning'
+    );
+    $result = $engine->classify([
+        ['cas_number' => '99999-82-2', 'chemical_name' => 'Potent Sens', 'concentration_pct' => 0.15],
+    ]);
+    assertContains('osha-sens-1a: GHS07 at 0.15%', picts($result), 'GHS07');
+    assertContains('osha-sens-1a: H317 at 0.15%', hCodes($result), 'H317');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[42] Phase 6 — Lactation at 0.15% triggers (cutoff 0.1%).\n";
+    $seeded['lactation'] = seedClassification(
+        $db, '99999-83-3', 'Reproductive Toxicity', 'Lactation',
+        ['H362'], ['P201','P260'], ['GHS08'], 'Warning'
+    );
+    $result = $engine->classify([
+        ['cas_number' => '99999-83-3', 'chemical_name' => 'Lactation Test', 'concentration_pct' => 0.15],
+    ]);
+    assertContains('osha-lactation: GHS08 at 0.15%', picts($result), 'GHS08');
+    assertContains('osha-lactation: H362 at 0.15%', hCodes($result), 'H362');
+
+    // ──────────────────────────────────────────────────────────────────
+    echo "\n[43] engine version stamp is v1.7.0-osha-gcl.\n";
+    assertEquals('ENGINE_VERSION is v1.7.0-osha-gcl',
+        'v1.7.0-osha-gcl', \SDS\Services\HazardEngine::ENGINE_VERSION);
 
 } catch (\Throwable $e) {
     echo "\n!!! EXCEPTION DURING TEST SUITE !!!\n";

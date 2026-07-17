@@ -8,7 +8,7 @@ return [
         'name'      => 'SDS System',
         'url'       => 'http://localhost',
         'debug'     => false,
-        'timezone'  => 'America/New_York',
+        'timezone'  => 'America/Chicago',
         'version'   => '1.0.0',
     ],
 

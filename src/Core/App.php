@@ -41,7 +41,7 @@ class App
         self::$config = require $configFile;
 
         // Timezone — config default until DB is available
-        date_default_timezone_set(self::config('app.timezone', 'America/New_York'));
+        date_default_timezone_set(self::config('app.timezone', 'America/Chicago'));
 
         // Error reporting based on debug flag
         if (self::config('app.debug', false)) {

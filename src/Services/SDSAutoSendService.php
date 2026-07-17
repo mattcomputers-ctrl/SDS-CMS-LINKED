@@ -466,22 +466,19 @@ class SDSAutoSendService
                 continue;
             }
 
-            // Check if we need to send based on mode
-            if (!$this->shouldSend($customer, (int) $fg['id'], $itemName, $row['date_shipped'] ?? null)) {
-                $results['skipped']++;
-                continue;
-            }
-
-            // Look up the latest published SDS. We no longer auto-publish
-            // here on-demand — the Bulk SDS Publish cron step (which runs
-            // before us) already published everything eligible under the
-            // strict review rules. If there's no SDS now, the item isn't
-            // eligible and will get queued for regulatory review below.
+            // Look up the latest published SDS first — we need its ID
+            // for the shouldSend version comparison.
             $sdsVersion = $this->getLatestPublishedSds((int) $fg['id'], $itemName);
 
             if ($sdsVersion === null) {
                 $this->queueForReview($customer, $row, 'SDS not available — missing raw material data or CAS determination');
                 $results['queued']++;
+                continue;
+            }
+
+            // Check if we need to send based on mode
+            if (!$this->shouldSend($customer, (int) $fg['id'], $itemName, $row['date_shipped'] ?? null, (int) $sdsVersion['id'])) {
+                $results['skipped']++;
                 continue;
             }
 
@@ -533,8 +530,14 @@ class SDSAutoSendService
 
     /**
      * Determine if an SDS should be sent based on the customer's send mode.
+     *
+     * @param int $currentSdsVersionId  The sds_versions.id that would be sent
+     *                                  (from getLatestPublishedSds). Compared
+     *                                  against the last-sent version to detect
+     *                                  updates — avoids a MAX(id) query that
+     *                                  miscompares across unrelated aliases.
      */
-    private function shouldSend(array $customer, int $fgId, string $itemIdentifier, ?string $shipmentDate = null): bool
+    private function shouldSend(array $customer, int $fgId, string $itemIdentifier, ?string $shipmentDate = null, ?int $currentSdsVersionId = null): bool
     {
         $mode = $customer['sds_send_mode'];
 
@@ -569,16 +572,12 @@ class SDSAutoSendService
             return true; // Never sent — first shipment
         }
 
-        // Check if SDS has been updated since last send
-        $latestVersion = $this->db->fetch(
-            "SELECT MAX(sv.id) AS latest_id FROM sds_versions sv
-             WHERE sv.finished_good_id = ? AND sv.status = 'published' AND sv.is_deleted = 0
-               AND sv.language = 'en'",
-            [$fgId]
-        );
-
-        if ($latestVersion && (int) ($latestVersion['latest_id'] ?? 0) > (int) $lastSend['sds_version_id']) {
-            return true; // SDS was updated since last send
+        // Check if SDS has been updated since last send by comparing
+        // the version that would be sent now against what was last sent.
+        if ($currentSdsVersionId !== null) {
+            if ($currentSdsVersionId !== (int) $lastSend['sds_version_id']) {
+                return true;
+            }
         }
 
         // OSHA + 6mo: also send if last send was > 6 months ago

@@ -64,8 +64,13 @@
                         $langLabels = ['en' => 'English', 'es' => 'Spanish', 'fr' => 'French', 'de' => 'German'];
                         $links = [];
                         foreach ($langLabels as $langCode => $langName) {
-                            if (isset($group['languages'][$langCode]) && $group['languages'][$langCode]['pdf_path']) {
+                            if (!isset($group['languages'][$langCode])) {
+                                continue;
+                            }
+                            if ($group['languages'][$langCode]['pdf_path']) {
                                 $links[] = '<a href="/sds/version/' . (int) $group['languages'][$langCode]['id'] . '/download" class="btn btn-sm pdf-link">' . $langName . ' PDF</a>';
+                            } else {
+                                $links[] = '<span class="badge badge-muted">' . $langName . ' — ARCHIVED</span>';
                             }
                         }
                         echo implode(' ', $links);
@@ -147,8 +152,13 @@
                                 $langLabels = ['en' => 'English', 'es' => 'Spanish', 'fr' => 'French', 'de' => 'German'];
                                 $links = [];
                                 foreach ($langLabels as $langCode => $langName) {
-                                    if (isset($group['languages'][$langCode]) && $group['languages'][$langCode]['pdf_path']) {
+                                    if (!isset($group['languages'][$langCode])) {
+                                        continue;
+                                    }
+                                    if ($group['languages'][$langCode]['pdf_path']) {
                                         $links[] = '<a href="/sds/version/' . (int) $group['languages'][$langCode]['id'] . '/download" class="btn btn-sm pdf-link">' . $langName . ' PDF</a>';
+                                    } else {
+                                        $links[] = '<span class="badge badge-muted">' . $langName . ' — ARCHIVED</span>';
                                     }
                                 }
                                 echo implode(' ', $links);

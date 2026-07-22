@@ -140,6 +140,7 @@
                     <li><a href="/admin/sds-versions" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/admin/sds-versions') ? 'active' : '' ?>"><span class="menu-icon">&#128195;</span> SDS Versions</a></li>
                     <li><a href="/admin/backups" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/backups' ? 'active' : '' ?>"><span class="menu-icon">&#128190;</span> Backup &amp; Restore</a></li>
                     <li><a href="/admin/storage" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/storage' ? 'active' : '' ?>"><span class="menu-icon">&#128451;</span> Storage</a></li>
+                    <li><a href="/admin/sds-archive" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/admin/sds-archive') ? 'active' : '' ?>"><span class="menu-icon">&#128230;</span> SDS Archive</a></li>
                     <li><a href="/admin/training-data" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/training-data' ? 'active' : '' ?>"><span class="menu-icon">&#128218;</span> Training Data</a></li>
                     <li><a href="/admin/purge-data" class="sidebar-link-danger <?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/purge-data' ? 'active' : '' ?>"><span class="menu-icon">&#128465;</span> Purge Data</a></li>
                     <?php endif; ?>

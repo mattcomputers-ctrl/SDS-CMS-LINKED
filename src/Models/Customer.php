@@ -130,6 +130,7 @@ class Customer
             'sds_send_mode'    => $data['sds_send_mode'] ?? 'osha',
             'sds_languages'    => $languages,
             'is_active'        => isset($data['is_active']) ? (int) $data['is_active'] : 1,
+            'sds_send_active_since' => !empty($data['sds_send_active_since']) ? $data['sds_send_active_since'] : null,
         ]);
     }
 
@@ -137,13 +138,13 @@ class Customer
     {
         $db = Database::getInstance();
 
-        $allowed = ['ship_to', 'ship_to_name', 'regulatory_email', 'sds_send_mode', 'sds_languages', 'is_active'];
+        $allowed = ['ship_to', 'ship_to_name', 'regulatory_email', 'sds_send_mode', 'sds_languages', 'is_active', 'sds_send_active_since'];
         $updateData = [];
 
         foreach ($allowed as $col) {
             if (array_key_exists($col, $data)) {
                 $val = is_string($data[$col]) ? trim($data[$col]) : $data[$col];
-                if ($col === 'regulatory_email' && $val === '') {
+                if (($col === 'regulatory_email' || $col === 'sds_send_active_since') && $val === '') {
                     $val = null;
                 }
                 if ($col === 'sds_languages') {

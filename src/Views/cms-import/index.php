@@ -112,10 +112,17 @@
         </div>
         <?php else: ?>
         <p class="text-muted" style="margin-top: 12px;">All CMS items are up to date.</p>
-        <form method="POST" action="/cms-import/import" style="margin-top: 8px;" onsubmit="return confirm('Re-sync aliases and shipments from CMS?');">
-            <?= csrf_field() ?>
-            <button type="submit" class="btn btn-outline">Re-sync Aliases &amp; Shipments</button>
-        </form>
+        <div style="margin-top: 8px; display: flex; gap: 12px; flex-wrap: wrap;">
+            <form method="POST" action="/cms-import/import" onsubmit="return confirm('Re-sync aliases and shipments from CMS?');">
+                <?= csrf_field() ?>
+                <button type="submit" class="btn btn-outline">Re-sync Aliases &amp; Shipments</button>
+            </form>
+            <form method="POST" action="/cms-import/full-sync"
+                  onsubmit="return confirm('Run full sync? This imports from CMS, publishes eligible SDSs, and sends pending customer emails. This runs in the background.');">
+                <?= csrf_field() ?>
+                <button type="submit" class="btn btn-primary">Run Full Sync (Import + Publish + Auto-Send)</button>
+            </form>
+        </div>
         <?php endif; ?>
     </div>
 

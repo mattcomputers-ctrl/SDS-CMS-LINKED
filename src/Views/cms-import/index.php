@@ -117,12 +117,6 @@
             <button type="submit" class="btn btn-outline">Re-sync Aliases &amp; Shipments</button>
         </form>
         <?php endif; ?>
-
-        <form method="POST" action="/cms-import/full-sync" style="margin-top: 12px;"
-              onsubmit="return confirm('Run full sync? This imports from CMS, publishes eligible SDSs, and sends pending customer emails. This runs in the background.');">
-            <?= csrf_field() ?>
-            <button type="submit" class="btn btn-primary">Run Full Sync (Import + Publish + Auto-Send)</button>
-        </form>
     </div>
 
 <?php endif; ?>

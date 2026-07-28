@@ -530,6 +530,20 @@ class SDSAutoSendService
                 $results['emails_sent']++;
             } catch (\Throwable $e) {
                 $results['errors'][] = "Send to {$order['customer']['ship_to']}: " . $e->getMessage();
+                // Queue failed items so the retry phase picks them up next run
+                foreach ($order['items'] as $orderItem) {
+                    $fakeRow = [
+                        'ship_to'               => $order['customer']['ship_to'] ?? '',
+                        'ship_to_name'           => $order['customer']['ship_to_name'] ?? '',
+                        'date_shipped'           => $order['date_shipped'],
+                        'item_code'              => $orderItem['fg']['product_code'] ?? $orderItem['item_identifier'],
+                        'item_name'              => $orderItem['item_identifier'],
+                        'item_name_description'  => $orderItem['fg']['description'] ?? '',
+                        'item_description'       => $orderItem['fg']['description'] ?? '',
+                    ];
+                    $this->queueForReview($order['customer'], $fakeRow, 'Email send failed — ' . $e->getMessage());
+                    $results['queued']++;
+                }
             }
         }
     }

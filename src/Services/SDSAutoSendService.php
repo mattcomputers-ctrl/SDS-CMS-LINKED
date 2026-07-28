@@ -65,6 +65,7 @@ class SDSAutoSendService
             'queued'      => 0,
             'skipped'     => 0,
             'errors'      => [],
+            'retried'     => 0,
         ];
 
         // Phase A: Process new shipments for email sending
@@ -72,7 +73,10 @@ class SDSAutoSendService
         $this->processShipmentsSince($since, $results);
         $this->setLastRunTimestamp();
 
-        // Phase B: Notify regulatory staff if items were queued
+        // Phase B: Retry pending queue items whose SDS may now be available
+        $this->retryPendingQueue($results);
+
+        // Phase C: Notify regulatory staff if items were queued
         if ($results['queued'] > 0) {
             $this->notifyRegulatoryStaff($results['queued']);
         }
@@ -792,6 +796,131 @@ class SDSAutoSendService
         return "<p>Hello,</p>"
             . "<p>Please see attached for Safety Data Sheets from \"{$companyName}\".</p>"
             . "<p>Best regards,<br>Regulatory Team<br>\"{$companyName}\"</p>";
+    }
+
+    /* ------------------------------------------------------------------
+     *  Retry Pending Queue
+     * ----------------------------------------------------------------*/
+
+    /**
+     * Retry pending queue items whose SDS may now be available.
+     *
+     * Items land in sds_send_queue when auto-send can't resolve them
+     * (product not found, SDS not published, etc.). Each cron run
+     * retries all pending items — if the blocker has been fixed, the
+     * SDS is sent and the queue entry marked 'sent'.
+     */
+    private function retryPendingQueue(array &$results): void
+    {
+        $pending = $this->db->fetchAll(
+            "SELECT q.*, c.regulatory_email, c.sds_send_mode, c.sds_languages
+             FROM sds_send_queue q
+             JOIN customers c ON c.id = q.customer_id
+             WHERE q.status = 'pending' AND c.is_active = 1 AND c.regulatory_email IS NOT NULL AND c.regulatory_email != ''
+             ORDER BY q.shipment_date"
+        );
+
+        if (empty($pending)) {
+            return;
+        }
+
+        $fgCache = [];
+        $orders = [];
+
+        foreach ($pending as $item) {
+            $itemIdentifier = (!empty($item['item_name']) && $item['item_name'] !== $item['item_code'])
+                ? $item['item_name'] : $item['item_code'];
+
+            $fgProductCode = $this->resolveToProductCode($itemIdentifier);
+            if ($fgProductCode === null) {
+                continue;
+            }
+
+            if (!isset($fgCache[$fgProductCode])) {
+                $fgCache[$fgProductCode] = FinishedGood::findByProductCode($fgProductCode);
+            }
+            $fg = $fgCache[$fgProductCode];
+            if ($fg === null) {
+                continue;
+            }
+
+            $sdsVersion = $this->getLatestPublishedSds((int) $fg['id'], $itemIdentifier);
+            if ($sdsVersion === null) {
+                continue;
+            }
+
+            $customer = [
+                'id'             => $item['customer_id'],
+                'ship_to'        => $item['ship_to'],
+                'ship_to_name'   => $item['ship_to_name'],
+                'regulatory_email' => $item['regulatory_email'],
+                'sds_send_mode'  => $item['sds_send_mode'],
+                'sds_languages'  => $item['sds_languages'] ?? 'en',
+            ];
+
+            if (!$this->shouldSend($customer, (int) $fg['id'], $itemIdentifier, $item['shipment_date'], (int) $sdsVersion['id'])) {
+                $this->db->update('sds_send_queue', [
+                    'status'      => 'sent',
+                    'resolved_at' => date('Y-m-d H:i:s'),
+                ], 'id = ?', [(int) $item['id']]);
+                $results['retried']++;
+                continue;
+            }
+
+            $orderKey = $item['customer_id'] . '::retry::' . $item['shipment_date'];
+
+            if (!isset($orders[$orderKey])) {
+                $orders[$orderKey] = [
+                    'customer'      => $customer,
+                    'date_shipped'  => $item['shipment_date'],
+                    'items'         => [],
+                    'queue_ids'     => [],
+                ];
+            }
+
+            $strippedName = str_contains($itemIdentifier, '-') ? substr($itemIdentifier, 0, strpos($itemIdentifier, '-')) : $itemIdentifier;
+            $alreadyInOrder = false;
+            foreach ($orders[$orderKey]['items'] as $existing) {
+                $existingStripped = str_contains($existing['item_identifier'], '-')
+                    ? substr($existing['item_identifier'], 0, strpos($existing['item_identifier'], '-'))
+                    : $existing['item_identifier'];
+                if ($existingStripped === $strippedName) {
+                    $alreadyInOrder = true;
+                    break;
+                }
+            }
+
+            if (!$alreadyInOrder) {
+                $orders[$orderKey]['items'][] = [
+                    'item_identifier' => $itemIdentifier,
+                    'fg'              => $fg,
+                    'sds_version'     => $sdsVersion,
+                ];
+            }
+            $orders[$orderKey]['queue_ids'][] = (int) $item['id'];
+        }
+
+        foreach ($orders as $order) {
+            if (empty($order['items'])) {
+                continue;
+            }
+            try {
+                $this->sendOrderEmail($order['customer'], $order['items'], $order['date_shipped']);
+                $results['emails_sent']++;
+            } catch (\Throwable $e) {
+                $results['errors'][] = 'Queue retry: ' . $e->getMessage();
+                continue;
+            }
+
+            $now = date('Y-m-d H:i:s');
+            foreach ($order['queue_ids'] as $qId) {
+                $this->db->update('sds_send_queue', [
+                    'status'      => 'sent',
+                    'resolved_at' => $now,
+                ], 'id = ?', [$qId]);
+            }
+            $results['retried'] += count($order['queue_ids']);
+        }
     }
 
     /* ------------------------------------------------------------------

@@ -174,6 +174,9 @@ try {
         echo "  Emails sent:     " . ($sendResults['emails_sent'] ?? 0) . "\n";
         echo "  Queued:          " . ($sendResults['queued'] ?? 0) . "\n";
         echo "  Skipped:         " . ($sendResults['skipped'] ?? 0) . "\n";
+        if (($sendResults['retried'] ?? 0) > 0) {
+            echo "  Queue retried:   " . $sendResults['retried'] . "\n";
+        }
         if (!empty($sendResults['errors'])) {
             echo "  Send errors (" . count($sendResults['errors']) . "):\n";
             foreach ($sendResults['errors'] as $err) {

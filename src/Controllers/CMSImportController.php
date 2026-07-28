@@ -6,8 +6,11 @@ namespace SDS\Controllers;
 
 use SDS\Core\CSRF;
 use SDS\Core\Database;
+use SDS\Services\BulkPublishQueue;
 use SDS\Services\CMSDatabase;
 use SDS\Services\CMSImportService;
+use SDS\Services\MailService;
+use SDS\Services\SDSAutoSendService;
 
 class CMSImportController
 {
@@ -138,6 +141,52 @@ class CMSImportController
             'pageTitle' => 'CMS Import Results',
             'results'   => $results,
         ]);
+    }
+
+    /**
+     * POST /cms-import/full-sync — Run the full CMS sync chain in background:
+     * import → bulk publish → auto-send (same as the hourly cron).
+     */
+    public function fullSync(): void
+    {
+        CSRF::validateRequest();
+
+        if (!can_edit('cms_import')) {
+            $_SESSION['_flash']['error'] = 'You do not have permission to run a sync.';
+            redirect('/cms-import');
+        }
+
+        if (!CMSDatabase::isConfigured()) {
+            $_SESSION['_flash']['error'] = 'CMS database is not configured.';
+            redirect('/cms-import');
+        }
+
+        $basePath = \SDS\Core\App::basePath();
+        $logFile  = $basePath . '/storage/logs/cms-sync.log';
+        $cmd = sprintf(
+            'setsid %s %s < /dev/null >> %s 2>&1 &',
+            escapeshellarg(php_cli_binary()),
+            escapeshellarg($basePath . '/cron/cms-sync.php'),
+            escapeshellarg($logFile)
+        );
+        exec($cmd);
+
+        $db = Database::getInstance();
+        $userName = $_SESSION['_user']['display_name'] ?? $_SESSION['_user']['username'] ?? '';
+        foreach ([
+            'cms_sync.last_trigger'      => 'manual',
+            'cms_sync.last_triggered_by' => $userName,
+        ] as $key => $val) {
+            $existing = $db->fetch("SELECT `key` FROM settings WHERE `key` = ?", [$key]);
+            if ($existing) {
+                $db->update('settings', ['value' => $val], "`key` = ?", [$key]);
+            } else {
+                $db->insert('settings', ['key' => $key, 'value' => $val]);
+            }
+        }
+
+        $_SESSION['_flash']['success'] = 'Full sync started in background (import → publish → auto-send). Check back in a few minutes.';
+        redirect('/cms-import');
     }
 
     /**

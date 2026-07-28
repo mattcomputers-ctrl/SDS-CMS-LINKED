@@ -95,7 +95,7 @@
         </table>
 
         <?php if ($newCount > 0 || $revisedCount > 0): ?>
-        <div style="margin-top: 16px; display: flex; gap: 12px;">
+        <div style="margin-top: 16px; display: flex; gap: 12px; flex-wrap: wrap;">
             <form method="POST" action="/cms-import/preview">
                 <?= csrf_field() ?>
                 <button type="submit" class="btn btn-outline">Preview Import</button>
@@ -103,6 +103,11 @@
             <form method="POST" action="/cms-import/import" onsubmit="return confirm('Import and sync all CMS items? This will create new items, update revised formulas, sync aliases and shipments.');">
                 <?= csrf_field() ?>
                 <button type="submit" class="btn btn-primary">Run Import</button>
+            </form>
+            <form method="POST" action="/cms-import/full-sync"
+                  onsubmit="return confirm('Run full sync? This imports from CMS, publishes eligible SDSs, and sends pending customer emails. This runs in the background.');">
+                <?= csrf_field() ?>
+                <button type="submit" class="btn btn-primary">Run Full Sync (Import + Publish + Auto-Send)</button>
             </form>
         </div>
         <?php else: ?>
@@ -112,6 +117,12 @@
             <button type="submit" class="btn btn-outline">Re-sync Aliases &amp; Shipments</button>
         </form>
         <?php endif; ?>
+
+        <form method="POST" action="/cms-import/full-sync" style="margin-top: 12px;"
+              onsubmit="return confirm('Run full sync? This imports from CMS, publishes eligible SDSs, and sends pending customer emails. This runs in the background.');">
+            <?= csrf_field() ?>
+            <button type="submit" class="btn btn-primary">Run Full Sync (Import + Publish + Auto-Send)</button>
+        </form>
     </div>
 
 <?php endif; ?>

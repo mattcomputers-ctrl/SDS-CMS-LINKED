@@ -300,6 +300,7 @@ class App
         $router->get('/cms-import',              'CMSImportController@index');
         $router->post('/cms-import/preview',     'CMSImportController@preview');
         $router->post('/cms-import/import',      'CMSImportController@import');
+        $router->post('/cms-import/full-sync',   'CMSImportController@fullSync');
         $router->get('/cms-import/incomplete',   'CMSImportController@incomplete');
 
         // ── GHS Labels ────────────────────────────────────────────

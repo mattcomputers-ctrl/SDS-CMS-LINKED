@@ -300,6 +300,7 @@ class App
         $router->get('/cms-import',              'CMSImportController@index');
         $router->post('/cms-import/preview',     'CMSImportController@preview');
         $router->post('/cms-import/import',      'CMSImportController@import');
+        $router->post('/cms-import/full-sync',   'CMSImportController@fullSync');
         $router->get('/cms-import/incomplete',   'CMSImportController@incomplete');
 
         // ── GHS Labels ────────────────────────────────────────────
@@ -405,6 +406,13 @@ class App
             $r->get('/snur-list',              'AdminController@snurList');
             $r->post('/snur-list',             'AdminController@storeSnur');
             $r->post('/snur-list/{id}/delete', 'AdminController@deleteSnur');
+
+            // SDS PDF Archive
+            $r->get('/sds-archive',                    'SdsArchiveController@index');
+            $r->post('/sds-archive/generate',          'SdsArchiveController@generate');
+            $r->get('/sds-archive/download/{file}',    'SdsArchiveController@download');
+            $r->post('/sds-archive/purge',             'SdsArchiveController@purge');
+            $r->post('/sds-archive/delete-zip/{file}', 'SdsArchiveController@deleteZip');
         });
 
         // ── Dispatch ─────────────────────────────────────────────────

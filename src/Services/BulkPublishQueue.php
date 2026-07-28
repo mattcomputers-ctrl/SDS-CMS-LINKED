@@ -88,10 +88,10 @@ class BulkPublishQueue
         Database::getInstance()->query(
             "UPDATE bulk_publish_jobs
                 SET status = 'failed',
-                    completed_at = UTC_TIMESTAMP(),
+                    completed_at = NOW(),
                     error_message = CONCAT(
                         'Orphaned: previous runner crashed (auto-failed at ',
-                        UTC_TIMESTAMP(), ')'
+                        NOW(), ')'
                     )
               WHERE status = 'running'"
         );
@@ -114,7 +114,7 @@ class BulkPublishQueue
         $jobId = (int) $row['id'];
         $db->update('bulk_publish_jobs', [
             'status'     => 'running',
-            'started_at' => gmdate('Y-m-d H:i:s'),
+            'started_at' => date('Y-m-d H:i:s'),
         ], 'id = ?', [$jobId]);
         return $jobId;
     }
@@ -151,7 +151,7 @@ class BulkPublishQueue
     {
         Database::getInstance()->update('bulk_publish_jobs', array_merge($stats, [
             'status'       => 'completed',
-            'completed_at' => gmdate('Y-m-d H:i:s'),
+            'completed_at' => date('Y-m-d H:i:s'),
         ]), 'id = ?', [$jobId]);
     }
 
@@ -159,7 +159,7 @@ class BulkPublishQueue
     {
         Database::getInstance()->update('bulk_publish_jobs', [
             'status'        => 'failed',
-            'completed_at'  => gmdate('Y-m-d H:i:s'),
+            'completed_at'  => date('Y-m-d H:i:s'),
             'error_message' => mb_strimwidth($error, 0, 4000, '...'),
         ], 'id = ?', [$jobId]);
     }

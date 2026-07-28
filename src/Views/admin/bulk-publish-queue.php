@@ -61,7 +61,7 @@
             if ($startedAt !== '' && $completedAt !== '') {
                 $duration = gmdate('H:i:s', max(0, strtotime($completedAt) - strtotime($startedAt))) . ' (done)';
             } elseif ($startedAt !== '') {
-                $duration = gmdate('H:i:s', max(0, time() - strtotime($startedAt) - date('Z'))) . ' (running)';
+                $duration = gmdate('H:i:s', max(0, time() - strtotime($startedAt))) . ' (running)';
             }
 
             $pub = $job['published_count']   ?? null;

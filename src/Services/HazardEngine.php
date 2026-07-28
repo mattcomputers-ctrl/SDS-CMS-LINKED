@@ -114,7 +114,7 @@ class HazardEngine
      *   Acute Tox + Aquatic but only Acute Tox fired. P-codes are left
      *   alone (many are cross-cutting across classes).
      */
-    public const ENGINE_VERSION = 'v1.6.1-cpd-code-filter';
+    public const ENGINE_VERSION = 'v1.7.0-osha-gcl';
 
     /**
      * GHS summation thresholds per canonical class + category.
@@ -123,7 +123,7 @@ class HazardEngine
      * threshold, the mixture is classified at that (class, category) even
      * though no single component triggered its per-component cutoff.
      *
-     * Values sourced from GHS Annex I / 29 CFR 1910.1200 App A. Physical
+     * Values sourced from 29 CFR 1910.1200 Appendix A (OSHA HazCom). Physical
      * hazards (flammable, oxidizer, etc.) are test-based and not subject
      * to additivity. Aquatic hazards need M-factor weighting — Phase 4.
      * Acute toxicity uses the ATE formula — deferred to a follow-up.
@@ -147,14 +147,19 @@ class HazardEngine
             'Cat 2' => 1.0,
         ],
         GHSHazardClass::REPRODUCTIVE_TOXICITY => [
-            'Cat 1' => 0.3,
-            'Cat 2' => 3.0,
+            'Cat 1' => 0.1,
+            'Cat 2' => 0.1,
+            'Lactation' => 0.1,
         ],
         GHSHazardClass::SKIN_SENSITIZATION => [
-            'Cat 1' => 0.1,   // Conservative (0.1% for potent, 1.0% for others)
+            'Cat 1A' => 0.1,
+            'Cat 1'  => 1.0,
+            'Cat 1B' => 1.0,
         ],
         GHSHazardClass::RESPIRATORY_SENSITIZATION => [
-            'Cat 1' => 0.1,
+            'Cat 1A' => 0.1,
+            'Cat 1'  => 1.0,
+            'Cat 1B' => 1.0,
         ],
         GHSHazardClass::STOT_SINGLE => [
             'Cat 1' => 10.0,
@@ -417,11 +422,11 @@ class HazardEngine
         GHSHazardClass::ACUTE_TOXICITY_INHALATION => ['Cat 1' => 0.1, 'Cat 2' => 0.1, 'Cat 3' => 0.1, 'Cat 4' => 1.0],
         GHSHazardClass::SKIN_CORROSION_IRRITATION => ['Cat 1' => 1.0, 'Cat 2' => 10.0],
         GHSHazardClass::EYE_DAMAGE_IRRITATION     => ['Cat 1' => 1.0, 'Cat 2A' => 10.0],
-        GHSHazardClass::SKIN_SENSITIZATION        => ['Cat 1' => 0.1],
-        GHSHazardClass::RESPIRATORY_SENSITIZATION => ['Cat 1' => 0.1],
+        GHSHazardClass::SKIN_SENSITIZATION        => ['Cat 1A' => 0.1, 'Cat 1' => 1.0, 'Cat 1B' => 1.0],
+        GHSHazardClass::RESPIRATORY_SENSITIZATION => ['Cat 1A' => 0.1, 'Cat 1' => 1.0, 'Cat 1B' => 1.0],
         GHSHazardClass::GERM_CELL_MUTAGENICITY    => ['Cat 1' => 0.1, 'Cat 2' => 1.0],
         GHSHazardClass::CARCINOGENICITY           => ['Cat 1A' => 0.1, 'Cat 1B' => 0.1, 'Cat 2' => 0.1],
-        GHSHazardClass::REPRODUCTIVE_TOXICITY     => ['Cat 1' => 0.1, 'Cat 2' => 0.3],
+        GHSHazardClass::REPRODUCTIVE_TOXICITY     => ['Cat 1' => 0.1, 'Cat 2' => 0.1, 'Lactation' => 0.1],
         GHSHazardClass::STOT_SINGLE               => ['Cat 1' => 1.0, 'Cat 2' => 10.0, 'Cat 3' => 20.0],
         GHSHazardClass::STOT_REPEATED             => ['Cat 1' => 1.0, 'Cat 2' => 10.0],
         GHSHazardClass::ASPIRATION_HAZARD         => ['Cat 1' => 10.0],

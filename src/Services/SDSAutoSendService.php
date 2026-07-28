@@ -453,7 +453,8 @@ class SDSAutoSendService
             // Resolve to finished good
             $fgProductCode = $this->resolveToProductCode($itemName);
             if ($fgProductCode === null) {
-                $results['skipped']++;
+                $this->queueForReview($customer, $row, "Product not found in system — '{$itemName}' could not be resolved to a finished good");
+                $results['queued']++;
                 continue;
             }
 
@@ -462,7 +463,8 @@ class SDSAutoSendService
             }
             $fg = $fgCache[$fgProductCode];
             if ($fg === null) {
-                $results['skipped']++;
+                $this->queueForReview($customer, $row, "Finished good '{$fgProductCode}' not found in database");
+                $results['queued']++;
                 continue;
             }
 

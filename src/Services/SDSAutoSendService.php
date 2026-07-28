@@ -450,6 +450,11 @@ class SDSAutoSendService
                 continue;
             }
 
+            if (empty($customer['sds_send_active_since']) || ($row['date_shipped'] ?? '') < $customer['sds_send_active_since']) {
+                $results['skipped']++;
+                continue;
+            }
+
             $itemName = (!empty($row['item_name']) && $row['item_name'] !== $row['item_code'])
                 ? $row['item_name']
                 : $row['item_code'];
@@ -827,10 +832,11 @@ class SDSAutoSendService
     private function retryPendingQueue(array &$results): void
     {
         $pending = $this->db->fetchAll(
-            "SELECT q.*, c.regulatory_email, c.sds_send_mode, c.sds_languages
+            "SELECT q.*, c.regulatory_email, c.sds_send_mode, c.sds_languages, c.sds_send_active_since
              FROM sds_send_queue q
              JOIN customers c ON c.id = q.customer_id
              WHERE q.status = 'pending' AND c.is_active = 1 AND c.regulatory_email IS NOT NULL AND c.regulatory_email != ''
+               AND c.sds_send_active_since IS NOT NULL AND q.shipment_date >= c.sds_send_active_since
              ORDER BY q.shipment_date"
         );
 
@@ -935,6 +941,122 @@ class SDSAutoSendService
             }
             $results['retried'] += count($order['queue_ids']);
         }
+    }
+
+    /* ------------------------------------------------------------------
+     *  Catch-Up: backfill sends when active-since date is set/moved
+     * ----------------------------------------------------------------*/
+
+    /**
+     * Process all shipments for a customer from their sds_send_active_since
+     * date onward, sending any SDSs that haven't been sent yet.
+     */
+    public function catchUpCustomer(int $customerId): array
+    {
+        $customer = Customer::findById($customerId);
+        if ($customer === null || empty($customer['regulatory_email']) || empty($customer['sds_send_active_since'])) {
+            return ['emails_sent' => 0, 'queued' => 0, 'skipped' => 0, 'errors' => []];
+        }
+
+        $shipments = $this->db->fetchAll(
+            "SELECT sd.* FROM shipment_detail sd
+             WHERE sd.ship_to = ? AND sd.date_shipped >= ?
+             ORDER BY sd.date_shipped",
+            [$customer['ship_to'], $customer['sds_send_active_since']]
+        );
+
+        $results = ['emails_sent' => 0, 'queued' => 0, 'skipped' => 0, 'errors' => []];
+        $fgCache = [];
+        $orders = [];
+
+        foreach ($shipments as $row) {
+            $itemName = (!empty($row['item_name']) && $row['item_name'] !== $row['item_code'])
+                ? $row['item_name']
+                : $row['item_code'];
+
+            $fgProductCode = $this->resolveToProductCode($itemName);
+            if ($fgProductCode === null) {
+                $this->queueForReview($customer, $row, "Product not found in system — '{$itemName}' could not be resolved to a finished good");
+                $results['queued']++;
+                continue;
+            }
+
+            if (!isset($fgCache[$fgProductCode])) {
+                $fgCache[$fgProductCode] = FinishedGood::findByProductCode($fgProductCode);
+            }
+            $fg = $fgCache[$fgProductCode];
+            if ($fg === null) {
+                $this->queueForReview($customer, $row, "Finished good '{$fgProductCode}' not found in database");
+                $results['queued']++;
+                continue;
+            }
+
+            $sdsVersion = $this->getLatestPublishedSds((int) $fg['id'], $itemName);
+            if ($sdsVersion === null) {
+                $this->queueForReview($customer, $row, 'SDS not available — missing raw material data or CAS determination');
+                $results['queued']++;
+                continue;
+            }
+
+            if (!$this->shouldSend($customer, (int) $fg['id'], $itemName, $row['date_shipped'] ?? null, (int) $sdsVersion['id'])) {
+                $results['skipped']++;
+                continue;
+            }
+
+            $orderKey = ($row['order_number'] ?? '') . '::' . ($row['date_shipped'] ?? '');
+            if (!isset($orders[$orderKey])) {
+                $orders[$orderKey] = [
+                    'customer'     => $customer,
+                    'order_number' => $row['order_number'] ?? '',
+                    'date_shipped' => $row['date_shipped'] ?? '',
+                    'items'        => [],
+                ];
+            }
+
+            $strippedName = str_contains($itemName, '-') ? substr($itemName, 0, strpos($itemName, '-')) : $itemName;
+            $alreadyInOrder = false;
+            foreach ($orders[$orderKey]['items'] as $existing) {
+                $existingStripped = str_contains($existing['item_identifier'], '-')
+                    ? substr($existing['item_identifier'], 0, strpos($existing['item_identifier'], '-'))
+                    : $existing['item_identifier'];
+                if ($existingStripped === $strippedName) {
+                    $alreadyInOrder = true;
+                    break;
+                }
+            }
+
+            if (!$alreadyInOrder) {
+                $orders[$orderKey]['items'][] = [
+                    'item_identifier' => $itemName,
+                    'fg'              => $fg,
+                    'sds_version'     => $sdsVersion,
+                ];
+            }
+        }
+
+        foreach ($orders as $order) {
+            try {
+                $this->sendOrderEmail($order['customer'], $order['items'], $order['date_shipped']);
+                $results['emails_sent']++;
+            } catch (\Throwable $e) {
+                $results['errors'][] = "Order {$order['order_number']}: " . $e->getMessage();
+                foreach ($order['items'] as $orderItem) {
+                    $fakeRow = [
+                        'ship_to'               => $customer['ship_to'] ?? '',
+                        'ship_to_name'           => $customer['ship_to_name'] ?? '',
+                        'date_shipped'           => $order['date_shipped'],
+                        'item_code'              => $orderItem['fg']['product_code'] ?? $orderItem['item_identifier'],
+                        'item_name'              => $orderItem['item_identifier'],
+                        'item_name_description'  => $orderItem['fg']['description'] ?? '',
+                        'item_description'       => $orderItem['fg']['description'] ?? '',
+                    ];
+                    $this->queueForReview($customer, $fakeRow, 'Email send failed — ' . $e->getMessage());
+                    $results['queued']++;
+                }
+            }
+        }
+
+        return $results;
     }
 
     /* ------------------------------------------------------------------

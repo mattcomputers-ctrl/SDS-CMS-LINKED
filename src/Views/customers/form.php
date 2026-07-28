@@ -63,6 +63,12 @@ $action = $isEdit ? '/customers/' . (int) $item['id'] : '/customers';
                 <?php endforeach; ?>
             </div>
             <div class="form-group">
+                <label for="sds_send_active_since">SDS Send Active Since</label>
+                <input type="date" id="sds_send_active_since" name="sds_send_active_since"
+                       value="<?= e(old('sds_send_active_since', $item['sds_send_active_since'] ?? '')) ?>">
+                <small class="text-muted">SDSs will be sent for shipments on or after this date. Changing to an earlier date will catch up and send any missing SDSs. Leave blank to disable auto-send.</small>
+            </div>
+            <div class="form-group">
                 <label for="is_active">Status</label>
                 <select id="is_active" name="is_active">
                     <option value="1" <?= ((int) old('is_active', (string) ($item['is_active'] ?? 1))) === 1 ? 'selected' : '' ?>>Active</option>

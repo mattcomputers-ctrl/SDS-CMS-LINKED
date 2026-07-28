@@ -19,6 +19,7 @@
             <th>Name</th>
             <th>Regulatory Email</th>
             <th>SDS Mode</th>
+            <th>Active Since</th>
             <th>Status</th>
             <th>Actions</th>
         </tr>
@@ -35,6 +36,7 @@
                 echo e($modeLabels[$item['sds_send_mode']] ?? $item['sds_send_mode']);
                 ?>
             </td>
+            <td><?= !empty($item['sds_send_active_since']) ? e($item['sds_send_active_since']) : '<span class="text-muted">—</span>' ?></td>
             <td><?= (int) $item['is_active'] ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-muted">Inactive</span>' ?></td>
             <td>
                 <a href="/customers/<?= (int) $item['id'] ?>/edit" class="btn btn-sm">Edit</a>

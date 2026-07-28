@@ -133,9 +133,32 @@ class CustomerController
         CSRF::validateRequest();
 
         try {
+            $old = Customer::findById((int) $id);
             Customer::update((int) $id, $_POST);
             AuditService::log('customer', $id, 'update', $_POST);
-            $_SESSION['_flash']['success'] = 'Customer updated.';
+
+            $newDate = trim($_POST['sds_send_active_since'] ?? '');
+            $oldDate = $old['sds_send_active_since'] ?? '';
+            $shouldCatchUp = $newDate !== ''
+                && ($oldDate === '' || $oldDate === null || $newDate < $oldDate);
+
+            if ($shouldCatchUp) {
+                $svc = new SDSAutoSendService();
+                $catchUp = $svc->catchUpCustomer((int) $id);
+                $msg = 'Customer updated.';
+                if ($catchUp['emails_sent'] > 0) {
+                    $msg .= " Catch-up: {$catchUp['emails_sent']} email(s) sent.";
+                }
+                if ($catchUp['queued'] > 0) {
+                    $msg .= " {$catchUp['queued']} item(s) queued for review.";
+                }
+                if ($catchUp['emails_sent'] === 0 && $catchUp['queued'] === 0) {
+                    $msg .= ' Catch-up: all SDSs already sent for shipments since ' . $newDate . '.';
+                }
+                $_SESSION['_flash']['success'] = $msg;
+            } else {
+                $_SESSION['_flash']['success'] = 'Customer updated.';
+            }
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = $e->getMessage();
         }

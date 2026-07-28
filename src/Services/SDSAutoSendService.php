@@ -624,28 +624,23 @@ class SDSAutoSendService
     {
         // Check if this identifier is an alias
         $alias = $this->db->fetch(
-            "SELECT id, internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1",
+            "SELECT id, customer_code, internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1",
             [$itemIdentifier]
         );
 
         if ($alias) {
-            // Bulk publish deduplicates aliases by base code (stripping the
-            // pack extension) and publishes under the first alias id (ORDER
-            // BY customer_code ASC). Use the same canonical id here.
-            $canonicalAlias = $this->db->fetch(
-                "SELECT id FROM aliases WHERE internal_code_base = ? ORDER BY customer_code ASC LIMIT 1",
-                [$alias['internal_code_base']]
-            );
-            $aliasId = $canonicalAlias ? (int) $canonicalAlias['id'] : (int) $alias['id'];
+            $aliasId = $this->findPublishedAliasId($alias);
 
-            $version = $this->db->fetch(
-                "SELECT * FROM sds_versions
-                 WHERE alias_id = ? AND status = 'published' AND is_deleted = 0 AND language = 'en'
-                 ORDER BY version DESC LIMIT 1",
-                [$aliasId]
-            );
-            if ($version) {
-                return $version;
+            if ($aliasId !== null) {
+                $version = $this->db->fetch(
+                    "SELECT * FROM sds_versions
+                     WHERE alias_id = ? AND status = 'published' AND is_deleted = 0 AND language = 'en'
+                     ORDER BY version DESC LIMIT 1",
+                    [$aliasId]
+                );
+                if ($version) {
+                    return $version;
+                }
             }
         }
 
@@ -656,6 +651,54 @@ class SDSAutoSendService
              ORDER BY version DESC LIMIT 1",
             [$fgId]
         );
+    }
+
+    /**
+     * Find the alias_id that has a published SDS for the given alias.
+     *
+     * Prefers: exact alias → pack-stripped variant (UV19001-84 → UV19001)
+     * → canonical (first alias for the same base product, last resort).
+     */
+    private function findPublishedAliasId(array $alias): ?int
+    {
+        $hasSds = function (int $id): bool {
+            return (bool) $this->db->fetch(
+                "SELECT id FROM sds_versions
+                 WHERE alias_id = ? AND status = 'published' AND is_deleted = 0
+                 LIMIT 1",
+                [$id]
+            );
+        };
+
+        if ($hasSds((int) $alias['id'])) {
+            return (int) $alias['id'];
+        }
+
+        // Pack-variant fallback: bulk publish strips "-84" etc. and publishes
+        // under the first alias id for the stripped code.
+        $code = $alias['customer_code'];
+        $stripped = str_contains($code, '-') ? substr($code, 0, strpos($code, '-')) : null;
+        if ($stripped !== null) {
+            $packSibling = $this->db->fetch(
+                "SELECT id FROM aliases
+                 WHERE internal_code_base = ? AND customer_code LIKE ? AND id != ?
+                 ORDER BY customer_code ASC LIMIT 1",
+                [$alias['internal_code_base'], $stripped . '%', (int) $alias['id']]
+            );
+            if ($packSibling && $hasSds((int) $packSibling['id'])) {
+                return (int) $packSibling['id'];
+            }
+        }
+
+        // Last resort: any alias for this base product that has a published SDS.
+        $canonical = $this->db->fetch(
+            "SELECT a.id FROM aliases a
+             JOIN sds_versions sv ON sv.alias_id = a.id AND sv.status = 'published' AND sv.is_deleted = 0
+             WHERE a.internal_code_base = ?
+             ORDER BY a.customer_code ASC LIMIT 1",
+            [$alias['internal_code_base']]
+        );
+        return $canonical ? (int) $canonical['id'] : null;
     }
 
     /**
@@ -697,17 +740,9 @@ class SDSAutoSendService
                 : $itemIdentifier;
             $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $displayCode);
 
-            // Bulk publish deduplicates aliases by base code and publishes
-            // under the first alias id (ORDER BY customer_code ASC). Match
-            // that so we find the published alias SDS regardless of which
-            // pack-extension variant the shipment used.
             $publishedAliasId = null;
             if ($alias) {
-                $canonicalAlias = $this->db->fetch(
-                    "SELECT id FROM aliases WHERE internal_code_base = ? ORDER BY customer_code ASC LIMIT 1",
-                    [$alias['internal_code_base']]
-                );
-                $publishedAliasId = $canonicalAlias ? (int) $canonicalAlias['id'] : (int) $alias['id'];
+                $publishedAliasId = $this->findPublishedAliasId($alias);
             }
 
             foreach ($languages as $lang) {

@@ -188,7 +188,7 @@
             <div class="form-group" id="cmsSyncMinuteGroup">
                 <label>Minute Past the Hour</label>
                 <input type="number" name="cms_sync__run_minute" min="0" max="59" value="<?= e($settings['cms_sync.run_minute'] ?? '7') ?>">
-                <small class="text-muted">0–59. The cron fires every hour; this controls at which minute it runs.</small>
+                <small class="text-muted">0–59. Saving updates the system crontab so the hourly sync fires at this minute.</small>
             </div>
             <div class="form-group" id="cmsSyncTimeGroup" style="display: none;">
                 <label>Time of Day</label>

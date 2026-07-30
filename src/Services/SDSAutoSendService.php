@@ -48,15 +48,13 @@ class SDSAutoSendService
      * handles that using the Bulk SDS Publish page's eligibility
      * rules, running before this service is invoked.
      *
-     * @param  string|null $sessionStart When non-null, only shipments
-     *                                   imported at or after this
-     *                                   timestamp are considered — so a
-     *                                   cron pass only emails customers
-     *                                   for shipments that were synced
-     *                                   in the same run. When null,
-     *                                   falls back to the persisted
-     *                                   auto_send.last_run_at marker
-     *                                   (legacy behaviour).
+     * @param  string|null $sessionStart Retained for call-site
+     *                                   compatibility; no longer used.
+     *                                   Shipment selection is driven by
+     *                                   the sds_processed_at marker —
+     *                                   time-window comparisons silently
+     *                                   missed rows whenever the PHP and
+     *                                   MySQL clocks disagreed.
      */
     public function processNewShipments(?string $sessionStart = null): array
     {
@@ -68,9 +66,8 @@ class SDSAutoSendService
             'retried'     => 0,
         ];
 
-        // Phase A: Process new shipments for email sending
-        $since = $sessionStart ?? $this->getLastRunTimestamp();
-        $this->processShipmentsSince($since, $results);
+        // Phase A: Process shipments not yet examined by auto-send
+        $this->processUnsentShipments($results);
         $this->setLastRunTimestamp();
 
         // Phase B: Retry pending queue items whose SDS may now be available
@@ -408,24 +405,22 @@ class SDSAutoSendService
      *  Phase B: Process Shipments
      * ----------------------------------------------------------------*/
 
-    private function processShipmentsSince(?string $since, array &$results): void
+    private function processUnsentShipments(array &$results): void
     {
-        $where = "WHERE 1=1";
-        $params = [];
-
-        if ($since !== null) {
-            // >= so shipments imported exactly at the session-start
-            // second are included. CMSImportService stamps imported_at
-            // at DB INSERT time, which is always after the PHP-side
-            // session-start timestamp captured at script boot.
-            $where .= " AND sd.imported_at >= ?";
-            $params[] = $since;
-        }
-
+        // Rows are selected by the sds_processed_at marker, never by a
+        // time window: imported_at is stamped by MySQL while cron session
+        // timestamps come from PHP, and any clock/timezone disagreement
+        // between the two made the old window match nothing — shipments
+        // were then permanently skipped without ever being queued.
         $shipments = $this->db->fetchAll(
-            "SELECT sd.* FROM shipment_detail sd {$where} ORDER BY sd.date_shipped",
-            $params
+            "SELECT sd.* FROM shipment_detail sd
+             WHERE sd.sds_processed_at IS NULL
+             ORDER BY sd.date_shipped"
         );
+
+        if (empty($shipments)) {
+            return;
+        }
 
         // Load all active customers with emails, keyed by ship_to
         $customerMap = [];
@@ -550,6 +545,23 @@ class SDSAutoSendService
                     $results['queued']++;
                 }
             }
+        }
+
+        // Mark every scanned row as examined — including skipped ones
+        // (no customer, gated by active-since date, or already sent).
+        // Stamped only after the send loop so a crash mid-run leaves
+        // rows NULL for the next sweep; sds_send_log dedup in
+        // shouldSend() keeps re-scanned rows from emailing twice.
+        // Failed sends are queued above, so the retry phase owns them.
+        $now = date('Y-m-d H:i:s');
+        foreach (array_chunk(array_column($shipments, 'id'), 500) as $chunk) {
+            $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+            $this->db->update(
+                'shipment_detail',
+                ['sds_processed_at' => $now],
+                "id IN ({$placeholders})",
+                array_map('intval', $chunk)
+            );
         }
     }
 
@@ -1294,12 +1306,6 @@ class SDSAutoSendService
         }
 
         return $results;
-    }
-
-    private function getLastRunTimestamp(): ?string
-    {
-        $row = $this->db->fetch("SELECT `value` FROM settings WHERE `key` = 'auto_send.last_run_at'");
-        return $row['value'] ?? null;
     }
 
     private function setLastRunTimestamp(): void

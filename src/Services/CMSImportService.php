@@ -169,6 +169,12 @@ class CMSImportService
                     continue; // This is a FG sub-component, not a RM
                 }
 
+                // Manufactured pack variants (dotless costing recipe) are
+                // never raw materials — mirror importRawMaterials().
+                if ($ing['ingredient_costing_recipe'] !== null) {
+                    continue;
+                }
+
                 $code = $ing['ingredient_code'];
                 if (isset($seenRmCodes[$code])) {
                     continue;
@@ -198,6 +204,7 @@ class CMSImportService
                  INNER JOIN CMS.dbo.GLGroup g ON g.GLGroup = i.GLGroup
                  WHERE g.Description = 'Raw Material'
                    AND i.ItemCode IS NOT NULL
+                   AND i.CostingRecipe IS NULL
                  ORDER BY i.ItemCode"
             );
             $fgCodes = array_flip(array_column(
@@ -444,6 +451,14 @@ class CMSImportService
                     continue;
                 }
 
+                // Any costing recipe means the item is manufactured, even a
+                // dotless pack-extension recipe like "5545-1GT" — never a raw
+                // material. Don't recurse into the pack recipe either: it
+                // contains packaging components, not chemistry.
+                if ($ing['ingredient_costing_recipe'] !== null) {
+                    continue;
+                }
+
                 $code = $ing['ingredient_code'];
 
                 if (isset($processed[$code])) {
@@ -515,6 +530,7 @@ class CMSImportService
                  INNER JOIN CMS.dbo.GLGroup g ON g.GLGroup = i.GLGroup
                  WHERE g.Description = 'Raw Material'
                    AND i.ItemCode IS NOT NULL
+                   AND i.CostingRecipe IS NULL
                  ORDER BY i.ItemCode"
             );
         } catch (\Throwable $e) {
@@ -1596,8 +1612,9 @@ class CMSImportService
      *
      * An ingredient is only a FG if it has a CostingRecipe whose RecipeNumber
      * contains a dot (versioned formula like "E1202.03"). Ingredients whose
-     * CostingRecipe points to a pack extension (like "2AB0200-10") are treated
-     * as raw materials instead.
+     * CostingRecipe points to a pack extension (like "5545-1GT") return false
+     * here, but callers skip them as manufactured items — any CostingRecipe
+     * means the item is not a purchasable raw material.
      */
     private function isFinishedGoodIngredient(array $ing): bool
     {

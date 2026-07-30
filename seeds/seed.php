@@ -69,7 +69,7 @@ try {
     $editorPages = [
         'dashboard' => 'full', 'raw_materials' => 'full', 'finished_goods' => 'full',
         'fg_sds_lookup' => 'full', 'rm_sds_book' => 'full', 'reports' => 'full',
-        'formulas' => 'full', 'sds' => 'full', 'rm_mass_replace' => 'full',
+        'formulas' => 'full', 'sds' => 'full',
         'cas_determinations' => 'full', 'bulk_publish' => 'full', 'bulk_export' => 'full',
         'exempt_vocs' => 'full',
     ];
@@ -83,7 +83,7 @@ try {
     $viewerPages = [
         'dashboard' => 'read', 'raw_materials' => 'read', 'finished_goods' => 'read',
         'fg_sds_lookup' => 'read', 'rm_sds_book' => 'read', 'reports' => 'read',
-        'formulas' => 'read', 'sds' => 'read', 'rm_mass_replace' => 'none',
+        'formulas' => 'read', 'sds' => 'read',
         'cas_determinations' => 'read', 'bulk_publish' => 'none', 'bulk_export' => 'read',
         'exempt_vocs' => 'read',
     ];

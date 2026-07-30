@@ -411,9 +411,84 @@ class AdminController
             $this->saveSetting($db, 'cms_sync.active_hours', '');
         }
 
+        // The run minute lives in the system crontab, not in the schedule
+        // gate inside cron/cms-sync.php — rewrite the crontab line so the
+        // job actually fires at the chosen minute.
+        $crontabWarning = null;
+        if (isset($_POST['cms_sync__run_minute']) && ctype_digit(trim((string) $_POST['cms_sync__run_minute']))) {
+            $crontabWarning = $this->syncCmsCrontabMinute((int) trim((string) $_POST['cms_sync__run_minute']));
+        }
+
         AuditService::log('settings', 'global', 'update');
-        $_SESSION['_flash']['success'] = 'Settings saved.';
+        if ($crontabWarning !== null) {
+            $_SESSION['_flash']['error'] = $crontabWarning;
+        } else {
+            $_SESSION['_flash']['success'] = 'Settings saved.';
+        }
         redirect('/admin/settings');
+    }
+
+    /**
+     * Rewrite this user's crontab so the cms-sync entry fires at the
+     * given minute past the hour. The schedule gate inside the script
+     * only decides IF a fired run proceeds (frequency, active hours) —
+     * WHEN it fires is purely the crontab's minute field, which used to
+     * be hardcoded to 7 by the installer.
+     *
+     * Returns a warning message on failure, or null on success.
+     */
+    private function syncCmsCrontabMinute(int $minute): ?string
+    {
+        $minute   = max(0, min(59, $minute));
+        $basePath = \SDS\Core\App::basePath();
+        $newLine  = "{$minute} * * * * cd {$basePath} && /usr/bin/php cron/cms-sync.php >> storage/logs/cms-sync.log 2>&1";
+        $manualHint = "To set it manually run: crontab -u www-data -e and change the cms-sync line to: {$newLine}";
+
+        $lines = [];
+        exec('crontab -l 2>/dev/null', $lines);
+
+        // Already at the right minute — nothing to do.
+        foreach ($lines as $line) {
+            if (str_contains($line, 'cron/cms-sync.php') && preg_match('/^\s*' . $minute . '\s+\*/', $line)) {
+                return null;
+            }
+        }
+
+        $kept = [];
+        foreach ($lines as $line) {
+            if (str_contains($line, 'cron/cms-sync.php') || str_contains($line, '# CMS Sync:')) {
+                continue;
+            }
+            $kept[] = $line;
+        }
+        $kept[] = '# CMS Sync: import items, formulas, aliases, shipments from CMS (hourly)';
+        $kept[] = $newLine;
+
+        $tmp = tempnam(sys_get_temp_dir(), 'cron');
+        if ($tmp === false || file_put_contents($tmp, implode("\n", $kept) . "\n") === false) {
+            return 'Settings saved, but the cron schedule could not be written to a temp file. ' . $manualHint;
+        }
+
+        $rc = 1;
+        $out = [];
+        exec('crontab ' . escapeshellarg($tmp) . ' 2>&1', $out, $rc);
+        @unlink($tmp);
+
+        if ($rc !== 0) {
+            return 'Settings saved, but updating the system crontab failed ('
+                . trim(implode(' ', $out)) . '). The sync will keep firing at the old minute. ' . $manualHint;
+        }
+
+        // Verify the line landed.
+        $verify = [];
+        exec('crontab -l 2>/dev/null', $verify);
+        foreach ($verify as $line) {
+            if (str_contains($line, 'cron/cms-sync.php') && preg_match('/^\s*' . $minute . '\s+\*/', $line)) {
+                return null;
+            }
+        }
+
+        return 'Settings saved, but the crontab update could not be verified. ' . $manualHint;
     }
 
     /**

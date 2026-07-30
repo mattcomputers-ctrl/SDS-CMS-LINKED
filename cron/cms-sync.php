@@ -37,7 +37,12 @@ use SDS\Services\MailService;
 $start = microtime(true);
 $timestamp = date('Y-m-d H:i:s');
 
-echo "[{$timestamp}] CMS Sync starting...\n";
+// --manual: run was triggered by a user (Full Sync button), not the
+// hourly crontab. Skips the schedule gate (frequency, active hours,
+// time-of-day) — the user asked for it NOW. Blackout still applies.
+$isManual = in_array('--manual', $argv ?? [], true);
+
+echo "[{$timestamp}] CMS Sync starting" . ($isManual ? ' (manual trigger)' : '') . "...\n";
 
 try {
     // Initialize the application (loads config, database, session)
@@ -71,7 +76,8 @@ try {
     // ── Schedule gate ──────────────────────────────────────────────
     // The system crontab fires this script every hour. These settings
     // control whether it actually runs: frequency, active hours,
-    // day-of-week, and time-of-day.
+    // day-of-week, and time-of-day. Manual runs skip this entirely —
+    // a user clicking "Run Full Sync" expects it to run right now.
     $schedRows = $db->fetchAll("SELECT `key`, `value` FROM settings WHERE `key` LIKE 'cms_sync.%'");
     $sched = [];
     foreach ($schedRows as $r) {
@@ -82,7 +88,9 @@ try {
     $currentHour = (int) date('H');
     $currentDay  = (int) date('w'); // 0=Sun, 6=Sat
 
-    if ($frequency === 'hourly') {
+    if ($isManual) {
+        // No schedule checks — fall through to the sync itself.
+    } elseif ($frequency === 'hourly') {
         // Active hours check
         $activeHoursRaw = $sched['cms_sync.active_hours'] ?? '';
         if ($activeHoursRaw !== '') {

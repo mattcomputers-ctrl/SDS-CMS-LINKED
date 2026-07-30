@@ -30,6 +30,7 @@
                     <li class="sidebar-section-label">Materials</li>
                     <?php if (can_read('raw_materials')): ?>
                     <li><a href="/raw-materials" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/raw-materials') ? 'active' : '' ?>"><span class="menu-icon">&#9830;</span> Raw Materials</a></li>
+                    <li><a href="/cms-import/incomplete" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/cms-import/incomplete') ? 'active' : '' ?>"><span class="menu-icon">&#128221;</span> Incomplete Raw Materials</a></li>
                     <?php endif; ?>
                     <?php if (can_read('finished_goods')): ?>
                     <li><a href="/finished-goods" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/finished-goods') ? 'active' : '' ?>"><span class="menu-icon">&#9733;</span> Finished Goods</a></li>
@@ -37,8 +38,20 @@
                     <?php if (can_read('aliases')): ?>
                     <li><a href="/aliases" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/aliases') ? 'active' : '' ?>"><span class="menu-icon">&#128279;</span> Aliases</a></li>
                     <?php endif; ?>
-                    <?php if (can_edit('rm_mass_replace')): ?>
-                    <li><a href="/formulas/mass-replace" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/formulas/mass-replace') ? 'active' : '' ?>"><span class="menu-icon">&#128260;</span> Mass Replacement</a></li>
+
+                    <!-- Customers & Distribution — outbound-facing parties -->
+                    <li class="sidebar-section-label">Customers &amp; Distribution</li>
+                    <?php if (can_read('customers')): ?>
+                    <li><a href="/customers" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/customers') ? 'active' : '' ?>"><span class="menu-icon">&#128101;</span> Customers</a></li>
+                    <?php endif; ?>
+                    <?php if (can_read('sds_send_queue')): ?>
+                    <li><a href="/sds-send-queue" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/sds-send-queue') ? 'active' : '' ?>"><span class="menu-icon">&#128233;</span> SDS Send Queue</a></li>
+                    <?php endif; ?>
+                    <?php if (can_read('manufacturers')): ?>
+                    <li><a href="/manufacturers" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/manufacturers') ? 'active' : '' ?>"><span class="menu-icon">&#127981;</span> Manufacturers</a></li>
+                    <?php endif; ?>
+                    <?php if (can_read('private_label')): ?>
+                    <li><a href="/private-label" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/private-label') ? 'active' : '' ?>"><span class="menu-icon">&#128196;</span> Private Label SDS</a></li>
                     <?php endif; ?>
 
                     <!-- SDS — everything SDS-document-related -->
@@ -66,21 +79,6 @@
                     <?php endif; ?>
                     <?php if (can_read('reports')): ?>
                     <li><a href="/reports" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/reports') ? 'active' : '' ?>"><span class="menu-icon">&#128202;</span> Reports</a></li>
-                    <?php endif; ?>
-
-                    <!-- Customers & Distribution — outbound-facing parties -->
-                    <li class="sidebar-section-label">Customers &amp; Distribution</li>
-                    <?php if (can_read('customers')): ?>
-                    <li><a href="/customers" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/customers') ? 'active' : '' ?>"><span class="menu-icon">&#128101;</span> Customers</a></li>
-                    <?php endif; ?>
-                    <?php if (can_read('sds_send_queue')): ?>
-                    <li><a href="/sds-send-queue" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/sds-send-queue') ? 'active' : '' ?>"><span class="menu-icon">&#128233;</span> SDS Send Queue</a></li>
-                    <?php endif; ?>
-                    <?php if (can_read('manufacturers')): ?>
-                    <li><a href="/manufacturers" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/manufacturers') ? 'active' : '' ?>"><span class="menu-icon">&#127981;</span> Manufacturers</a></li>
-                    <?php endif; ?>
-                    <?php if (can_read('private_label')): ?>
-                    <li><a href="/private-label" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/private-label') ? 'active' : '' ?>"><span class="menu-icon">&#128196;</span> Private Label SDS</a></li>
                     <?php endif; ?>
 
                     <!-- Labels — product-label workflow -->
@@ -126,12 +124,17 @@
                     <!-- Integrations — external data pipelines -->
                     <?php if (can_read('cms_import')): ?>
                     <li class="sidebar-section-label">Integrations</li>
-                    <li><a href="/cms-import" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/cms-import') ? 'active' : '' ?>"><span class="menu-icon">&#128229;</span> CMS Import</a></li>
+                    <li><a href="/cms-import" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/cms-import') && !str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/cms-import/incomplete') ? 'active' : '' ?>"><span class="menu-icon">&#128229;</span> CMS Import</a></li>
                     <?php endif; ?>
 
-                    <!-- System — admin-only application-level management -->
-                    <?php if (can_manage_users()): ?>
+                    <!-- System — application-level management -->
+                    <?php if (can_manage_users() || can_edit('rm_mass_replace')): ?>
                     <li class="sidebar-section-label">System</li>
+                    <?php endif; ?>
+                    <?php if (can_edit('rm_mass_replace')): ?>
+                    <li><a href="/formulas/mass-replace" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/formulas/mass-replace') ? 'active' : '' ?>"><span class="menu-icon">&#128260;</span> Mass Replacement</a></li>
+                    <?php endif; ?>
+                    <?php if (can_manage_users()): ?>
                     <li><a href="/admin/users" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/users' ? 'active' : '' ?>"><span class="menu-icon">&#128101;</span> Users</a></li>
                     <li><a href="/admin/groups" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/admin/groups') ? 'active' : '' ?>"><span class="menu-icon">&#128274;</span> Permission Groups</a></li>
                     <li><a href="/admin/settings" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/settings' ? 'active' : '' ?>"><span class="menu-icon">&#9881;</span> Settings</a></li>

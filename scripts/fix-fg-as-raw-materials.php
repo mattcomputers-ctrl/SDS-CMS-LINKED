@@ -166,9 +166,3 @@ if ($dryRun) {
 } else {
     echo "\nDone. All changes applied.\n";
 }
-
-function strip_pack_extension(string $code): string
-{
-    $pos = strpos($code, '-');
-    return $pos !== false ? substr($code, 0, $pos) : $code;
-}

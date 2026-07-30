@@ -161,12 +161,30 @@ class CMSImportController
             redirect('/cms-import');
         }
 
+        // Pre-check the conditions the script would silently exit on, so
+        // the user gets told why nothing will happen instead of a flash
+        // that claims the sync started.
+        $db = Database::getInstance();
+
+        $enabledRow = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'cms_sync.enabled'");
+        if ($enabledRow !== null && ((string) $enabledRow['value']) === '0') {
+            $_SESSION['_flash']['error'] = 'CMS sync is disabled in Admin → Settings. Enable it there, then run the sync.';
+            redirect('/cms-import');
+        }
+
+        require_once \SDS\Core\App::basePath() . '/cron/cron-helpers.php';
+        if (cron_in_blackout($db)) {
+            $_SESSION['_flash']['error'] = 'A cron blackout window is active right now (backups or other heavy jobs). Try again after it ends.';
+            redirect('/cms-import');
+        }
+
         $basePath = \SDS\Core\App::basePath();
         $logFile  = $basePath . '/storage/logs/cms-sync.log';
         $cmd = sprintf(
-            'setsid %s %s < /dev/null >> %s 2>&1 &',
+            'setsid %s %s %s < /dev/null >> %s 2>&1 &',
             escapeshellarg(php_cli_binary()),
             escapeshellarg($basePath . '/cron/cms-sync.php'),
+            escapeshellarg('--manual'),
             escapeshellarg($logFile)
         );
         exec($cmd);

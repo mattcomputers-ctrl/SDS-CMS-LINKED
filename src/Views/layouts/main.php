@@ -127,14 +127,10 @@
                     <li><a href="/cms-import" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/cms-import') && !str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/cms-import/incomplete') ? 'active' : '' ?>"><span class="menu-icon">&#128229;</span> CMS Import</a></li>
                     <?php endif; ?>
 
-                    <!-- System — application-level management -->
-                    <?php if (can_manage_users() || can_edit('rm_mass_replace')): ?>
-                    <li class="sidebar-section-label">System</li>
-                    <?php endif; ?>
-                    <?php if (can_edit('rm_mass_replace')): ?>
-                    <li><a href="/formulas/mass-replace" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/formulas/mass-replace') ? 'active' : '' ?>"><span class="menu-icon">&#128260;</span> Mass Replacement</a></li>
-                    <?php endif; ?>
+                    <!-- System — admin-only application-level management -->
                     <?php if (can_manage_users()): ?>
+                    <li class="sidebar-section-label">System</li>
+                    <li><a href="/formulas/mass-replace" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/formulas/mass-replace') ? 'active' : '' ?>"><span class="menu-icon">&#128260;</span> Mass Replacement</a></li>
                     <li><a href="/admin/users" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/users' ? 'active' : '' ?>"><span class="menu-icon">&#128101;</span> Users</a></li>
                     <li><a href="/admin/groups" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/admin/groups') ? 'active' : '' ?>"><span class="menu-icon">&#128274;</span> Permission Groups</a></li>
                     <li><a href="/admin/settings" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/settings' ? 'active' : '' ?>"><span class="menu-icon">&#9881;</span> Settings</a></li>

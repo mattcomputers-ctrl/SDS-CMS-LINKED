@@ -131,8 +131,8 @@ class FormulaController
 
     public function massReplace(): void
     {
-        if (!can_edit('rm_mass_replace')) {
-            $_SESSION['_flash']['error'] = 'You do not have permission to perform mass replacements.';
+        if (!can_manage_users()) {
+            $_SESSION['_flash']['error'] = 'Mass replacement is limited to administrators.';
             redirect('/');
         }
 
@@ -148,7 +148,7 @@ class FormulaController
 
     public function massReplaceSubmit(): void
     {
-        if (!can_edit('rm_mass_replace')) {
+        if (!can_manage_users()) {
             redirect('/');
         }
 

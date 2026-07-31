@@ -15,10 +15,16 @@
             <span style="background: #dc3545; color: #fff; border-radius: 10px; padding: 1px 7px; font-size: 0.8rem; margin-left: 4px;"><?= count($needsDetermination) ?></span>
         <?php endif; ?>
     </button>
-    <button class="tab-btn" data-tab="existing" style="padding: 0.5rem 1.2rem; border: 2px solid #003366; border-bottom: none; background: #e9ecef; color: #003366; cursor: pointer; border-radius: 4px 4px 0 0; font-weight: bold;">
+    <button class="tab-btn" data-tab="existing" style="padding: 0.5rem 1.2rem; border: 2px solid #003366; border-bottom: none; background: #e9ecef; color: #003366; cursor: pointer; border-radius: 4px 4px 0 0; font-weight: bold; margin-right: 2px;">
         Determinations Made
         <?php if (!empty($items)): ?>
             <span style="background: #28a745; color: #fff; border-radius: 10px; padding: 1px 7px; font-size: 0.8rem; margin-left: 4px;"><?= count($items) ?></span>
+        <?php endif; ?>
+    </button>
+    <button class="tab-btn" data-tab="descriptions" style="padding: 0.5rem 1.2rem; border: 2px solid #003366; border-bottom: none; background: #e9ecef; color: #003366; cursor: pointer; border-radius: 4px 4px 0 0; font-weight: bold;">
+        CAS Descriptions
+        <?php if (!empty($descriptions)): ?>
+            <span style="background: #6c757d; color: #fff; border-radius: 10px; padding: 1px 7px; font-size: 0.8rem; margin-left: 4px;"><?= count($descriptions) ?></span>
         <?php endif; ?>
     </button>
 </div>
@@ -125,7 +131,74 @@
     </table>
 </div>
 
+<!-- Tab: CAS Descriptions -->
+<div class="tab-panel" id="tab-descriptions" style="display: none;">
+    <p class="text-muted" style="margin-bottom: 0.5rem;">
+        One description per CAS number — the single source of truth used on all SDSs and everywhere a CAS appears.
+        Saving a description here updates every raw material constituent with that CAS.
+        Substances on the <a href="/prop65">Prop 65 list</a> take their description from that page and cannot be edited here.
+    </p>
+    <div style="margin-bottom: 0.5rem;">
+        <input type="text" id="descFilter" placeholder="Filter by CAS or description..." style="max-width: 320px;">
+    </div>
+    <table class="table" id="descTable">
+        <thead>
+            <tr>
+                <th style="width: 140px;">CAS Number</th>
+                <th>Description</th>
+                <th style="width: 110px;">Source</th>
+                <th style="width: 110px;">Used in RMs</th>
+                <th style="width: 90px;">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+        <?php foreach ($descriptions ?? [] as $idx => $d): ?>
+            <?php $isP65 = !empty($d['prop65_name']); $formId = 'desc-form-' . $idx; ?>
+            <tr>
+                <td><strong><?= e($d['cas_number']) ?></strong></td>
+                <td>
+                    <?php if ($isP65): ?>
+                        <?= e($d['prop65_name']) ?>
+                    <?php else: ?>
+                        <form method="POST" action="/determinations/descriptions" id="<?= $formId ?>">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="cas_number" value="<?= e($d['cas_number']) ?>">
+                            <input type="text" name="description" value="<?= e($d['preferred_name'] ?? '') ?>" required style="width: 100%;">
+                        </form>
+                    <?php endif; ?>
+                </td>
+                <td>
+                    <?php if ($isP65): ?>
+                        <span class="badge badge-warning" title="Description managed on the Prop 65 page">Prop 65</span>
+                    <?php else: ?>
+                        <span class="text-muted">Registry</span>
+                    <?php endif; ?>
+                </td>
+                <td><?= (int) $d['rm_count'] > 0 ? (int) $d['rm_count'] : '<span class="text-muted">—</span>' ?></td>
+                <td>
+                    <?php if ($isP65): ?>
+                        <a href="/prop65" class="btn btn-sm">Edit on Prop 65</a>
+                    <?php else: ?>
+                        <button type="submit" form="<?= $formId ?>" class="btn btn-sm btn-primary">Save</button>
+                    <?php endif; ?>
+                </td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+</div>
+
 <script>
+document.getElementById('descFilter').addEventListener('input', function() {
+    var term = this.value.toLowerCase();
+    document.querySelectorAll('#descTable tbody tr').forEach(function(row) {
+        row.style.display = row.textContent.toLowerCase().indexOf(term) === -1 &&
+            !Array.from(row.querySelectorAll('input[name="description"]')).some(function(i) {
+                return i.value.toLowerCase().indexOf(term) !== -1;
+            }) ? 'none' : '';
+    });
+});
+
 document.querySelectorAll('.tab-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
         document.querySelectorAll('.tab-btn').forEach(function(b) {
@@ -143,6 +216,15 @@ document.querySelectorAll('.tab-btn').forEach(function(btn) {
         document.getElementById('tab-' + btn.dataset.tab).style.display = 'block';
     });
 });
+
+// Activate a tab from ?tab= so redirects land back where the user was
+(function() {
+    var urlTab = new URLSearchParams(window.location.search).get('tab');
+    if (urlTab) {
+        var target = document.querySelector('.tab-btn[data-tab="' + urlTab + '"]');
+        if (target) target.click();
+    }
+})();
 </script>
 
 <?php include dirname(__DIR__) . '/layouts/footer.php'; ?>

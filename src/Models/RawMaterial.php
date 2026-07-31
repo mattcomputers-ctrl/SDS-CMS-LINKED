@@ -407,12 +407,24 @@ class RawMaterial
             // Delete existing
             $db->delete('raw_material_constituents', 'raw_material_id = ?', [$rmId]);
 
-            // Insert new
+            // Insert new — the canonical description (Prop 65 name, then
+            // cas_master registry) overrides whatever was typed so every
+            // appearance of a CAS shares one description. A CAS not yet in
+            // the registry keeps the typed name, which the auto-learn step
+            // below then makes canonical.
             foreach ($constituents as $i => $c) {
+                $cas  = trim($c['cas_number'] ?? '');
+                $name = trim($c['chemical_name'] ?? '');
+                if ($cas !== '') {
+                    $canonical = self::canonicalCasName($cas);
+                    if ($canonical !== null) {
+                        $name = $canonical;
+                    }
+                }
                 $db->insert('raw_material_constituents', [
                     'raw_material_id'        => $rmId,
-                    'cas_number'             => trim($c['cas_number'] ?? ''),
-                    'chemical_name'          => trim($c['chemical_name'] ?? ''),
+                    'cas_number'             => $cas,
+                    'chemical_name'          => $name,
                     'pct_min'                => $c['pct_min'] ?? null,
                     'pct_max'                => $c['pct_max'] ?? null,
                     'pct_exact'              => $c['pct_exact'] ?? null,
@@ -450,6 +462,31 @@ class RawMaterial
             $db->rollback();
             throw $e;
         }
+    }
+
+    /**
+     * Resolve the canonical description for a CAS number.
+     * Prop 65 listing name wins, then the cas_master registry.
+     * Returns null when the CAS is not known to either source.
+     */
+    public static function canonicalCasName(string $cas): ?string
+    {
+        $db = Database::getInstance();
+
+        $p65 = $db->fetch(
+            "SELECT chemical_name FROM prop65_list WHERE cas_number = ? AND chemical_name != '' LIMIT 1",
+            [$cas]
+        );
+        if ($p65) {
+            return $p65['chemical_name'];
+        }
+
+        $master = $db->fetch(
+            "SELECT preferred_name FROM cas_master
+             WHERE cas_number = ? AND preferred_name IS NOT NULL AND preferred_name != ''",
+            [$cas]
+        );
+        return $master['preferred_name'] ?? null;
     }
 
     /* ------------------------------------------------------------------

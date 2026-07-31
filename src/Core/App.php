@@ -216,6 +216,7 @@ class App
         $router->get('/determinations',              'AdminController@determinations');
         $router->get('/determinations/create',       'AdminController@createDetermination');
         $router->post('/determinations',             'AdminController@storeDetermination');
+        $router->post('/determinations/descriptions', 'AdminController@saveCasDescription');
         $router->get('/determinations/{id}/edit',    'AdminController@editDetermination');
         $router->post('/determinations/{id}',        'AdminController@updateDetermination');
 

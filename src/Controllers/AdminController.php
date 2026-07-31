@@ -915,6 +915,13 @@ class AdminController
 
         $db->insert('prop65_list', array_merge($data, ['source_ref' => 'manual']));
 
+        // Prop 65 name is the canonical description for this CAS —
+        // propagate to all constituent rows.
+        $db->query(
+            "UPDATE raw_material_constituents SET chemical_name = ? WHERE cas_number = ?",
+            [$data['chemical_name'], $data['cas_number']]
+        );
+
         $bumped = \SDS\Services\RegulatoryListBumper::bumpByCas($data['cas_number']);
         $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByCas(
             [$data['cas_number']],
@@ -984,6 +991,13 @@ class AdminController
             array_merge($data, ['source_ref' => 'manual']),
             'id = ?',
             [(int) $id]
+        );
+
+        // Prop 65 name is the canonical description for this CAS —
+        // propagate to all constituent rows.
+        $db->query(
+            "UPDATE raw_material_constituents SET chemical_name = ? WHERE cas_number = ?",
+            [$data['chemical_name'], $data['cas_number']]
         );
 
         // Bump RMs for both the old CAS (if changed) and the new CAS,
@@ -1376,11 +1390,73 @@ class AdminController
              ORDER BY in_formula DESC, has_federal_data ASC, raw_material_count DESC, rmc.chemical_name ASC"
         );
 
+        // Canonical CAS descriptions registry. Prop 65 listed substances
+        // take their description from the Prop 65 page instead.
+        $descriptions = $db->fetchAll(
+            "SELECT cm.cas_number, cm.preferred_name,
+                    p.chemical_name AS prop65_name,
+                    (SELECT COUNT(DISTINCT rmc.raw_material_id)
+                     FROM raw_material_constituents rmc
+                     WHERE rmc.cas_number = cm.cas_number) AS rm_count
+             FROM cas_master cm
+             LEFT JOIN prop65_list p ON p.cas_number = cm.cas_number
+             ORDER BY cm.cas_number"
+        );
+
         view('admin/determinations', [
             'pageTitle'          => 'CAS Number Determinations',
             'items'              => $items,
             'needsDetermination' => $needsDetermination,
+            'descriptions'       => $descriptions,
         ]);
+    }
+
+    /**
+     * POST /determinations/descriptions — update the canonical description
+     * for a CAS number and propagate it to every constituent row.
+     */
+    public function saveCasDescription(): void
+    {
+        $this->requirePageAccess('cas_determinations', 'full');
+        CSRF::validateRequest();
+        $db = Database::getInstance();
+
+        $cas  = trim($_POST['cas_number'] ?? '');
+        $desc = trim($_POST['description'] ?? '');
+
+        if ($cas === '' || $desc === '') {
+            $_SESSION['_flash']['error'] = 'CAS number and description are required.';
+            redirect('/determinations?tab=descriptions');
+            return;
+        }
+
+        // Prop 65 substances are described by the Prop 65 list — one source
+        // of truth means edits happen there, not here.
+        $p65 = $db->fetch("SELECT chemical_name FROM prop65_list WHERE cas_number = ?", [$cas]);
+        if ($p65) {
+            $_SESSION['_flash']['error'] = "CAS {$cas} is on the Prop 65 list — edit its description on the Prop 65 page.";
+            redirect('/determinations?tab=descriptions');
+            return;
+        }
+
+        $existing = $db->fetch("SELECT cas_number FROM cas_master WHERE cas_number = ?", [$cas]);
+        if ($existing) {
+            $db->update('cas_master', ['preferred_name' => $desc], 'cas_number = ?', [$cas]);
+        } else {
+            $db->insert('cas_master', ['cas_number' => $cas, 'preferred_name' => $desc]);
+        }
+
+        // Propagate to every constituent row so all appearances match.
+        $updated = $db->query(
+            "UPDATE raw_material_constituents SET chemical_name = ? WHERE cas_number = ?",
+            [$desc, $cas]
+        )->rowCount();
+
+        AuditService::log('cas_description', $cas, 'update', ['description' => $desc]);
+        $_SESSION['_flash']['success'] = "Description for CAS {$cas} updated"
+            . ($updated > 0 ? " and applied to {$updated} constituent row(s)." : '.')
+            . ' It will appear on SDSs the next time they are generated.';
+        redirect('/determinations?tab=descriptions');
     }
 
     public function createDetermination(): void

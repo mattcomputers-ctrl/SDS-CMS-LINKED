@@ -142,10 +142,43 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                        value="<?= e(old('water_wt', $item['water_wt'] ?? '')) ?>">
             </div>
             <div class="form-group">
-                <label for="specific_gravity">Specific Gravity</label>
+                <label for="specific_gravity">Specific Gravity / Relative Density</label>
                 <input type="number" id="specific_gravity" name="specific_gravity" step="0.00001"
                        value="<?= e(old('specific_gravity', $item['specific_gravity'] ?? '')) ?>">
+                <small class="text-muted">Entering either field calculates the other (water = 8.3454 lb/gal).</small>
             </div>
+            <div class="form-group">
+                <label for="density">Pounds per Gallon (lb/gal)</label>
+                <?php
+                    // Stored density may be in g/mL on older rows — display in lb/gal.
+                    $densityDisplay = '';
+                    $dv = $item['density'] ?? null;
+                    $du = $item['density_units'] ?? 'g/mL';
+                    if ($dv !== null && $dv !== '') {
+                        $densityDisplay = $du === 'lb/gal' ? (float) $dv : round((float) $dv * 8.345404, 4);
+                    } elseif (!empty($item['specific_gravity'])) {
+                        $densityDisplay = round((float) $item['specific_gravity'] * 8.345404, 4);
+                    }
+                ?>
+                <input type="number" id="density" name="density" step="0.0001"
+                       value="<?= e(old('density', $densityDisplay)) ?>">
+                <input type="hidden" name="density_units" value="lb/gal">
+            </div>
+            <script>
+            (function() {
+                var sg  = document.getElementById('specific_gravity');
+                var ppg = document.getElementById('density');
+                var WATER = 8.345404; // lb/gal at 25°C
+                sg.addEventListener('input', function() {
+                    var v = parseFloat(sg.value);
+                    ppg.value = isNaN(v) ? '' : (v * WATER).toFixed(4);
+                });
+                ppg.addEventListener('input', function() {
+                    var v = parseFloat(ppg.value);
+                    sg.value = isNaN(v) ? '' : (v / WATER).toFixed(5);
+                });
+            })();
+            </script>
             <div class="form-group">
                 <label for="solids_wt">Solids wt%</label>
                 <input type="number" id="solids_wt" name="solids_wt" step="0.0001"

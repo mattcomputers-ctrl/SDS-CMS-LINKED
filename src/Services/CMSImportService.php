@@ -1631,4 +1631,72 @@ class CMSImportService
         $rows = $this->db->fetchAll("SELECT internal_code FROM raw_materials");
         return array_column($rows, 'internal_code');
     }
+
+    /**
+     * Raw materials with stock on hand in CMS that are missing
+     * constituent data and/or a vendor SDS upload (so they can't be
+     * listed in the RM SDS Book). Sorted by quantity on hand, descending.
+     */
+    public function getInventoryGaps(): array
+    {
+        // On-hand quantity per item, summed across all sublots/locations
+        $onHand = $this->cms->fetchAll(
+            "SELECT i.ItemCode, i.Unit, SUM(inv.Qty) AS qty_on_hand
+             FROM CMS.dbo.Inventory inv
+             JOIN CMS.dbo.Item i ON i.Item = inv.Item
+             WHERE i.ItemCode IS NOT NULL
+             GROUP BY i.ItemCode, i.Unit
+             HAVING SUM(inv.Qty) > 0"
+        );
+
+        $onHandMap = [];
+        foreach ($onHand as $r) {
+            $code = trim((string) $r['ItemCode']);
+            if ($code !== '') {
+                $onHandMap[$code] = $r;
+            }
+        }
+        if (empty($onHandMap)) {
+            return [];
+        }
+
+        $rms = $this->db->fetchAll(
+            "SELECT rm.id, rm.internal_code, rm.supplier, rm.supplier_product_name, rm.hazardous_no_cas,
+                    (SELECT COUNT(*) FROM raw_material_constituents rmc WHERE rmc.raw_material_id = rm.id) AS constituent_count,
+                    (SELECT COUNT(*) FROM raw_material_sds rs WHERE rs.raw_material_id = rm.id) AS sds_count
+             FROM raw_materials rm"
+        );
+
+        $gaps = [];
+        foreach ($rms as $rm) {
+            $code = $rm['internal_code'];
+            if (!isset($onHandMap[$code])) {
+                continue;
+            }
+
+            // Trade-secret RMs (hazardous_no_cas) legitimately have no
+            // constituent rows — only flag them for a missing SDS upload.
+            $missingData = ((int) $rm['constituent_count'] === 0) && ((int) ($rm['hazardous_no_cas'] ?? 0) === 0);
+            $missingSds  = ((int) $rm['sds_count'] === 0);
+
+            if (!$missingData && !$missingSds) {
+                continue;
+            }
+
+            $gaps[] = [
+                'id'                    => (int) $rm['id'],
+                'internal_code'         => $code,
+                'supplier'              => $rm['supplier'],
+                'supplier_product_name' => $rm['supplier_product_name'],
+                'qty_on_hand'           => (float) $onHandMap[$code]['qty_on_hand'],
+                'unit'                  => $onHandMap[$code]['Unit'] ?? '',
+                'missing_data'          => $missingData,
+                'missing_sds'           => $missingSds,
+            ];
+        }
+
+        usort($gaps, fn($a, $b) => $b['qty_on_hand'] <=> $a['qty_on_hand']);
+
+        return $gaps;
+    }
 }

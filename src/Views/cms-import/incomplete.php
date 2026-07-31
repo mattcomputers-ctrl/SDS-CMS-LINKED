@@ -20,6 +20,12 @@
             <span style="background: #f59e0b; color: #fff; border-radius: 10px; padding: 1px 7px; font-size: 0.8rem; margin-left: 4px;"><?= count($tradeSecret) ?></span>
         <?php endif; ?>
     </button>
+    <button class="tab-btn" data-tab="inventory" style="padding: 0.5rem 1.2rem; border: 2px solid #003366; border-bottom: none; background: #e9ecef; color: #003366; cursor: pointer; border-radius: 4px 4px 0 0; font-weight: bold; margin-left: 2px;">
+        In Inventory
+        <?php if (!empty($inventoryGaps)): ?>
+            <span style="background: #0d6efd; color: #fff; border-radius: 10px; padding: 1px 7px; font-size: 0.8rem; margin-left: 4px;"><?= count($inventoryGaps) ?></span>
+        <?php endif; ?>
+    </button>
 </div>
 
 <!-- Tab: Needs Details (existing) -->
@@ -168,6 +174,60 @@
                     <td><?= e($rm['cms_item_code'] ?? '') ?: '<span class="text-muted">—</span>' ?></td>
                     <td>
                         <a href="/raw-materials/<?= (int) $rm['id'] ?>/edit" class="btn btn-sm btn-primary">Edit RM</a>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    <?php endif; ?>
+</div>
+
+<!-- Tab: In Inventory -->
+<div class="tab-panel" id="tab-inventory" style="display: none;">
+    <?php if (!empty($inventoryError)): ?>
+        <div class="alert alert-warning"><?= e($inventoryError) ?></div>
+    <?php elseif (empty($inventoryGaps)): ?>
+        <div class="alert alert-success">
+            Every raw material with stock on hand in CMS has constituent data and a vendor SDS uploaded.
+        </div>
+    <?php else: ?>
+        <p class="text-muted">
+            Raw materials with stock on hand in CMS that are missing constituent data
+            and/or a vendor SDS upload (required to appear in the RM SDS Book).
+            Sorted by quantity on hand — the biggest piles first.
+        </p>
+
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Internal Code</th>
+                    <th>Supplier</th>
+                    <th>Product Name</th>
+                    <th>On Hand</th>
+                    <th>Missing</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($inventoryGaps as $rm): ?>
+                <tr>
+                    <td><strong><?= e($rm['internal_code']) ?></strong></td>
+                    <td><?= e($rm['supplier'] ?? '') ?: '<span class="text-muted">—</span>' ?></td>
+                    <td><?= e($rm['supplier_product_name'] ?? '') ?: '<span class="text-muted">—</span>' ?></td>
+                    <td><strong><?= number_format($rm['qty_on_hand'], 1) ?></strong> <?= e($rm['unit']) ?></td>
+                    <td>
+                        <?php if ($rm['missing_data']): ?>
+                            <span class="badge badge-danger" title="No constituents entered">Data</span>
+                        <?php endif; ?>
+                        <?php if ($rm['missing_sds']): ?>
+                            <span class="badge badge-warning" title="No vendor SDS PDF uploaded — cannot appear in RM SDS Book">Vendor SDS</span>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <a href="/raw-materials/<?= (int) $rm['id'] ?>/edit" class="btn btn-sm btn-primary">Edit RM</a>
+                        <?php if ($rm['missing_data']): ?>
+                            <a href="/raw-materials/<?= (int) $rm['id'] ?>/constituents" class="btn btn-sm btn-outline">Constituents</a>
+                        <?php endif; ?>
                     </td>
                 </tr>
             <?php endforeach; ?>

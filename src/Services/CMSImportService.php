@@ -1663,7 +1663,12 @@ class CMSImportService
         $rms = $this->db->fetchAll(
             "SELECT rm.id, rm.internal_code, rm.supplier, rm.supplier_product_name, rm.hazardous_no_cas,
                     (SELECT COUNT(*) FROM raw_material_constituents rmc WHERE rmc.raw_material_id = rm.id) AS constituent_count,
-                    (SELECT COUNT(*) FROM raw_material_sds rs WHERE rs.raw_material_id = rm.id) AS sds_count
+                    (SELECT COUNT(*) FROM raw_material_sds rs WHERE rs.raw_material_id = rm.id) AS sds_count,
+                    EXISTS(SELECT 1 FROM audit_log a
+                           WHERE a.entity_type = 'raw_material' AND a.entity_id = rm.id
+                             AND a.user_id IS NOT NULL) AS user_reviewed,
+                    EXISTS(SELECT 1 FROM finished_goods fg
+                           WHERE fg.product_code = SUBSTRING_INDEX(rm.internal_code, '-', 1)) AS is_fg_variant
              FROM raw_materials rm"
         );
 
@@ -1674,9 +1679,18 @@ class CMSImportService
                 continue;
             }
 
-            // Trade-secret RMs (hazardous_no_cas) legitimately have no
-            // constituent rows — only flag them for a missing SDS upload.
-            $missingData = ((int) $rm['constituent_count'] === 0) && ((int) ($rm['hazardous_no_cas'] ?? 0) === 0);
+            // Packaged finished-good variants that CMS imported as RMs are
+            // not vendor raw materials — never list them here.
+            if ((int) ($rm['is_fg_variant'] ?? 0) === 1) {
+                continue;
+            }
+
+            // Same completeness rule as the Needs Details tab: an RM with no
+            // constituents is fine when it's trade-secret (hazardous_no_cas)
+            // or a user reviewed and saved it (legitimately non-hazardous).
+            $missingData = ((int) $rm['constituent_count'] === 0)
+                && ((int) ($rm['hazardous_no_cas'] ?? 0) === 0)
+                && ((int) ($rm['user_reviewed'] ?? 0) === 0);
             $missingSds  = ((int) $rm['sds_count'] === 0);
 
             if (!$missingData && !$missingSds) {

@@ -286,13 +286,16 @@ class Formula
         $rows = $db->fetchAll(
             "SELECT fl.raw_material_id, fl.pct AS line_pct,
                     rm.internal_code,
-                    rmc.cas_number, rmc.chemical_name,
+                    rmc.cas_number,
+                    COALESCE(NULLIF(p65.chemical_name, ''), NULLIF(cm.preferred_name, ''), rmc.chemical_name) AS chemical_name,
                     rmc.pct_exact, rmc.pct_min, rmc.pct_max,
                     rmc.is_trade_secret, rmc.is_non_hazardous,
                     rmc.trade_secret_description, rmc.trade_secret_h_codes
              FROM formula_lines fl
              JOIN raw_materials rm ON rm.id = fl.raw_material_id
              JOIN raw_material_constituents rmc ON rmc.raw_material_id = fl.raw_material_id
+             LEFT JOIN prop65_list p65 ON p65.cas_number = rmc.cas_number
+             LEFT JOIN cas_master cm ON cm.cas_number = rmc.cas_number
              WHERE fl.formula_id = ?
                AND fl.raw_material_id IS NOT NULL
                AND (rm.hazardous_no_cas IS NULL OR rm.hazardous_no_cas = 0)

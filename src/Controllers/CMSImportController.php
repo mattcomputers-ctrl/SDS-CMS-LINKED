@@ -229,11 +229,24 @@ class CMSImportController
             $tradeSecret = [];
         }
 
+        // Inventory gaps need the live CMS connection — degrade gracefully
+        // when it's unreachable rather than blanking the whole page.
+        $inventoryGaps = [];
+        $inventoryError = null;
+        try {
+            $service = $service ?? new CMSImportService();
+            $inventoryGaps = $service->getInventoryGaps();
+        } catch (\Throwable $e) {
+            $inventoryError = 'Could not load CMS inventory: ' . $e->getMessage();
+        }
+
         view('cms-import/incomplete', [
-            'pageTitle'   => 'Incomplete Raw Materials',
-            'incomplete'  => $incomplete,
-            'unblockers'  => $unblockers,
-            'tradeSecret' => $tradeSecret,
+            'pageTitle'      => 'Incomplete Raw Materials',
+            'incomplete'     => $incomplete,
+            'unblockers'     => $unblockers,
+            'tradeSecret'    => $tradeSecret,
+            'inventoryGaps'  => $inventoryGaps,
+            'inventoryError' => $inventoryError,
         ]);
     }
 }

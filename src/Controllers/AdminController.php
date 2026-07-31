@@ -1452,10 +1452,18 @@ class AdminController
             [$desc, $cas]
         )->rowCount();
 
+        // Bump downstream SDSs so the new description gets republished.
+        $bumped = \SDS\Services\RegulatoryListBumper::bumpByCas($cas);
+        $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByCas(
+            [$cas],
+            current_user_id(),
+            "CAS description updated for {$cas} ({$desc})"
+        );
+
         AuditService::log('cas_description', $cas, 'update', ['description' => $desc]);
         $_SESSION['_flash']['success'] = "Description for CAS {$cas} updated"
             . ($updated > 0 ? " and applied to {$updated} constituent row(s)." : '.')
-            . ' It will appear on SDSs the next time they are generated.';
+            . self::bumpedTail($bumped) . self::queuedTail($queued);
         redirect('/determinations?tab=descriptions');
     }
 

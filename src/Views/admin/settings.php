@@ -305,13 +305,14 @@
             <div class="form-group"><label>Auto-Trace Threshold (%)</label><input type="number" name="prop65__auto_trace_threshold_pct" min="0" step="0.01" value="<?= e($settings['prop65.auto_trace_threshold_pct'] ?? '0.1') ?>"><small class="text-muted">Default 0.1 % — matches the OSHA HazCom Section 3 disclosure threshold for CMR chemicals.</small></div>
         </div>
 
-        <h2>Airborne/Unbound Particles P65 Override</h2>
+        <h2>Airborne/Unbound Particles Override (Inhalation-Only Hazards)</h2>
         <p class="text-muted mb-1">
-            CAS numbers listed here are treated as inhalation-only hazards. Their Prop 65 warnings,
-            carcinogen classifications (H351), and Section 11 findings are <strong>suppressed</strong>
-            when the finished product contains any non-solid/non-powder ingredient (liquid, paste, gel, etc.),
-            because the particulate is no longer airborne. Enter one CAS number per line.
-            Chemical names are resolved automatically from the Prop 65 list.
+            CAS numbers listed here are treated as inhalation-only hazards. When the finished product
+            contains any non-solid/non-powder ingredient (liquid, paste, gel, etc.), the particulate is
+            bound and no longer airborne, so the following are <strong>suppressed</strong> for these CAS:
+            Prop 65 warnings (on SDSs, labels, and the Prop 65 report), carcinogen classifications (H351),
+            Section 8 exposure limits, and Section 11 findings. All-powder products keep everything.
+            Enter one CAS number per line. Chemical names are resolved automatically from the Prop 65 list.
         </p>
         <div class="form-group">
             <textarea name="sds__inhalation_only_cas" id="inhalationOnlyCas" rows="6" style="font-family: monospace; font-size: 0.9rem;"

@@ -257,9 +257,28 @@ class ReportController
                     $fg = FinishedGood::findByProductCode($productCode);
                     if ($fg !== null) {
                         $calc = $calcService->calculate((int) $fg['id']);
+
+                        // Airborne/unbound particles override — same rule as
+                        // SDS generation: inhalation-only CAS (settings) are
+                        // suppressed when the product contains any non-powder,
+                        // non-solid ingredient, because the particulate is
+                        // bound and no longer airborne.
+                        $inhalationOnly = \SDS\Services\SDSGenerator::getInhalationOnlyCas();
+                        $hasNonPowder = false;
+                        foreach (($calc['formula_props']['enriched_lines'] ?? []) as $line) {
+                            $state = strtolower((string) ($line['physical_state'] ?? ''));
+                            if ($state !== 'powder' && $state !== 'solid') {
+                                $hasNonPowder = true;
+                                break;
+                            }
+                        }
+
                         $triggers = [];
                         foreach ($calc['composition'] as $c) {
                             $cas = $c['cas_number'] ?? '';
+                            if ($cas !== '' && $hasNonPowder && isset($inhalationOnly[$cas])) {
+                                continue;
+                            }
                             if ($cas !== '' && isset($p65Map[$cas])) {
                                 $triggers[] = [
                                     'cas'      => $cas,

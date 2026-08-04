@@ -1586,7 +1586,7 @@ class SDSGenerator
      */
     private static ?array $inhalationOnlyCas = null;
 
-    private static function getInhalationOnlyCas(): array
+    public static function getInhalationOnlyCas(): array
     {
         if (self::$inhalationOnlyCas !== null) {
             return self::$inhalationOnlyCas;

@@ -135,8 +135,8 @@ class ReportPDFService
             // Main table — one row per shipped item per triggering chemical
             $this->sectionHeading($pdf, 'Items Shipped Carrying a Prop 65 Warning');
 
-            $w = [22, 28, 58, 18, 52, 24, 28, 19]; // = 249 usable landscape width
-            $headers = ['Date Shipped', 'Item', 'Description', 'Qty (lbs)', 'Prop 65 Chemical', 'CAS Number', 'Toxicity', 'Conc.'];
+            $w = [32, 70, 22, 56, 24, 26, 19]; // = 249 usable landscape width
+            $headers = ['Item', 'Description', 'Total Qty (lbs)', 'Prop 65 Chemical', 'CAS Number', 'Toxicity', 'Conc.'];
 
             $renderHeader = function () use ($pdf, $w, $headers): void {
                 $pdf->SetFont('helvetica', 'B', 7);
@@ -160,14 +160,13 @@ class ReportPDFService
                     $pdf->AddPage();
                     $renderHeader();
                 }
-                $pdf->Cell($w[0], 5, $r['date_shipped'], 1, 0, 'C', $fill);
-                $pdf->Cell($w[1], 5, $this->truncate($r['item_code'], 18), 1, 0, 'L', $fill);
-                $pdf->Cell($w[2], 5, $this->truncate($r['description'], 40), 1, 0, 'L', $fill);
-                $pdf->Cell($w[3], 5, number_format($r['qty_shipped'], 1), 1, 0, 'R', $fill);
-                $pdf->Cell($w[4], 5, $this->truncate($r['chem_name'], 36), 1, 0, 'L', $fill);
-                $pdf->Cell($w[5], 5, $r['cas'], 1, 0, 'C', $fill);
-                $pdf->Cell($w[6], 5, $this->truncate($r['toxicity'], 19), 1, 0, 'L', $fill);
-                $pdf->Cell($w[7], 5, $r['pct_display'], 1, 0, 'R', $fill);
+                $pdf->Cell($w[0], 5, $this->truncate($r['item_code'], 21), 1, 0, 'L', $fill);
+                $pdf->Cell($w[1], 5, $this->truncate($r['description'], 48), 1, 0, 'L', $fill);
+                $pdf->Cell($w[2], 5, number_format($r['qty_shipped'], 1), 1, 0, 'R', $fill);
+                $pdf->Cell($w[3], 5, $this->truncate($r['chem_name'], 38), 1, 0, 'L', $fill);
+                $pdf->Cell($w[4], 5, $r['cas'], 1, 0, 'C', $fill);
+                $pdf->Cell($w[5], 5, $this->truncate($r['toxicity'], 17), 1, 0, 'L', $fill);
+                $pdf->Cell($w[6], 5, $r['pct_display'], 1, 0, 'R', $fill);
                 $pdf->Ln();
                 $rowIdx++;
             }

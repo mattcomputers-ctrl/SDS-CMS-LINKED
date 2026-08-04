@@ -153,6 +153,44 @@ class ReportController
     public function prop65(): void
     {
         CSRF::validateRequest();
+
+        $data = $this->buildProp65Data();
+        if ($data === null) {
+            return;
+        }
+
+        $this->outputProp65Csv($data);
+    }
+
+    /**
+     * POST /reports/prop65-pdf — printable PDF version of the Prop 65 report.
+     */
+    public function prop65Pdf(): void
+    {
+        CSRF::validateRequest();
+
+        $data = $this->buildProp65Data();
+        if ($data === null) {
+            return;
+        }
+
+        $db  = Database::getInstance();
+        $row = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'sds.report_disclaimer'");
+
+        $pdfService = new ReportPDFService();
+        $pdfContent = $pdfService->generateProp65($data, $row['value'] ?? '');
+
+        $filename = 'Prop65_Report_' . preg_replace('/[^a-zA-Z0-9]/', '_', $data['customer_value']) . '_' . date('Ymd') . '.pdf';
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Content-Length: ' . strlen($pdfContent));
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+        echo $pdfContent;
+        exit;
+    }
+
+    private function buildProp65Data(): ?array
+    {
         $db = Database::getInstance();
 
         $customerField = $_POST['customer_field'] ?? 'ship_to_name';
@@ -276,8 +314,25 @@ class ReportController
             }
             return rtrim(rtrim(number_format($pct, 4, '.', ''), '0'), '.') . '%';
         };
+        foreach ($reportRows as &$r) {
+            $r['pct_display'] = $fmtPct($r['pct']);
+        }
+        unset($r);
+        uasort($chemSummary, fn($a, $b) => count($b['items']) <=> count($a['items']));
 
-        $filename = 'Prop65_Report_' . preg_replace('/[^a-zA-Z0-9]/', '_', $customerValue) . '_' . date('Ymd') . '.csv';
+        return [
+            'customer_value' => $customerValue,
+            'date_from'      => $dateFrom,
+            'date_to'        => $dateTo,
+            'rows'           => $reportRows,
+            'chem_summary'   => $chemSummary,
+            'unevaluated'    => $unevaluated,
+        ];
+    }
+
+    private function outputProp65Csv(array $data): void
+    {
+        $filename = 'Prop65_Report_' . preg_replace('/[^a-zA-Z0-9]/', '_', $data['customer_value']) . '_' . date('Ymd') . '.csv';
         header('Content-Type: text/csv; charset=UTF-8');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
         header('Cache-Control: no-cache, no-store, must-revalidate');
@@ -285,19 +340,19 @@ class ReportController
         $output = fopen('php://output', 'w');
 
         fputcsv($output, ['California Prop 65 Shipping Report']);
-        fputcsv($output, ['Customer:', $customerValue]);
-        fputcsv($output, ['Date Range:', $dateFrom . ' to ' . $dateTo]);
+        fputcsv($output, ['Customer:', $data['customer_value']]);
+        fputcsv($output, ['Date Range:', $data['date_from'] . ' to ' . $data['date_to']]);
         fputcsv($output, ['Generated:', date('m/d/Y H:i')]);
         fputcsv($output, []);
 
-        if (empty($reportRows)) {
+        if (empty($data['rows'])) {
             fputcsv($output, ['No shipped items carry a Prop 65 warning for this period.']);
         } else {
             fputcsv($output, [
                 'Date Shipped', 'Item', 'Description', 'Qty Shipped (lbs)',
                 'Prop 65 Chemical', 'CAS Number', 'Toxicity', 'Concentration',
             ]);
-            foreach ($reportRows as $r) {
+            foreach ($data['rows'] as $r) {
                 fputcsv($output, [
                     $r['date_shipped'],
                     $r['item_code'],
@@ -306,7 +361,7 @@ class ReportController
                     $r['chem_name'],
                     $r['cas'],
                     $r['toxicity'],
-                    $fmtPct($r['pct']),
+                    $r['pct_display'],
                 ]);
             }
 
@@ -314,16 +369,15 @@ class ReportController
             fputcsv($output, []);
             fputcsv($output, ['Prop 65 Chemical Summary']);
             fputcsv($output, ['Chemical', 'CAS Number', 'Toxicity', 'Distinct Items Shipped']);
-            uasort($chemSummary, fn($a, $b) => count($b['items']) <=> count($a['items']));
-            foreach ($chemSummary as $cas => $s) {
+            foreach ($data['chem_summary'] as $cas => $s) {
                 fputcsv($output, [$s['name'], $cas, $s['toxicity'], count($s['items'])]);
             }
         }
 
-        if (!empty($unevaluated)) {
+        if (!empty($data['unevaluated'])) {
             fputcsv($output, []);
             fputcsv($output, ['Items that could not be evaluated (no product/formula data):']);
-            foreach ($unevaluated as $code => $desc) {
+            foreach ($data['unevaluated'] as $code => $desc) {
                 fputcsv($output, [$code, $desc]);
             }
         }

@@ -70,6 +70,150 @@ class ReportPDFService
         return $pdf->Output('', 'S');
     }
 
+    /**
+     * Generate the Prop 65 shipping report PDF and return raw bytes.
+     *
+     * @param array  $data  Output from ReportController::buildProp65Data()
+     * @param string $disclaimer
+     */
+    public function generateProp65(array $data, string $disclaimer = ''): string
+    {
+        $this->disclaimer = $disclaimer;
+
+        $pdf = new \TCPDF('L', 'mm', 'LETTER', true, 'UTF-8');
+        $pdf->SetCreator('SDS System');
+        $pdf->SetAuthor(App::config('company.name', 'SDS System'));
+        $pdf->SetTitle('California Prop 65 Shipping Report');
+        $pdf->SetSubject('Prop 65 Report — ' . $data['customer_value']);
+        $pdf->setPrintHeader(false);
+        $pdf->setPrintFooter(true);
+        $pdf->setFooterFont(['helvetica', '', 8]);
+        $pdf->SetMargins(self::MARGIN_LEFT, self::MARGIN_TOP, self::MARGIN_RIGHT);
+        $pdf->SetAutoPageBreak(true, self::MARGIN_BOTTOM);
+        $pdf->setFooterData(self::COLOR_NAVY, [150, 150, 150]);
+        $pdf->AddPage();
+
+        // Title block (same layout as the regulatory report)
+        $logoPath = $this->resolveLogoPath();
+        if ($logoPath !== '') {
+            $imgType = strtolower(pathinfo($logoPath, PATHINFO_EXTENSION));
+            if ($imgType === 'svg') {
+                $pdf->ImageSVG($logoPath, self::MARGIN_LEFT, $pdf->GetY(), 45, 0);
+            } else {
+                $pdf->Image($logoPath, self::MARGIN_LEFT, $pdf->GetY(), 45);
+            }
+            $pdf->Ln(16);
+        }
+
+        $pdf->SetFont('helvetica', 'B', 16);
+        $pdf->SetFillColor(...self::COLOR_NAVY);
+        $pdf->SetTextColor(255, 255, 255);
+        $pdf->Cell(0, 10, 'California Prop 65 Shipping Report', 0, 1, 'C', true);
+        $pdf->SetTextColor(0, 0, 0);
+        $pdf->Ln(4);
+
+        $labelW = 35;
+        $pdf->SetFont('helvetica', 'B', 10);
+        $pdf->Cell($labelW, 6, 'Customer:', 0, 0);
+        $pdf->SetFont('helvetica', '', 10);
+        $pdf->Cell(0, 6, $data['customer_value'], 0, 1);
+        $pdf->SetFont('helvetica', 'B', 10);
+        $pdf->Cell($labelW, 6, 'Date Range:', 0, 0);
+        $pdf->SetFont('helvetica', '', 10);
+        $pdf->Cell(0, 6, $data['date_from'] . '  to  ' . $data['date_to'], 0, 1);
+        $pdf->Ln(4);
+
+        $pdf->SetDrawColor(...self::COLOR_NAVY);
+        $pdf->SetLineWidth(0.4);
+        $pdf->Line(self::MARGIN_LEFT, $pdf->GetY(), $pdf->getPageWidth() - self::MARGIN_RIGHT, $pdf->GetY());
+        $pdf->Ln(4);
+
+        if (empty($data['rows'])) {
+            $pdf->SetFont('helvetica', '', 10);
+            $pdf->Cell(0, 8, 'No shipped items carry a Prop 65 warning for this period.', 0, 1);
+        } else {
+            // Main table — one row per shipped item per triggering chemical
+            $this->sectionHeading($pdf, 'Items Shipped Carrying a Prop 65 Warning');
+
+            $w = [22, 28, 58, 18, 52, 24, 28, 19]; // = 249 usable landscape width
+            $headers = ['Date Shipped', 'Item', 'Description', 'Qty (lbs)', 'Prop 65 Chemical', 'CAS Number', 'Toxicity', 'Conc.'];
+
+            $renderHeader = function () use ($pdf, $w, $headers): void {
+                $pdf->SetFont('helvetica', 'B', 7);
+                $pdf->SetFillColor(...self::COLOR_LIGHT_GREY);
+                $pdf->SetDrawColor(180, 180, 180);
+                foreach ($headers as $i => $h) {
+                    $pdf->Cell($w[$i], 6, $h, 1, 0, 'C', true);
+                }
+                $pdf->Ln();
+                $pdf->SetFont('helvetica', '', 7);
+            };
+            $renderHeader();
+
+            $rowIdx = 0;
+            foreach ($data['rows'] as $r) {
+                $fill = ($rowIdx % 2 === 1);
+                if ($fill) {
+                    $pdf->SetFillColor(...self::COLOR_ZEBRA);
+                }
+                if ($pdf->GetY() + 5 > $pdf->getPageHeight() - self::MARGIN_BOTTOM) {
+                    $pdf->AddPage();
+                    $renderHeader();
+                }
+                $pdf->Cell($w[0], 5, $r['date_shipped'], 1, 0, 'C', $fill);
+                $pdf->Cell($w[1], 5, $this->truncate($r['item_code'], 18), 1, 0, 'L', $fill);
+                $pdf->Cell($w[2], 5, $this->truncate($r['description'], 40), 1, 0, 'L', $fill);
+                $pdf->Cell($w[3], 5, number_format($r['qty_shipped'], 1), 1, 0, 'R', $fill);
+                $pdf->Cell($w[4], 5, $this->truncate($r['chem_name'], 36), 1, 0, 'L', $fill);
+                $pdf->Cell($w[5], 5, $r['cas'], 1, 0, 'C', $fill);
+                $pdf->Cell($w[6], 5, $this->truncate($r['toxicity'], 19), 1, 0, 'L', $fill);
+                $pdf->Cell($w[7], 5, $r['pct_display'], 1, 0, 'R', $fill);
+                $pdf->Ln();
+                $rowIdx++;
+            }
+            $pdf->Ln(6);
+
+            // Chemical summary
+            $this->sectionHeading($pdf, 'Prop 65 Chemical Summary');
+            $sw = [90, 40, 60, 59];
+            $pdf->SetFont('helvetica', 'B', 7);
+            $pdf->SetFillColor(...self::COLOR_LIGHT_GREY);
+            foreach (['Chemical', 'CAS Number', 'Toxicity', 'Distinct Items Shipped'] as $i => $h) {
+                $pdf->Cell($sw[$i], 6, $h, 1, 0, 'C', true);
+            }
+            $pdf->Ln();
+            $pdf->SetFont('helvetica', '', 7);
+            $rowIdx = 0;
+            foreach ($data['chem_summary'] as $cas => $s) {
+                $fill = ($rowIdx % 2 === 1);
+                if ($fill) {
+                    $pdf->SetFillColor(...self::COLOR_ZEBRA);
+                }
+                $pdf->Cell($sw[0], 5, $this->truncate($s['name'], 62), 1, 0, 'L', $fill);
+                $pdf->Cell($sw[1], 5, $cas, 1, 0, 'C', $fill);
+                $pdf->Cell($sw[2], 5, $this->truncate($s['toxicity'], 42), 1, 0, 'L', $fill);
+                $pdf->Cell($sw[3], 5, (string) count($s['items']), 1, 0, 'C', $fill);
+                $pdf->Ln();
+                $rowIdx++;
+            }
+            $pdf->Ln(6);
+        }
+
+        if (!empty($data['unevaluated'])) {
+            $this->sectionHeading($pdf, 'Items That Could Not Be Evaluated');
+            $pdf->SetFont('helvetica', '', 8);
+            foreach ($data['unevaluated'] as $code => $desc) {
+                $pdf->Cell(0, 5, $code . ($desc !== '' ? ' — ' . $desc : '') . ' (no product/formula data)', 0, 1);
+            }
+            $pdf->Ln(4);
+        }
+
+        $this->renderFooterNote($pdf);
+        $this->renderGeneratedTimestamp($pdf);
+
+        return $pdf->Output('', 'S');
+    }
+
     /* ------------------------------------------------------------------
      *  Title Block
      * ----------------------------------------------------------------*/

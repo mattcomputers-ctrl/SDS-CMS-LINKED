@@ -66,6 +66,8 @@
         <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap; align-items: center;">
             <button type="submit" class="btn btn-primary" formaction="/reports/generate" formmethod="POST">Download CSV</button>
             <button type="submit" class="btn btn-primary" formaction="/reports/generate-pdf" formmethod="POST">Download PDF</button>
+            <button type="submit" class="btn btn-outline" formaction="/reports/prop65" formmethod="POST"
+                    title="Items shipped in the date range that carry a Prop 65 warning, with the triggering chemicals and concentrations">Prop 65 Report (CSV)</button>
             <div style="position: relative; display: inline-block;">
                 <button type="button" class="btn btn-outline" id="exportSdsBtn">Export SDS (ZIP) &#9662;</button>
                 <div id="exportSdsMenu" style="display: none; position: absolute; bottom: 100%; left: 0; margin-bottom: 4px; background: #fff; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 100; min-width: 200px;">

@@ -127,6 +127,19 @@ class BulkPublishQueue
      * @param array $stats  subset of: eligible_fg_count, eligible_resale_count,
      *                      work_items_count, published_count, failed_count
      */
+    /**
+     * Current status of a job: pending, running, completed, failed —
+     * or null when the job id doesn't exist.
+     */
+    public static function getStatus(int $jobId): ?string
+    {
+        $row = Database::getInstance()->fetch(
+            "SELECT status FROM bulk_publish_jobs WHERE id = ?",
+            [$jobId]
+        );
+        return $row['status'] ?? null;
+    }
+
     public static function updateProgress(int $jobId, array $stats): void
     {
         if (empty($stats)) {

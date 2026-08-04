@@ -166,13 +166,19 @@ try {
     // the cron never publishes anything a user wouldn't get if they
     // clicked the button manually. Gated by cms_sync.auto_bulk_publish;
     // the script itself reads the setting and returns silently when off.
+    // Shares this scope: sets $bp_publishIncomplete = true when the
+    // publish could not be confirmed finished (another runner busy past
+    // the wait timeout) so auto-send below is deferred to the next run.
+    $bp_publishIncomplete = false;
     require __DIR__ . '/bulk-publish.php';
 
     // ── SDS customer auto-send ─────────────────────────────────────
     // Runs AFTER the bulk publish so shipments whose SDS was just
     // published in this run can be emailed in the same tick. Requires
     // mail to be configured; without it there's no outbound channel.
-    if (MailService::isConfigured()) {
+    if (!empty($bp_publishIncomplete)) {
+        echo "\n  Bulk publish still running — auto-send deferred to the next run.\n";
+    } elseif (MailService::isConfigured()) {
         echo "\n[" . date('Y-m-d H:i:s') . "] SDS customer auto-send starting...\n";
         $autoSend = new SDSAutoSendService();
         // Pass the session start so auto-send only considers shipments

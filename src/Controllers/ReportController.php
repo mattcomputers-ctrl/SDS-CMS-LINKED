@@ -234,6 +234,9 @@ class ReportController
         $unevaluated   = [];
         $chemSummary   = [];
 
+        // Merge shipment lines by item — one entry per item with the total
+        // quantity shipped in the range.
+        $items = [];
         foreach ($shipments as $row) {
             $itemCode = !empty($row['item_name']) ? $row['item_name'] : $row['item_code'];
 
@@ -244,6 +247,19 @@ class ReportController
             if ($description === '') {
                 $description = $row['item_description'] ?? '';
             }
+
+            if (!isset($items[$itemCode])) {
+                $items[$itemCode] = ['description' => $description, 'qty' => 0.0];
+            }
+            if ($items[$itemCode]['description'] === '' && $description !== '') {
+                $items[$itemCode]['description'] = $description;
+            }
+            $items[$itemCode]['qty'] += (float) $row['qty_shipped'];
+        }
+        ksort($items);
+
+        foreach ($items as $itemCode => $info) {
+            $description = $info['description'];
 
             if (!isset($resolvedCodes[$itemCode])) {
                 $resolvedCodes[$itemCode] = $this->resolveToProductCode($itemCode, $db)
@@ -308,10 +324,9 @@ class ReportController
 
             foreach ($triggers as $t) {
                 $reportRows[] = [
-                    'date_shipped' => $row['date_shipped'],
                     'item_code'    => $itemCode,
                     'description'  => $description,
-                    'qty_shipped'  => (float) $row['qty_shipped'],
+                    'qty_shipped'  => $info['qty'],
                     'chem_name'    => $t['name'],
                     'cas'          => $t['cas'],
                     'toxicity'     => $t['toxicity'],
@@ -368,12 +383,11 @@ class ReportController
             fputcsv($output, ['No shipped items carry a Prop 65 warning for this period.']);
         } else {
             fputcsv($output, [
-                'Date Shipped', 'Item', 'Description', 'Qty Shipped (lbs)',
+                'Item', 'Description', 'Total Qty Shipped (lbs)',
                 'Prop 65 Chemical', 'CAS Number', 'Toxicity', 'Concentration',
             ]);
             foreach ($data['rows'] as $r) {
                 fputcsv($output, [
-                    $r['date_shipped'],
                     $r['item_code'],
                     $r['description'],
                     $r['qty_shipped'],

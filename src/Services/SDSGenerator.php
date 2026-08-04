@@ -1753,6 +1753,14 @@ class SDSGenerator
                     fn($p) => $p !== 'GHS08'
                 ));
             }
+
+            // Exposure limits for inhalation-only CAS are dust/respirable
+            // limits — with the particulate bound in a wet mixture they do
+            // not apply, matching the Prop 65 / carcinogen suppression above.
+            $hazardResult['exposure_limits'] = array_values(array_filter(
+                $hazardResult['exposure_limits'] ?? [],
+                fn($el) => !isset($presentCas[$el['cas_number'] ?? ''])
+            ));
         }
     }
 

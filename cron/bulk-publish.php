@@ -348,6 +348,32 @@ $bp_jobId = BulkPublishQueue::enqueue($bp_triggeredBy, $bp_triggeredByUserId);
 // 2. Try to acquire the runner lock (non-blocking).
 if (!BulkPublishQueue::acquireLock()) {
     echo "[" . date('Y-m-d H:i:s') . "] Another bulk publish runner is active — job #{$bp_jobId} queued; the active runner will pick it up.\n";
+
+    // When running inside cms-sync, auto-send follows right after this
+    // file returns — but it must not run until publishing is done. Wait
+    // for the active runner to finish our queued job (max 30 minutes);
+    // on timeout, flag the parent to skip auto-send this run. Shipments
+    // stay unprocessed (sds_processed_at NULL) so the next run sends them.
+    if ($bp_requiredFromCmsSync) {
+        $bp_waitStart = time();
+        $bp_maxWait   = 1800;
+        while (true) {
+            $bp_status = BulkPublishQueue::getStatus($bp_jobId);
+            if ($bp_status === 'completed' || $bp_status === 'failed' || $bp_status === null) {
+                echo "[" . date('Y-m-d H:i:s') . "] Queued job #{$bp_jobId} finished with status: " . ($bp_status ?? 'gone') . ".\n";
+                break;
+            }
+            if (time() - $bp_waitStart >= $bp_maxWait) {
+                echo "[" . date('Y-m-d H:i:s') . "] Job #{$bp_jobId} still {$bp_status} after 30 minutes — skipping auto-send this run; next run will pick the shipments up.\n";
+                $bp_publishIncomplete = true;
+                break;
+            }
+            if ((time() - $bp_waitStart) % 60 < 10) {
+                echo "[" . date('Y-m-d H:i:s') . "] Waiting for bulk publish job #{$bp_jobId} ({$bp_status})...\n";
+            }
+            sleep(10);
+        }
+    }
     return;
 }
 

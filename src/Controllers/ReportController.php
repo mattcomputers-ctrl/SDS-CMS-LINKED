@@ -142,6 +142,197 @@ class ReportController
     }
 
     /* ------------------------------------------------------------------
+     *  Prop 65 Report (CSV)
+     * ----------------------------------------------------------------*/
+
+    /**
+     * POST /reports/prop65 — items shipped to a customer in a date range
+     * that carry a Prop 65 warning, with the triggering chemical(s) and
+     * their concentration in each item.
+     */
+    public function prop65(): void
+    {
+        CSRF::validateRequest();
+        $db = Database::getInstance();
+
+        $customerField = $_POST['customer_field'] ?? 'ship_to_name';
+        $customerValue = trim($_POST['customer_value'] ?? '');
+        $dateFrom      = trim($_POST['date_from'] ?? '');
+        $dateTo        = trim($_POST['date_to'] ?? '');
+
+        if ($customerValue === '' || $dateFrom === '' || $dateTo === '') {
+            $_SESSION['_flash']['error'] = 'Please select a customer and enter both dates.';
+            redirect('/reports');
+        }
+
+        $allowedFields = ['bill_to', 'ship_to', 'ship_to_name'];
+        if (!in_array($customerField, $allowedFields, true)) {
+            $customerField = 'ship_to_name';
+        }
+
+        $shipments = $db->fetchAll(
+            "SELECT * FROM shipment_detail
+             WHERE `{$customerField}` = ?
+               AND date_shipped >= ? AND date_shipped <= ?
+             ORDER BY date_shipped",
+            [$customerValue, $dateFrom, $dateTo . ' 23:59:59']
+        );
+
+        if (empty($shipments)) {
+            $_SESSION['_flash']['error'] = 'No records match the selected customer and date range.';
+            redirect('/reports');
+        }
+
+        // Prop 65 membership: CAS → listing name + toxicity types
+        $p65Map = [];
+        foreach ($db->fetchAll("SELECT cas_number, chemical_name, toxicity_type FROM prop65_list") as $r) {
+            $p65Map[$r['cas_number']] = $r;
+        }
+
+        $calcService   = new FormulaCalcService();
+        $resolvedCodes = [];
+        $triggerCache  = [];   // product code → list of triggering chemicals (or null = could not evaluate)
+        $reportRows    = [];
+        $unevaluated   = [];
+        $chemSummary   = [];
+
+        foreach ($shipments as $row) {
+            $itemCode = !empty($row['item_name']) ? $row['item_name'] : $row['item_code'];
+
+            $description = '';
+            if (!empty($row['item_name']) && $row['item_name'] !== $row['item_code']) {
+                $description = $row['item_name_description'] ?? '';
+            }
+            if ($description === '') {
+                $description = $row['item_description'] ?? '';
+            }
+
+            if (!isset($resolvedCodes[$itemCode])) {
+                $resolvedCodes[$itemCode] = $this->resolveToProductCode($itemCode, $db)
+                    ?? $this->stripPackExtension($itemCode);
+            }
+            $productCode = $resolvedCodes[$itemCode];
+
+            if (!array_key_exists($productCode, $triggerCache)) {
+                $triggerCache[$productCode] = null;
+                try {
+                    $fg = FinishedGood::findByProductCode($productCode);
+                    if ($fg !== null) {
+                        $calc = $calcService->calculate((int) $fg['id']);
+                        $triggers = [];
+                        foreach ($calc['composition'] as $c) {
+                            $cas = $c['cas_number'] ?? '';
+                            if ($cas !== '' && isset($p65Map[$cas])) {
+                                $triggers[] = [
+                                    'cas'      => $cas,
+                                    'name'     => $p65Map[$cas]['chemical_name'],
+                                    'toxicity' => $p65Map[$cas]['toxicity_type'] ?? '',
+                                    'pct'      => (float) ($c['concentration_pct'] ?? 0.0),
+                                ];
+                            }
+                        }
+                        usort($triggers, fn($a, $b) => $b['pct'] <=> $a['pct']);
+                        $triggerCache[$productCode] = $triggers;
+                    }
+                } catch (\Throwable $e) {
+                    // leave null — reported as "could not evaluate"
+                }
+            }
+
+            $triggers = $triggerCache[$productCode];
+
+            if ($triggers === null) {
+                $unevaluated[$itemCode] = $description;
+                continue;
+            }
+            if (empty($triggers)) {
+                continue; // no Prop 65 warning for this item
+            }
+
+            foreach ($triggers as $t) {
+                $reportRows[] = [
+                    'date_shipped' => $row['date_shipped'],
+                    'item_code'    => $itemCode,
+                    'description'  => $description,
+                    'qty_shipped'  => (float) $row['qty_shipped'],
+                    'chem_name'    => $t['name'],
+                    'cas'          => $t['cas'],
+                    'toxicity'     => $t['toxicity'],
+                    'pct'          => $t['pct'],
+                ];
+                if (!isset($chemSummary[$t['cas']])) {
+                    $chemSummary[$t['cas']] = ['name' => $t['name'], 'toxicity' => $t['toxicity'], 'items' => []];
+                }
+                $chemSummary[$t['cas']]['items'][$itemCode] = true;
+            }
+        }
+
+        $fmtPct = function (float $pct): string {
+            if ($pct <= 0.0) {
+                return 'trace';
+            }
+            if ($pct < 0.01) {
+                return 'trace (<0.01%)';
+            }
+            return rtrim(rtrim(number_format($pct, 4, '.', ''), '0'), '.') . '%';
+        };
+
+        $filename = 'Prop65_Report_' . preg_replace('/[^a-zA-Z0-9]/', '_', $customerValue) . '_' . date('Ymd') . '.csv';
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+
+        $output = fopen('php://output', 'w');
+
+        fputcsv($output, ['California Prop 65 Shipping Report']);
+        fputcsv($output, ['Customer:', $customerValue]);
+        fputcsv($output, ['Date Range:', $dateFrom . ' to ' . $dateTo]);
+        fputcsv($output, ['Generated:', date('m/d/Y H:i')]);
+        fputcsv($output, []);
+
+        if (empty($reportRows)) {
+            fputcsv($output, ['No shipped items carry a Prop 65 warning for this period.']);
+        } else {
+            fputcsv($output, [
+                'Date Shipped', 'Item', 'Description', 'Qty Shipped (lbs)',
+                'Prop 65 Chemical', 'CAS Number', 'Toxicity', 'Concentration',
+            ]);
+            foreach ($reportRows as $r) {
+                fputcsv($output, [
+                    $r['date_shipped'],
+                    $r['item_code'],
+                    $r['description'],
+                    $r['qty_shipped'],
+                    $r['chem_name'],
+                    $r['cas'],
+                    $r['toxicity'],
+                    $fmtPct($r['pct']),
+                ]);
+            }
+
+            fputcsv($output, []);
+            fputcsv($output, []);
+            fputcsv($output, ['Prop 65 Chemical Summary']);
+            fputcsv($output, ['Chemical', 'CAS Number', 'Toxicity', 'Distinct Items Shipped']);
+            uasort($chemSummary, fn($a, $b) => count($b['items']) <=> count($a['items']));
+            foreach ($chemSummary as $cas => $s) {
+                fputcsv($output, [$s['name'], $cas, $s['toxicity'], count($s['items'])]);
+            }
+        }
+
+        if (!empty($unevaluated)) {
+            fputcsv($output, []);
+            fputcsv($output, ['Items that could not be evaluated (no product/formula data):']);
+            foreach ($unevaluated as $code => $desc) {
+                fputcsv($output, [$code, $desc]);
+            }
+        }
+
+        fclose($output);
+        exit;
+    }
+
+    /* ------------------------------------------------------------------
      *  Generate Report (PDF)
      * ----------------------------------------------------------------*/
 

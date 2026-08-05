@@ -53,6 +53,9 @@
                     <?php if (can_read('private_label')): ?>
                     <li><a href="/private-label" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/private-label') ? 'active' : '' ?>"><span class="menu-icon">&#128196;</span> Private Label SDS</a></li>
                     <?php endif; ?>
+                    <?php if (can_read('reports')): ?>
+                    <li><a href="/reports" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/reports') ? 'active' : '' ?>"><span class="menu-icon">&#128202;</span> Reports</a></li>
+                    <?php endif; ?>
 
                     <!-- SDS — everything SDS-document-related -->
                     <li class="sidebar-section-label">SDS</li>
@@ -76,9 +79,6 @@
                     <?php endif; ?>
                     <?php if (can_read('stale_rm_sds')): ?>
                     <li><a href="/stale-rm-sds" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/stale-rm-sds') ? 'active' : '' ?>"><span class="menu-icon">&#9201;</span> Stale RM SDS</a></li>
-                    <?php endif; ?>
-                    <?php if (can_read('reports')): ?>
-                    <li><a href="/reports" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/reports') ? 'active' : '' ?>"><span class="menu-icon">&#128202;</span> Reports</a></li>
                     <?php endif; ?>
 
                     <!-- Labels — product-label workflow -->

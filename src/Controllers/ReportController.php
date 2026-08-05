@@ -234,11 +234,13 @@ class ReportController
         $unevaluated   = [];
         $chemSummary   = [];
 
-        // Merge shipment lines by item — one entry per item with the total
-        // quantity shipped in the range.
+        // Merge shipment lines by item with the pack extension stripped —
+        // pack variants (Y1011-50, Y1011-84) are the same product, so they
+        // collapse into one row keyed by the base code with total quantity.
         $items = [];
         foreach ($shipments as $row) {
-            $itemCode = !empty($row['item_name']) ? $row['item_name'] : $row['item_code'];
+            $rawCode  = !empty($row['item_name']) ? $row['item_name'] : $row['item_code'];
+            $itemCode = $this->stripPackExtension($rawCode);
 
             $description = '';
             if (!empty($row['item_name']) && $row['item_name'] !== $row['item_code']) {
@@ -249,7 +251,7 @@ class ReportController
             }
 
             if (!isset($items[$itemCode])) {
-                $items[$itemCode] = ['description' => $description, 'qty' => 0.0];
+                $items[$itemCode] = ['description' => $description, 'qty' => 0.0, 'raw_code' => $rawCode];
             }
             if ($items[$itemCode]['description'] === '' && $description !== '') {
                 $items[$itemCode]['description'] = $description;
@@ -261,9 +263,11 @@ class ReportController
         foreach ($items as $itemCode => $info) {
             $description = $info['description'];
 
+            // Resolve from the original code — aliases store the pack
+            // extension, so the unstripped form matches more reliably.
             if (!isset($resolvedCodes[$itemCode])) {
-                $resolvedCodes[$itemCode] = $this->resolveToProductCode($itemCode, $db)
-                    ?? $this->stripPackExtension($itemCode);
+                $resolvedCodes[$itemCode] = $this->resolveToProductCode($info['raw_code'], $db)
+                    ?? $itemCode;
             }
             $productCode = $resolvedCodes[$itemCode];
 

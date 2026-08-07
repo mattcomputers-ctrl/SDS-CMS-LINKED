@@ -185,6 +185,11 @@ class ReportController
                  LEFT JOIN CMS.dbo.Item inv_item ON inv_item.ItemCode = sd.ItemCode
                  WHERE sd.{$cmsField} = ?
                    AND sd.DateShipped >= ? AND sd.DateShipped <= ?
+                   AND NOT EXISTS (
+                       SELECT 1 FROM CMS.dbo.Invoice iv
+                       WHERE iv.TransDocument = sd.TransDocument
+                         AND iv.IsReversed = 1
+                   )
                  ORDER BY sd.DateShipped",
                 [$customerValue, $dateFrom, $dateTo . ' 23:59:59']
             );

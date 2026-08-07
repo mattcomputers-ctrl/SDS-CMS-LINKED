@@ -142,6 +142,115 @@ class ReportController
     }
 
     /* ------------------------------------------------------------------
+     *  Order History Report (CSV)
+     * ----------------------------------------------------------------*/
+
+    /**
+     * POST /reports/order-history — items shipped to a customer in a
+     * date range with PO number, unit price, and UOM, queried live from
+     * CMS. Reversed invoice lines net to zero per order line and are
+     * excluded.
+     */
+    public function orderHistory(): void
+    {
+        CSRF::validateRequest();
+
+        $customerField = $_POST['customer_field'] ?? 'ship_to_name';
+        $customerValue = trim($_POST['customer_value'] ?? '');
+        $dateFrom      = trim($_POST['date_from'] ?? '');
+        $dateTo        = trim($_POST['date_to'] ?? '');
+
+        if ($customerValue === '' || $dateFrom === '' || $dateTo === '') {
+            $_SESSION['_flash']['error'] = 'Please select a customer and enter both dates.';
+            redirect('/reports');
+        }
+
+        $cmsFieldMap = ['bill_to' => 'BillTo', 'ship_to' => 'ShipTo', 'ship_to_name' => 'ShipToName'];
+        $cmsField = $cmsFieldMap[$customerField] ?? 'ShipToName';
+
+        try {
+            $cms = \SDS\Services\CMSDatabase::getInstance();
+            $rows = $cms->fetchAll(
+                "SELECT sd.OrdDetail, sd.ItemCode, sd.ItemName,
+                        sd.QtyShipped, sd.PoNumber, sd.UnitPrice, sd.Unit,
+                        alias_item.Description AS AliasDescription,
+                        inv_item.Description AS InvDescription
+                 FROM CMS.dbo.ShipmentDetails sd
+                 LEFT JOIN CMS.dbo.Item alias_item ON alias_item.ItemCode = sd.ItemName
+                 LEFT JOIN CMS.dbo.Item inv_item ON inv_item.ItemCode = sd.ItemCode
+                 WHERE sd.{$cmsField} = ?
+                   AND sd.DateShipped >= ? AND sd.DateShipped <= ?
+                 ORDER BY sd.DateShipped",
+                [$customerValue, $dateFrom, $dateTo . ' 23:59:59']
+            );
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error'] = 'Could not query CMS: ' . $e->getMessage();
+            redirect('/reports');
+            return;
+        }
+
+        if (empty($rows)) {
+            $_SESSION['_flash']['error'] = 'No records match the selected customer and date range.';
+            redirect('/reports');
+        }
+
+        // Net quantities per order line (OrdDetail) — a reversed invoice
+        // produces an offsetting negative movement on the same line, so
+        // reversed lines net to zero and drop out.
+        $lines = [];
+        foreach ($rows as $r) {
+            $key = $r['OrdDetail'] !== null
+                ? 'od:' . $r['OrdDetail']
+                : 'x:' . ($r['ItemName'] ?: $r['ItemCode']) . '|' . ($r['PoNumber'] ?? '') . '|' . ($r['UnitPrice'] ?? '');
+
+            if (!isset($lines[$key])) {
+                $itemCode = trim((string) ($r['ItemName'] ?: $r['ItemCode']));
+                $desc = trim((string) ($r['AliasDescription'] ?? ''));
+                if ($desc === '') {
+                    $desc = trim((string) ($r['InvDescription'] ?? ''));
+                }
+                $lines[$key] = [
+                    'item_code'   => $itemCode,
+                    'description' => $desc,
+                    'qty'         => 0.0,
+                    'po_number'   => trim((string) ($r['PoNumber'] ?? '')),
+                    'unit_price'  => $r['UnitPrice'] !== null ? (float) $r['UnitPrice'] : null,
+                    'uom'         => trim((string) ($r['Unit'] ?? '')),
+                ];
+            }
+            $lines[$key]['qty'] += (float) $r['QtyShipped'];
+        }
+
+        $lines = array_values(array_filter($lines, fn($l) => $l['qty'] > 0));
+        usort($lines, fn($a, $b) => [$a['item_code'], $a['po_number']] <=> [$b['item_code'], $b['po_number']]);
+
+        $filename = 'Order_History_' . preg_replace('/[^a-zA-Z0-9]/', '_', $customerValue) . '_' . date('Ymd') . '.csv';
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+
+        $output = fopen('php://output', 'w');
+        fputcsv($output, ['Order History Report']);
+        fputcsv($output, ['Customer:', $customerValue]);
+        fputcsv($output, ['Date Range:', $dateFrom . ' to ' . $dateTo]);
+        fputcsv($output, ['Generated:', date('m/d/Y H:i')]);
+        fputcsv($output, []);
+        fputcsv($output, ['Item Code', 'Description', 'Units Shipped', 'PO Number', 'Sales Price/Unit', 'UOM']);
+        foreach ($lines as $l) {
+            fputcsv($output, [
+                $l['item_code'],
+                $l['description'],
+                rtrim(rtrim(number_format($l['qty'], 4, '.', ''), '0'), '.'),
+                $l['po_number'],
+                $l['unit_price'] !== null ? number_format($l['unit_price'], 2, '.', '') : '',
+                $l['uom'],
+            ]);
+        }
+        fclose($output);
+        exit;
+    }
+
+    /* ------------------------------------------------------------------
      *  Prop 65 Report (CSV)
      * ----------------------------------------------------------------*/
 

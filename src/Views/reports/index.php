@@ -70,8 +70,10 @@
                     title="Items shipped in the date range that carry a Prop 65 warning, with the triggering chemicals and concentrations">Prop 65 Report (CSV)</button>
             <button type="submit" class="btn btn-outline" formaction="/reports/prop65-pdf" formmethod="POST"
                     title="Printable PDF version of the Prop 65 report">Prop 65 Report (PDF)</button>
+            <?php if (can_read('order_history_report')): ?>
             <button type="submit" class="btn btn-outline" formaction="/reports/order-history" formmethod="POST"
                     title="Items shipped in the date range with PO number, unit price, and UOM. Reversed invoice lines are excluded.">Order History (CSV)</button>
+            <?php endif; ?>
             <div style="position: relative; display: inline-block;">
                 <button type="button" class="btn btn-outline" id="exportSdsBtn">Export SDS (ZIP) &#9662;</button>
                 <div id="exportSdsMenu" style="display: none; position: absolute; bottom: 100%; left: 0; margin-bottom: 4px; background: #fff; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 100; min-width: 200px;">

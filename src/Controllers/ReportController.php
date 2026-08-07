@@ -176,7 +176,7 @@ class ReportController
         try {
             $cms = \SDS\Services\CMSDatabase::getInstance();
             $rows = $cms->fetchAll(
-                "SELECT sd.OrdDetail, sd.ItemCode, sd.ItemName,
+                "SELECT sd.OrdDetail, sd.ItemCode, sd.ItemName, sd.DateShipped,
                         sd.QtyShipped, sd.PoNumber, sd.UnitPrice, sd.Unit,
                         alias_item.Description AS AliasDescription,
                         inv_item.Description AS InvDescription
@@ -220,6 +220,7 @@ class ReportController
                     $desc = trim((string) ($r['InvDescription'] ?? ''));
                 }
                 $lines[$key] = [
+                    'ship_date'   => '',
                     'item_code'   => $itemCode,
                     'description' => $desc,
                     'qty'         => 0.0,
@@ -229,10 +230,14 @@ class ReportController
                 ];
             }
             $lines[$key]['qty'] += (float) $r['QtyShipped'];
+            // Latest ship date on the line wins (rows arrive date-ascending)
+            if (!empty($r['DateShipped'])) {
+                $lines[$key]['ship_date'] = substr((string) $r['DateShipped'], 0, 10);
+            }
         }
 
         $lines = array_values(array_filter($lines, fn($l) => $l['qty'] > 0));
-        usort($lines, fn($a, $b) => [$a['item_code'], $a['po_number']] <=> [$b['item_code'], $b['po_number']]);
+        usort($lines, fn($a, $b) => [$a['ship_date'], $a['item_code'], $a['po_number']] <=> [$b['ship_date'], $b['item_code'], $b['po_number']]);
 
         $filename = 'Order_History_' . preg_replace('/[^a-zA-Z0-9]/', '_', $customerValue) . '_' . date('Ymd') . '.csv';
         header('Content-Type: text/csv; charset=UTF-8');
@@ -245,9 +250,10 @@ class ReportController
         fputcsv($output, ['Date Range:', $dateFrom . ' to ' . $dateTo]);
         fputcsv($output, ['Generated:', date('m/d/Y H:i')]);
         fputcsv($output, []);
-        fputcsv($output, ['Item Code', 'Description', 'Units Shipped', 'PO Number', 'Sales Price/Unit', 'UOM']);
+        fputcsv($output, ['Ship Date', 'Item Code', 'Description', 'Units Shipped', 'PO Number', 'Sales Price/Unit', 'UOM']);
         foreach ($lines as $l) {
             fputcsv($output, [
+                $l['ship_date'],
                 $l['item_code'],
                 $l['description'],
                 rtrim(rtrim(number_format($l['qty'], 4, '.', ''), '0'), '.'),

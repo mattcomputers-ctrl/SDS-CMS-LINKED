@@ -40,6 +40,19 @@ class CMSDatabase
         ];
 
         $this->pdo = new \PDO($dsn, $config['user'], $config['password'], $options);
+
+        // FreeTDS/dblib connections default several ANSI options OFF, but
+        // SQL Server requires them ON for queries touching indexed views,
+        // computed-column indexes, or filtered indexes (error 20018).
+        // Harmless on sqlsrv, which sets them by default.
+        try {
+            $this->pdo->exec(
+                'SET ANSI_NULLS ON; SET ANSI_WARNINGS ON; SET ANSI_PADDING ON; '
+                . 'SET CONCAT_NULL_YIELDS_NULL ON; SET QUOTED_IDENTIFIER ON; SET ARITHABORT ON;'
+            );
+        } catch (\Throwable $e) {
+            // Non-fatal — most queries work without these settings.
+        }
     }
 
     /**

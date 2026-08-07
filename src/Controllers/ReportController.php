@@ -250,16 +250,16 @@ class ReportController
         fputcsv($output, ['Date Range:', $dateFrom . ' to ' . $dateTo]);
         fputcsv($output, ['Generated:', date('m/d/Y H:i')]);
         fputcsv($output, []);
-        fputcsv($output, ['Ship Date', 'Item Code', 'Description', 'Units Shipped', 'PO Number', 'Sales Price/Unit', 'UOM']);
+        fputcsv($output, ['Ship Date', 'PO Number', 'Item Code', 'Description', 'Units Shipped', 'UOM', 'Sales Price/Unit']);
         foreach ($lines as $l) {
             fputcsv($output, [
                 $l['ship_date'],
+                $l['po_number'],
                 $l['item_code'],
                 $l['description'],
                 rtrim(rtrim(number_format($l['qty'], 4, '.', ''), '0'), '.'),
-                $l['po_number'],
-                $l['unit_price'] !== null ? number_format($l['unit_price'], 2, '.', '') : '',
                 $l['uom'],
+                $l['unit_price'] !== null ? number_format($l['unit_price'], 2, '.', '') : '',
             ]);
         }
         fclose($output);

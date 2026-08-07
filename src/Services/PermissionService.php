@@ -53,6 +53,7 @@ class PermissionService
         'customers'          => 'Customers',
         'sds_send_queue'     => 'SDS Send Queue',
         'stale_rm_sds'       => 'Stale RM SDS',
+        'order_history_report' => 'Order History Report (pricing)',
     ];
 
     /**

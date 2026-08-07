@@ -55,6 +55,7 @@ class AuthMiddleware
      * @var array<string, string>
      */
     private const URI_TO_PAGE_KEY = [
+        '/reports/order-history' => 'order_history_report',
         '/formulas/mass-replace' => 'rm_mass_replace',
         '/determinations'        => 'cas_determinations',
         '/exempt-vocs'           => 'exempt_vocs',

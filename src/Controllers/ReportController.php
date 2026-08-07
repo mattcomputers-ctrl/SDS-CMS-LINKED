@@ -155,6 +155,11 @@ class ReportController
     {
         CSRF::validateRequest();
 
+        if (!can_read('order_history_report')) {
+            $_SESSION['_flash']['error'] = 'You do not have permission to run the Order History report.';
+            redirect('/reports');
+        }
+
         $customerField = $_POST['customer_field'] ?? 'ship_to_name';
         $customerValue = trim($_POST['customer_value'] ?? '');
         $dateFrom      = trim($_POST['date_from'] ?? '');

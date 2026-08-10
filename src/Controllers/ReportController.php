@@ -222,6 +222,7 @@ class ReportController
         $vocLbs   = 0.0;
         $hapLbs   = 0.0;
         $missing  = [];
+        $detail   = [];
         $calcService = new FormulaCalcService();
         $calcCache   = [];
 
@@ -245,28 +246,46 @@ class ReportController
                     }
                 }
             }
+            $vocPct = null;
+            $hapPct = null;
             if ($rm !== null && ($rm['voc'] !== null || $rm['has_cons'])) {
-                $vocLbs += $lbs * (((float) ($rm['voc'] ?? 0)) / 100.0);
-                $hapLbs += $lbs * ($rm['hap'] / 100.0);
-                continue;
-            }
-
-            // 2. Manufactured intermediates: use the formula's calculated
-            //    VOC/HAP percentages instead.
-            $productCode = $this->resolveToProductCode($code, $db) ?? $this->stripPackExtension($code);
-            if (!array_key_exists($productCode, $calcCache)) {
-                $calcCache[$productCode] = $this->getVocHapForProduct($productCode, $calcService);
-            }
-            $calc = $calcCache[$productCode];
-            if ($calc !== null) {
-                $vocLbs += $lbs * (((float) $calc['voc_wt_pct']) / 100.0);
-                $hapLbs += $lbs * (((float) $calc['hap_wt_pct']) / 100.0);
-                continue;
+                $vocPct = (float) ($rm['voc'] ?? 0);
+                $hapPct = (float) $rm['hap'];
+            } else {
+                // 2. Manufactured intermediates: use the formula's calculated
+                //    VOC/HAP percentages instead.
+                $productCode = $this->resolveToProductCode($code, $db) ?? $this->stripPackExtension($code);
+                if (!array_key_exists($productCode, $calcCache)) {
+                    $calcCache[$productCode] = $this->getVocHapForProduct($productCode, $calcService);
+                }
+                $calc = $calcCache[$productCode];
+                if ($calc !== null) {
+                    $vocPct = (float) $calc['voc_wt_pct'];
+                    $hapPct = (float) $calc['hap_wt_pct'];
+                }
             }
 
             // 3. No data anywhere — report it.
-            $missing[$code] = (string) ($row['Description'] ?? '');
+            if ($vocPct === null) {
+                $missing[$code] = (string) ($row['Description'] ?? '');
+                continue;
+            }
+
+            $itemVoc = $lbs * ($vocPct / 100.0);
+            $itemHap = $lbs * (($hapPct ?? 0) / 100.0);
+            $vocLbs += $itemVoc;
+            $hapLbs += $itemHap;
+            $detail[] = [
+                'code'    => $code,
+                'desc'    => (string) ($row['Description'] ?? ''),
+                'lbs'     => $lbs,
+                'voc_pct' => $vocPct,
+                'hap_pct' => (float) ($hapPct ?? 0),
+                'voc_lbs' => $itemVoc,
+                'hap_lbs' => $itemHap,
+            ];
         }
+        usort($detail, fn($a, $b) => $b['lbs'] <=> $a['lbs']);
 
         $factor = $mixingOps * self::ROSS_MIXING_FACTOR
                 + $millingOps * self::ROSS_MILLING_FACTOR;
@@ -286,6 +305,7 @@ class ReportController
             'voc_emissions'   => $vocLbs * $factor,
             'hap_emissions'   => $hapLbs * $factor,
             'missing'         => $missing,
+            'detail'          => $detail,
         ];
     }
 
@@ -317,6 +337,20 @@ class ReportController
         fputcsv($o, []);
         fputcsv($o, ['Calculated VOC Emissions (lbs)', number_format($d['voc_emissions'], 2, '.', '')]);
         fputcsv($o, ['Calculated HAP Emissions (lbs)', number_format($d['hap_emissions'], 2, '.', '')]);
+        fputcsv($o, []);
+        fputcsv($o, ['Consumption Detail']);
+        fputcsv($o, ['Item Code', 'Description', 'Total Qty Consumed (lbs)', 'VOC % by wt', 'HAP % by wt', 'lbs VOC', 'lbs HAP']);
+        foreach ($d['detail'] as $dl) {
+            fputcsv($o, [
+                $dl['code'],
+                $dl['desc'],
+                number_format($dl['lbs'], 2, '.', ''),
+                number_format($dl['voc_pct'], 2, '.', ''),
+                number_format($dl['hap_pct'], 2, '.', ''),
+                number_format($dl['voc_lbs'], 2, '.', ''),
+                number_format($dl['hap_lbs'], 2, '.', ''),
+            ]);
+        }
         if (!empty($d['missing'])) {
             fputcsv($o, []);
             fputcsv($o, ['Items missing raw material data (not included in VOC/HAP totals):']);

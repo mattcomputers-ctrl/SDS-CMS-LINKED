@@ -118,7 +118,7 @@ class ReportPDFService
         $this->sectionHeading($pdf, 'Totals');
         $pdf->SetFont('helvetica', '', 10);
         $summaryRows = [
-            ['Total lbs Shipped', number_format($data['total_lbs'], 2)],
+            ['Total lbs Produced', number_format($data['total_lbs'], 2)],
             ['Total lbs VOC', number_format($data['voc_lbs'], 2)],
             ['Total lbs HAP', number_format($data['hap_lbs'], 2)],
         ];

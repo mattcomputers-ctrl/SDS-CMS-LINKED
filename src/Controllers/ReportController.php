@@ -167,49 +167,78 @@ class ReportController
         $mixingOps  = max(0, min(20, (int) ($_POST['mixing_ops'] ?? 1)));
         $millingOps = max(0, min(20, (int) ($_POST['milling_ops'] ?? 2)));
 
-        $rows = $db->fetchAll(
-            "SELECT item_code, item_name, item_description, item_name_description, qty_shipped
-             FROM shipment_detail
-             WHERE date_shipped >= ? AND date_shipped <= ?",
-            [$dateFrom, $dateTo . ' 23:59:59']
-        );
-        if (empty($rows)) {
-            $_SESSION['_flash']['error'] = 'No shipment records in the selected date range.';
+        // Raw material consumption from CMS production (commingle) movements:
+        // negative quantities are materials weighed into batches. Pounds
+        // produced = pounds of raw materials consumed (mass balance).
+        try {
+            $consumed = \SDS\Services\CMSDatabase::getInstance()->fetchAll(
+                "SELECT i.ItemCode, i.Description, SUM(-imd.Qty) AS lbs
+                 FROM CMS.dbo.InvMovementDtl imd
+                 JOIN CMS.dbo.InvMovement im ON im.InvMovement = imd.InvMovement
+                 JOIN CMS.dbo.ChangeSet cs ON cs.ChangeSet = im.ChangeSet
+                 JOIN CMS.dbo.Item i ON i.Item = im.Item
+                 WHERE im.Context = 'CMNGL' AND imd.Qty < 0
+                   AND cs.ChangeDate >= ? AND cs.ChangeDate <= ?
+                 GROUP BY i.ItemCode, i.Description",
+                [$dateFrom, $dateTo . ' 23:59:59']
+            );
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error'] = 'Could not query CMS production movements: ' . $e->getMessage();
+            redirect('/reports');
+            return null;
+        }
+        if (empty($consumed)) {
+            $_SESSION['_flash']['error'] = 'No production consumption records in the selected date range.';
             redirect('/reports');
         }
 
-        $calcService = new FormulaCalcService();
-        $calcCache = [];
-        $resolved  = [];
+        // Local RM data: VOC wt% and HAP wt% (sum of constituent
+        // percentages whose CAS is on the EPA HAP list).
+        $hapCas = array_flip(array_column($db->fetchAll("SELECT cas_number FROM hap_list"), 'cas_number'));
+        $rmData = [];
+        foreach ($db->fetchAll("SELECT id, internal_code, voc_wt FROM raw_materials") as $rm) {
+            $rmData[$rm['internal_code']] = ['voc' => $rm['voc_wt'], 'hap' => 0.0, 'has_cons' => false, 'id' => (int) $rm['id']];
+        }
+        $consRows = $db->fetchAll(
+            "SELECT rm.internal_code, rmc.cas_number, rmc.pct_exact, rmc.pct_min, rmc.pct_max
+             FROM raw_material_constituents rmc
+             JOIN raw_materials rm ON rm.id = rmc.raw_material_id"
+        );
+        foreach ($consRows as $c) {
+            $code = $c['internal_code'];
+            if (!isset($rmData[$code])) {
+                continue;
+            }
+            $rmData[$code]['has_cons'] = true;
+            if (isset($hapCas[$c['cas_number']])) {
+                $pct = $c['pct_exact'] !== null
+                    ? (float) $c['pct_exact']
+                    : (((float) ($c['pct_min'] ?? 0)) + ((float) ($c['pct_max'] ?? 0))) / 2.0;
+                $rmData[$code]['hap'] += $pct;
+            }
+        }
+
         $totalLbs = 0.0;
         $vocLbs   = 0.0;
         $hapLbs   = 0.0;
         $missing  = [];
 
-        foreach ($rows as $row) {
-            $itemCode = !empty($row['item_name']) ? $row['item_name'] : $row['item_code'];
-            $qty = (float) $row['qty_shipped'];
-            $totalLbs += $qty;
-
-            if (!isset($resolved[$itemCode])) {
-                $resolved[$itemCode] = $this->resolveToProductCode($itemCode, $db)
-                    ?? $this->stripPackExtension($itemCode);
+        foreach ($consumed as $row) {
+            $code = trim((string) $row['ItemCode']);
+            $lbs  = (float) $row['lbs'];
+            if ($code === '' || $lbs <= 0) {
+                continue;
             }
-            $productCode = $resolved[$itemCode];
+            $totalLbs += $lbs;
 
-            if (!array_key_exists($productCode, $calcCache)) {
-                $calcCache[$productCode] = $this->getVocHapForProduct($productCode, $calcService);
-            }
-            $calc = $calcCache[$productCode];
-
-            if ($calc === null) {
-                $desc = $row['item_name_description'] ?: ($row['item_description'] ?? '');
-                $missing[$this->stripPackExtension($itemCode)] = $desc;
+            $rm = $rmData[$code] ?? null;
+            if ($rm === null || ($rm['voc'] === null && !$rm['has_cons'])) {
+                $missing[$code] = (string) ($row['Description'] ?? '');
                 continue;
             }
 
-            $vocLbs += $qty * ((float) $calc['voc_wt_pct'] / 100.0);
-            $hapLbs += $qty * ((float) $calc['hap_wt_pct'] / 100.0);
+            $vocLbs += $lbs * (((float) ($rm['voc'] ?? 0)) / 100.0);
+            $hapLbs += $lbs * ($rm['hap'] / 100.0);
         }
 
         $factor = $mixingOps * self::ROSS_MIXING_FACTOR
@@ -250,7 +279,7 @@ class ReportController
         fputcsv($o, ['Date Range:', $d['date_from'] . ' to ' . $d['date_to']]);
         fputcsv($o, ['Generated:', date('m/d/Y H:i')]);
         fputcsv($o, []);
-        fputcsv($o, ['Total lbs Shipped (all customers)', number_format($d['total_lbs'], 2, '.', '')]);
+        fputcsv($o, ['Total lbs Produced (raw materials consumed)', number_format($d['total_lbs'], 2, '.', '')]);
         fputcsv($o, ['Total lbs VOC', number_format($d['voc_lbs'], 2, '.', '')]);
         fputcsv($o, ['Total lbs HAP', number_format($d['hap_lbs'], 2, '.', '')]);
         fputcsv($o, []);

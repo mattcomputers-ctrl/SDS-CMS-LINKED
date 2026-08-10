@@ -150,10 +150,48 @@ class ReportPDFService
         $pdf->SetTextColor(0, 0, 0);
         $pdf->Ln(6);
 
+        if (!empty($data['detail'])) {
+            $this->sectionHeading($pdf, 'Consumption Detail');
+            $dw = [30, 58, 24, 17, 17, 17, 17]; // = 180 usable portrait width
+            $dHeaders = ['Item Code', 'Description', 'Qty (lbs)', 'VOC %wt', 'HAP %wt', 'lbs VOC', 'lbs HAP'];
+            $renderDetailHeader = function () use ($pdf, $dw, $dHeaders): void {
+                $pdf->SetFont('helvetica', 'B', 7);
+                $pdf->SetFillColor(...self::COLOR_LIGHT_GREY);
+                $pdf->SetDrawColor(180, 180, 180);
+                foreach ($dHeaders as $i => $h) {
+                    $pdf->Cell($dw[$i], 6, $h, 1, 0, 'C', true);
+                }
+                $pdf->Ln();
+                $pdf->SetFont('helvetica', '', 7);
+            };
+            $renderDetailHeader();
+            $rowIdx = 0;
+            foreach ($data['detail'] as $dl) {
+                $fill = ($rowIdx % 2 === 1);
+                if ($fill) {
+                    $pdf->SetFillColor(...self::COLOR_ZEBRA);
+                }
+                if ($pdf->GetY() + 5 > $pdf->getPageHeight() - self::MARGIN_BOTTOM) {
+                    $pdf->AddPage();
+                    $renderDetailHeader();
+                }
+                $pdf->Cell($dw[0], 5, $this->truncate($dl['code'], 20), 1, 0, 'L', $fill);
+                $pdf->Cell($dw[1], 5, $this->truncate($dl['desc'], 40), 1, 0, 'L', $fill);
+                $pdf->Cell($dw[2], 5, number_format($dl['lbs'], 2), 1, 0, 'R', $fill);
+                $pdf->Cell($dw[3], 5, number_format($dl['voc_pct'], 2), 1, 0, 'R', $fill);
+                $pdf->Cell($dw[4], 5, number_format($dl['hap_pct'], 2), 1, 0, 'R', $fill);
+                $pdf->Cell($dw[5], 5, number_format($dl['voc_lbs'], 2), 1, 0, 'R', $fill);
+                $pdf->Cell($dw[6], 5, number_format($dl['hap_lbs'], 2), 1, 0, 'R', $fill);
+                $pdf->Ln();
+                $rowIdx++;
+            }
+            $pdf->Ln(6);
+        }
+
         if (!empty($data['missing'])) {
             $this->sectionHeading($pdf, 'Items Missing Raw Material Data');
             $pdf->SetFont('helvetica', '', 8);
-            $pdf->MultiCell(0, 5, 'The following items shipped in the period but could not be included in the VOC/HAP totals because raw material data is missing:', 0, 'L');
+            $pdf->MultiCell(0, 5, 'The following items were consumed in the period but could not be included in the VOC/HAP totals because raw material data is missing:', 0, 'L');
             foreach ($data['missing'] as $code => $desc) {
                 $pdf->Cell(0, 5, $code . ($desc !== '' ? ' — ' . $desc : ''), 0, 1);
             }

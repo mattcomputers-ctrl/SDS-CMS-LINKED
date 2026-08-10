@@ -71,6 +71,102 @@ class ReportPDFService
     }
 
     /**
+     * Generate the IL EPA Ross Calculation report PDF (portrait).
+     *
+     * @param array $data Output from ReportController::buildRossData()
+     */
+    public function generateRoss(array $data, string $disclaimer = ''): string
+    {
+        $this->disclaimer = $disclaimer;
+
+        $pdf = new \TCPDF('P', 'mm', 'LETTER', true, 'UTF-8');
+        $pdf->SetCreator('SDS System');
+        $pdf->SetAuthor(App::config('company.name', 'SDS System'));
+        $pdf->SetTitle('IL EPA Ross Calculation Report');
+        $pdf->setPrintHeader(false);
+        $pdf->setPrintFooter(true);
+        $pdf->setFooterFont(['helvetica', '', 8]);
+        $pdf->SetMargins(self::MARGIN_LEFT, self::MARGIN_TOP, self::MARGIN_RIGHT);
+        $pdf->SetAutoPageBreak(true, self::MARGIN_BOTTOM);
+        $pdf->setFooterData(self::COLOR_NAVY, [150, 150, 150]);
+        $pdf->AddPage();
+
+        $logoPath = $this->resolveLogoPath();
+        if ($logoPath !== '') {
+            $imgType = strtolower(pathinfo($logoPath, PATHINFO_EXTENSION));
+            if ($imgType === 'svg') {
+                $pdf->ImageSVG($logoPath, self::MARGIN_LEFT, $pdf->GetY(), 45, 0);
+            } else {
+                $pdf->Image($logoPath, self::MARGIN_LEFT, $pdf->GetY(), 45);
+            }
+            $pdf->Ln(16);
+        }
+
+        $pdf->SetFont('helvetica', 'B', 16);
+        $pdf->SetFillColor(...self::COLOR_NAVY);
+        $pdf->SetTextColor(255, 255, 255);
+        $pdf->Cell(0, 10, 'IL EPA Ross Calculation Report', 0, 1, 'C', true);
+        $pdf->SetTextColor(0, 0, 0);
+        $pdf->Ln(4);
+
+        $pdf->SetFont('helvetica', 'B', 10);
+        $pdf->Cell(35, 6, 'Date Range:', 0, 0);
+        $pdf->SetFont('helvetica', '', 10);
+        $pdf->Cell(0, 6, $data['date_from'] . '  to  ' . $data['date_to'] . '  (all customers)', 0, 1);
+        $pdf->Ln(4);
+
+        $this->sectionHeading($pdf, 'Totals');
+        $pdf->SetFont('helvetica', '', 10);
+        $summaryRows = [
+            ['Total lbs Shipped', number_format($data['total_lbs'], 2)],
+            ['Total lbs VOC', number_format($data['voc_lbs'], 2)],
+            ['Total lbs HAP', number_format($data['hap_lbs'], 2)],
+        ];
+        foreach ($summaryRows as $r) {
+            $pdf->Cell(90, 7, $r[0], 1, 0, 'L');
+            $pdf->Cell(60, 7, $r[1], 1, 1, 'R');
+        }
+        $pdf->Ln(4);
+
+        $this->sectionHeading($pdf, 'Emission Factors');
+        $pdf->SetFont('helvetica', '', 9);
+        $pdf->MultiCell(0, 5,
+            'Emission factors developed from source testing data published by the National Association of '
+            . 'Printing Ink Manufacturers (NAPIM). Calculation uses ' . $data['mixing_ops'] . ' mixing operation(s) at '
+            . number_format($data['mixing_factor'], 4) . ' lb/lb and ' . $data['milling_ops'] . ' milling operation(s) at '
+            . number_format($data['milling_factor'], 4) . ' lb/lb, for a combined factor of '
+            . number_format($data['factor'], 4) . ' lb/lb.',
+            0, 'L');
+        $pdf->Ln(4);
+
+        $this->sectionHeading($pdf, 'Calculated Emissions');
+        $pdf->SetFont('helvetica', 'B', 10);
+        $pdf->SetFillColor(...self::COLOR_NAVY);
+        $pdf->SetTextColor(255, 255, 255);
+        $pdf->Cell(90, 8, 'Calculated VOC Emissions (lbs)', 1, 0, 'L', true);
+        $pdf->Cell(60, 8, number_format($data['voc_emissions'], 2), 1, 1, 'R', true);
+        $pdf->Cell(90, 8, 'Calculated HAP Emissions (lbs)', 1, 0, 'L', true);
+        $pdf->Cell(60, 8, number_format($data['hap_emissions'], 2), 1, 1, 'R', true);
+        $pdf->SetTextColor(0, 0, 0);
+        $pdf->Ln(6);
+
+        if (!empty($data['missing'])) {
+            $this->sectionHeading($pdf, 'Items Missing Raw Material Data');
+            $pdf->SetFont('helvetica', '', 8);
+            $pdf->MultiCell(0, 5, 'The following items shipped in the period but could not be included in the VOC/HAP totals because raw material data is missing:', 0, 'L');
+            foreach ($data['missing'] as $code => $desc) {
+                $pdf->Cell(0, 5, $code . ($desc !== '' ? ' — ' . $desc : ''), 0, 1);
+            }
+            $pdf->Ln(4);
+        }
+
+        $this->renderFooterNote($pdf);
+        $this->renderGeneratedTimestamp($pdf);
+
+        return $pdf->Output('', 'S');
+    }
+
+    /**
      * Generate the Prop 65 shipping report PDF and return raw bytes.
      *
      * @param array  $data  Output from ReportController::buildProp65Data()

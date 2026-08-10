@@ -54,6 +54,7 @@ class PermissionService
         'sds_send_queue'     => 'SDS Send Queue',
         'stale_rm_sds'       => 'Stale RM SDS',
         'order_history_report' => 'Order History Report (pricing)',
+        'ross_report'          => 'IL EPA Ross Calculation Report',
     ];
 
     /**

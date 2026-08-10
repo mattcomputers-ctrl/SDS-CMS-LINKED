@@ -233,8 +233,18 @@ class ReportController
             }
             $totalLbs += $lbs;
 
-            // 1. Raw material data
+            // 1. Raw material data — exact code first, then with the pack
+            //    extension stripped (RM-123-50 → RM-123).
             $rm = $rmData[$code] ?? null;
+            if ($rm === null || ($rm['voc'] === null && !$rm['has_cons'])) {
+                $stripped = $this->stripPackExtension($code);
+                if ($stripped !== $code) {
+                    $candidate = $rmData[$stripped] ?? null;
+                    if ($candidate !== null && ($candidate['voc'] !== null || $candidate['has_cons'])) {
+                        $rm = $candidate;
+                    }
+                }
+            }
             if ($rm !== null && ($rm['voc'] !== null || $rm['has_cons'])) {
                 $vocLbs += $lbs * (((float) ($rm['voc'] ?? 0)) / 100.0);
                 $hapLbs += $lbs * ($rm['hap'] / 100.0);

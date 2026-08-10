@@ -171,18 +171,26 @@ class ReportPDFService
                 if ($fill) {
                     $pdf->SetFillColor(...self::COLOR_ZEBRA);
                 }
-                if ($pdf->GetY() + 5 > $pdf->getPageHeight() - self::MARGIN_BOTTOM) {
+
+                // Wrap long descriptions/codes — row height grows to fit.
+                $rowH = max(
+                    5,
+                    $pdf->getStringHeight($dw[0], $dl['code']),
+                    $pdf->getStringHeight($dw[1], $dl['desc'])
+                );
+
+                if ($pdf->GetY() + $rowH > $pdf->getPageHeight() - self::MARGIN_BOTTOM) {
                     $pdf->AddPage();
                     $renderDetailHeader();
                 }
-                $pdf->Cell($dw[0], 5, $this->truncate($dl['code'], 20), 1, 0, 'L', $fill);
-                $pdf->Cell($dw[1], 5, $this->truncate($dl['desc'], 40), 1, 0, 'L', $fill);
-                $pdf->Cell($dw[2], 5, number_format($dl['lbs'], 2), 1, 0, 'R', $fill);
-                $pdf->Cell($dw[3], 5, number_format($dl['voc_pct'], 2), 1, 0, 'R', $fill);
-                $pdf->Cell($dw[4], 5, number_format($dl['hap_pct'], 2), 1, 0, 'R', $fill);
-                $pdf->Cell($dw[5], 5, number_format($dl['voc_lbs'], 2), 1, 0, 'R', $fill);
-                $pdf->Cell($dw[6], 5, number_format($dl['hap_lbs'], 2), 1, 0, 'R', $fill);
-                $pdf->Ln();
+
+                $pdf->MultiCell($dw[0], $rowH, $dl['code'], 1, 'L', $fill, 0);
+                $pdf->MultiCell($dw[1], $rowH, $dl['desc'], 1, 'L', $fill, 0);
+                $pdf->MultiCell($dw[2], $rowH, number_format($dl['lbs'], 2), 1, 'R', $fill, 0);
+                $pdf->MultiCell($dw[3], $rowH, number_format($dl['voc_pct'], 2), 1, 'R', $fill, 0);
+                $pdf->MultiCell($dw[4], $rowH, number_format($dl['hap_pct'], 2), 1, 'R', $fill, 0);
+                $pdf->MultiCell($dw[5], $rowH, number_format($dl['voc_lbs'], 2), 1, 'R', $fill, 0);
+                $pdf->MultiCell($dw[6], $rowH, number_format($dl['hap_lbs'], 2), 1, 'R', $fill, 1);
                 $rowIdx++;
             }
             $pdf->Ln(6);

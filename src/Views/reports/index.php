@@ -88,6 +88,45 @@
         </div>
     </form>
 </div>
+
+<?php if (can_read('ross_report')): ?>
+<!-- IL EPA Ross Calculation -->
+<div class="card" style="margin-bottom: 1rem;">
+    <h2 class="card-title">IL EPA Ross Calculation</h2>
+    <p class="text-muted" style="margin-bottom: 0.75rem;">
+        Totals lbs of VOC and HAP across <strong>all</strong> shipments in the period and applies
+        NAPIM emission factors (mixing <?= number_format(0.0032, 4) ?> lb/lb, milling <?= number_format(0.0108, 4) ?> lb/lb)
+        to calculate VOC and HAP emissions. Items missing raw material data are listed on the report.
+    </p>
+    <form method="POST">
+        <?= csrf_field() ?>
+        <div class="grid-2col">
+            <div class="form-group">
+                <label for="ross_date_from">Date From</label>
+                <input type="date" name="date_from" id="ross_date_from" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label for="ross_date_to">Date To</label>
+                <input type="date" name="date_to" id="ross_date_to" class="form-control" required>
+            </div>
+        </div>
+        <div class="grid-2col">
+            <div class="form-group">
+                <label for="mixing_ops">Mixing Operations</label>
+                <input type="number" name="mixing_ops" id="mixing_ops" class="form-control" min="0" max="20" step="1" value="1">
+            </div>
+            <div class="form-group">
+                <label for="milling_ops">Milling Operations</label>
+                <input type="number" name="milling_ops" id="milling_ops" class="form-control" min="0" max="20" step="1" value="2">
+            </div>
+        </div>
+        <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+            <button type="submit" class="btn btn-primary" formaction="/reports/ross" formmethod="POST">Download Excel (CSV)</button>
+            <button type="submit" class="btn btn-primary" formaction="/reports/ross-pdf" formmethod="POST">Download PDF</button>
+        </div>
+    </form>
+</div>
+<?php endif; ?>
 <?php endif; ?>
 
 <script>

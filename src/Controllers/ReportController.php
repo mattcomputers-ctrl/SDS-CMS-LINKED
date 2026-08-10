@@ -142,6 +142,159 @@ class ReportController
     }
 
     /* ------------------------------------------------------------------
+     *  IL EPA Ross Calculation Report
+     * ----------------------------------------------------------------*/
+
+    /** NAPIM source-testing emission factors (lb emitted per lb). */
+    private const ROSS_MIXING_FACTOR  = 0.0032;
+    private const ROSS_MILLING_FACTOR = 0.0108;
+
+    private function buildRossData(): ?array
+    {
+        if (!can_read('ross_report')) {
+            $_SESSION['_flash']['error'] = 'You do not have permission to run the Ross Calculation report.';
+            redirect('/reports');
+        }
+
+        $db = Database::getInstance();
+        $dateFrom = trim($_POST['date_from'] ?? '');
+        $dateTo   = trim($_POST['date_to'] ?? '');
+        if ($dateFrom === '' || $dateTo === '') {
+            $_SESSION['_flash']['error'] = 'Please enter both a start and end date.';
+            redirect('/reports');
+        }
+
+        $mixingOps  = max(0, min(20, (int) ($_POST['mixing_ops'] ?? 1)));
+        $millingOps = max(0, min(20, (int) ($_POST['milling_ops'] ?? 2)));
+
+        $rows = $db->fetchAll(
+            "SELECT item_code, item_name, item_description, item_name_description, qty_shipped
+             FROM shipment_detail
+             WHERE date_shipped >= ? AND date_shipped <= ?",
+            [$dateFrom, $dateTo . ' 23:59:59']
+        );
+        if (empty($rows)) {
+            $_SESSION['_flash']['error'] = 'No shipment records in the selected date range.';
+            redirect('/reports');
+        }
+
+        $calcService = new FormulaCalcService();
+        $calcCache = [];
+        $resolved  = [];
+        $totalLbs = 0.0;
+        $vocLbs   = 0.0;
+        $hapLbs   = 0.0;
+        $missing  = [];
+
+        foreach ($rows as $row) {
+            $itemCode = !empty($row['item_name']) ? $row['item_name'] : $row['item_code'];
+            $qty = (float) $row['qty_shipped'];
+            $totalLbs += $qty;
+
+            if (!isset($resolved[$itemCode])) {
+                $resolved[$itemCode] = $this->resolveToProductCode($itemCode, $db)
+                    ?? $this->stripPackExtension($itemCode);
+            }
+            $productCode = $resolved[$itemCode];
+
+            if (!array_key_exists($productCode, $calcCache)) {
+                $calcCache[$productCode] = $this->getVocHapForProduct($productCode, $calcService);
+            }
+            $calc = $calcCache[$productCode];
+
+            if ($calc === null) {
+                $desc = $row['item_name_description'] ?: ($row['item_description'] ?? '');
+                $missing[$this->stripPackExtension($itemCode)] = $desc;
+                continue;
+            }
+
+            $vocLbs += $qty * ((float) $calc['voc_wt_pct'] / 100.0);
+            $hapLbs += $qty * ((float) $calc['hap_wt_pct'] / 100.0);
+        }
+
+        $factor = $mixingOps * self::ROSS_MIXING_FACTOR
+                + $millingOps * self::ROSS_MILLING_FACTOR;
+        ksort($missing);
+
+        return [
+            'date_from'       => $dateFrom,
+            'date_to'         => $dateTo,
+            'total_lbs'       => $totalLbs,
+            'voc_lbs'         => $vocLbs,
+            'hap_lbs'         => $hapLbs,
+            'factor'          => $factor,
+            'mixing_factor'   => self::ROSS_MIXING_FACTOR,
+            'milling_factor'  => self::ROSS_MILLING_FACTOR,
+            'mixing_ops'      => $mixingOps,
+            'milling_ops'     => $millingOps,
+            'voc_emissions'   => $vocLbs * $factor,
+            'hap_emissions'   => $hapLbs * $factor,
+            'missing'         => $missing,
+        ];
+    }
+
+    public function ross(): void
+    {
+        CSRF::validateRequest();
+        $d = $this->buildRossData();
+        if ($d === null) {
+            return;
+        }
+
+        $filename = 'IL_EPA_Ross_Calculation_' . date('Ymd') . '.csv';
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+        $o = fopen('php://output', 'w');
+        fputcsv($o, ['IL EPA Ross Calculation Report']);
+        fputcsv($o, ['Date Range:', $d['date_from'] . ' to ' . $d['date_to']]);
+        fputcsv($o, ['Generated:', date('m/d/Y H:i')]);
+        fputcsv($o, []);
+        fputcsv($o, ['Total lbs Shipped (all customers)', number_format($d['total_lbs'], 2, '.', '')]);
+        fputcsv($o, ['Total lbs VOC', number_format($d['voc_lbs'], 2, '.', '')]);
+        fputcsv($o, ['Total lbs HAP', number_format($d['hap_lbs'], 2, '.', '')]);
+        fputcsv($o, []);
+        fputcsv($o, ['Emission Factors (NAPIM source testing data)']);
+        fputcsv($o, ['Mixing operations', number_format($d['mixing_factor'], 4, '.', '') . ' lb/lb x ' . $d['mixing_ops'] . ' operation(s)']);
+        fputcsv($o, ['Milling operations', number_format($d['milling_factor'], 4, '.', '') . ' lb/lb x ' . $d['milling_ops'] . ' operation(s)']);
+        fputcsv($o, ['Combined factor', number_format($d['factor'], 4, '.', '') . ' lb/lb']);
+        fputcsv($o, []);
+        fputcsv($o, ['Calculated VOC Emissions (lbs)', number_format($d['voc_emissions'], 2, '.', '')]);
+        fputcsv($o, ['Calculated HAP Emissions (lbs)', number_format($d['hap_emissions'], 2, '.', '')]);
+        if (!empty($d['missing'])) {
+            fputcsv($o, []);
+            fputcsv($o, ['Items missing raw material data (not included in VOC/HAP totals):']);
+            foreach ($d['missing'] as $code => $desc) {
+                fputcsv($o, [$code, $desc]);
+            }
+        }
+        fclose($o);
+        exit;
+    }
+
+    public function rossPdf(): void
+    {
+        CSRF::validateRequest();
+        $d = $this->buildRossData();
+        if ($d === null) {
+            return;
+        }
+
+        $db  = Database::getInstance();
+        $row = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'sds.report_disclaimer'");
+        $pdfService = new ReportPDFService();
+        $pdfContent = $pdfService->generateRoss($d, $row['value'] ?? '');
+
+        $filename = 'IL_EPA_Ross_Calculation_' . date('Ymd') . '.pdf';
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Content-Length: ' . strlen($pdfContent));
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+        echo $pdfContent;
+        exit;
+    }
+
+    /* ------------------------------------------------------------------
      *  Order History Report (CSV)
      * ----------------------------------------------------------------*/
 

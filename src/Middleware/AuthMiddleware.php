@@ -56,6 +56,7 @@ class AuthMiddleware
      */
     private const URI_TO_PAGE_KEY = [
         '/reports/order-history' => 'order_history_report',
+        '/reports/ross'          => 'ross_report',
         '/formulas/mass-replace' => 'rm_mass_replace',
         '/determinations'        => 'cas_determinations',
         '/exempt-vocs'           => 'exempt_vocs',

@@ -175,6 +175,8 @@ class App
         $router->post('/reports/prop65',         'ReportController@prop65');
         $router->post('/reports/prop65-pdf',     'ReportController@prop65Pdf');
         $router->post('/reports/order-history',  'ReportController@orderHistory');
+        $router->post('/reports/ross',           'ReportController@ross');
+        $router->post('/reports/ross-pdf',       'ReportController@rossPdf');
         $router->post('/reports/export-sds',     'ReportController@exportShippedSds');
         $router->get('/reports/customers',       'ReportController@customers');
 

@@ -196,8 +196,14 @@ class ReportController
         // percentages whose CAS is on the EPA HAP list).
         $hapCas = array_flip(array_column($db->fetchAll("SELECT cas_number FROM hap_list"), 'cas_number'));
         $rmData = [];
-        foreach ($db->fetchAll("SELECT id, internal_code, voc_wt FROM raw_materials") as $rm) {
-            $rmData[$rm['internal_code']] = ['voc' => $rm['voc_wt'], 'hap' => 0.0, 'has_cons' => false, 'id' => (int) $rm['id']];
+        foreach ($db->fetchAll("SELECT id, internal_code, voc_wt, voc_less_than_one FROM raw_materials") as $rm) {
+            // The "<1% VOC" checkbox counts as data — use 0.99% for this
+            // calculation when no explicit VOC percentage was entered.
+            $voc = $rm['voc_wt'];
+            if ($voc === null && (int) ($rm['voc_less_than_one'] ?? 0) === 1) {
+                $voc = 0.99;
+            }
+            $rmData[$rm['internal_code']] = ['voc' => $voc, 'hap' => 0.0, 'has_cons' => false, 'id' => (int) $rm['id']];
         }
         $consRows = $db->fetchAll(
             "SELECT rm.internal_code, rmc.cas_number, rmc.pct_exact, rmc.pct_min, rmc.pct_max

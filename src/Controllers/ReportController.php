@@ -218,13 +218,15 @@ class ReportController
             }
         }
 
+        // RM id → internal code, for expanding formula lines
+        $idToCode = [];
+        foreach ($rmData as $c => $r) {
+            $idToCode[$r['id']] = $c;
+        }
+
         $totalLbs = 0.0;
-        $vocLbs   = 0.0;
-        $hapLbs   = 0.0;
         $missing  = [];
-        $detail   = [];
-        $calcService = new FormulaCalcService();
-        $calcCache   = [];
+        $rmConsumption = []; // internal_code → lbs consumed (direct + expanded from intermediates)
 
         foreach ($consumed as $row) {
             $code = trim((string) $row['ItemCode']);
@@ -234,53 +236,56 @@ class ReportController
             }
             $totalLbs += $lbs;
 
-            // 1. Raw material data — exact code first, then with the pack
-            //    extension stripped (RM-123-50 → RM-123).
-            $rm = $rmData[$code] ?? null;
-            if ($rm === null || ($rm['voc'] === null && !$rm['has_cons'])) {
-                $stripped = $this->stripPackExtension($code);
-                if ($stripped !== $code) {
-                    $candidate = $rmData[$stripped] ?? null;
-                    if ($candidate !== null && ($candidate['voc'] !== null || $candidate['has_cons'])) {
-                        $rm = $candidate;
-                    }
+            // 1. Raw material — exact code first, then pack extension stripped.
+            $matched = null;
+            foreach ([$code, $this->stripPackExtension($code)] as $try) {
+                $rm = $rmData[$try] ?? null;
+                if ($rm !== null && ($rm['voc'] !== null || $rm['has_cons'])) {
+                    $matched = $try;
+                    break;
                 }
             }
-            $vocPct = null;
-            $hapPct = null;
-            if ($rm !== null && ($rm['voc'] !== null || $rm['has_cons'])) {
-                $vocPct = (float) ($rm['voc'] ?? 0);
-                $hapPct = (float) $rm['hap'];
-            } else {
-                // 2. Manufactured intermediates: use the formula's calculated
-                //    VOC/HAP percentages instead.
-                $productCode = $this->resolveToProductCode($code, $db) ?? $this->stripPackExtension($code);
-                if (!array_key_exists($productCode, $calcCache)) {
-                    $calcCache[$productCode] = $this->getVocHapForProduct($productCode, $calcService);
-                }
-                $calc = $calcCache[$productCode];
-                if ($calc !== null) {
-                    $vocPct = (float) $calc['voc_wt_pct'];
-                    $hapPct = (float) $calc['hap_wt_pct'];
-                }
-            }
-
-            // 3. No data anywhere — report it.
-            if ($vocPct === null) {
-                $missing[$code] = (string) ($row['Description'] ?? '');
+            if ($matched !== null) {
+                $rmConsumption[$matched] = ($rmConsumption[$matched] ?? 0.0) + $lbs;
                 continue;
             }
 
+            // 2. Manufactured intermediates: break down into their raw
+            //    materials by expanding the formula recursively.
+            $productCode = $this->resolveToProductCode($code, $db) ?? $this->stripPackExtension($code);
+            $fg = FinishedGood::findByProductCode($productCode);
+            if ($fg !== null && $this->expandToRawMaterials((int) $fg['id'], $lbs, $idToCode, $rmConsumption, $missing)) {
+                continue;
+            }
+
+            // 3. No data anywhere — report it.
+            $missing[$code] = (string) ($row['Description'] ?? '');
+        }
+
+        // Build the detail table from raw-material-level consumption.
+        $vocLbs = 0.0;
+        $hapLbs = 0.0;
+        $detail = [];
+        $rmDescRows = $db->fetchAll("SELECT internal_code, supplier_product_name FROM raw_materials");
+        $rmDesc = array_column($rmDescRows, 'supplier_product_name', 'internal_code');
+        foreach ($rmConsumption as $code => $lbs) {
+            $rm = $rmData[$code] ?? null;
+            if ($rm === null || ($rm['voc'] === null && !$rm['has_cons'])) {
+                $missing[$code] = (string) ($rmDesc[$code] ?? '');
+                continue;
+            }
+            $vocPct  = (float) ($rm['voc'] ?? 0);
+            $hapPct  = (float) $rm['hap'];
             $itemVoc = $lbs * ($vocPct / 100.0);
-            $itemHap = $lbs * (($hapPct ?? 0) / 100.0);
+            $itemHap = $lbs * ($hapPct / 100.0);
             $vocLbs += $itemVoc;
             $hapLbs += $itemHap;
             $detail[] = [
                 'code'    => $code,
-                'desc'    => (string) ($row['Description'] ?? ''),
+                'desc'    => (string) ($rmDesc[$code] ?? ''),
                 'lbs'     => $lbs,
                 'voc_pct' => $vocPct,
-                'hap_pct' => (float) ($hapPct ?? 0),
+                'hap_pct' => $hapPct,
                 'voc_lbs' => $itemVoc,
                 'hap_lbs' => $itemHap,
             ];
@@ -307,6 +312,44 @@ class ReportController
             'missing'         => $missing,
             'detail'          => $detail,
         ];
+    }
+
+    /**
+     * Expand a finished good's current formula into raw-material pounds,
+     * recursing through sub-product components. Returns false when no
+     * usable formula exists (caller reports the item as missing).
+     */
+    private function expandToRawMaterials(int $fgId, float $lbs, array $idToCode, array &$rmConsumption, array &$missing, int $depth = 0): bool
+    {
+        if ($depth > 6) {
+            return false;
+        }
+        $formula = \SDS\Models\Formula::findCurrentByFinishedGood($fgId);
+        if (!$formula || empty($formula['lines'])) {
+            return false;
+        }
+
+        foreach ($formula['lines'] as $line) {
+            $share = $lbs * ((float) ($line['pct'] ?? 0)) / 100.0;
+            if ($share <= 0) {
+                continue;
+            }
+            if (!empty($line['raw_material_id'])) {
+                $code = $idToCode[(int) $line['raw_material_id']] ?? null;
+                if ($code !== null) {
+                    $rmConsumption[$code] = ($rmConsumption[$code] ?? 0.0) + $share;
+                } else {
+                    $missing['RM#' . $line['raw_material_id']] = 'Raw material referenced by formula not found';
+                }
+            } elseif (!empty($line['finished_good_component_id'])) {
+                if (!$this->expandToRawMaterials((int) $line['finished_good_component_id'], $share, $idToCode, $rmConsumption, $missing, $depth + 1)) {
+                    $sub = FinishedGood::findById((int) $line['finished_good_component_id']);
+                    $missing[$sub['product_code'] ?? ('FG#' . $line['finished_good_component_id'])] = 'Sub-product has no formula to expand';
+                }
+            }
+        }
+
+        return true;
     }
 
     public function ross(): void

@@ -222,6 +222,8 @@ class ReportController
         $vocLbs   = 0.0;
         $hapLbs   = 0.0;
         $missing  = [];
+        $calcService = new FormulaCalcService();
+        $calcCache   = [];
 
         foreach ($consumed as $row) {
             $code = trim((string) $row['ItemCode']);
@@ -231,14 +233,29 @@ class ReportController
             }
             $totalLbs += $lbs;
 
+            // 1. Raw material data
             $rm = $rmData[$code] ?? null;
-            if ($rm === null || ($rm['voc'] === null && !$rm['has_cons'])) {
-                $missing[$code] = (string) ($row['Description'] ?? '');
+            if ($rm !== null && ($rm['voc'] !== null || $rm['has_cons'])) {
+                $vocLbs += $lbs * (((float) ($rm['voc'] ?? 0)) / 100.0);
+                $hapLbs += $lbs * ($rm['hap'] / 100.0);
                 continue;
             }
 
-            $vocLbs += $lbs * (((float) ($rm['voc'] ?? 0)) / 100.0);
-            $hapLbs += $lbs * ($rm['hap'] / 100.0);
+            // 2. Manufactured intermediates: use the formula's calculated
+            //    VOC/HAP percentages instead.
+            $productCode = $this->resolveToProductCode($code, $db) ?? $this->stripPackExtension($code);
+            if (!array_key_exists($productCode, $calcCache)) {
+                $calcCache[$productCode] = $this->getVocHapForProduct($productCode, $calcService);
+            }
+            $calc = $calcCache[$productCode];
+            if ($calc !== null) {
+                $vocLbs += $lbs * (((float) $calc['voc_wt_pct']) / 100.0);
+                $hapLbs += $lbs * (((float) $calc['hap_wt_pct']) / 100.0);
+                continue;
+            }
+
+            // 3. No data anywhere — report it.
+            $missing[$code] = (string) ($row['Description'] ?? '');
         }
 
         $factor = $mixingOps * self::ROSS_MIXING_FACTOR

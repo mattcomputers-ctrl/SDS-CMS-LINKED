@@ -713,6 +713,17 @@ class SDSGenerator
                 continue;
             }
 
+            // Airborne/unbound particles override: after wet-mixture
+            // suppression, a listed CAS with no attributed H-codes and no
+            // exposure limit triggers nothing on this SDS — omit it from
+            // the composition table entirely. All-powder products keep
+            // their H351 attribution, so they still list it.
+            if (isset(self::getInhalationOnlyCas()[$cas])
+                && empty($casToHCodes[$cas])
+                && !isset($casWithExposureLimit[$cas])) {
+                continue;
+            }
+
             // Trade secret items: group by description and merge
             if (!empty($c['is_trade_secret'])) {
                 $desc = $c['trade_secret_description'] ?? '';
@@ -1417,41 +1428,62 @@ class SDSGenerator
      * Uses actual min/max range when available from the supplier SDS,
      * otherwise falls back to GHS-standard banding.
      */
+    /**
+     * Prescribed concentration ranges for Section 3 disclosure.
+     * Each line displays the WIDEST prescribed range that fully contains
+     * its actual concentration (or min–max range), protecting exact
+     * formula percentages while staying truthful.
+     */
+    private const PRESCRIBED_RANGES = [
+        [0.1, 1], [0.5, 1.5], [1, 5], [3, 7], [5, 10], [7, 13],
+        [10, 30], [15, 40], [30, 60], [45, 70], [60, 80], [65, 85], [80, 100],
+    ];
+
     private function formatConcentration(array $component): string
     {
         $min = $component['concentration_min'] ?? null;
         $max = $component['concentration_max'] ?? null;
+        if ($min === null || $max === null) {
+            $v = (float) ($component['concentration_pct'] ?? 0);
+            $min = $v;
+            $max = $v;
+        }
+        $min = (float) $min;
+        $max = (float) $max;
 
-        if ($min !== null && $max !== null) {
-            $min = round((float) $min, 1);
-            $max = round((float) $max, 1);
-            if ($min == $max) {
-                return rtrim(rtrim(number_format($min, 1), '0'), '.') . '%';
+        if ($max < 0.1) {
+            return '<0.1%';
+        }
+
+        $fmt = fn(float $n): string => rtrim(rtrim(number_format($n, 1, '.', ''), '0'), '.');
+
+        // Widest prescribed range fully containing the actual range
+        $best = null;
+        $bestWidth = -1.0;
+        foreach (self::PRESCRIBED_RANGES as [$lo, $hi]) {
+            if ($lo <= $min && $max <= $hi && ($hi - $lo) > $bestWidth) {
+                $best = [$lo, $hi];
+                $bestWidth = $hi - $lo;
             }
-            $fmtMin = rtrim(rtrim(number_format($min, 1), '0'), '.');
-            $fmtMax = rtrim(rtrim(number_format($max, 1), '0'), '.');
-            return "{$fmtMin} - {$fmtMax}%";
         }
 
-        return $this->concentrationRange((float) ($component['concentration_pct'] ?? 0));
-    }
+        // No single range covers it (very wide actual range) — fall back
+        // to the widest range containing the midpoint.
+        if ($best === null) {
+            $mid = ($min + $max) / 2.0;
+            foreach (self::PRESCRIBED_RANGES as [$lo, $hi]) {
+                if ($lo <= $mid && $mid <= $hi && ($hi - $lo) > $bestWidth) {
+                    $best = [$lo, $hi];
+                    $bestWidth = $hi - $lo;
+                }
+            }
+        }
 
-    private function concentrationRange(float $pct): string
-    {
-        if ($pct >= 99.5) {
-            return '100%';
+        if ($best === null) {
+            return $min < 0.1 ? '<0.1%' : '80 - 100%';
         }
-        if ($pct >= 10) {
-            $low  = floor($pct / 5) * 5;
-            $high = $low + 5;
-            return "{$low} - {$high}%";
-        }
-        if ($pct >= 1) {
-            $low  = floor($pct);
-            $high = $low + 1;
-            return "{$low} - {$high}%";
-        }
-        return '< 1%';
+
+        return $fmt((float) $best[0]) . ' - ' . $fmt((float) $best[1]) . '%';
     }
 
     /**

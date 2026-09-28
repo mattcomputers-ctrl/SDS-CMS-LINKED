@@ -1,18 +1,18 @@
 <?php include dirname(__DIR__) . '/layouts/main.php'; ?>
 
 <p class="text-muted mb-1">
-    Raw materials whose supplier SDS is older than
-    <strong><?= (int) $staleDays ?> days</strong>,
-    or has no confirmation date recorded. Grouped by supplier so one
-    email per vendor can cover all their stale SDSs. Change the threshold
-    in <a href="/admin/settings">Admin &gt; Settings</a>.
+    Supplier SDSs older than <strong><?= (int) $staleDays ?> days</strong>,
+    or never confirmed. One row per raw material <em>and</em> supplier &mdash;
+    a material sourced from two vendors appears under each. Grouped by
+    supplier so one email per vendor can cover all their stale SDSs. Change
+    the threshold in <a href="/admin/settings">Admin &gt; Settings</a>.
 </p>
 
 <?php if ($total === 0): ?>
     <div class="alert alert-success"><strong>All caught up.</strong> No raw materials currently exceed the staleness threshold.</div>
 <?php else: ?>
 
-<p class="text-muted"><?= (int) $total ?> raw material<?= $total === 1 ? '' : 's' ?> across <?= count($grouped) ?> supplier<?= count($grouped) === 1 ? '' : 's' ?>.</p>
+<p class="text-muted"><?= (int) $total ?> stale SDS<?= $total === 1 ? '' : 's' ?> across <?= count($grouped) ?> supplier<?= count($grouped) === 1 ? '' : 's' ?>.</p>
 
 <?php foreach ($grouped as $supplier => $items): ?>
     <div class="card" style="margin-bottom: 1rem;">
@@ -67,11 +67,14 @@
                     </td>
                     <td style="white-space: nowrap;">
                         <a href="/raw-materials/<?= (int) $rm['id'] ?>/edit" class="btn btn-sm">Edit RM</a>
-                        <?php if (can_edit('raw_materials')): ?>
+                        <?php // Per-supplier confirm: stamps only this supplier's current
+                              // SDS row. No button when the RM has no SDS on file at all —
+                              // there is nothing to confirm; upload one instead. ?>
+                        <?php if (can_edit('raw_materials') && !empty($rm['sds_id'])): ?>
                         <form method="POST"
-                              action="/raw-materials/<?= (int) $rm['id'] ?>/confirm-sds-current"
+                              action="/raw-materials/sds-version/<?= (int) $rm['sds_id'] ?>/confirm-current"
                               style="display: inline;"
-                              onsubmit="return confirm('Confirm the existing SDS for <?= e($rm['internal_code']) ?> is still current?');">
+                              onsubmit="return confirm('Confirm the <?= e($supplier) ?> SDS for <?= e($rm['internal_code']) ?> is still current?');">
                             <?= csrf_field() ?>
                             <button type="submit" class="btn btn-sm btn-outline">Mark Current</button>
                         </form>

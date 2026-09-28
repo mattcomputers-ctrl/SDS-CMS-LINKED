@@ -7,14 +7,17 @@ namespace SDS\Controllers;
 use SDS\Core\Database;
 
 /**
- * StaleRmSdsController — list raw materials whose supplier SDS has
- * aged beyond the configured threshold. Grouped by supplier so the
+ * StaleRmSdsController — list supplier SDSs that have aged beyond the
+ * configured threshold. One row per (raw material, supplier): each
+ * supplier's current SDS is its newest upload, and a material sourced
+ * from two vendors shows under each. Grouped by supplier so the
  * regulatory team can batch requests to each vendor.
  *
- * Staleness is measured against `raw_materials.sds_last_confirmed_at`.
- * That column is advanced by either a fresh SDS upload OR the user
- * clicking "Supplier Confirmed Current" on the RM page — both count
- * as a confirmation the SDS is still the latest.
+ * Staleness is measured against `raw_material_sds.sds_last_confirmed_at`
+ * on that supplier's current row. It is advanced by either a fresh
+ * upload for that supplier OR "Supplier Confirmed Current" on the RM
+ * page / "Mark Current" here — both count as a confirmation the SDS is
+ * still the latest.
  */
 class StaleRmSdsController
 {
@@ -34,37 +37,43 @@ class StaleRmSdsController
             $staleDays = 1095;
         }
 
-        // Pull RMs whose last-confirmed date is older than the threshold,
-        // OR whose last-confirmed date is NULL (never recorded — most stale).
-        // Join the newest SDS file row for the "on file since" display.
+        // One row per (raw material, supplier): the newest upload for each
+        // supplier is that supplier's current SDS, and staleness is
+        // measured against THAT row's sds_last_confirmed_at. A material
+        // sourced from two vendors therefore shows under each vendor with
+        // its own age. RMs with no SDS on file at all are appended (never
+        // recorded — the most stale case) under the RM's CMS supplier.
         $rows = $db->fetchAll(
             "SELECT rm.id,
                     rm.internal_code,
-                    rm.supplier,
                     rm.supplier_product_name,
                     rm.supplier_product_code,
-                    rm.sds_last_confirmed_at,
-                    newest.uploaded_at       AS file_uploaded_at,
-                    newest.sds_date_received AS file_date_received,
-                    newest.original_filename AS file_name
+                    cur.id                                          AS sds_id,
+                    COALESCE(NULLIF(cur.supplier, ''), rm.supplier) AS supplier,
+                    cur.sds_last_confirmed_at,
+                    cur.uploaded_at                                 AS file_uploaded_at,
+                    cur.sds_date_received                           AS file_date_received,
+                    cur.original_filename                           AS file_name
+               FROM raw_material_sds cur
+               JOIN (
+                    SELECT raw_material_id, supplier, MAX(id) AS max_id
+                      FROM raw_material_sds
+                  GROUP BY raw_material_id, supplier
+                    ) latest ON latest.max_id = cur.id
+               JOIN raw_materials rm ON rm.id = cur.raw_material_id
+              WHERE cur.sds_last_confirmed_at IS NULL
+                 OR DATEDIFF(CURDATE(), cur.sds_last_confirmed_at) >= ?
+          UNION ALL
+             SELECT rm.id,
+                    rm.internal_code,
+                    rm.supplier_product_name,
+                    rm.supplier_product_code,
+                    NULL, rm.supplier, NULL, NULL, NULL, NULL
                FROM raw_materials rm
-          LEFT JOIN (
-                    SELECT rms1.raw_material_id,
-                           rms1.uploaded_at,
-                           rms1.sds_date_received,
-                           rms1.original_filename
-                      FROM raw_material_sds rms1
-                INNER JOIN (
-                           SELECT raw_material_id, MAX(id) AS max_id
-                             FROM raw_material_sds
-                         GROUP BY raw_material_id
-                    ) rms2 ON rms1.id = rms2.max_id
-                    ) newest ON newest.raw_material_id = rm.id
-              WHERE rm.sds_last_confirmed_at IS NULL
-                 OR DATEDIFF(CURDATE(), rm.sds_last_confirmed_at) >= ?
-           ORDER BY COALESCE(rm.supplier, '') ASC,
-                    rm.sds_last_confirmed_at ASC,
-                    rm.internal_code ASC",
+              WHERE NOT EXISTS (SELECT 1 FROM raw_material_sds s WHERE s.raw_material_id = rm.id)
+           ORDER BY supplier ASC,
+                    sds_last_confirmed_at ASC,
+                    internal_code ASC",
             [$staleDays]
         );
 

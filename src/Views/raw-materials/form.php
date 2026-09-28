@@ -80,15 +80,65 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
         <h3>Supplier SDS</h3>
         <div class="form-grid-2col">
             <div class="form-group full-width">
-                <?php if ($isEdit && !empty($item['supplier_sds_path'])): ?>
-                    <div style="margin-bottom: 0.5rem; padding: 0.5rem; background: #f0f4f8; border-radius: 4px;">
-                        <a href="/raw-materials/<?= (int) $item['id'] ?>/sds" class="btn btn-sm btn-primary pdf-link">View Current SDS</a>
-                        <span class="text-muted" style="margin-left: 0.5rem;"><?= e(basename($item['supplier_sds_path'])) ?></span>
+                <?php
+                    // One "current" SDS per supplier = the newest upload for
+                    // that supplier. $sdsHistory is newest-first, so the first
+                    // row seen per supplier wins. Rows uploaded before the
+                    // supplier column existed group under the empty key.
+                    $sdsCurrentBySupplier = [];
+                    foreach (($sdsHistory ?? []) as $sdsRow) {
+                        $supKey = trim((string) ($sdsRow['supplier'] ?? ''));
+                        if (!isset($sdsCurrentBySupplier[$supKey])) {
+                            $sdsCurrentBySupplier[$supKey] = $sdsRow;
+                        }
+                    }
+                    ksort($sdsCurrentBySupplier);
+                ?>
+                <?php if ($isEdit && !empty($sdsCurrentBySupplier)): ?>
+                    <div style="margin-bottom: 0.5rem; padding: 0.5rem 0.75rem; background: #f0f4f8; border-radius: 4px;">
+                        <strong>Current SDS by supplier</strong>
+                        <ul style="margin: 0.35rem 0 0; padding-left: 1.1rem;">
+                        <?php foreach ($sdsCurrentBySupplier as $supKey => $cur): ?>
+                            <li style="margin-bottom: 0.3rem;">
+                                <?= $supKey !== '' ? '<strong>' . e($supKey) . '</strong>' : '<span class="text-muted">(supplier not recorded)</span>' ?>
+                                &mdash;
+                                <a href="/raw-materials/sds-version/<?= (int) $cur['id'] ?>" class="btn btn-sm btn-primary pdf-link">View</a>
+                                <span class="text-muted" style="margin-left: 0.35rem;"><?= e($cur['original_filename'] ?: basename($cur['file_path'])) ?></span>
+                                <?php if (!empty($cur['sds_date_received'])): ?>
+                                    <span class="text-muted">&middot; received <?= e($cur['sds_date_received']) ?></span>
+                                <?php endif; ?>
+                            </li>
+                        <?php endforeach; ?>
+                        </ul>
                     </div>
                 <?php endif; ?>
                 <label for="supplier_sds">Upload New SDS (PDF)</label>
                 <input type="file" id="supplier_sds" name="supplier_sds" accept=".pdf,application/pdf">
                 <small class="text-muted">Upload the supplier's Safety Data Sheet (PDF, max 20 MB). Previous SDS files are preserved in history below.</small>
+            </div>
+            <div class="form-group">
+                <label for="sds_supplier">SDS Supplier <span class="text-muted">(required when uploading)</span></label>
+                <?php
+                    // Known suppliers for the datalist: the RM's CMS supplier
+                    // plus every supplier already on this RM's SDS history.
+                    $knownSdsSuppliers = [];
+                    $cmsSupplier = trim((string) ($item['supplier'] ?? ''));
+                    if ($cmsSupplier !== '') { $knownSdsSuppliers[$cmsSupplier] = true; }
+                    foreach (($sdsHistory ?? []) as $sdsRow) {
+                        $s = trim((string) ($sdsRow['supplier'] ?? ''));
+                        if ($s !== '') { $knownSdsSuppliers[$s] = true; }
+                    }
+                    ksort($knownSdsSuppliers);
+                ?>
+                <input type="text" id="sds_supplier" name="sds_supplier" list="sds-supplier-list"
+                       value="<?= e(old('sds_supplier', $cmsSupplier)) ?>"
+                       placeholder="Who supplied this SDS?">
+                <datalist id="sds-supplier-list">
+                    <?php foreach (array_keys($knownSdsSuppliers) as $s): ?>
+                        <option value="<?= e($s) ?>">
+                    <?php endforeach; ?>
+                </datalist>
+                <small class="text-muted">Each supplier keeps its own current SDS. Defaults to the CMS supplier — change it when this PDF came from a different vendor.</small>
             </div>
             <div class="form-group">
                 <label for="sds_date_received">Date Received from Supplier <span class="text-muted">(required when uploading)</span></label>
@@ -103,29 +153,49 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
             </div>
         </div>
 
-        <?php if ($isEdit && !empty($item['sds_last_confirmed_at'])): ?>
-            <?php
-                $daysSince = (int) ((time() - strtotime($item['sds_last_confirmed_at'])) / 86400);
-            ?>
+        <?php if ($isEdit && !empty($sdsCurrentBySupplier)): ?>
             <div class="card" style="margin-top: 0.5rem; padding: 0.5rem 0.75rem; background: #f0f4f8;">
-                <strong>Last confirmed current:</strong>
-                <?= e($item['sds_last_confirmed_at']) ?>
-                <span class="text-muted">(<?= $daysSince ?> day<?= $daysSince === 1 ? '' : 's' ?> ago)</span>
-                <button type="submit" form="confirmSdsCurrentForm" class="btn btn-sm btn-outline"
-                        style="margin-left: 0.75rem;"
-                        title="Use when the vendor confirms the existing SDS is still current — advances the confirmation date without requiring a re-upload.">
-                    Supplier Confirmed Current
-                </button>
+                <strong>Supplier confirmation</strong>
+                <span class="text-muted" style="font-size: 0.85rem;">&mdash; when a vendor confirms their existing SDS is still current, record it here instead of re-uploading.</span>
+                <table class="table table-sm" style="margin: 0.4rem 0 0;">
+                    <tbody>
+                    <?php foreach ($sdsCurrentBySupplier as $supKey => $cur): ?>
+                        <?php
+                            $confirmedAt = $cur['sds_last_confirmed_at'] ?? null;
+                            $daysSince   = $confirmedAt ? (int) ((time() - strtotime($confirmedAt)) / 86400) : null;
+                        ?>
+                        <tr>
+                            <td style="width: 30%;"><?= $supKey !== '' ? e($supKey) : '<span class="text-muted">(supplier not recorded)</span>' ?></td>
+                            <td>
+                                <?php if ($confirmedAt): ?>
+                                    Last confirmed <?= e($confirmedAt) ?>
+                                    <span class="text-muted">(<?= $daysSince ?> day<?= $daysSince === 1 ? '' : 's' ?> ago)</span>
+                                <?php else: ?>
+                                    <span class="text-muted">Never confirmed</span>
+                                <?php endif; ?>
+                            </td>
+                            <td style="text-align: right; white-space: nowrap;">
+                                <button type="submit" form="confirmSdsRow<?= (int) $cur['id'] ?>" class="btn btn-sm btn-outline"
+                                        title="Advances this supplier's confirmation date to today without a re-upload.">
+                                    Supplier Confirmed Current
+                                </button>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
             </div>
         <?php endif; ?>
 
         <?php if ($isEdit && !empty($sdsHistory)): ?>
         <!-- SDS History -->
         <h3>SDS History</h3>
+        <p class="text-muted" style="margin-top: -0.25rem;">Newest first. The most recent upload for each supplier is that supplier's <strong>current</strong> SDS.</p>
         <table class="table table-sm">
             <thead>
                 <tr>
                     <th>#</th>
+                    <th>Supplier</th>
                     <th>Filename</th>
                     <th>Size</th>
                     <th>Notes</th>
@@ -137,8 +207,14 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
             </thead>
             <tbody>
             <?php foreach ($sdsHistory as $idx => $sds): ?>
-                <tr<?= $idx === 0 ? ' style="background: #e8f5e9;"' : '' ?>>
-                    <td><?= $idx === 0 ? '<strong>Current</strong>' : ($idx + 1) ?></td>
+                <?php
+                    $rowSupKey = trim((string) ($sds['supplier'] ?? ''));
+                    $isCurrentForSupplier = isset($sdsCurrentBySupplier[$rowSupKey])
+                        && (int) $sdsCurrentBySupplier[$rowSupKey]['id'] === (int) $sds['id'];
+                ?>
+                <tr<?= $isCurrentForSupplier ? ' style="background: #e8f5e9;"' : '' ?>>
+                    <td><?= $isCurrentForSupplier ? '<strong>Current</strong>' : ($idx + 1) ?></td>
+                    <td><?= $rowSupKey !== '' ? e($rowSupKey) : '<span class="text-muted">—</span>' ?></td>
                     <td><?= e($sds['original_filename'] ?: basename($sds['file_path'])) ?></td>
                     <td><?= $sds['file_size'] ? number_format($sds['file_size'] / 1024, 1) . ' KB' : '—' ?></td>
                     <td><?= e($sds['notes'] ?? '') ?: '<span class="text-muted">—</span>' ?></td>
@@ -862,10 +938,16 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
         </div>
     </form>
 
-    <?php if ($isEdit && !empty($item['sds_last_confirmed_at'])): ?>
-    <form method="POST" action="/raw-materials/<?= (int) $item['id'] ?>/confirm-sds-current" id="confirmSdsCurrentForm" style="display:none">
-        <?= csrf_field() ?>
-    </form>
+    <?php if ($isEdit && !empty($sdsCurrentBySupplier)): ?>
+        <?php // One hidden form per supplier's current SDS — the "Supplier
+              // Confirmed Current" buttons above target these by id. They
+              // live outside the main form because HTML forbids nesting. ?>
+        <?php foreach ($sdsCurrentBySupplier as $cur): ?>
+        <form method="POST" action="/raw-materials/sds-version/<?= (int) $cur['id'] ?>/confirm-current"
+              id="confirmSdsRow<?= (int) $cur['id'] ?>" style="display:none">
+            <?= csrf_field() ?>
+        </form>
+        <?php endforeach; ?>
     <?php endif; ?>
 </div>
 
@@ -938,9 +1020,15 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
 
     form.addEventListener('submit', function(e) {
         var fileInput = document.getElementById('supplier_sds');
+        var supInput  = document.getElementById('sds_supplier');
         var dateInput = document.getElementById('sds_date_received');
         var hasFile   = !!(fileInput && fileInput.files && fileInput.files.length > 0);
 
+        if (hasFile && supInput && supInput.value.trim() === '') {
+            e.preventDefault();
+            showFieldError(supInput, 'SDS Supplier is required when uploading an SDS.');
+            return;
+        }
         if (hasFile && dateInput && dateInput.value.trim() === '') {
             e.preventDefault();
             showFieldError(dateInput, 'Date Received is required when uploading an SDS.');

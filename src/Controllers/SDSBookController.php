@@ -128,42 +128,46 @@ class SDSBookController
     }
 
     /**
-     * Search raw materials that have a supplier SDS uploaded.
-     * Uses the raw_material_sds history table to show the newest SDS for each raw material.
+     * Search supplier SDSs. One row per (raw material, supplier): each
+     * supplier's current SDS is its newest upload, so a material sourced
+     * from two vendors lists both files. The result keys are unchanged
+     * from the single-SDS days so both book views render as before;
+     * 'sds_count' now counts uploads for that supplier specifically.
      */
     private function searchSupplierSDS(Database $db, string $search): array
     {
-        $where  = ['rm.supplier_sds_path IS NOT NULL', "rm.supplier_sds_path != ''"];
+        $where  = [];
         $params = [];
 
         if ($search !== '') {
-            $where[]  = '(rm.internal_code LIKE ? OR rm.supplier LIKE ? OR rm.supplier_product_name LIKE ?)';
-            $term     = '%' . $search . '%';
-            $params[] = $term;
-            $params[] = $term;
-            $params[] = $term;
+            $where[] = '(rm.internal_code LIKE ? OR rm.supplier LIKE ? OR cur.supplier LIKE ? OR rm.supplier_product_name LIKE ?)';
+            $term    = '%' . $search . '%';
+            $params  = [$term, $term, $term, $term];
         }
 
-        $whereSQL = 'WHERE ' . implode(' AND ', $where);
+        $whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
-        // Join with raw_material_sds to get the newest SDS date and version count
         $rows = $db->fetchAll(
-            "SELECT rm.id, rm.internal_code, rm.supplier, rm.supplier_product_name, rm.supplier_sds_path,
-                    newest.uploaded_at AS sds_date,
-                    newest.original_filename,
-                    (SELECT COUNT(*) FROM raw_material_sds WHERE raw_material_id = rm.id) AS sds_count
-             FROM raw_materials rm
-             LEFT JOIN (
-                 SELECT rms1.raw_material_id, rms1.uploaded_at, rms1.original_filename
-                 FROM raw_material_sds rms1
-                 INNER JOIN (
-                     SELECT raw_material_id, MAX(id) AS max_id
-                     FROM raw_material_sds
-                     GROUP BY raw_material_id
-                 ) rms2 ON rms1.id = rms2.max_id
-             ) newest ON newest.raw_material_id = rm.id
+            "SELECT rm.id,
+                    rm.internal_code,
+                    rm.supplier_product_name,
+                    cur.id                                          AS sds_id,
+                    COALESCE(NULLIF(cur.supplier, ''), rm.supplier) AS supplier,
+                    cur.uploaded_at                                 AS sds_date,
+                    cur.original_filename,
+                    cur.file_path,
+                    (SELECT COUNT(*) FROM raw_material_sds c
+                      WHERE c.raw_material_id = rm.id
+                        AND COALESCE(c.supplier, '') = COALESCE(cur.supplier, '')) AS sds_count
+             FROM raw_material_sds cur
+             JOIN (
+                 SELECT raw_material_id, supplier, MAX(id) AS max_id
+                 FROM raw_material_sds
+                 GROUP BY raw_material_id, supplier
+             ) latest ON latest.max_id = cur.id
+             JOIN raw_materials rm ON rm.id = cur.raw_material_id
              {$whereSQL}
-             ORDER BY rm.internal_code ASC",
+             ORDER BY rm.internal_code ASC, supplier ASC",
             $params
         );
 
@@ -171,13 +175,15 @@ class SDSBookController
         foreach ($rows as $row) {
             $results[] = [
                 'id'           => $row['id'],
+                'sds_id'       => (int) $row['sds_id'],
                 'product_name' => $row['internal_code'] . ($row['supplier_product_name'] ? ' — ' . $row['supplier_product_name'] : ''),
                 'supplier'     => $row['supplier'] ?? '',
-                'view_url'     => '/raw-materials/' . (int) $row['id'] . '/sds',
+                // Link the supplier-specific file, not the RM's "latest overall".
+                'view_url'     => '/raw-materials/sds-version/' . (int) $row['sds_id'],
                 'edit_url'     => '/raw-materials/' . (int) $row['id'] . '/edit',
                 'date'         => $row['sds_date'] ?? null,
                 'sds_count'    => (int) ($row['sds_count'] ?? 0),
-                'filename'     => $row['original_filename'] ?? basename($row['supplier_sds_path']),
+                'filename'     => $row['original_filename'] ?: basename((string) $row['file_path']),
             ];
         }
 

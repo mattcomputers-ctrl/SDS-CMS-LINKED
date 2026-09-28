@@ -34,6 +34,7 @@
                 <thead>
                     <tr>
                         <th>RM Code</th>
+                        <th>Supplier</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -41,6 +42,7 @@
                 <?php foreach ($results as $r): ?>
                     <tr>
                         <td><strong><?= e($r['product_name']) ?></strong></td>
+                        <td><?= e($r['supplier'] ?? '') ?: '<span class="text-muted">—</span>' ?></td>
                         <td>
                             <a href="<?= e($r['view_url']) ?>" class="btn btn-sm btn-primary pdf-link">View SDS</a>
                         </td>

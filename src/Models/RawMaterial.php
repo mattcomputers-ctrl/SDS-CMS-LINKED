@@ -510,7 +510,7 @@ class RawMaterial
     }
 
     /**
-     * Get the newest (current) SDS for a raw material.
+     * Get the newest (current) SDS for a raw material, across suppliers.
      */
     public static function getCurrentSds(int $rmId): ?array
     {
@@ -527,20 +527,95 @@ class RawMaterial
     }
 
     /**
-     * Advance sds_last_confirmed_at without bumping updated_at.
+     * Current SDS per supplier: the newest upload for each distinct
+     * supplier string on this RM. Rows uploaded before the supplier
+     * column existed (NULL / '') group under the empty-string key.
      *
-     * Used by the "Supplier Confirmed Current" button — marking an
-     * existing vendor SDS as still current is metadata, not a content
-     * change, so downstream SDSs should not be flagged stale. Same
-     * rationale as addSds()'s explicit updated_at preservation.
+     * @return array<string, array>  supplier => raw_material_sds row (+ uploaded_by_name)
+     */
+    public static function getCurrentSdsBySupplier(int $rmId): array
+    {
+        $db   = Database::getInstance();
+        $rows = $db->fetchAll(
+            "SELECT rms.*, u.display_name AS uploaded_by_name
+             FROM raw_material_sds rms
+             LEFT JOIN users u ON u.id = rms.uploaded_by
+             WHERE rms.raw_material_id = ?
+             ORDER BY rms.uploaded_at DESC, rms.id DESC",
+            [$rmId]
+        );
+        $out = [];
+        foreach ($rows as $r) {
+            $key = trim((string) ($r['supplier'] ?? ''));
+            if (!isset($out[$key])) {
+                $out[$key] = $r;
+            }
+        }
+        ksort($out);
+        return $out;
+    }
+
+    /**
+     * "Supplier Confirmed Current" for ONE SDS row: stamp that row's
+     * sds_last_confirmed_at, then re-sync the RM-level date to the max
+     * across the RM's rows. updated_at is explicitly preserved — a
+     * confirmation is metadata, not a content change, so downstream
+     * SDSs must not be flagged stale (same rationale as addSds()).
+     *
+     * @return int|null  The owning raw_material_id, or null if no such row.
+     */
+    public static function markSdsRowConfirmed(int $sdsId, string $dateYmd): ?int
+    {
+        $db  = Database::getInstance();
+        $row = $db->fetch("SELECT raw_material_id FROM raw_material_sds WHERE id = ?", [$sdsId]);
+        if (!$row) {
+            return null;
+        }
+        $db->query(
+            "UPDATE raw_material_sds SET sds_last_confirmed_at = ? WHERE id = ?",
+            [$dateYmd, $sdsId]
+        );
+        $rmId = (int) $row['raw_material_id'];
+        self::syncRmConfirmedDate($rmId);
+        return $rmId;
+    }
+
+    /**
+     * RM-level "confirmed current": confirms the current SDS of EVERY
+     * supplier on this RM at once. Kept for callers that predate
+     * per-supplier SDSs (legacy route, Stale RM SDS summary action).
      */
     public static function markSdsConfirmed(int $id, string $dateYmd): void
     {
-        Database::getInstance()->query(
-            "UPDATE raw_materials
-             SET sds_last_confirmed_at = ?, updated_at = updated_at
-             WHERE id = ?",
-            [$dateYmd, $id]
+        $db = Database::getInstance();
+        foreach (self::getCurrentSdsBySupplier($id) as $cur) {
+            $db->query(
+                "UPDATE raw_material_sds SET sds_last_confirmed_at = ? WHERE id = ?",
+                [$dateYmd, (int) $cur['id']]
+            );
+        }
+        self::syncRmConfirmedDate($id, $dateYmd);
+    }
+
+    /**
+     * raw_materials.sds_last_confirmed_at := MAX over the RM's SDS rows
+     * (raised to $atLeast if given), with updated_at explicitly
+     * preserved so bulk publish doesn't see a content change.
+     */
+    private static function syncRmConfirmedDate(int $rmId, ?string $atLeast = null): void
+    {
+        $db  = Database::getInstance();
+        $row = $db->fetch(
+            "SELECT MAX(sds_last_confirmed_at) AS mx FROM raw_material_sds WHERE raw_material_id = ?",
+            [$rmId]
+        );
+        $mx = $row['mx'] ?? null;
+        if ($atLeast !== null && $atLeast !== '' && ($mx === null || $atLeast > $mx)) {
+            $mx = $atLeast;   // ISO dates compare correctly as strings
+        }
+        $db->query(
+            "UPDATE raw_materials SET sds_last_confirmed_at = ?, updated_at = updated_at WHERE id = ?",
+            [$mx, $rmId]
         );
     }
 
@@ -556,48 +631,48 @@ class RawMaterial
         ?int $fileSize,
         ?string $notes,
         ?int $userId,
-        ?string $dateReceived = null
+        ?string $dateReceived = null,
+        ?string $supplier = null
     ): int {
         $db = Database::getInstance();
 
+        $supplier     = ($supplier !== null && trim($supplier) !== '') ? trim($supplier) : null;
+        $dateReceived = ($dateReceived !== null && $dateReceived !== '') ? $dateReceived : null;
+
         $id = (int) $db->insert('raw_material_sds', [
-            'raw_material_id'   => $rmId,
-            'file_path'         => $filePath,
-            'original_filename' => $originalFilename,
-            'file_size'         => $fileSize,
-            'notes'             => $notes,
-            'uploaded_by'       => $userId,
-            'sds_date_received' => $dateReceived,
+            'raw_material_id'       => $rmId,
+            'supplier'              => $supplier,
+            'file_path'             => $filePath,
+            'original_filename'     => $originalFilename,
+            'file_size'             => $fileSize,
+            'notes'                 => $notes,
+            'uploaded_by'           => $userId,
+            'sds_date_received'     => $dateReceived,
+            // A fresh upload is, by definition, confirmed current as of
+            // its received date. This is the per-supplier date the RM
+            // edit page and Stale RM SDS page use.
+            'sds_last_confirmed_at' => $dateReceived,
         ]);
 
-        // Update the legacy supplier_sds_path pointer + (if provided) bump
-        // sds_last_confirmed_at, but EXPLICITLY preserve updated_at.
+        // Keep the legacy "latest SDS overall" pointer for consumers that
+        // still want a single file (RM list, SDS Book), and re-sync the
+        // RM-level confirmed date to the max across all suppliers. Both
+        // EXPLICITLY preserve updated_at:
         //
-        // Why: bulk publish's staleness check compares
-        // sds_versions.published_at against MAX(raw_materials.updated_at,
-        // …) across the formula tree. Uploading a vendor SDS PDF is
-        // metadata — it doesn't change any hazard/composition field that
-        // would require regenerating downstream SDSs — so it must not
-        // look "newer" to the publisher. The `updated_at = updated_at`
-        // assignment suppresses MySQL's ON UPDATE CURRENT_TIMESTAMP for
-        // this statement. Any genuine content change goes through
-        // RawMaterial::update() in the same request and bumps updated_at
-        // there, correctly.
-        if ($dateReceived !== null && $dateReceived !== '') {
-            $db->query(
-                "UPDATE raw_materials
-                 SET supplier_sds_path = ?, sds_last_confirmed_at = ?, updated_at = updated_at
-                 WHERE id = ?",
-                [$filePath, $dateReceived, $rmId]
-            );
-        } else {
-            $db->query(
-                "UPDATE raw_materials
-                 SET supplier_sds_path = ?, updated_at = updated_at
-                 WHERE id = ?",
-                [$filePath, $rmId]
-            );
-        }
+        //   Bulk publish's staleness check compares sds_versions.
+        //   published_at against MAX(raw_materials.updated_at, …) across
+        //   the formula tree. Uploading a vendor SDS PDF is metadata — it
+        //   doesn't change any hazard/composition field that would require
+        //   regenerating downstream SDSs — so it must not look "newer" to
+        //   the publisher. `updated_at = updated_at` suppresses MySQL's ON
+        //   UPDATE CURRENT_TIMESTAMP for the statement. Any genuine content
+        //   change goes through RawMaterial::update() in the same request
+        //   and bumps updated_at there, correctly.
+        $db->query(
+            "UPDATE raw_materials SET supplier_sds_path = ?, updated_at = updated_at WHERE id = ?",
+            [$filePath, $rmId]
+        );
+        self::syncRmConfirmedDate($rmId, $dateReceived);
 
         return $id;
     }

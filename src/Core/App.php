@@ -298,6 +298,9 @@ class App
         // ── Stale RM SDS ──────────────────────────────────────
         $router->get('/stale-rm-sds',                                   'StaleRmSdsController@index');
         $router->post('/raw-materials/{id}/confirm-sds-current',        'RawMaterialController@confirmSdsCurrent');
+        // Per-supplier variant: confirms ONE raw_material_sds row (the RM
+        // edit page renders a button per supplier's current SDS).
+        $router->post('/raw-materials/sds-version/{id}/confirm-current', 'RawMaterialController@confirmSdsVersionCurrent');
 
         // ── SDS Update Required ─────────────────────────────────
         $router->get('/sds-updates',                           'SDSUpdateController@index');

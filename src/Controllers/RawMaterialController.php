@@ -466,9 +466,17 @@ class RawMaterialController
             redirect('/raw-materials/' . $sds['raw_material_id'] . '/edit');
         }
 
+        // Filename: SDS_{code}_{supplier}.pdf so two vendors' SDSs for the
+        // same material are distinguishable once downloaded (the RM SDS Book
+        // lists one link per vendor). Falls back to the row id when the
+        // supplier wasn't recorded.
+        $codeSlug     = preg_replace('/[^a-zA-Z0-9_-]/', '_', (string) $sds['internal_code']);
+        $supplierSlug = trim(preg_replace('/[^a-zA-Z0-9]+/', '_', (string) ($sds['supplier'] ?? '')), '_');
+        $suffix       = $supplierSlug !== '' ? $supplierSlug : 'v' . (int) $sds['id'];
+
         $disposition = !empty($_COOKIE['sds_pdf_download']) ? 'attachment' : 'inline';
         header('Content-Type: application/pdf');
-        header('Content-Disposition: ' . $disposition . '; filename="SDS_' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $sds['internal_code']) . '_v' . $sds['id'] . '.pdf"');
+        header('Content-Disposition: ' . $disposition . '; filename="SDS_' . $codeSlug . '_' . $suffix . '.pdf"');
         header('Content-Length: ' . filesize($pdfPath));
         readfile($pdfPath);
         exit;

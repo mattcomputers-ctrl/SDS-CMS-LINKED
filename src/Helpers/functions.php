@@ -72,7 +72,21 @@ function view(string $__template, array $__data = []): void
     // Extract variables into the view scope
     extract($__data, EXTR_SKIP);
 
-    include $__file;
+    // _old_input (redirect-back form repopulation) must survive until the
+    // whole page has rendered — templates call old() throughout — and
+    // then be cleared so it can't leak into an unrelated form on the
+    // next page. A depth counter keeps nested view() calls (partials)
+    // from clearing it out from under the outer template.
+    static $__depth = 0;
+    $__depth++;
+    try {
+        include $__file;
+    } finally {
+        $__depth--;
+        if ($__depth === 0) {
+            unset($_SESSION['_flash']['_old_input']);
+        }
+    }
 }
 
 /* ------------------------------------------------------------------
@@ -167,8 +181,10 @@ function flash_messages(): string
         }
     }
 
-    // Clear old form input so it doesn't persist to subsequent pages
-    unset($_SESSION['_flash']['_old_input']);
+    // NOTE: _old_input is deliberately NOT cleared here. This helper runs
+    // from the layout header — i.e. before any form field calls old() —
+    // so clearing it here wiped every redirect-back form in the app. It
+    // is cleared once the outermost view() finishes rendering instead.
 
     return $html;
 }

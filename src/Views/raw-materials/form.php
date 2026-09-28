@@ -3,6 +3,42 @@
 <?php
 $isEdit = $mode === 'edit';
 $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
+
+// ── Redirect-back after a validation error ──────────────────────────
+// The controller flashes the submitted POST as _old_input. Scalar inputs
+// repopulate via old(); the blocks below rebuild the nested sections
+// (checkboxes, constituents, Prop 65 / HAP manual rows, hazard picker)
+// from the same array so the user never has to re-enter a row. With no
+// old input we fall back to the DB-loaded $item / $constituents.
+$old    = $_SESSION['_flash']['_old_input'] ?? null;
+$hasOld = is_array($old) && $old !== [];
+
+// Checkboxes: an unchecked box is simply absent from POST, so when old
+// input exists "missing" must mean unchecked — falling back to the DB
+// value would silently re-check a box the user just cleared.
+$oldCheck = static function (string $key) use ($hasOld, $old, $item): bool {
+    return $hasOld ? !empty($old[$key]) : !empty($item[$key] ?? null);
+};
+$hazNoCas = $oldCheck('hazardous_no_cas');
+
+// Constituent rows from old input, renumbered from 0 (the add-row JS
+// reuses indexes after a remove, so POST keys can have gaps).
+if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
+    $constituents = [];
+    foreach ($old['cas_number'] as $k => $casVal) {
+        $constituents[] = [
+            'cas_number'               => (string) $casVal,
+            'chemical_name'            => (string) ($old['chemical_name'][$k]            ?? ''),
+            'pct_min'                  => (string) ($old['pct_min'][$k]                  ?? ''),
+            'pct_max'                  => (string) ($old['pct_max'][$k]                  ?? ''),
+            'pct_exact'                => (string) ($old['pct_exact'][$k]                ?? ''),
+            'is_trade_secret'          => !empty($old['is_trade_secret'][$k]) ? 1 : 0,
+            'trade_secret_description' => (string) ($old['trade_secret_description'][$k] ?? ''),
+            'trade_secret_h_codes'     => (string) ($old['trade_secret_h_codes'][$k]     ?? ''),
+            'is_non_hazardous'         => !empty($old['is_non_hazardous'][$k]) ? 1 : 0,
+        ];
+    }
+}
 ?>
 
 <div class="card">
@@ -56,12 +92,14 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
             </div>
             <div class="form-group">
                 <label for="sds_date_received">Date Received from Supplier <span class="text-muted">(required when uploading)</span></label>
-                <input type="date" id="sds_date_received" name="sds_date_received" max="<?= e(date('Y-m-d')) ?>">
+                <input type="date" id="sds_date_received" name="sds_date_received" max="<?= e(date('Y-m-d')) ?>"
+                       value="<?= e(old('sds_date_received')) ?>">
                 <small class="text-muted">The revision/receipt date printed on the supplier SDS. Separate from the upload date.</small>
             </div>
             <div class="form-group">
                 <label for="sds_notes">SDS Upload Notes (optional)</label>
-                <input type="text" id="sds_notes" name="sds_notes" placeholder="e.g., Revised 2024, new formulation...">
+                <input type="text" id="sds_notes" name="sds_notes" placeholder="e.g., Revised 2024, new formulation..."
+                       value="<?= e(old('sds_notes')) ?>">
             </div>
         </div>
 
@@ -126,7 +164,7 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                            value="<?= e(old('voc_wt', $item['voc_wt'] ?? '')) ?>">
                     <label class="inline-check">
                         <input type="checkbox" name="voc_less_than_one" value="1" id="vocLessThanOne"
-                               <?= !empty($item['voc_less_than_one']) ? 'checked' : '' ?>>
+                               <?= $oldCheck('voc_less_than_one') ? 'checked' : '' ?>>
                         &lt;1% VOC wt%
                     </label>
                 </div>
@@ -196,7 +234,7 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                            value="<?= e(old('flash_point_c', $item['flash_point_c'] ?? '')) ?>">
                     <label class="inline-check">
                         <input type="checkbox" name="flash_point_greater_than" value="1"
-                               <?= !empty($item['flash_point_greater_than']) ? 'checked' : '' ?>>
+                               <?= $oldCheck('flash_point_greater_than') ? 'checked' : '' ?>>
                         Flash Point Greater than (&gt;)
                     </label>
                 </div>
@@ -243,7 +281,7 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
             <label style="display: inline-flex; align-items: center; gap: 6px;">
                 <input type="hidden" name="hazardous_no_cas" value="0">
                 <input type="checkbox" id="hazardous_no_cas" name="hazardous_no_cas" value="1"
-                       <?= !empty($item['hazardous_no_cas']) ? 'checked' : '' ?>>
+                       <?= $hazNoCas ? 'checked' : '' ?>>
                 <strong>Hazardous, but no CAS provided — use manual GHS classifications</strong>
             </label>
         </div>
@@ -258,9 +296,15 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                     ? (json_decode($manualHazard['selected_hazards'], true) ?: [])
                     : $manualHazard['selected_hazards'];
             }
+            // Redirect-back: the picker's checked state comes from POST.
+            if ($hasOld) {
+                $rmSelectedHazards = (isset($old['hazard_selections']) && is_array($old['hazard_selections']))
+                    ? array_values(array_map('strval', $old['hazard_selections']))
+                    : [];
+            }
         ?>
 
-        <div id="manual-hazard-picker" style="display: <?= !empty($item['hazardous_no_cas']) ? 'block' : 'none' ?>; margin-top: 10px;">
+        <div id="manual-hazard-picker" style="display: <?= $hazNoCas ? 'block' : 'none' ?>; margin-top: 10px;">
             <p class="text-muted">Check the hazard classifications that apply. Signal word, P statements, and pictograms are auto-derived on save.</p>
 
             <div class="hazard-selection" style="max-height: 400px; overflow-y: auto; padding: 8px; border: 1px solid #e0e0e0; border-radius: 4px; background: #fafafa;">
@@ -299,7 +343,7 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
         </div>
 
         <!-- CAS Constituents (inline) -->
-        <div id="cas-constituents-section" style="display: <?= !empty($item['hazardous_no_cas']) ? 'none' : 'block' ?>;">
+        <div id="cas-constituents-section" style="display: <?= $hazNoCas ? 'none' : 'block' ?>;">
         <h3>CAS Constituents</h3>
         <p class="text-muted">Enter the CAS numbers and concentrations from the supplier SDS. Chemical name will auto-populate when a valid CAS number is entered. Regulatory list membership and exposure limits are shown automatically.</p>
 
@@ -492,8 +536,35 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                 }
             }
         }
+        // Redirect-back: rebuild manual rows from the submitted POST so a
+        // validation error doesn't wipe them. Non-override rows only post
+        // CAS (name/tox are locked + re-derived from prop65_list on render);
+        // override rows post their typed name + toxicity checkboxes.
+        if ($hasOld && isset($old['p65_cas_number']) && is_array($old['p65_cas_number'])) {
+            $prop65Data = [];
+            $p65ToxMap = [
+                'p65_tox_cancer'              => 'cancer',
+                'p65_tox_developmental'       => 'developmental',
+                'p65_tox_reproductive'        => 'reproductive',
+                'p65_tox_female_reproductive' => 'female reproductive',
+                'p65_tox_male_reproductive'   => 'male reproductive',
+            ];
+            foreach ($old['p65_cas_number'] as $k => $casVal) {
+                $types = [];
+                foreach ($p65ToxMap as $field => $label) {
+                    if (!empty($old[$field][$k])) { $types[] = $label; }
+                }
+                $prop65Data[] = [
+                    'cas_number'     => (string) $casVal,
+                    'chemical_name'  => (string) ($old['p65_chemical_name'][$k] ?? ''),
+                    'toxicity_types' => implode(',', $types),
+                    'is_trace'       => !empty($old['p65_is_trace'][$k]) ? 1 : 0,
+                    'is_override'    => !empty($old['p65_is_override'][$k]) ? 1 : 0,
+                ];
+            }
+        }
         // Backward compat: if no JSON data but old fields exist, build one entry
-        if (empty($prop65Data) && !empty($item['is_prop65']) && !empty($item['prop65_chemical_name'])) {
+        if (!$hasOld && empty($prop65Data) && !empty($item['is_prop65']) && !empty($item['prop65_chemical_name'])) {
             $prop65Data = [[
                 'chemical_name'  => $item['prop65_chemical_name'],
                 'cas_number'     => '',
@@ -699,6 +770,17 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
         if (!empty($item['haps_data'])) {
             $hapsData = json_decode($item['haps_data'], true) ?: [];
         }
+        // Redirect-back: rebuild manual rows from the submitted POST.
+        if ($hasOld && isset($old['hap_chemical_name']) && is_array($old['hap_chemical_name'])) {
+            $hapsData = [];
+            foreach ($old['hap_chemical_name'] as $k => $nameVal) {
+                $hapsData[] = [
+                    'chemical_name' => (string) $nameVal,
+                    'cas_number'    => (string) ($old['hap_cas_number'][$k] ?? ''),
+                    'weight_pct'    => (string) ($old['hap_weight_pct'][$k] ?? ''),
+                ];
+            }
+        }
         $hapsData = array_values(array_filter($hapsData, function ($e) use ($hapAutoCasSet) {
             $cas = trim((string) ($e['cas_number'] ?? ''));
             return $cas === '' || !isset($hapAutoCasSet[$cas]);
@@ -842,6 +924,48 @@ $action = $isEdit ? '/raw-materials/' . (int) $item['id'] : '/raw-materials';
                 picker.style.display = 'none';
                 cas.style.display    = 'block';
             }
+        });
+    }
+})();
+
+// Client-side pre-flight: catch the most common validation miss before
+// the form round-trips at all, so the user fixes it in place with
+// nothing lost. (The server still validates; on a server-side error the
+// page now repopulates every section from the flashed POST.)
+(function() {
+    var form = document.getElementById('rawMaterialForm');
+    if (!form) return;
+
+    form.addEventListener('submit', function(e) {
+        var fileInput = document.getElementById('supplier_sds');
+        var dateInput = document.getElementById('sds_date_received');
+        var hasFile   = !!(fileInput && fileInput.files && fileInput.files.length > 0);
+
+        if (hasFile && dateInput && dateInput.value.trim() === '') {
+            e.preventDefault();
+            showFieldError(dateInput, 'Date Received is required when uploading an SDS.');
+        }
+    });
+
+    function showFieldError(input, message) {
+        var group = input.closest('.form-group') || input.parentNode;
+        var note  = group.querySelector('.field-error');
+        if (!note) {
+            note = document.createElement('div');
+            note.className = 'field-error';
+            note.style.cssText = 'color:#b91c1c;font-size:0.85rem;margin-top:0.25rem;font-weight:600;';
+            group.appendChild(note);
+        }
+        note.textContent = message;
+        input.setAttribute('aria-invalid', 'true');
+        input.style.borderColor = '#b91c1c';
+        input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        input.focus();
+        input.addEventListener('input', function clear() {
+            note.remove();
+            input.removeAttribute('aria-invalid');
+            input.style.borderColor = '';
+            input.removeEventListener('input', clear);
         });
     }
 })();

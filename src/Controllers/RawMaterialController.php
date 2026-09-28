@@ -56,7 +56,15 @@ class RawMaterialController
             redirect('/raw-materials');
         }
 
-        CSRF::validateRequest();
+        try {
+            CSRF::validateRequest();
+        } catch (\Throwable $e) {
+            // Also fires when the upload exceeds post_max_size (PHP empties
+            // $_POST so the token is missing). Keep whatever did arrive.
+            $_SESSION['_flash']['error']      = $e->getMessage() . ' Please try again.';
+            $_SESSION['_flash']['_old_input'] = $_POST;
+            redirect('/raw-materials/create');
+        }
 
         $data = $_POST;
         $data['created_by'] = current_user_id();
@@ -86,15 +94,16 @@ class RawMaterialController
         }
 
         try {
-            // Handle SDS file upload. Date Received is required when an
-            // SDS file is uploaded — reject before we create the record.
-            $sdsInfo = $this->handleSdsUpload();
+            // Date Received is required when an SDS file is uploaded.
+            // Check BEFORE handleSdsUpload() moves the file into place so a
+            // validation failure doesn't leave an orphaned PDF on disk.
             $dateReceived = trim($_POST['sds_date_received'] ?? '');
-            if ($sdsInfo !== null && $dateReceived === '') {
+            if ($this->sdsFileSubmitted() && $dateReceived === '') {
                 throw new \InvalidArgumentException(
                     'Date Received is required when uploading an SDS.'
                 );
             }
+            $sdsInfo = $this->handleSdsUpload();
             if ($sdsInfo !== null) {
                 $data['supplier_sds_path']      = $sdsInfo['path'];
                 $data['sds_last_confirmed_at']  = $dateReceived;
@@ -124,10 +133,37 @@ class RawMaterialController
             $_SESSION['_flash']['success'] = 'Raw material created successfully.';
             redirect('/raw-materials');
         } catch (\Throwable $e) {
-            $_SESSION['_flash']['error'] = $e->getMessage();
+            // Everything the user typed comes back via _old_input (scalars
+            // through old(), nested rows rebuilt by the form). The one thing
+            // a redirect can't carry is the file — formErrorMessage says so.
+            $_SESSION['_flash']['error']      = $this->formErrorMessage($e);
             $_SESSION['_flash']['_old_input'] = $data;
             redirect('/raw-materials/create');
         }
+    }
+
+    /**
+     * Whether the current request carries an SDS PDF in the multipart body
+     * (any upload state other than "no file chosen").
+     */
+    private function sdsFileSubmitted(): bool
+    {
+        return isset($_FILES['supplier_sds'])
+            && (int) ($_FILES['supplier_sds']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+    }
+
+    /**
+     * Flash-friendly error text for a failed create/update. Files can't
+     * survive a redirect, so if the submission included an SDS PDF, say so
+     * explicitly — everything else is repopulated from _old_input.
+     */
+    private function formErrorMessage(\Throwable $e): string
+    {
+        $msg = $e->getMessage();
+        if ($this->sdsFileSubmitted()) {
+            $msg .= ' Your entries have been kept — please re-select the SDS PDF, then save again.';
+        }
+        return $msg;
     }
 
     public function edit(string $id): void
@@ -156,7 +192,15 @@ class RawMaterialController
             redirect('/raw-materials');
         }
 
-        CSRF::validateRequest();
+        try {
+            CSRF::validateRequest();
+        } catch (\Throwable $e) {
+            // Also fires when the upload exceeds post_max_size (PHP empties
+            // $_POST so the token is missing). Keep whatever did arrive.
+            $_SESSION['_flash']['error']      = $e->getMessage() . ' Please try again.';
+            $_SESSION['_flash']['_old_input'] = $_POST;
+            redirect('/raw-materials/' . $id . '/edit');
+        }
 
         $item = RawMaterial::findById((int) $id);
         if ($item === null) {
@@ -204,14 +248,16 @@ class RawMaterialController
             $data['_skip_lock_check'] = true;
 
             // Handle SDS file upload — always adds to history, never removes old.
-            // Date Received is required when an SDS file is uploaded.
-            $sdsInfo = $this->handleSdsUpload();
+            // Date Received is required when an SDS file is uploaded; check
+            // BEFORE handleSdsUpload() moves the file into place so a
+            // validation failure doesn't leave an orphaned PDF on disk.
             $dateReceived = trim($_POST['sds_date_received'] ?? '');
-            if ($sdsInfo !== null && $dateReceived === '') {
+            if ($this->sdsFileSubmitted() && $dateReceived === '') {
                 throw new \InvalidArgumentException(
                     'Date Received is required when uploading an SDS.'
                 );
             }
+            $sdsInfo = $this->handleSdsUpload();
 
             if ($sdsInfo !== null) {
                 $data['supplier_sds_path']     = $sdsInfo['path'];
@@ -248,12 +294,13 @@ class RawMaterialController
 
             $_SESSION['_flash']['success'] = 'Raw material updated.';
         } catch (\Throwable $e) {
-            // Preserve the user's in-flight form input so they can fix
-            // the error without re-entering everything. Scalar fields
-            // come back via the old() helper; nested state (constituents,
-            // HAPs, Prop 65 manual rows) re-renders from the freshly
-            // fetched $item when the edit controller re-runs.
-            $_SESSION['_flash']['error']      = $e->getMessage();
+            // Preserve the user's in-flight form input so they can fix the
+            // error without re-entering anything. Scalars come back via
+            // old(); the form rebuilds constituents, Prop 65 / HAP manual
+            // rows, checkboxes and the hazard picker from the same array.
+            // The one thing a redirect can't carry is the uploaded file —
+            // formErrorMessage says so when one was part of the submit.
+            $_SESSION['_flash']['error']      = $this->formErrorMessage($e);
             $_SESSION['_flash']['_old_input'] = $_POST;
         }
 

@@ -341,6 +341,20 @@
             <div id="bumpResult" style="margin-top: 0.5rem;"></div>
         </div>
 
+        <h2>Automatic Logout</h2>
+        <div class="form-grid-2col">
+            <div class="form-group">
+                <label>Log out after (minutes of inactivity)</label>
+                <input type="number" name="auth__session_timeout_minutes" min="2" max="720" step="1"
+                       value="<?= e($settings['auth.session_timeout_minutes'] ?? '30') ?>">
+                <small class="text-muted">
+                    Users are signed out after this many minutes without activity. A warning appears
+                    1 minute before sign-out; any click or keypress keeps the session alive.
+                    Range 2&ndash;720 minutes (values outside are clamped). Default 30.
+                </small>
+            </div>
+        </div>
+
         <h2>Maintenance</h2>
         <div class="form-grid-2col">
             <div class="form-group"><label>Audit Log Retention (days)</label><input type="number" name="cron__log_retention_days" value="<?= e($settings['cron.log_retention_days'] ?? '365') ?>"></div>

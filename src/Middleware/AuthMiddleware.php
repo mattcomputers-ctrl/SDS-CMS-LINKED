@@ -2,6 +2,7 @@
 
 namespace SDS\Middleware;
 
+use SDS\Core\Session;
 use SDS\Services\PermissionService;
 
 /**
@@ -26,6 +27,7 @@ class AuthMiddleware
     private const PUBLIC_PATHS = [
         '/login',
         '/logout',
+        '/auth/heartbeat', // returns 401 JSON itself when unauthenticated (see AuthController::heartbeat)
         '/assets',
         '/css',
         '/js',
@@ -84,6 +86,27 @@ class AuthMiddleware
     {
         $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 
+        // ── Idle-logout enforcement ────────────────────────────────
+        // Runs for any request that carries an authenticated session —
+        // including "public" prefixes like /raw-materials — so activity
+        // is tracked consistently and an expired session is torn down
+        // wherever the user lands next. Background XHR polls (progress /
+        // status endpoints) are excluded from counting as activity so an
+        // unattended tab can't keep a session alive; the client-side
+        // heartbeat (public/js/session-timeout.js) is the real
+        // "user is present" signal.
+        if (isset($_SESSION['_user'])) {
+            $timeout = Session::configuredIdleTimeout();
+            $last    = (int) ($_SESSION['_last_activity'] ?? 0);
+            if ($last > 0 && (time() - $last) > $timeout) {
+                $this->expireIdleSession($uri);
+                return;
+            }
+            if ($last === 0 || !$this->isPollingPath($uri)) {
+                $_SESSION['_last_activity'] = time();
+            }
+        }
+
         // Allow public paths through without authentication
         if ($this->isPublicPath($uri)) {
             $next();
@@ -123,6 +146,59 @@ class AuthMiddleware
 
         // User is authenticated — proceed
         $next();
+    }
+
+    /**
+     * Background XHR polls that fire on a timer regardless of whether a
+     * human is present. These must not refresh _last_activity, or a tab
+     * left open on the bulk-publish / export progress screen would keep
+     * the session alive forever. Only GETs qualify — any POST is a
+     * deliberate user action.
+     */
+    private function isPollingPath(string $uri): bool
+    {
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
+            return false;
+        }
+        return (bool) preg_match(
+            '#^/(bulk-publish/queue/\d+/status$|bulk-publish/progress/|bulk-export/progress/)#',
+            $uri
+        );
+    }
+
+    /**
+     * Tear down an idle-expired session and send the client to the login
+     * page with a "timed out" notice. The heartbeat endpoint gets a 401
+     * JSON body instead so the client-side timer can react without
+     * following a redirect into login HTML.
+     */
+    private function expireIdleSession(string $uri): void
+    {
+        $userId = (int) ($_SESSION['_user']['id'] ?? 0);
+        if ($userId > 0) {
+            try {
+                \SDS\Core\Database::getInstance()->insert('audit_log', [
+                    'user_id'     => $userId,
+                    'entity_type' => 'auth',
+                    'entity_id'   => (string) $userId,
+                    'action'      => 'session_timeout',
+                    'ip_address'  => $_SERVER['REMOTE_ADDR'] ?? null,
+                ]);
+            } catch (\Throwable $e) {
+                // Audit failure must never block the logout itself.
+            }
+        }
+
+        \SDS\Core\App::session()->destroy();
+
+        if ($uri === '/auth/heartbeat') {
+            http_response_code(401);
+            header('Content-Type: application/json');
+            echo json_encode(['ok' => false, 'error' => 'expired']);
+            exit;
+        }
+
+        redirect('/login?timeout=1');
     }
 
     /**

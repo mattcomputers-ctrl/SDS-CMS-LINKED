@@ -10,8 +10,49 @@ namespace SDS\Core;
  */
 class Session
 {
+    /** Admin setting key for the idle-logout window. */
+    public const IDLE_TIMEOUT_SETTING = 'auth.session_timeout_minutes';
+
+    /** Defaults / clamps for the idle timeout (minutes). Min 2 so the
+     *  1-minute client-side warning has room to appear. */
+    public const IDLE_TIMEOUT_DEFAULT_MIN = 30;
+    public const IDLE_TIMEOUT_MIN_MIN     = 2;
+    public const IDLE_TIMEOUT_MAX_MIN     = 720;
+
     /** @var bool Whether session has been started by this class */
     private bool $started = false;
+
+    /**
+     * Idle-logout window in seconds, from the admin setting, clamped.
+     * Falls back to the default if the DB isn't reachable (e.g. very
+     * early bootstrap failures) so auth never hard-errors on a settings
+     * lookup. Memoised per request — it's consulted by App (to size the
+     * session cookie), AuthMiddleware (to enforce) and the footer (to
+     * configure the client-side timer).
+     */
+    public static function configuredIdleTimeout(): int
+    {
+        static $cached = null;
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        $minutes = self::IDLE_TIMEOUT_DEFAULT_MIN;
+        try {
+            $row = Database::getInstance()->fetch(
+                "SELECT `value` FROM settings WHERE `key` = ?",
+                [self::IDLE_TIMEOUT_SETTING]
+            );
+            if ($row && $row['value'] !== null && $row['value'] !== '') {
+                $minutes = (int) $row['value'];
+            }
+        } catch (\Throwable $e) {
+            // keep default
+        }
+
+        $minutes = max(self::IDLE_TIMEOUT_MIN_MIN, min(self::IDLE_TIMEOUT_MAX_MIN, $minutes));
+        return $cached = $minutes * 60;
+    }
 
     /**
      * Configure and start a PHP session.

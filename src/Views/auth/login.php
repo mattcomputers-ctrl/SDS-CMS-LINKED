@@ -18,6 +18,12 @@
 
         <?= flash_messages() ?>
 
+        <?php if (!empty($_GET['timeout'])): ?>
+            <div class="alert alert-warning">
+                You were signed out automatically after a period of inactivity. Please sign in again.
+            </div>
+        <?php endif; ?>
+
         <form method="POST" action="/login" class="login-form">
             <?= csrf_field() ?>
 

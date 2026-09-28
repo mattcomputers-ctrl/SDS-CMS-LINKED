@@ -7,6 +7,19 @@
 
     <script src="/js/searchable-select.js"></script>
     <script src="/js/app.js"></script>
+    <?php if (isset($_SESSION['_user'])): ?>
+    <script>
+    // Idle-logout timer config (see public/js/session-timeout.js).
+    // timeoutSeconds mirrors the admin setting enforced by AuthMiddleware.
+    window.SDS_SESSION = {
+        timeoutSeconds: <?= (int) \SDS\Core\Session::configuredIdleTimeout() ?>,
+        warnSeconds:    60,
+        heartbeatUrl:   '/auth/heartbeat',
+        logoutUrl:      '/logout?reason=idle'
+    };
+    </script>
+    <script src="/js/session-timeout.js"></script>
+    <?php endif; ?>
     <script>
     (function() {
         var toggle = document.getElementById('pdfModeToggle');

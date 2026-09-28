@@ -97,6 +97,9 @@ class AuthController
         $_SESSION['_user'] = $user;
         session_regenerate_id(true);
 
+        // Start the idle-logout clock (enforced by AuthMiddleware).
+        $_SESSION['_last_activity'] = time();
+
         // Audit log -- successful login
         $db = \SDS\Core\Database::getInstance();
         $db->insert('audit_log', [
@@ -122,13 +125,17 @@ class AuthController
     {
         $userId = current_user_id();
 
+        // ?reason=idle — the client-side idle timer expired. Audit it
+        // distinctly and land on /login with the "timed out" notice.
+        $idle = (($_GET['reason'] ?? '') === 'idle');
+
         if ($userId) {
             $db = \SDS\Core\Database::getInstance();
             $db->insert('audit_log', [
                 'user_id'     => $userId,
                 'entity_type' => 'auth',
                 'entity_id'   => (string) $userId,
-                'action'      => 'logout',
+                'action'      => $idle ? 'session_timeout' : 'logout',
                 'ip_address'  => $_SERVER['REMOTE_ADDR'] ?? null,
             ]);
         }
@@ -151,6 +158,44 @@ class AuthController
 
         session_destroy();
 
-        redirect('/login');
+        redirect($idle ? '/login?timeout=1' : '/login');
+    }
+
+    /**
+     * POST /auth/heartbeat -- The client-side idle timer pings this when
+     * the user has been active in the browser, so the server-side idle
+     * window (AuthMiddleware) stays in step with what the user sees.
+     *
+     * By the time we get here the middleware has already refreshed
+     * _last_activity (or returned 401 JSON if the session had expired).
+     * This just validates CSRF and reports the current window so the
+     * client can re-sync.
+     */
+    public function heartbeat(): void
+    {
+        header('Content-Type: application/json');
+
+        if (!isset($_SESSION['_user'])) {
+            http_response_code(401);
+            echo json_encode(['ok' => false, 'error' => 'unauthenticated']);
+            exit;
+        }
+
+        $token = (string) ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
+        if ($token === '' || !CSRF::validate($token)) {
+            http_response_code(403);
+            echo json_encode(['ok' => false, 'error' => 'csrf']);
+            exit;
+        }
+
+        $timeout = \SDS\Core\Session::configuredIdleTimeout();
+        $last    = (int) ($_SESSION['_last_activity'] ?? time());
+
+        echo json_encode([
+            'ok'        => true,
+            'timeout'   => $timeout,
+            'remaining' => max(0, $timeout - (time() - $last)),
+        ]);
+        exit;
     }
 }

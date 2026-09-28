@@ -66,9 +66,18 @@ class App
             // Non-fatal — fall back to PHP-only timezone
         }
 
-        // Initialise and start session
+        // Initialise and start session. The PHP session/cookie lifetime
+        // must be at least as long as the admin-configured idle-logout
+        // window (plus a margin), otherwise PHP GC or cookie expiry would
+        // end an idle session before AuthMiddleware's timeout fires and
+        // the user would be logged out early with no "timed out" notice.
+        $sessionConfig = self::$config['session'] ?? [];
+        $sessionConfig['lifetime'] = max(
+            (int) ($sessionConfig['lifetime'] ?? 3600),
+            Session::configuredIdleTimeout() + 300
+        );
         self::$session = new Session();
-        self::$session->start(self::$config['session'] ?? []);
+        self::$session->start($sessionConfig);
     }
 
     /* ------------------------------------------------------------------
@@ -140,6 +149,9 @@ class App
         $router->get('/login',  'AuthController@loginForm');
         $router->post('/login', 'AuthController@login');
         $router->get('/logout', 'AuthController@logout');
+        // Client-side idle timer pings this to keep the server-side
+        // activity window in step (see public/js/session-timeout.js).
+        $router->post('/auth/heartbeat', 'AuthController@heartbeat');
 
         // ── Public RM SDS Book (no login required) ─────────────────
         $router->get('/rm-sds-book', 'SDSBookController@publicIndex');

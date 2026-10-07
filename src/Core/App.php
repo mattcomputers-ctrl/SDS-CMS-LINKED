@@ -418,10 +418,10 @@ class App
             $r->get('/sara313',              'AdminController@sara313List');
             $r->get('/sara313/create',       'AdminController@createSara313');
             $r->post('/sara313',             'AdminController@storeSara313');
+            $r->post('/sara313/import',      'AdminController@importSara313'); // literal route must precede {id} catch-all
             $r->get('/sara313/{id}/edit',    'AdminController@editSara313');
             $r->post('/sara313/{id}',        'AdminController@updateSara313');
             $r->post('/sara313/{id}/delete', 'AdminController@deleteSara313');
-            $r->post('/sara313/import',      'AdminController@importSara313');
 
             // SNUR List Management
             $r->get('/snur-list',              'AdminController@snurList');

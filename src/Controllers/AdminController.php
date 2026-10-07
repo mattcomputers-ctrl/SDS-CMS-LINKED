@@ -12,6 +12,7 @@ use SDS\Services\AuditService;
 use SDS\Services\BackupService;
 use SDS\Services\NetworkService;
 use SDS\Services\PermissionService;
+use SDS\Services\SARA313Service;
 use SDS\Services\TrainingDataService;
 use SDS\Services\FederalData\Connectors\PubChemConnector;
 use SDS\Services\FederalData\Connectors\NIOSHConnector;

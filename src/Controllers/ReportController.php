@@ -1348,13 +1348,9 @@ class ReportController
             }
 
             $tempPath = tempnam(sys_get_temp_dir(), 'sds_alias_') . '.pdf';
-            // PDFService exposes generate() (writes to a dir and returns the
-            // path) and generateString() (returns bytes). It has no
-            // generateToFile(). Use generateString + file_put_contents so
-            // we control the filename.
             $pdfService = new PDFService();
-            $bytes = $pdfService->generateString($data);
-            if ($bytes === '' || file_put_contents($tempPath, $bytes) === false) {
+            $pdfService->generateToFile($data, $tempPath);
+            if (!is_file($tempPath) || filesize($tempPath) === 0) {
                 error_log("generateAliasPdf: failed to write {$tempPath} for alias {$alias['customer_code']}");
                 return null;
             }

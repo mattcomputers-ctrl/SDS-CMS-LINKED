@@ -80,14 +80,73 @@ class PDFService
      */
     public function generate(array $sdsData, ?string $outputDir = null): string
     {
-        if (!class_exists('TCPDF')) {
-            throw new \RuntimeException('TCPDF library not found. Run: composer require tecnickcom/tcpdf');
-        }
-
         $outputDir = $outputDir ?? App::config('paths.generated_pdfs', App::basePath() . '/public/generated-pdfs');
 
         if (!is_dir($outputDir)) {
             mkdir($outputDir, 0755, true);
+        }
+
+        $pdf = $this->buildPdf($sdsData);
+        $meta = $sdsData['meta'];
+
+        // Save to file. The random suffix makes every render unique: a base
+        // SDS, its alias variants and a private label variant can all carry
+        // the same product code + language and be written within the same
+        // wall-clock second (same request cascade, or parallel bulk workers),
+        // and TCPDF Output('F') would silently overwrite the earlier file.
+        $filename = sanitize_filename(strip_pack_extension($meta['product_code'])) . '_SDS_' . $meta['language'] . '_' . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.pdf';
+        $filepath = $outputDir . '/' . $filename;
+
+        $pdf->Output($filepath, 'F');
+
+        return $filepath;
+    }
+
+    /**
+     * Generate PDF and return as string (for streaming download).
+     */
+    public function generateString(array $sdsData): string
+    {
+        $pdf = $this->buildPdf($sdsData);
+
+        return $pdf->Output('', 'S');
+    }
+
+    /**
+     * Generate a PDF and write it to an exact file path chosen by the caller.
+     *
+     * Unlike generate(), no filename is derived — the caller owns the name.
+     * The parent directory is created if it does not exist.
+     *
+     * @param  array  $sdsData   Full SDS data from SDSGenerator::generate()
+     * @param  string $filePath  Absolute path of the PDF file to write
+     * @return string            The same $filePath, for chaining convenience
+     * @throws \RuntimeException If the parent directory cannot be created
+     */
+    public function generateToFile(array $sdsData, string $filePath): string
+    {
+        $dir = dirname($filePath);
+        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+            throw new \RuntimeException("Unable to create PDF output directory: {$dir}");
+        }
+
+        $pdf = $this->buildPdf($sdsData);
+        $pdf->Output($filePath, 'F');
+
+        return $filePath;
+    }
+
+    /**
+     * Build the fully rendered TCPDF document shared by every output mode.
+     *
+     * Sets metadata, margins, header/footer, renders all 16 sections and
+     * the legal disclaimer. Callers decide how to emit the result
+     * (file path, exact file, or string).
+     */
+    private function buildPdf(array $sdsData): SDSTcpdf
+    {
+        if (!class_exists('TCPDF')) {
+            throw new \RuntimeException('TCPDF library not found. Run: composer require tecnickcom/tcpdf');
         }
 
         $meta = $sdsData['meta'];
@@ -132,60 +191,7 @@ class PDFService
         // Render legal disclaimer after all sections
         $this->renderLegalDisclaimer($pdf, $sdsData['legal_disclaimer'] ?? '');
 
-        // Save to file. The random suffix makes every render unique: a base
-        // SDS, its alias variants and a private label variant can all carry
-        // the same product code + language and be written within the same
-        // wall-clock second (same request cascade, or parallel bulk workers),
-        // and TCPDF Output('F') would silently overwrite the earlier file.
-        $filename = sanitize_filename(strip_pack_extension($meta['product_code'])) . '_SDS_' . $meta['language'] . '_' . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.pdf';
-        $filepath = $outputDir . '/' . $filename;
-
-        $pdf->Output($filepath, 'F');
-
-        return $filepath;
-    }
-
-    /**
-     * Generate PDF and return as string (for streaming download).
-     */
-    public function generateString(array $sdsData): string
-    {
-        if (!class_exists('TCPDF')) {
-            throw new \RuntimeException('TCPDF library not found.');
-        }
-
-        $meta = $sdsData['meta'];
-        $sections = $sdsData['sections'];
-        $this->labels = $meta['labels'] ?? [];
-        $this->language = $meta['language'] ?? 'en';
-        $this->document = $meta['document'] ?? [];
-
-        $pdf = new SDSTcpdf('P', 'mm', 'LETTER', true, 'UTF-8');
-        $pdf->SetCreator('SDS System');
-        $pdf->SetAuthor(App::config('company.name', 'SDS System'));
-        $pdf->SetTitle('SDS - ' . $meta['product_code']);
-        $pdf->SetMargins(self::MARGIN_LEFT, self::MARGIN_TOP, self::MARGIN_RIGHT);
-        $pdf->SetAutoPageBreak(true, self::MARGIN_BOTTOM);
-
-        // Header — logo + translated document title on first page only
-        $logoFile = $this->resolveLogoPath($meta['company_logo_path'] ?? '');
-        $pdf->setAbsoluteLogoPath($logoFile);
-        $pdf->SetHeaderMargin(5);
-        $pdf->setDocumentStrings($this->document);
-
-        // Footer — product code, page number, revision date on every page
-        $revisionDate = $sections[16]['revision_date'] ?? date('m/d/Y');
-        $pdf->setFooterInfo($meta['product_code'], $revisionDate);
-
-        $pdf->AddPage();
-
-        foreach ($sections as $num => $section) {
-            $this->renderSection($pdf, $num, $section);
-        }
-
-        $this->renderLegalDisclaimer($pdf, $sdsData['legal_disclaimer'] ?? '');
-
-        return $pdf->Output('', 'S');
+        return $pdf;
     }
 
     /**

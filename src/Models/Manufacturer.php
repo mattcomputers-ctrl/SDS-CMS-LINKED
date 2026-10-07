@@ -129,6 +129,20 @@ class Manufacturer
             throw new \RuntimeException('Cannot delete manufacturer: it is referenced by private label SDS documents.');
         }
 
+        // Check if manufacturer still owns private label registry items.
+        // fk_pli_mfg is ON DELETE RESTRICT so the DB would refuse anyway;
+        // this gives the operator an actionable message instead. Retiring an
+        // item keeps its row, so only deleting items unblocks this — and the
+        // guard above has already proven none of them has published history,
+        // so every remaining item (retired ones included) can be deleted.
+        $hasItems = $db->fetch(
+            "SELECT 1 FROM private_label_items WHERE manufacturer_id = ? LIMIT 1",
+            [$id]
+        );
+        if ($hasItems) {
+            throw new \RuntimeException('Cannot delete manufacturer: delete its private label items first (retired items still count — tick "Show retired" on the manufacturer page to see them).');
+        }
+
         $db->query("DELETE FROM manufacturers WHERE id = ?", [$id]);
     }
 

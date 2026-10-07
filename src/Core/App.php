@@ -310,12 +310,24 @@ class App
         $router->post('/sds-updates/dismiss',                  'SDSUpdateController@dismiss');
 
         // ── Private Label SDS ────────────────────────────────────
-        $router->get('/private-label',                     'PrivateLabelController@index');
-        $router->get('/private-label/create',              'PrivateLabelController@create');
-        $router->get('/private-label/live-preview',        'PrivateLabelController@livePreview');
-        $router->post('/private-label/generate',           'PrivateLabelController@generate');
-        $router->get('/private-label/{id}/download',       'PrivateLabelController@download');
-        $router->get('/private-label/{id}/preview',        'PrivateLabelController@preview');
+        // Literal segments are registered before the {id} routes.
+        $router->get('/private-label',                                    'PrivateLabelController@index');
+        $router->get('/private-label/documents',                          'PrivateLabelController@documents');
+        $router->get('/private-label/create',                             'PrivateLabelController@legacyCreate');
+        $router->get('/private-label/aliases-for-fg',                     'PrivateLabelController@aliasesForFg');
+        $router->get('/private-label/live-preview',                       'PrivateLabelController@livePreview');
+        $router->get('/private-label/manufacturer/{id}',                  'PrivateLabelController@manufacturer');
+        $router->get('/private-label/manufacturer/{id}/items/create',     'PrivateLabelController@createItem');
+        $router->post('/private-label/manufacturer/{id}/items',           'PrivateLabelController@storeItem');
+        $router->post('/private-label/manufacturer/{id}/republish-stale', 'PrivateLabelController@republishStale');
+        $router->get('/private-label/items/{id}/edit',                    'PrivateLabelController@editItem');
+        $router->post('/private-label/items/{id}',                        'PrivateLabelController@updateItem');
+        $router->post('/private-label/items/{id}/publish',                'PrivateLabelController@publishItem');
+        $router->post('/private-label/items/{id}/retire',                 'PrivateLabelController@retireItem');
+        $router->post('/private-label/items/{id}/delete',                 'PrivateLabelController@deleteItem');
+        $router->get('/private-label/items/{id}/history',                 'PrivateLabelController@itemHistory');
+        $router->get('/private-label/{id}/download',                      'PrivateLabelController@download');
+        $router->get('/private-label/{id}/preview',                       'PrivateLabelController@preview');
 
         // ── CMS Import ───────────────────────────────────────────
         $router->get('/cms-import',              'CMSImportController@index');

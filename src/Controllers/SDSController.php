@@ -387,6 +387,30 @@ class SDSController
             if ($aliasCount > 0) {
                 $msg .= ' (+ ' . $aliasCount . ' alias SDS' . ($aliasCount > 1 ? 'es' : '') . ')';
             }
+
+            // Cascade to private label items (active + auto_republish) from the
+            // same already-generated base data. Base + alias rows are already
+            // committed above, so a private-label failure must never fail or
+            // roll back this publish — it only adds a warning flash.
+            try {
+                $pl = (new \SDS\Services\PrivateLabelPublisher())->publishForFinishedGood(
+                    (int) $fg['id'],
+                    $langData,
+                    $nextVersion,
+                    current_user_id(),
+                    $changeSummary ?: ('Base SDS v' . $nextVersion . ' published'),
+                    'fg_publish'
+                );
+                if ($pl['published'] > 0) {
+                    $msg .= ' (+ ' . $pl['published'] . ' private label SDS)';
+                }
+                if (!empty($pl['failed'])) {
+                    $_SESSION['_flash']['warning'] = 'Private label SDS not regenerated: ' . implode('; ', $pl['failed']);
+                }
+            } catch (\Throwable $plEx) {
+                $_SESSION['_flash']['warning'] = 'Private label SDS not regenerated: ' . $plEx->getMessage();
+            }
+
             $_SESSION['_flash']['success'] = $msg;
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = 'Publish failed: ' . $e->getMessage();

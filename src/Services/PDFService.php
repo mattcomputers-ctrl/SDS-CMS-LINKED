@@ -132,8 +132,12 @@ class PDFService
         // Render legal disclaimer after all sections
         $this->renderLegalDisclaimer($pdf, $sdsData['legal_disclaimer'] ?? '');
 
-        // Save to file
-        $filename = sanitize_filename(strip_pack_extension($meta['product_code'])) . '_SDS_' . $meta['language'] . '_' . date('Ymd_His') . '.pdf';
+        // Save to file. The random suffix makes every render unique: a base
+        // SDS, its alias variants and a private label variant can all carry
+        // the same product code + language and be written within the same
+        // wall-clock second (same request cascade, or parallel bulk workers),
+        // and TCPDF Output('F') would silently overwrite the earlier file.
+        $filename = sanitize_filename(strip_pack_extension($meta['product_code'])) . '_SDS_' . $meta['language'] . '_' . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.pdf';
         $filepath = $outputDir . '/' . $filename;
 
         $pdf->Output($filepath, 'F');

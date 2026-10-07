@@ -107,7 +107,7 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
     BulkPublishQueue::updateProgress($jobId, $stats);
 
     echo "  Work items:       {$totalItems} (" . count($languages) . " languages × "
-        . (count($fgs) + count($resale)) . " items + alias variants)\n";
+        . (count($fgs) + count($resale)) . " items + alias and private label variants)\n";
     echo "  Worker processes: {$workerCount}\n";
 
     // ── Spawn workers ────────────────────────────────────────────

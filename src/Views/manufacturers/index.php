@@ -10,6 +10,13 @@
     <?php endif; ?>
 </div>
 
+<?php
+// id => ['total' => n, 'active' => n] from ManufacturerController::index()
+$plCounts   = $plCounts ?? [];
+$canOpenPl  = can_read('private_label');
+$canAddPl   = can_edit('private_label');
+?>
+
 <p class="text-muted"><?= count($manufacturers) ?> manufacturer(s) found.</p>
 
 <table class="table">
@@ -19,12 +26,13 @@
             <th>Name</th>
             <th>Address</th>
             <th>Phone</th>
+            <th>Private label</th>
             <th>Actions</th>
         </tr>
     </thead>
     <tbody>
     <?php if (empty($manufacturers)): ?>
-        <tr><td colspan="5" class="text-muted" style="text-align: center;">No manufacturers found. Add one to get started.</td></tr>
+        <tr><td colspan="6" class="text-muted" style="text-align: center;">No manufacturers found. Add one to get started.</td></tr>
     <?php endif; ?>
     <?php foreach ($manufacturers as $m): ?>
         <tr>
@@ -53,11 +61,30 @@
             </td>
             <td><?= e($m['phone'] ?: '—') ?></td>
             <td>
+                <?php
+                $pl    = $plCounts[(int) $m['id']] ?? ['total' => 0, 'active' => 0];
+                $plUrl = '/private-label/manufacturer/' . (int) $m['id'];
+                ?>
+                <?php if ($pl['total'] > 0): ?>
+                    <?php if ($canOpenPl): ?>
+                        <a href="<?= $plUrl ?>" title="Open private label items for <?= e($m['name']) ?>"><?= (int) $pl['total'] ?> item(s)</a>
+                    <?php else: ?>
+                        <?= (int) $pl['total'] ?> item(s)
+                    <?php endif; ?>
+                    <br><small class="text-muted"><?= (int) $pl['active'] ?> active / <?= (int) $pl['total'] ?> total</small>
+                <?php else: ?>
+                    <span class="text-muted">0</span>
+                    <?php if ($canAddPl): ?>
+                        &mdash; <a href="<?= $plUrl ?>" title="Add a private label item for <?= e($m['name']) ?>">add</a>
+                    <?php endif; ?>
+                <?php endif; ?>
+            </td>
+            <td>
                 <a href="/manufacturers/<?= (int) $m['id'] ?>/edit" class="btn btn-sm">Edit</a>
                 <?php if (can_edit('manufacturers')): ?>
                     <form method="POST" action="/manufacturers/<?= (int) $m['id'] ?>/delete" style="display: inline;">
                         <?= csrf_field() ?>
-                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete manufacturer <?= e($m['name']) ?>?')">Delete</button>
+                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm(<?= e(json_encode('Delete manufacturer ' . $m['name'] . '?')) ?>)">Delete</button>
                     </form>
                 <?php endif; ?>
             </td>

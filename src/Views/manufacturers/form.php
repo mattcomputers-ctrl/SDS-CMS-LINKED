@@ -99,6 +99,28 @@ $action = $isEdit ? '/manufacturers/' . (int) $item['id'] : '/manufacturers';
                 <small class="text-muted">PNG, JPG, or GIF. Max 2 MB.</small>
             </div>
 
+            <?php if ($isEdit): ?>
+                <?php
+                // Counts from ManufacturerController::edit()
+                $plItemCount   = (int) ($plItemCount ?? 0);
+                $plActiveCount = (int) ($plActiveCount ?? 0);
+                $plUrl         = '/private-label/manufacturer/' . (int) $item['id'];
+                ?>
+                <div class="form-group">
+                    <label>Private Label Items</label>
+                    <div style="border: 1px solid #e0e0e0; border-radius: 4px; padding: 0.6rem 0.8rem; background: #fafafa;">
+                        <strong><?= $plItemCount ?></strong> item(s)
+                        <?php if ($plItemCount > 0): ?>
+                            <span class="text-muted">(<?= $plActiveCount ?> active)</span>
+                        <?php endif; ?>
+                        <?php if (can_read('private_label')): ?>
+                            &mdash; <a href="<?= $plUrl ?>">Manage</a>
+                        <?php endif; ?>
+                    </div>
+                    <small class="text-muted">Products sold under this manufacturer's label. Changing the address or logo marks every item stale until it is republished.</small>
+                </div>
+            <?php endif; ?>
+
         </div>
 
         <div class="form-actions">

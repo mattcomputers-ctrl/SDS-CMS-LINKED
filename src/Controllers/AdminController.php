@@ -2592,14 +2592,23 @@ class AdminController
 
             // Tables to truncate — user-created content only.
             // Preserved: settings, users, schema_migrations, pictograms (files),
-            // seed/regulatory data (sara313_list, exempt_voc_list, hap_list,
-            // prop65_list, carcinogen_list), and hazard/exposure reference data
-            // (hazard_source_records, hazard_classifications, exposure_limits,
-            // dot_transport_info, cas_master).
+            // manufacturers (reference data; harmless once their private label
+            // items and documents are gone), seed/regulatory data (sara313_list,
+            // exempt_voc_list, hap_list, prop65_list, carcinogen_list), and
+            // hazard/exposure reference data (hazard_source_records,
+            // hazard_classifications, exposure_limits, dot_transport_info,
+            // cas_master).
+            // Private label registry items and documents must go with the
+            // finished goods: TRUNCATE resets finished_goods AUTO_INCREMENT, so
+            // surviving private_label_items rows would re-attach to whatever new
+            // product receives the recycled id and the publish cascade would emit
+            // private label SDSs for it under the old manufacturer/identity.
             $tables = [
                 'sds_generation_trace',
                 'text_overrides',
                 'sds_versions',
+                'private_label_sds',    // child of private_label_items
+                'private_label_items',  // registry, references finished_goods
                 'formula_lines',
                 'formulas',
                 'raw_material_sds',
@@ -2636,7 +2645,7 @@ class AdminController
                 'tables_purged' => $tables,
             ]);
 
-            $_SESSION['_flash']['success'] = 'All data has been purged. Settings, users, pictograms, and regulatory seed data were preserved.';
+            $_SESSION['_flash']['success'] = 'All data has been purged (including private label items and documents). Settings, users, manufacturers, pictograms, and regulatory seed data were preserved.';
         } catch (\Throwable $e) {
             $db->query("SET FOREIGN_KEY_CHECKS = 1");
             $_SESSION['_flash']['error'] = 'Purge failed: ' . $e->getMessage();

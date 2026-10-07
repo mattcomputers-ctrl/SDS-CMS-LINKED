@@ -21,10 +21,26 @@ class ManufacturerController
         $search = trim($_GET['search'] ?? '');
         $manufacturers = Manufacturer::all(['search' => $search]);
 
+        // Private label registry counts per manufacturer (one GROUP BY query)
+        // for the "Private label" column: id => ['total' => n, 'active' => n]
+        $plCounts = [];
+        $plRows = \SDS\Core\Database::getInstance()->fetchAll(
+            "SELECT manufacturer_id, COUNT(*) AS c, SUM(is_active) AS active
+             FROM private_label_items
+             GROUP BY manufacturer_id"
+        );
+        foreach ($plRows as $r) {
+            $plCounts[(int) $r['manufacturer_id']] = [
+                'total'  => (int) $r['c'],
+                'active' => (int) $r['active'],
+            ];
+        }
+
         view('manufacturers/index', [
             'pageTitle'     => 'Manufacturers',
             'manufacturers' => $manufacturers,
             'search'        => $search,
+            'plCounts'      => $plCounts,
         ]);
     }
 
@@ -87,10 +103,20 @@ class ManufacturerController
             redirect('/manufacturers');
         }
 
+        // Private label registry summary for the "Private label items" card
+        $plStats = \SDS\Core\Database::getInstance()->fetch(
+            "SELECT COUNT(*) AS c, COALESCE(SUM(is_active), 0) AS active
+             FROM private_label_items
+             WHERE manufacturer_id = ?",
+            [(int) $id]
+        );
+
         view('manufacturers/form', [
-            'pageTitle' => 'Edit Manufacturer: ' . $item['name'],
-            'mode'      => 'edit',
-            'item'      => $item,
+            'pageTitle'     => 'Edit Manufacturer: ' . $item['name'],
+            'mode'          => 'edit',
+            'item'          => $item,
+            'plItemCount'   => (int) ($plStats['c'] ?? 0),
+            'plActiveCount' => (int) ($plStats['active'] ?? 0),
         ]);
     }
 
@@ -155,15 +181,18 @@ class ManufacturerController
                 redirect('/manufacturers');
             }
 
-            // Delete logo file if present
+            // Delete the row FIRST: Manufacturer::delete() refuses when private
+            // label SDS documents or registry items still reference it, and a
+            // refused delete must leave the logo file intact.
+            Manufacturer::delete((int) $id);
+
+            // Delete logo file only after the DB delete succeeded
             if (!empty($item['logo_path'])) {
                 $logoFile = App::basePath() . '/public' . $item['logo_path'];
                 if (file_exists($logoFile)) {
                     @unlink($logoFile);
                 }
             }
-
-            Manufacturer::delete((int) $id);
 
             AuditService::log('manufacturer', $id, 'delete', ['name' => $item['name']]);
 

@@ -7,6 +7,9 @@
  *   php scripts/publish-worker.php <batch-file> <progress-file> <user-id>
  *
  * The batch file is a JSON array of {id, product_code, language, version} objects.
+ * Items may carry type "resale" (rm_id instead of id) or type "private_label"
+ * (pl_item_id, manufacturer_id, pl_code, pl_description, source_fg_version —
+ * written to private_label_sds instead of sds_versions).
  * The progress file is updated after each item is processed.
  * On completion, the progress file contains final counts.
  */
@@ -82,6 +85,8 @@ $errors    = [];
 // keys for FG vs resale so a resale RM id can't collide with an FG id.
 $baseDataCache       = [];
 $resaleBaseDataCache = [];
+// Manufacturer rows for private label items, keyed by manufacturer_id.
+$mfgCache            = [];
 
 writeWorkerProgress($progressFile, $total, 0, 0, 0, [], false);
 
@@ -106,6 +111,7 @@ foreach ($workItems as $i => $item) {
     }
 
     $isResale = (($item['type'] ?? null) === 'resale');
+    $isPrivateLabel = (($item['type'] ?? null) === 'private_label');
     $fgId     = $isResale ? null : (int) $item['id'];
     $rmId     = $isResale ? (int) $item['rm_id'] : null;
     $code     = $item['product_code'];
@@ -118,9 +124,19 @@ foreach ($workItems as $i => $item) {
     $aliasCode        = $item['alias_code'] ?? null;
     $aliasDescription = $item['alias_description'] ?? null;
 
-    $displayCode = $aliasCode ?? $code;
+    // Private label items carry their resolved code so error strings and
+    // audit rows show the code actually printed, not the base FG code.
+    $displayCode = $item['pl_code'] ?? $aliasCode ?? $code;
 
     try {
+        // A private label item BulkPublishController::buildWorkItems already
+        // knows cannot be published (shared alias re-pointed by the CMS to a
+        // different product) fails here, before any base data is computed,
+        // so the reason lands in errors[] under the PL display code.
+        if ($isPrivateLabel && !empty($item['pl_error'])) {
+            throw new \RuntimeException((string) $item['pl_error']);
+        }
+
         // Compute language-independent data once per source — formula
         // path caches by fg_id, resale path caches by rm_id, so the two
         // can't collide.
@@ -141,6 +157,27 @@ foreach ($workItems as $i => $item) {
             $sdsData = SDSGenerator::createAliasVariant($sdsData, $aliasCode, $aliasDescription ?? '');
         }
 
+        // Private label items: brand with the identity already resolved by
+        // BulkPublishController::buildWorkItems (code, description) and the
+        // manufacturer's company info / logo. One code path for all three
+        // identity sources (custom / shared alias / base).
+        if ($isPrivateLabel) {
+            $mfgId = (int) $item['manufacturer_id'];
+            if (!array_key_exists($mfgId, $mfgCache)) {
+                $mfgCache[$mfgId] = \SDS\Models\Manufacturer::findById($mfgId);
+            }
+            $mfgRow = $mfgCache[$mfgId];
+            if ($mfgRow === null) {
+                throw new \RuntimeException('Manufacturer not found for private label item');
+            }
+            $sdsData = SDSGenerator::createPrivateLabelVariant(
+                $sdsData,
+                (string) $item['pl_code'],
+                (string) ($item['pl_description'] ?? ''),
+                \SDS\Models\Manufacturer::toCompanyInfo($mfgRow)
+            );
+        }
+
         $pdfPath      = $pdfService->generate($sdsData);
         $relativePath = str_replace(App::basePath() . '/', '', $pdfPath);
 
@@ -157,58 +194,105 @@ foreach ($workItems as $i => $item) {
         // "eligible for publish" even right after it's republished.
         $now = gmdate('Y-m-d H:i:s');
 
-        // Insert version record. For resale items finished_good_id is
-        // NULL and raw_material_id carries the source; for FG items
-        // it's the other way round.
-        $versionData = [
-            'finished_good_id' => $fgId,
-            'raw_material_id'  => $rmId,
-            'language'         => $lang,
-            'version'          => $version,
-            'status'           => 'published',
-            'effective_date'   => $today,
-            'published_by'     => $userId,
-            'published_at'     => $now,
-            'snapshot_json'    => json_encode($sdsData, JSON_UNESCAPED_UNICODE),
-            'pdf_path'         => $relativePath,
-            'change_summary'   => $isResale ? 'Bulk publish (resale)' : 'Bulk publish',
-            'created_by'       => $userId,
-        ];
+        if ($isPrivateLabel) {
+            // Private label rows live in private_label_sds — no sds_versions
+            // row and no generation trace (its FK is to sds_versions). The
+            // printed identity and the base FG version are frozen on the row.
+            //
+            // private_label_sds is stamped app-local, not UTC: there is no
+            // raw_materials.updated_at freshness comparison on this table,
+            // PrivateLabelPublisher::publishOne (R13) and every legacy PL row
+            // use date(), and created_at is written by MySQL under the session
+            // time_zone App sets from date('P'), so published_at and created_at
+            // on one row must agree. The gmdate() $today/$now above stay for
+            // the sds_versions branch only.
+            $plToday = date('Y-m-d');
+            $plNow   = date('Y-m-d H:i:s');
 
-        if ($aliasId !== null) {
-            $versionData['alias_id'] = $aliasId;
-        }
+            $db->insert('private_label_sds', [
+                'item_id'             => (int) $item['pl_item_id'],
+                'finished_good_id'    => $fgId,
+                'manufacturer_id'     => (int) $item['manufacturer_id'],
+                'alias_id'            => $aliasId,
+                'language'            => $lang,
+                'product_code'        => (string) $item['pl_code'],
+                'product_description' => (string) ($item['pl_description'] ?? ''),
+                'version'             => $version,
+                'source_fg_version'   => (int) $item['source_fg_version'],
+                'status'              => 'published',
+                'effective_date'      => $plToday,
+                'published_by'        => $userId,
+                'published_at'        => $plNow,
+                'snapshot_json'       => json_encode($sdsData, JSON_UNESCAPED_UNICODE),
+                'pdf_path'            => $relativePath,
+                'change_summary'      => 'Bulk publish (private label)',
+                'created_by'          => $userId,
+            ]);
 
-        $versionId = $db->insert('sds_versions', $versionData);
-
-        $traceData = array_merge(
-            $sdsData['hazard_result']['trace'] ?? [],
-            $sdsData['voc_result']['trace'] ?? []
-        );
-        $db->insert('sds_generation_trace', [
-            'sds_version_id' => $versionId,
-            'trace_json'     => json_encode($traceData, JSON_UNESCAPED_UNICODE),
-        ]);
-
-        if ($isResale) {
-            $auditAction = $aliasId !== null ? 'bulk_publish_resale_alias' : 'bulk_publish_resale';
+            AuditService::log('private_label_sds', (string) $item['pl_item_id'], 'bulk_publish_private_label', [
+                'finished_good_id'  => $fgId,
+                'manufacturer_id'   => (int) $item['manufacturer_id'],
+                'alias_id'          => $aliasId,
+                'product_code'      => $displayCode,
+                'source'            => $item['pl_source'] ?? null,
+                'language'          => $lang,
+                'version'           => $version,
+                'source_fg_version' => (int) $item['source_fg_version'],
+            ]);
         } else {
-            $auditAction = $aliasId !== null ? 'bulk_publish_alias' : 'bulk_publish';
-        }
-        $auditData = [
-            'finished_good_id' => $fgId,
-            'raw_material_id'  => $rmId,
-            'product_code'     => $displayCode,
-            'language'         => $lang,
-            'version'          => $version,
-        ];
-        if ($aliasId !== null) {
-            $auditData['alias_id']   = $aliasId;
-            $auditData['alias_code'] = $aliasCode;
-        }
+            // Insert version record. For resale items finished_good_id is
+            // NULL and raw_material_id carries the source; for FG items
+            // it's the other way round.
+            $versionData = [
+                'finished_good_id' => $fgId,
+                'raw_material_id'  => $rmId,
+                'language'         => $lang,
+                'version'          => $version,
+                'status'           => 'published',
+                'effective_date'   => $today,
+                'published_by'     => $userId,
+                'published_at'     => $now,
+                'snapshot_json'    => json_encode($sdsData, JSON_UNESCAPED_UNICODE),
+                'pdf_path'         => $relativePath,
+                'change_summary'   => $isResale ? 'Bulk publish (resale)' : 'Bulk publish',
+                'created_by'       => $userId,
+            ];
 
-        $auditKey = $isResale ? (string) $rmId : (string) $fgId;
-        AuditService::log('sds_version', $auditKey, $auditAction, $auditData);
+            if ($aliasId !== null) {
+                $versionData['alias_id'] = $aliasId;
+            }
+
+            $versionId = $db->insert('sds_versions', $versionData);
+
+            $traceData = array_merge(
+                $sdsData['hazard_result']['trace'] ?? [],
+                $sdsData['voc_result']['trace'] ?? []
+            );
+            $db->insert('sds_generation_trace', [
+                'sds_version_id' => $versionId,
+                'trace_json'     => json_encode($traceData, JSON_UNESCAPED_UNICODE),
+            ]);
+
+            if ($isResale) {
+                $auditAction = $aliasId !== null ? 'bulk_publish_resale_alias' : 'bulk_publish_resale';
+            } else {
+                $auditAction = $aliasId !== null ? 'bulk_publish_alias' : 'bulk_publish';
+            }
+            $auditData = [
+                'finished_good_id' => $fgId,
+                'raw_material_id'  => $rmId,
+                'product_code'     => $displayCode,
+                'language'         => $lang,
+                'version'          => $version,
+            ];
+            if ($aliasId !== null) {
+                $auditData['alias_id']   = $aliasId;
+                $auditData['alias_code'] = $aliasCode;
+            }
+
+            $auditKey = $isResale ? (string) $rmId : (string) $fgId;
+            AuditService::log('sds_version', $auditKey, $auditAction, $auditData);
+        }
 
         $published++;
     } catch (\Throwable $e) {

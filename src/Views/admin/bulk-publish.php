@@ -13,6 +13,7 @@
 
 <?php $totalEligible = (int) $fgCount + (int) ($resaleCount ?? 0); ?>
 <?php $totalAliases  = (int) ($aliasCount ?? 0) + (int) ($resaleAliasCount ?? 0); ?>
+<?php $totalPlItems  = (int) ($plItemCount ?? 0); ?>
 
 <div class="card" style="max-width: 700px;">
     <h2>Publish Summary</h2>
@@ -23,6 +24,9 @@
         <?php endif; ?>
         <?php if (($aliasCount ?? 0) > 0): ?>
         <tr><td><strong>Aliases (for eligible FGs):</strong></td><td><?= (int) $aliasCount ?></td></tr>
+        <?php endif; ?>
+        <?php if ($totalPlItems > 0): ?>
+        <tr><td><strong>Private label documents (for eligible FGs):</strong></td><td><?= $totalPlItems ?></td></tr>
         <?php endif; ?>
         <?php if (($resaleCount ?? 0) > 0 || ($resaleBlockedCount ?? 0) > 0 || ($resaleAliasCount ?? 0) > 0): ?>
         <tr><td colspan="2" style="padding-top: 0.75rem; font-weight: 600;">Resale items (sold as-is, 100% of source RM):</td></tr>
@@ -35,7 +39,7 @@
             <?php endif; ?>
         <?php endif; ?>
         <tr><td><strong>Languages:</strong></td><td><?= (int) $langCount ?> (<?= e(strtoupper(implode(', ', $languages))) ?>)</td></tr>
-        <tr><td><strong>Total PDFs to Generate:</strong></td><td><?= ($totalEligible + $totalAliases) * (int) $langCount ?></td></tr>
+        <tr><td><strong>Total PDFs to Generate:</strong></td><td><?= ($totalEligible + $totalAliases + $totalPlItems) * (int) $langCount ?></td></tr>
     </table>
 
     <?php if ($totalEligible === 0): ?>

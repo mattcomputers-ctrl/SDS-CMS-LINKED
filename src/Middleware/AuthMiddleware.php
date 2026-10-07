@@ -68,6 +68,8 @@ class AuthMiddleware
         '/customers'             => 'customers',
         '/sds-send-queue'        => 'sds_send_queue',
         '/stale-rm-sds'          => 'stale_rm_sds',
+        '/private-label'         => 'private_label',
+        '/manufacturers'         => 'manufacturers',
         '/raw-materials'         => 'raw_materials',
         '/finished-goods'        => 'finished_goods',
         '/lookup'                => 'fg_sds_lookup',

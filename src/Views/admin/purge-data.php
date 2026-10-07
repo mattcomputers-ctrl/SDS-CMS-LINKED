@@ -11,6 +11,7 @@
             <li>All raw materials and their constituents</li>
             <li>All finished goods and formulas</li>
             <li>All SDS versions and generated PDFs</li>
+            <li>All private label registry items and private label SDS documents</li>
             <li>All competent person determinations</li>
             <li>All uploaded supplier SDS files</li>
             <li>All backups, audit logs, and refresh logs</li>
@@ -22,6 +23,7 @@
         <ul style="margin: 0.5rem 0 0 1.25rem; padding: 0;">
             <li>System settings (company info, logos, configuration)</li>
             <li>User accounts</li>
+            <li>Manufacturers (private label company details and logos)</li>
             <li>Pictogram images</li>
             <li>Regulatory seed data (SARA 313, Exempt VOC, HAP, Prop 65, Carcinogen lists)</li>
             <li>Hazard data, exposure limits, CAS master, and DOT transport records</li>

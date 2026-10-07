@@ -236,6 +236,54 @@ class SDSReadinessService
     }
 
     /**
+     * Check for missing federal hazard data above the configured threshold.
+     *
+     * Lifted from PrivateLabelController::checkMissingHazardData() (same
+     * logic as SDSController::checkMissingHazardData()) so the private
+     * label publisher can apply the same publish gate as a standard SDS.
+     *
+     * @param  array    $sdsData  Generated SDS data for one language
+     * @return string|null        User-facing blocking message, or null when publishing may proceed
+     */
+    public static function missingHazardDataError(array $sdsData, Database $db): ?string
+    {
+        $blockSetting = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'sds.block_publish_missing'");
+        $blockEnabled = $blockSetting ? ($blockSetting['value'] !== '0') : \SDS\Core\App::config('sds.block_publish_missing', true);
+
+        if (!$blockEnabled) {
+            return null;
+        }
+
+        $thresholdRow = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'sds.missing_threshold_pct'");
+        $threshold = $thresholdRow ? (float) $thresholdRow['value'] : \SDS\Core\App::config('sds.missing_threshold_pct', 1.0);
+
+        $missingCas = [];
+        foreach ($sdsData['hazard_result']['trace'] ?? [] as $step) {
+            if (($step['step'] ?? '') === 'no_data') {
+                $cas = $step['data']['cas'] ?? null;
+                $conc = $step['data']['concentration_pct'] ?? 0;
+                if ($cas !== null && (float) $conc >= $threshold) {
+                    $cpd = $db->fetch(
+                        "SELECT id FROM competent_person_determinations WHERE cas_number = ? AND is_active = 1 LIMIT 1",
+                        [$cas]
+                    );
+                    if (!$cpd) {
+                        $missingCas[] = $cas . ' (' . round((float) $conc, 2) . '%)';
+                    }
+                }
+            }
+        }
+
+        if (!empty($missingCas)) {
+            return 'Publishing blocked: missing federal hazard data for CAS numbers at or above '
+                . $threshold . '% threshold: ' . implode(', ', $missingCas)
+                . '. Create a Competent Person Determination for these CAS numbers or disable the threshold in Admin Settings.';
+        }
+
+        return null;
+    }
+
+    /**
      * Walk the formula tree, returning per-RM context.
      *
      * For each RM encountered, track whether it appears directly on the

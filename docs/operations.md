@@ -164,3 +164,27 @@ sudo ls -l /proc/12345/fd/                # open file descriptors / sockets
 - **The "Auto bulk publish" admin toggle (`cms_sync.auto_bulk_publish`) only
   gates the cron-from-cms-sync path** — the admin Start button still works
   when it's off.
+
+---
+
+## Private label SDS (registry)
+
+- `private_label_items` is the registry: one row = "manufacturer M sells
+  finished good F under identity I", edited from `/private-label/manufacturer/{id}`.
+- Identity resolves at publish time: `custom_code` (verbatim) → shared alias
+  (`alias_id`, pack suffix stripped) → base FG code; description follows the
+  same chain independently. The printed values are frozen into
+  `private_label_sds.product_code` / `product_description`.
+- Every base FG publish (manual, SDS Update Required, bulk + cron) cascades a
+  new version to that FG's active `auto_republish = 1` items. The
+  `/sds-updates` "Republish Private Labels Only" button is a re-brand only
+  (manufacturer address/logo change) — it never bumps the base SDS.
+- Migration 051 backfills one item per historical (manufacturer, FG, alias)
+  combo, tagged in `notes` ("Backfilled ... migration 051"). Review them on
+  `/private-label` and retire one-offs BEFORE the next bulk publish.
+- Before adding the 052 unique index on `private_label_sds`, run
+  `sudo -u www-data php /var/www/sds-system/scripts/check-pl-duplicates.php`
+  and confirm it reports no duplicate (item_id, language, version) rows.
+- `private_label_items.updated_at` and `manufacturers.updated_at` are
+  staleness inputs: any metadata-only write to those tables must use
+  `updated_at = updated_at` or every item will show as stale.

@@ -142,6 +142,21 @@ class BulkPublishController
             $resaleAliasCount = (int) ($resaleAliasStats['cnt'] ?? 0);
         }
 
+        // Private label items (active + auto_republish) the worker will
+        // regenerate for the eligible FGs — one PDF per item per language.
+        $plItemCount = 0;
+        if (!empty($eligibleFgs)) {
+            $eligibleIds  = array_column($eligibleFgs, 'id');
+            $placeholders = implode(',', array_fill(0, count($eligibleIds), '?'));
+            $plStats = $db->fetch(
+                "SELECT COUNT(*) AS cnt
+                 FROM private_label_items
+                 WHERE finished_good_id IN ({$placeholders}) AND is_active = 1 AND auto_republish = 1",
+                $eligibleIds
+            );
+            $plItemCount = (int) ($plStats['cnt'] ?? 0);
+        }
+
         $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
 
         view('admin/bulk-publish', [
@@ -149,6 +164,7 @@ class BulkPublishController
             'fgCount'             => count($eligibleFgs),
             'blockedCount'        => count($blockedFgs),
             'aliasCount'          => $aliasCount,
+            'plItemCount'         => $plItemCount,
             'resaleCount'         => count($eligibleResale),
             'resaleBlockedCount'  => count($blockedResale),
             'resaleAliasCount'    => $resaleAliasCount,
@@ -610,6 +626,57 @@ class BulkPublishController
                         'alias_id'          => (int) $alias['id'],
                         'alias_code'        => $alias['customer_code'],
                         'alias_description' => $alias['description'],
+                    ];
+                }
+            }
+
+            // Private label items (active + auto_republish) of this FG: one
+            // work item per language, branded by the worker from the same
+            // base data it already computes for the FG. The version is
+            // pre-computed here (same pattern as aliases above) so parallel
+            // workers never race on MAX(version).
+            foreach (\SDS\Models\PrivateLabelItem::forFinishedGood((int) $fg['id'], true) as $pli) {
+                // R4 — a shared alias the CMS has re-pointed to another
+                // product must never be printed on this FG's SDS. The work
+                // items are still emitted, carrying pl_error, so the worker
+                // fails them (errors[] / failed_count / cron log) under the
+                // PL code instead of silently leaving the item on its old
+                // version. Same wording as PrivateLabelPublisher::publishOne.
+                $plError = null;
+                if ($pli['alias_id'] !== null
+                    && strcasecmp((string) ($pli['alias_internal_code_base'] ?? ''), (string) $fg['product_code']) !== 0) {
+                    $plError = 'Shared alias '
+                        . strip_pack_extension((string) ($pli['alias_customer_code'] ?? ('#' . (int) $pli['alias_id'])))
+                        . ' no longer belongs to ' . $fg['product_code'];
+                }
+
+                $identity = \SDS\Services\PrivateLabelPublisher::resolveIdentity($pli);
+
+                // No version is consumed for an item that is going to fail.
+                $plNext = 0;
+                if ($plError === null) {
+                    $plLast = $db->fetch(
+                        "SELECT MAX(version) AS max_ver FROM private_label_sds WHERE item_id = ?",
+                        [(int) $pli['id']]
+                    );
+                    $plNext = ((int) ($plLast['max_ver'] ?? 0)) + 1;
+                }
+
+                foreach ($languages as $lang) {
+                    $workItems[] = [
+                        'type'              => 'private_label',
+                        'id'                => $fg['id'],
+                        'product_code'      => $fg['product_code'],
+                        'language'          => $lang,
+                        'version'           => $plNext,
+                        'source_fg_version' => $nextVersion,
+                        'pl_item_id'        => (int) $pli['id'],
+                        'manufacturer_id'   => (int) $pli['manufacturer_id'],
+                        'alias_id'          => $pli['alias_id'] !== null ? (int) $pli['alias_id'] : null,
+                        'pl_code'           => $identity['code'],
+                        'pl_description'    => $identity['description'],
+                        'pl_source'         => $identity['source'],
+                        'pl_error'          => $plError,
                     ];
                 }
             }

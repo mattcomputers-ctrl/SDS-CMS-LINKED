@@ -86,11 +86,11 @@ class SDSUpdateController
             );
             $group['last_sds_published'] = $latestSds['last_published'] ?? null;
 
-            // Count private label SDSs that would also need updating
+            // Count private label items the republish cascade will regenerate
             $plCount = $db->fetch(
-                "SELECT COUNT(DISTINCT CONCAT(manufacturer_id, '-', COALESCE(alias_id, 0))) AS cnt
-                 FROM private_label_sds
-                 WHERE finished_good_id = ?",
+                "SELECT COUNT(*) AS cnt
+                 FROM private_label_items
+                 WHERE finished_good_id = ? AND is_active = 1 AND auto_republish = 1",
                 [$fgId]
             );
             $group['private_label_count'] = (int) ($plCount['cnt'] ?? 0);
@@ -283,6 +283,9 @@ class SDSUpdateController
         $publishedCount = 0;
         $failedCount = 0;
         $errors = [];
+        $publisher = new \SDS\Services\PrivateLabelPublisher();
+        $plPublished = 0;
+        $plWarnings = [];
 
         foreach ($fgIds as $fgId) {
             $fgId = (int) $fgId;
@@ -350,39 +353,75 @@ class SDSUpdateController
                 // Publish alias SDSs
                 $this->publishAliasSDSs($fg, $langData, $now, $db, $userId);
 
+                // Cascade to private label items (active + auto_republish)
+                // from the same base data. Base + alias rows are already
+                // inserted above; a private label failure is NOT an FG
+                // failure — it is collected as a warning and never fails
+                // or rolls back this republish.
+                try {
+                    $pl = $publisher->publishForFinishedGood(
+                        $fgId,
+                        $langData,
+                        $nextVersion,
+                        $userId,
+                        'Republished via SDS Update Required',
+                        'sds_update_republish'
+                    );
+                    $plPublished += (int) $pl['published'];
+                    foreach ($pl['failed'] as $f) {
+                        $plWarnings[] = $f;
+                    }
+                } catch (\Throwable $plEx) {
+                    $plWarnings[] = $fg['product_code'] . ': ' . $plEx->getMessage();
+                }
+
                 AuditService::log('sds_version', (string) $fgId, 'republish_update', [
                     'version' => $nextVersion,
                     'trigger' => 'sds_update_queue',
                 ]);
 
                 $publishedCount++;
+
+                // Mark queue items as completed for this FG. Inside the try
+                // so a failed republish leaves the queue row pending instead
+                // of silently clearing it.
+                $db->query(
+                    "UPDATE sds_update_queue SET status = 'completed', resolved_by = ?, resolved_at = NOW()
+                     WHERE finished_good_id = ? AND status = 'pending'",
+                    [$userId, $fgId]
+                );
             } catch (\Throwable $e) {
                 $failedCount++;
                 $errors[] = $fg['product_code'] . ': ' . $e->getMessage();
             }
-
-            // Mark queue items as completed for this FG
-            $db->query(
-                "UPDATE sds_update_queue SET status = 'completed', resolved_by = ?, resolved_at = NOW()
-                 WHERE finished_good_id = ? AND status = 'pending'",
-                [$userId, $fgId]
-            );
         }
 
         $msg = "{$publishedCount} product(s) republished successfully.";
+        if ($plPublished > 0) {
+            $msg .= " (+ {$plPublished} private label SDS)";
+        }
         if ($failedCount > 0) {
             $msg .= " {$failedCount} failed: " . implode('; ', $errors);
             $_SESSION['_flash']['error'] = $msg;
         } else {
             $_SESSION['_flash']['success'] = $msg;
         }
+        if (!empty($plWarnings)) {
+            $_SESSION['_flash']['warning'] = 'Private label SDS not regenerated: ' . implode('; ', $plWarnings);
+        }
 
         redirect('/sds-updates');
     }
 
     /**
-     * POST /sds-updates/republish-private-label — Republish private label SDSs
-     * for selected finished goods.
+     * POST /sds-updates/republish-private-label — "Republish Private Labels Only".
+     *
+     * Re-brand path: regenerates the private label documents (active +
+     * auto_republish items) of the selected finished goods from live data
+     * WITHOUT publishing a new base SDS version. "Republish Selected"
+     * already cascades to private labels; this exists for e.g. a
+     * manufacturer address/logo change. Touches neither sds_versions nor
+     * the update queue.
      */
     public function republishPrivateLabel(): void
     {
@@ -399,134 +438,49 @@ class SDSUpdateController
             redirect('/sds-updates');
         }
 
-        $db = Database::getInstance();
-        $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
         $userId = current_user_id();
-        $publishedCount = 0;
-        $failedCount = 0;
-        $errors = [];
 
+        // Collect every active, auto-republish private label item of the
+        // selected finished goods. republishItems() groups them by FG so the
+        // base SDS data is computed once per FG, refuses FGs with no
+        // published base SDS, and publishes all-or-nothing per item.
+        $itemIds = [];
         foreach ($fgIds as $fgId) {
             $fgId = (int) $fgId;
-            $fg = \SDS\Models\FinishedGood::findById($fgId);
-            if ($fg === null) {
+            if ($fgId <= 0) {
                 continue;
             }
-
-            // Find all distinct private label combinations for this FG
-            $plCombinations = $db->fetchAll(
-                "SELECT DISTINCT manufacturer_id, alias_id
-                 FROM private_label_sds
-                 WHERE finished_good_id = ?",
-                [$fgId]
-            );
-
-            if (empty($plCombinations)) {
-                continue;
-            }
-
-            try {
-                $generator = new SDSGenerator();
-                $baseData = $generator->computeBase($fgId);
-
-                foreach ($plCombinations as $combo) {
-                    $manufacturerId = (int) $combo['manufacturer_id'];
-                    $aliasId = $combo['alias_id'] !== null ? (int) $combo['alias_id'] : null;
-
-                    $manufacturer = \SDS\Models\Manufacturer::findById($manufacturerId);
-                    if ($manufacturer === null) {
-                        continue;
-                    }
-
-                    $mfgInfo = \SDS\Models\Manufacturer::toCompanyInfo($manufacturer);
-
-                    $alias = null;
-                    if ($aliasId !== null) {
-                        $alias = $db->fetch("SELECT * FROM aliases WHERE id = ?", [$aliasId]);
-                        if ($alias !== null) {
-                            $alias['customer_code'] = self::stripPackExtension($alias['customer_code']);
-                        }
-                    }
-
-                    $langData = [];
-                    foreach ($languages as $lang) {
-                        $sdsData = $generator->generateFromBase($baseData, $lang);
-
-                        if ($alias !== null) {
-                            $sdsData = SDSGenerator::createPrivateLabelVariant(
-                                $sdsData,
-                                $alias['customer_code'],
-                                $alias['description'],
-                                $mfgInfo
-                            );
-                        } else {
-                            $sdsData = SDSGenerator::createManufacturerVariant($sdsData, $mfgInfo);
-                        }
-
-                        $langData[$lang] = $sdsData;
-                    }
-
-                    $pdfResults = $this->generatePdfsInParallel($langData);
-
-                    // Determine next version
-                    $versionWhere = 'finished_good_id = ? AND manufacturer_id = ?';
-                    $versionParams = [$fgId, $manufacturerId];
-                    if ($aliasId !== null) {
-                        $versionWhere .= ' AND alias_id = ?';
-                        $versionParams[] = $aliasId;
-                    } else {
-                        $versionWhere .= ' AND alias_id IS NULL';
-                    }
-
-                    $lastVersion = $db->fetch(
-                        "SELECT MAX(version) AS max_ver FROM private_label_sds WHERE {$versionWhere}",
-                        $versionParams
-                    );
-                    $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
-
-                    $now = date('Y-m-d H:i:s');
-
-                    foreach ($languages as $lang) {
-                        if (!($pdfResults[$lang]['ok'] ?? false)) {
-                            continue;
-                        }
-
-                        $relativePath = str_replace(App::basePath() . '/', '', $pdfResults[$lang]['pdf_path']);
-
-                        $db->insert('private_label_sds', [
-                            'finished_good_id' => $fgId,
-                            'manufacturer_id'  => $manufacturerId,
-                            'alias_id'         => $aliasId,
-                            'language'         => $lang,
-                            'version'          => $nextVersion,
-                            'status'           => 'published',
-                            'effective_date'   => date('Y-m-d'),
-                            'published_by'     => $userId,
-                            'published_at'     => $now,
-                            'snapshot_json'    => json_encode($langData[$lang], JSON_UNESCAPED_UNICODE),
-                            'pdf_path'         => $relativePath,
-                            'change_summary'   => 'Republished via SDS Update Required',
-                            'created_by'       => $userId,
-                        ]);
-                    }
-
-                    $publishedCount++;
-                }
-
-                AuditService::log('private_label_sds', (string) $fgId, 'republish_update', [
-                    'combinations' => count($plCombinations),
-                    'trigger'      => 'sds_update_queue',
-                ]);
-            } catch (\Throwable $e) {
-                $failedCount++;
-                $errors[] = $fg['product_code'] . ': ' . $e->getMessage();
+            foreach (\SDS\Models\PrivateLabelItem::forFinishedGood($fgId, true) as $pli) {
+                $itemIds[] = (int) $pli['id'];
             }
         }
+        $itemIds = array_values(array_unique($itemIds));
 
-        $msg = "{$publishedCount} private label combination(s) republished successfully.";
-        if ($failedCount > 0) {
-            $msg .= " {$failedCount} failed: " . implode('; ', $errors);
+        if (empty($itemIds)) {
+            $_SESSION['_flash']['warning'] = 'No active private label items are linked to the selected product(s).';
+            redirect('/sds-updates');
+        }
+
+        $result = (new \SDS\Services\PrivateLabelPublisher())->republishItems(
+            $itemIds,
+            $userId,
+            'Private label republished (re-brand) via SDS Update Required',
+            'sds_update_pl_only'
+        );
+
+        $published = (int) ($result['published'] ?? 0);
+        $failed    = $result['failed'] ?? [];
+        $skipped   = $result['skipped'] ?? [];
+
+        $msg = "{$published} private label SDS republished.";
+        if (!empty($skipped)) {
+            $msg .= ' Skipped: ' . implode('; ', $skipped) . '.';
+        }
+        if (!empty($failed)) {
+            $msg .= ' Failed: ' . implode('; ', $failed);
             $_SESSION['_flash']['error'] = $msg;
+        } elseif ($published === 0) {
+            $_SESSION['_flash']['warning'] = $msg;
         } else {
             $_SESSION['_flash']['success'] = $msg;
         }

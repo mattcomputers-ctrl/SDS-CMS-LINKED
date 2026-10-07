@@ -4,7 +4,7 @@
     <form method="GET" action="/admin/audit-log" class="search-form">
         <select name="entity_type">
             <option value="">All Entities</option>
-            <?php foreach (['raw_material', 'finished_good', 'formula', 'sds_version', 'user', 'settings'] as $et): ?>
+            <?php foreach (['raw_material', 'finished_good', 'formula', 'sds_version', 'manufacturer', 'private_label_item', 'private_label_sds', 'user', 'settings'] as $et): ?>
                 <option value="<?= $et ?>" <?= ($filters['entity_type'] === $et) ? 'selected' : '' ?>><?= e($et) ?></option>
             <?php endforeach; ?>
         </select>

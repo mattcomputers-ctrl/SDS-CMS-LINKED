@@ -8,7 +8,14 @@ $l = function(string $key, string $fallback = '') use ($labels) {
 $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
 ?>
 
-<?php if (!empty($finishedGood['id'])): ?>
+<?php if (!empty($backUrl)): ?>
+    <p>
+        <a href="<?= e($backUrl) ?>">&larr; <?= e($backLabel ?? 'Back') ?></a>
+        <?php if (!empty($livePreviewUrl)): ?>
+            &nbsp;|&nbsp; <a href="<?= e($livePreviewUrl) ?>" title="Regenerate this document from current data (not the stored snapshot)">Live preview with current data</a>
+        <?php endif; ?>
+    </p>
+<?php elseif (!empty($finishedGood['id'])): ?>
     <p><a href="/sds/<?= (int) $finishedGood['id'] ?>">&larr; Back to SDS Versions</a></p>
 <?php elseif (!empty($privateLabelId)): ?>
     <p><a href="/private-label">&larr; Back to Private Label SDS</a></p>

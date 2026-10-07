@@ -227,6 +227,9 @@ $sdsData = [
 // --- Run the test ---
 echo "=== PDF Smoke Test ===\n\n";
 
+$failed  = false;
+$created = [];   // every file this run creates; removed in the finally block
+
 try {
     $pdfService = new \SDS\Services\PDFService();
     echo "[1] PDFService instantiated OK\n";
@@ -237,6 +240,7 @@ try {
     }
 
     $pdfPath = $pdfService->generate($sdsData, $outputDir);
+    $created[] = $pdfPath;
     echo "[2] PDF generated OK\n";
     echo "    Path: {$pdfPath}\n";
 
@@ -250,12 +254,14 @@ try {
             echo "[4] Valid PDF header: YES\n";
         } else {
             echo "[4] FAIL: Invalid PDF header: " . bin2hex($header) . "\n";
+            $failed = true;
         }
 
         if ($size > 1024) {
             echo "[5] Size check (> 1 KB): PASS\n";
         } else {
             echo "[5] FAIL: PDF is suspiciously small ({$size} bytes)\n";
+            $failed = true;
         }
 
         // Test generateString too
@@ -265,14 +271,68 @@ try {
             echo "[7] String output valid PDF header: YES\n";
         } else {
             echo "[7] FAIL: Invalid string output header\n";
+            $failed = true;
         }
 
-        echo "\n=== ALL TESTS PASSED ===\n";
+        // Filenames: {code}_SDS_{lang}_{Ymd_His}.pdf, no random suffix, and a
+        // second render in the same second must get "_2" rather than
+        // overwriting the first file.
+        $namePattern = '/^TEST_SDS_en_\d{8}_\d{6}(_\d+)?\.pdf$/';
+        $firstSize   = filesize($pdfPath);
+        $pdfPath2    = $pdfService->generate($sdsData, $outputDir);
+        $created[]   = $pdfPath2;
+        clearstatcache();
+        if (preg_match($namePattern, basename($pdfPath)) && preg_match($namePattern, basename($pdfPath2))
+            && $pdfPath2 !== $pdfPath && file_exists($pdfPath2) && filesize($pdfPath) === $firstSize) {
+            echo "[8] Filename format + no-overwrite on re-render: PASS (" . basename($pdfPath2) . ")\n";
+        } else {
+            echo "[8] FAIL: filename/overwrite check — first: " . basename($pdfPath) . " second: " . basename($pdfPath2) . "\n";
+            $failed = true;
+        }
 
-        // Clean up
-        unlink($pdfPath);
+        // The same-name collision branch, exercised deterministically (the
+        // check above may straddle a second boundary): reserving one fixed
+        // stem three times must yield base, _2, _3 and keep the earlier
+        // reservations in place.
+        $reserve = new \ReflectionMethod($pdfService, 'reserveUniquePath');
+        $reserve->setAccessible(true);
+        $stem = 'TEST_SDS_en_20260101_000000';
+        $r1 = $reserve->invoke($pdfService, $outputDir, $stem, '.pdf');
+        $r2 = $reserve->invoke($pdfService, $outputDir, $stem, '.pdf');
+        $r3 = $reserve->invoke($pdfService, $outputDir, $stem, '.pdf');
+        array_push($created, $r1, $r2, $r3);
+        if (basename($r1) === $stem . '.pdf' && basename($r2) === $stem . '_2.pdf' && basename($r3) === $stem . '_3.pdf'
+            && file_exists($r1) && file_exists($r2) && file_exists($r3)) {
+            echo "[8b] Same-name collision reserves _2, _3: PASS\n";
+        } else {
+            echo "[8b] FAIL: collision sequence: " . basename($r1) . ', ' . basename($r2) . ', ' . basename($r3) . "\n";
+            $failed = true;
+        }
+
+        // Private label variants carry a PL_<manufacturer> tag so they never
+        // share a name with the base/alias SDS of the same product code.
+        $plData = \SDS\Services\SDSGenerator::createPrivateLabelVariant(
+            $sdsData,
+            'ACME01',
+            'Acme Private Label Ink',
+            ['name' => 'Acme Printing Inks', 'address' => '1 Main St', 'city' => 'Dayton', 'state' => 'OH', 'zip' => '45400', 'phone' => '555-0100']
+        );
+        $plPath = $pdfService->generate($plData, $outputDir);
+        $created[] = $plPath;
+        if (preg_match('/^ACME01_PL_Acme_Printing_Inks_SDS_en_\d{8}_\d{6}(_\d+)?\.pdf$/', basename($plPath)) && file_exists($plPath)) {
+            echo "[9] Private label filename tag: PASS (" . basename($plPath) . ")\n";
+        } else {
+            echo "[9] FAIL: private label filename: " . basename($plPath) . "\n";
+            $failed = true;
+        }
+        if ($failed) {
+            echo "\n=== FAILURES ===\n";
+        } else {
+            echo "\n=== ALL TESTS PASSED ===\n";
+        }
     } else {
         echo "[3] FAIL: File does not exist at: {$pdfPath}\n";
+        $failed = true;
     }
 } catch (\Throwable $e) {
     echo "\n!!! EXCEPTION !!!\n";
@@ -280,5 +340,12 @@ try {
     echo "Message: " . $e->getMessage() . "\n";
     echo "File: " . $e->getFile() . ':' . $e->getLine() . "\n";
     echo "\nTrace:\n" . $e->getTraceAsString() . "\n";
-    exit(1);
+    $failed = true;
+} finally {
+    // exit() inside try would skip this block, so the exit code is set below.
+    foreach ($created as $p) {
+        @unlink($p);
+    }
 }
+
+exit($failed ? 1 : 0);

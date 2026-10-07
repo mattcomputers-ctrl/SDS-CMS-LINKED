@@ -514,6 +514,12 @@ class SDSGenerator
             $variant['meta']['company_logo_path'] = $manufacturerInfo['logo_path'];
         }
 
+        // Tag the on-disk filename (PDFService::generate) so a manufacturer-
+        // branded document never shares a name with the base or alias SDS of
+        // the same product code: {code}_PL_{manufacturer}_SDS_{lang}_{stamp}.pdf
+        $mfgSlug = sanitize_filename(substr(trim((string) ($manufacturerInfo['name'] ?? '')), 0, 40));
+        $variant['meta']['filename_tag'] = 'PL' . ($mfgSlug !== '' ? '_' . $mfgSlug : '');
+
         return $variant;
     }
 

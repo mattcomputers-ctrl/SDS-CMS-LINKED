@@ -89,17 +89,55 @@ class PDFService
         $pdf = $this->buildPdf($sdsData);
         $meta = $sdsData['meta'];
 
-        // Save to file. The random suffix makes every render unique: a base
-        // SDS, its alias variants and a private label variant can all carry
-        // the same product code + language and be written within the same
-        // wall-clock second (same request cascade, or parallel bulk workers),
-        // and TCPDF Output('F') would silently overwrite the earlier file.
-        $filename = sanitize_filename(strip_pack_extension($meta['product_code'])) . '_SDS_' . $meta['language'] . '_' . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.pdf';
-        $filepath = $outputDir . '/' . $filename;
+        // Save to file as {code}[_{tag}]_SDS_{lang}_{Ymd_His}.pdf. The optional
+        // meta.filename_tag distinguishes documents that share a product code
+        // (private label variants carry "PL_<manufacturer>"). reserveUniquePath()
+        // guarantees the file never overwrites an earlier render even when two
+        // documents with the same name are produced in the same second (the
+        // same-request publish cascade, or parallel bulk workers).
+        $stem = sanitize_filename(strip_pack_extension($meta['product_code']));
+        $tag  = trim((string) ($meta['filename_tag'] ?? ''));
+        if ($tag !== '') {
+            $stem .= '_' . sanitize_filename($tag);
+        }
+        $filepath = $this->reserveUniquePath($outputDir, $stem . '_SDS_' . $meta['language'] . '_' . date('Ymd_His'), '.pdf');
 
-        $pdf->Output($filepath, 'F');
+        // Render to memory and write with PHP (same bytes as Output('F')) so a
+        // failed or short write is a catchable exception and never leaves the
+        // reserved 0-byte placeholder behind.
+        $bytes   = $pdf->Output('', 'S');
+        $written = @file_put_contents($filepath, $bytes);
+        if ($bytes === '' || $written === false || $written !== strlen($bytes)) {
+            @unlink($filepath);
+            throw new \RuntimeException("Unable to write PDF file: {$filepath}");
+        }
 
         return $filepath;
+    }
+
+    /**
+     * Atomically reserve an unused path in $dir: "{base}{ext}", then
+     * "{base}_2{ext}", "{base}_3{ext}", ... The reservation uses fopen('x'),
+     * which fails if the file already exists, so two processes can never be
+     * handed the same path. The caller then writes over the empty file.
+     *
+     * @throws \RuntimeException if no path could be reserved
+     */
+    private function reserveUniquePath(string $dir, string $base, string $ext): string
+    {
+        for ($n = 1; $n <= 1000; $n++) {
+            $candidate = $dir . '/' . $base . ($n > 1 ? '_' . $n : '') . $ext;
+            $fh = @fopen($candidate, 'x');
+            if ($fh !== false) {
+                fclose($fh);
+                return $candidate;
+            }
+            if (!file_exists($candidate)) {
+                // Failed for a reason other than "already exists" (permissions, bad dir)
+                throw new \RuntimeException("Unable to create PDF file in {$dir}");
+            }
+        }
+        throw new \RuntimeException("Unable to reserve a unique PDF filename for {$base}{$ext} in {$dir}");
     }
 
     /**

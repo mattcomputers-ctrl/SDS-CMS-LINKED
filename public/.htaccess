@@ -4,6 +4,11 @@ RewriteBase /
 # Protect hidden files
 RewriteRule (^\.|/\.) - [F]
 
+# Generated SDS PDFs are served only through the application's download
+# controllers (login + permission checks); their filenames are predictable,
+# so never allow them to be fetched directly from the web root.
+RewriteRule ^generated-pdfs/ - [F]
+
 # Allow direct access to existing files and directories
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d

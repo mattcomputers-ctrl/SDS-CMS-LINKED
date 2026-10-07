@@ -596,7 +596,7 @@ The design critic raised gaps that were resolved as follows before implementatio
 
 Three review rounds (per-file syntax readers, seven lenses, three adversarial verifiers per finding) were run over the change set. Beyond small UI and wording fixes, these were corrected:
 
-- **PDF filename collision (critical).** `PDFService::generate()` named files `{code}_SDS_{lang}_{Ymd_His}.pdf`; the cascade renders a base-identity private label with the same code within the same second as the base SDS and TCPDF overwrites silently. A random suffix is now appended for every render (one choke point for all paths).
+- **PDF filename collision (critical).** `PDFService::generate()` named files `{code}_SDS_{lang}_{Ymd_His}.pdf`; the cascade renders a base-identity private label with the same code within the same second as the base SDS and TCPDF overwrites silently. Private-label renders now carry a `PL_<manufacturer>` tag in the filename (`meta.filename_tag`, set by `SDSGenerator::createManufacturerVariant`), and `PDFService::generate()` reserves its output path atomically (`fopen('x')`), appending `_2`, `_3`, … only if a file with that name already exists. No random suffixes.
 - **Admin Purge Data** now truncates `private_label_sds` and `private_label_items` with the finished goods; otherwise recycled finished-good ids would re-attach old registry rows and the cascade would emit private-label SDSs for the wrong product.
 - **Staleness rule (a0):** a row whose `source_fg_version` is not (or no longer) a published base version shows as stale instead of current.
 - `SDSUpdateController::republish` now marks queue rows completed inside the try block (a failed republish leaves the row pending) — pre-existing bug.

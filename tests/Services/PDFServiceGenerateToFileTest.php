@@ -4,20 +4,34 @@
  * PDFService::generateToFile() test
  *
  * Verifies that generateToFile() writes a valid, non-empty PDF to the
- * exact path requested and creates a missing parent directory on the way.
- * Uses the same DB-free bootstrap and SDS fixture as tests/smoke_pdf.php.
+ * exact path requested, creates a missing parent directory on the way,
+ * and reports an unwritable target as a catchable RuntimeException.
+ * Uses the same DB-free bootstrap and SDS fixture as tests/smoke_pdf.php,
+ * minus the PNG-rendering fields (see the section 2 note below), so it
+ * runs on a bare php:8.1-cli without GD/Imagick.
  *
  * Run:
  *   php tests/Services/PDFServiceGenerateToFileTest.php
  *
  * Exit code:
  *   0 = passed
- *   1 = failed
+ *   1 = failed (including a TCPDF die() or fatal error mid-test)
  */
 
 declare(strict_types=1);
 
 $basePath = dirname(__DIR__, 2);
+
+// Make TCPDF throw instead of die(): the bundled vendor config hard-codes
+// K_TCPDF_THROW_EXCEPTION_ERROR=false, under which TCPDF::Error() calls
+// die() (exit status 0, try/catch/finally bypassed). K_TCPDF_EXTERNAL_CONFIG
+// skips that file (tcpdf_autoconfig.php then supplies every other default);
+// PDF_IMAGE_SCALE_RATIO is pinned to the bundled value it would otherwise
+// change (1.25 -> 96/72) so rendering defaults stay identical to production.
+define('K_TCPDF_EXTERNAL_CONFIG', true);
+define('K_TCPDF_THROW_EXCEPTION_ERROR', true);
+define('PDF_IMAGE_SCALE_RATIO', 1.25);
+
 require_once $basePath . '/vendor/autoload.php';
 
 // Bootstrap App static properties without a DB connection
@@ -62,7 +76,13 @@ $sdsData = [
         2 => [
             'title'       => 'Hazard(s) Identification',
             'signal_word' => 'Warning',
-            'pictograms'  => ['GHS07', 'GHS09'],
+            // 'pictograms' and 'ppe_recommendations' are left empty on purpose:
+            // PDFService renders both as alpha-channel PNGs, which TCPDF can
+            // only embed with GD or Imagick loaded, and the bare php:8.1-cli
+            // image used to run this test has neither. The assertions here
+            // (return value, file exists, non-empty, %PDF header, nested dir
+            // created, write failure is catchable) do not depend on them.
+            'pictograms'  => [],
             'hazard_classes' => [
                 ['class' => 'Skin Irritation', 'category' => 'Category 2'],
                 ['class' => 'Eye Irritation', 'category' => 'Category 2A'],
@@ -82,12 +102,7 @@ $sdsData = [
                 ['code' => 'P273', 'text' => 'Avoid release to the environment'],
                 ['code' => 'P501', 'text' => 'Dispose of contents/container in accordance with local regulations'],
             ],
-            'ppe_recommendations' => [
-                'respiratory'     => null,
-                'hand_protection' => 'Chemical-resistant gloves (nitrile or neoprene recommended). Verify breakthrough time with glove manufacturer.',
-                'eye_protection'  => 'Chemical splash goggles or safety glasses with side shields. Face shield if splash hazard exists.',
-                'skin_protection' => 'Wear protective clothing to prevent skin contact. Impervious apron recommended. Launder contaminated clothing before reuse.',
-            ],
+            'ppe_recommendations' => [],
             'other_hazards' => 'None known.',
         ],
         3 => [
@@ -260,6 +275,23 @@ $cleanup = static function () use ($tmpDir): void {
 
 $failures = [];
 
+// Backstop for anything that still terminates the process outright (a
+// die() or fatal error inside the code under test): shutdown functions run
+// after die(), and exit(1) inside one sets the process exit status, so the
+// run cannot read as green and never leaves tests/tmp behind.
+$done = false;
+register_shutdown_function(static function () use (&$done, $cleanup, $tmpRoot): void {
+    if ($done) {
+        return;
+    }
+    $cleanup();
+    if (is_dir($tmpRoot) && count(scandir($tmpRoot)) === 2) {
+        rmdir($tmpRoot);
+    }
+    fwrite(STDERR, "FAIL: PDFService::generateToFile() aborted before completion (die() or fatal error)\n");
+    exit(1);
+});
+
 try {
     if (is_dir(dirname($target))) {
         $failures[] = 'precondition: target directory unexpectedly exists: ' . dirname($target);
@@ -283,6 +315,19 @@ try {
             $failures[] = 'invalid PDF header: ' . bin2hex($header);
         }
     }
+
+    // An unwritable target must surface as a catchable exception rather than
+    // a TCPDF die(): ReportController::generateAliasPdf() and the auto-send
+    // callers rely on their try/catch blocks seeing it. A directory sitting
+    // where the file should go makes the write fail deterministically.
+    $blocked = $tmpDir . '/blocked.pdf';
+    mkdir($blocked, 0775, true);
+    try {
+        $pdfService->generateToFile($sdsData, $blocked);
+        $failures[] = 'unwritable target: expected RuntimeException, none thrown';
+    } catch (\RuntimeException) {
+        // expected
+    }
 } catch (\Throwable $e) {
     $failures[] = get_class($e) . ': ' . $e->getMessage() . ' at ' . $e->getFile() . ':' . $e->getLine();
 } finally {
@@ -292,6 +337,8 @@ try {
     }
 }
 
+$done = true;
+
 if ($failures) {
     echo "FAIL: PDFService::generateToFile()\n";
     foreach ($failures as $f) {
@@ -300,5 +347,5 @@ if ($failures) {
     exit(1);
 }
 
-echo "PASS: PDFService::generateToFile() wrote a non-empty PDF to a new nested directory\n";
+echo "PASS: PDFService::generateToFile() wrote a non-empty PDF to a new nested directory and threw on an unwritable target\n";
 exit(0);

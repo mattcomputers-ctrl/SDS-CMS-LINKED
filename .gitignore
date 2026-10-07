@@ -9,4 +9,5 @@
 /storage/temp/*
 /public/generated-pdfs/*
 /public/uploads/supplier-sds/*
+/tests/tmp/
 !.gitkeep

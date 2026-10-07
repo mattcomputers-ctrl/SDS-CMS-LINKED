@@ -122,6 +122,7 @@ class PDFService
      * @param  string $filePath  Absolute path of the PDF file to write
      * @return string            The same $filePath, for chaining convenience
      * @throws \RuntimeException If the parent directory cannot be created
+     *                           or the file cannot be (fully) written
      */
     public function generateToFile(array $sdsData, string $filePath): string
     {
@@ -130,8 +131,16 @@ class PDFService
             throw new \RuntimeException("Unable to create PDF output directory: {$dir}");
         }
 
-        $pdf = $this->buildPdf($sdsData);
-        $pdf->Output($filePath, 'F');
+        // Render to memory and write with PHP rather than TCPDF Output('F').
+        // The bytes are identical (same buffer), but TCPDF reports an
+        // unopenable path through Error(), which die()s under the bundled
+        // config (K_TCPDF_THROW_EXCEPTION_ERROR=false) and so bypasses the
+        // callers' try/catch blocks, and it never checks fwrite()'s return.
+        $bytes = $this->buildPdf($sdsData)->Output('', 'S');
+        $written = @file_put_contents($filePath, $bytes);
+        if ($written === false || $written !== strlen($bytes)) {
+            throw new \RuntimeException("Unable to write PDF file: {$filePath}");
+        }
 
         return $filePath;
     }

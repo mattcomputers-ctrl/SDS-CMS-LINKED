@@ -1,6 +1,14 @@
 # SDS Content Audit — data-driven vs prefilled
 _Generated 2026-10-07 by a 58-agent audit workflow (19 section sweeps, 2 verification lenses per section, synthesis). Status: **review only — no code changed.** Decisions are pending a review session; nothing here is scheduled._
 Companion file: [sds-content-audit-field-inventory.md](sds-content-audit-field-inventory.md) — every rendered field with its source classification and code location.
+
+## Decisions log
+
+Recorded as items are reviewed with Matt. Items not listed here are still open.
+
+| # | Decision | Date |
+|---|----------|------|
+| 4 | **No unknown-acute-toxicity statement.** Company policy requires a competent-person determination for every vendor-flagged hazardous CAS at any threshold, and the vendor SDS for every raw material classifies the whole material; anything undetermined was therefore evaluated by the vendor as non-hazardous, so nothing is "unknown" in the Appendix D 2(d) sense (same position competitors take). Instead: (a) always print "Other hazards: None known." unless a per-product override exists; (b) keep the Section 3 note that ingredients not listed are non-hazardous or below reportable thresholds, add it to the HTML preview, and tighten its wording (OEL-only constituents are also listed). Effort drops from high to small. | 2026-10-08 |
 ---
 ## SDS Generation — Data-Driven vs Prefilled Review
 
@@ -243,6 +251,7 @@ _Same numbering as the summary table. 'Recommended' is the synthesis agent's pic
   - Always print 'Other hazards: None known.' unless overridden, and have HazardEngine emit the unknown-ATE % from components lacking acute-tox data — _Closes the compliance gap; the ATE-unknown logic needs the engine to track which components had no acute data._
   - Derive HNOC text from product data (combustible dust for powders, static discharge for low-conductivity solvents, EUH066 defatting) with 'None known.' fallback — _More useful; requires a small rule table and physical-state input._
 - **Recommended:** Option 1 immediately (render the default + unknown-ATE statement), then grow a small HNOC rule table for powders/solvent inks.
+- **Decision (2026-10-08):** Do NOT add the unknown-ATE statement (every vendor-flagged hazard has a determination and every raw material has a vendor SDS, so undetermined ingredients were evaluated as non-hazardous). Always print "Other hazards: None known." unless overridden; keep and tighten the Section 3 "not listed = non-hazardous or below threshold" note and show it in the preview too. See the Decisions log at the top.
 
 ### #5 — Section 2 — Hazard(s) Identification: Carcinogen-triggered P-statement list
 - **Concern:** medium

@@ -8,6 +8,41 @@ Recorded as items are reviewed with Matt. Items not listed here are still open.
 
 | # | Decision | Date |
 |---|----------|------|
+| 1 | Manufacturer block (name, address incl. country, phone, email, website, logo) comes from company settings on standard SDSs and from the private label manufacturer on private label SDSs; missing fields added to both forms; fax dropped. | 2026-10-08 |
+| 2 | Emergency phone required for the company and for every private label manufacturer; the SDS prints the one it belongs to; publishing is blocked while it is blank. | 2026-10-08 |
+| 3 | Family-level defaults for recommended use / restrictions in Admin Settings (per family, per language), per-product override kept, resale raw materials get their own default. Family derived on CMS import from the item's **GL Group** (admin-editable GL Group → family map) plus a UV rule: item code, description or any alias containing "UV" → UV family. | 2026-10-08 |
+| 5 | Carcinogen-triggered P-statements move to the GHS class defaults; withdrawn P281 dropped (HazCom 2024 / GHS Rev. 7). | 2026-10-08 |
+| 6 | Substance vs. mixture: default **Mixture**. A product prints "Substance" only when its formula is a single line whose raw material is marked Substance, or it is a resale raw material marked Substance. Manual override on the finished good (Auto / Substance / Mixture) and on the raw material; aliases inherit. | 2026-10-08 |
+| 7 | Keep the three Section 3 notes; show them in the preview; reword the hazardous-only note to "Hazardous ingredients and ingredients with an occupational exposure limit are listed." | 2026-10-08 |
+| 8 | Keep the 0.1% listing cut-off and the prescribed-range bands; the Section 8 Conc% column uses the Section 3 bands; the policy is documented in docs/operations.md ("SDS content policy") and in the admin help text. No new settings. | 2026-10-08 |
+| 9 | Notes to physician: hazard fragments (H304 aspiration, H314 do-not-neutralise, H330/H331 observation period) ahead of the default sentence. | 2026-10-08 |
+| 10 | First aid: widen the H-code map, fragments are added not substituted, add the 4(b) symptoms/effects line from the H-statements. | 2026-10-08 |
+| 11 | Fire-fighting keyed off the engine's Flam. Liq. category and the Section 9 flash point; Category 3 wording; water-reactive products no longer list water spray. | 2026-10-08 |
+| 14 | Engineering controls from fragments: powders → dust control; H224-226 → explosion-proof ventilation and bonding; H314/H318 → eyewash and safety shower; else current sentence. | 2026-10-08 |
+| 15 | PPE derived from H-codes; Sections 2 and 8 unified (translation keys, same precedence, "no special PPE" tier, no respirator on unclassified products). | 2026-10-08 |
+| 16 | Section 9 initial boiling point = the lowest raw material boiling point (new raw material field, °C); raws without a value are skipped; no weighted average. | 2026-10-08 |
+| 17 | Odor from the dominant (highest wt%) raw material; product override wins; fallback "Not determined". | 2026-10-08 |
+| 18 | Missing SG → 1.0 and missing VOC → 0, silently. Physical state from the highest-percentage raw material (product setting wins). Drop "VOC less water and exempts" and solids vol%. Solubility from the formula's soluble fraction (soluble raws count fully, partially soluble half, raws with no entry skipped): ≥90% Soluble in water; 5–90% Partially soluble in water; 1–5% Negligible solubility in water; <1% Not soluble in water. "Negligible solubility in water" added as a raw material option. One-time data change: every raw material currently Soluble or Partially soluble becomes Negligible solubility (this bumps those raws, so affected products republish on the next bulk publish). | 2026-10-08 |
+| 20 | Section 11 acute toxicity per route from the engine's classification, printing both the category statement and the calculated ATE value; "Not classified based on available data" otherwise. Unaffected by the #4 decision. | 2026-10-08 |
+| 21 | Chronic effects from health-class fragments (H317, H334, H372/H373, CMR, repeated contact) with a "none known" fallback. | 2026-10-08 |
+| 22 | One carcinogenicity builder via translation keys; listing threshold aligned at 0.1%. | 2026-10-08 |
+| 23 | Ecotoxicity echoes the resolved aquatic H-statements (acute vs chronic wording) plus a per-component aquatic table. | 2026-10-08 |
+| 24 | Only statements derivable from data already in the system: a PBT line from the SARA 313 list's PBT flag; otherwise "No data available". | 2026-10-08 |
+| 25 | One shared "not required by OSHA" footnote for Sections 12–15 behind an admin toggle (default on); Section 14 wording corrected. | 2026-10-08 |
+| 26 | Disposal lists every applicable RCRA characteristic; admin-managed toxicity-characteristic / listed-waste table (HAP-list pattern); flash point from formula properties. | 2026-10-08 |
+| 28 | OSHA status sentence follows the classification result. | 2026-10-08 |
+| 30 | SARA 313 block fixed (renderer reads the service's real keys), "none reportable" line, smoke-test fixture corrected. | 2026-10-08 |
+| 31 | State regulations: the operator's note always prints; the Prop 65 fallback is removed; the admin-settings override is still honoured. | 2026-10-08 |
+| 32 | Section 16 prints the SDS version and the effective date only. | 2026-10-08 |
+| 33 | Abbreviations built from a master table filtered to the terms used on the sheet. | 2026-10-08 |
+| 34 | Legal disclaimer per language in Admin Settings; per private label manufacturer per language on the manufacturer form (blank = inherit the admin text). | 2026-10-08 |
+| 35 | Render the UV acrylate rule pack (translated) in its target sections; UV detection uses the #3 family rule. | 2026-10-08 |
+| 36 | Override editor stores only operator-typed text, shows computed text as a hint, gets "reset to automatic"; one-off cleanup of stored overrides equal to the generated default. | 2026-10-08 |
+| 37 | SDSs are issued in EN, ES, FR and DE: route every hard-coded string through the translation files. Done LAST so all new text from the other items is covered. | 2026-10-08 |
+| 38 | The preview renders the real PDF. | 2026-10-08 |
+| 39 | Folded into #40. | 2026-10-08 |
+| 41 | Remove the "Powered by TCPDF" link; PDF metadata Author = company name from settings, or the private label manufacturer; remove the blank band at the top of pages 2+; no repeating header (the product code is already in the footer). | 2026-10-08 |
+| 12, 13, 19, 27, 29, 40, 42 | Open — awaiting Matt's answer to the follow-up explanation. | |
 | 4 | **No unknown-acute-toxicity statement.** Company policy requires a competent-person determination for every vendor-flagged hazardous CAS at any threshold, and the vendor SDS for every raw material classifies the whole material; anything undetermined was therefore evaluated by the vendor as non-hazardous, so nothing is "unknown" in the Appendix D 2(d) sense (same position competitors take). Instead: (a) always print "Other hazards: None known." unless a per-product override exists; (b) keep the Section 3 note that ingredients not listed are non-hazardous or below reportable thresholds, add it to the HTML preview, and tighten its wording (OEL-only constituents are also listed). Effort drops from high to small. | 2026-10-08 |
 ---
 ## SDS Generation — Data-Driven vs Prefilled Review

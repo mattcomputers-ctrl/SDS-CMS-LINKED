@@ -310,17 +310,44 @@ class SDSController
                 $langData[$lang] = $sdsData;
             }
 
+            // One version number across all languages, computed BEFORE the
+            // render and stamped on meta so PDFService::generate() names each
+            // file {code}_v{n}[_{lang}].pdf. The number is only consumed by the
+            // sds_versions inserts below (and is now recorded in the snapshot).
+            // Base rows only: alias rows share finished_good_id but number
+            // from their own per-alias counter (same filter as
+            // SDSUpdateController::republish and BulkPublishController).
+            $lastVersion = $db->fetch(
+                "SELECT MAX(version) AS max_ver FROM sds_versions
+                 WHERE finished_good_id = ? AND alias_id IS NULL",
+                [(int) $finished_good_id]
+            );
+            $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
+            foreach ($langData as &$d) {
+                $d['meta']['sds_version'] = $nextVersion;
+            }
+            unset($d);
+
             // Generate PDFs in parallel (one process per language)
             $pdfResults = $this->generatePdfsInParallel($langData);
 
-            // Build results array
-            $generated = [];
+            // All languages must have rendered before anything is inserted.
+            // On a partial failure remove the languages that did render so
+            // the canonical {code}_v{n}[_{lang}].pdf names are free for the
+            // retry (the version number is not consumed because no
+            // sds_versions row is written).
             foreach ($languages as $lang) {
                 if (!$pdfResults[$lang]['ok']) {
+                    self::unlinkRenderedPdfs($pdfResults);
                     throw new \RuntimeException(
                         'PDF generation failed for ' . strtoupper($lang) . ': ' . $pdfResults[$lang]['error']
                     );
                 }
+            }
+
+            // Build results array
+            $generated = [];
+            foreach ($languages as $lang) {
                 $relativePath = str_replace(\SDS\Core\App::basePath() . '/', '', $pdfResults[$lang]['pdf_path']);
                 $generated[] = [
                     'language'     => $lang,
@@ -330,14 +357,6 @@ class SDSController
             }
 
             // All generated successfully — insert version records
-            // Use a single version number across all languages
-            $lastVersion = $db->fetch(
-                "SELECT MAX(version) AS max_ver FROM sds_versions
-                 WHERE finished_good_id = ?",
-                [(int) $finished_good_id]
-            );
-            $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
-
             $publishedVersions = [];
             $now = date('Y-m-d H:i:s');
 
@@ -417,6 +436,24 @@ class SDSController
         }
 
         redirect('/sds/' . $finished_good_id);
+    }
+
+    /**
+     * Delete the PDFs of a partially failed parallel render so the canonical
+     * {code}_v{n}[_{lang}].pdf names are free for the retry. Mirrors
+     * PrivateLabelPublisher::unlinkAll(); iterates every result, not only the
+     * languages checked so far, since later languages may have succeeded.
+     *
+     * @param array<string,array> $pdfResults  Output of generatePdfsInParallel()
+     */
+    private static function unlinkRenderedPdfs(array $pdfResults): void
+    {
+        foreach ($pdfResults as $r) {
+            $p = $r['pdf_path'] ?? '';
+            if (($r['ok'] ?? false) && is_string($p) && $p !== '' && file_exists($p)) {
+                @unlink($p);
+            }
+        }
     }
 
     /**
@@ -642,11 +679,9 @@ class SDSController
                 $langData[$lang] = $sdsData;
             }
 
-            // PDFs for the base (non-alias) version.
-            $pdfResults = $this->generatePdfsInParallel($langData);
-
-            $baseCode = \SDS\Services\AliasResolver::stripPack((string) $rm['internal_code']);
-
+            // Version number first (one per publish, all languages) so the
+            // render can name the files {code}_v{n}[_{lang}].pdf via
+            // meta.sds_version; the inserts below use the same number.
             $lastVersion = $db->fetch(
                 "SELECT MAX(version) AS max_ver
                  FROM sds_versions
@@ -654,17 +689,33 @@ class SDSController
                 [$rmId]
             );
             $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
+            foreach ($langData as &$d) {
+                $d['meta']['sds_version'] = $nextVersion;
+            }
+            unset($d);
+
+            // PDFs for the base (non-alias) version.
+            $pdfResults = $this->generatePdfsInParallel($langData);
+
+            $baseCode = \SDS\Services\AliasResolver::stripPack((string) $rm['internal_code']);
 
             $publishedVersions = [];
             $now = date('Y-m-d H:i:s');
 
+            // Check every language before the first insert so a partial
+            // failure leaves no orphan {code}_v{n}[_{lang}].pdf behind and no
+            // row pointing at a file we are about to remove.
             foreach ($languages as $lang) {
                 if (!($pdfResults[$lang]['ok'] ?? false)) {
+                    self::unlinkRenderedPdfs($pdfResults);
                     throw new \RuntimeException(
                         'PDF generation failed for ' . strtoupper($lang) . ': ' .
                         ($pdfResults[$lang]['error'] ?? 'unknown error')
                     );
                 }
+            }
+
+            foreach ($languages as $lang) {
                 $relativePath = str_replace(\SDS\Core\App::basePath() . '/', '', $pdfResults[$lang]['pdf_path']);
 
                 $versionId = $db->insert('sds_versions', [
@@ -768,6 +819,14 @@ class SDSController
 
             $displayCode = \SDS\Services\AliasResolver::stripPack((string) $alias['customer_code']);
 
+            // Alias version first, stamped on meta so the PDFs are named
+            // {alias_code}_v{n}[_{lang}].pdf; the inserts below use the same number.
+            $lastVersion = $db->fetch(
+                "SELECT MAX(version) AS max_ver FROM sds_versions WHERE alias_id = ?",
+                [(int) $alias['id']]
+            );
+            $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
+
             $aliasLangData = [];
             foreach ($langData as $lang => $sdsData) {
                 $aliasLangData[$lang] = SDSGenerator::createAliasVariant(
@@ -775,15 +834,10 @@ class SDSController
                     $displayCode,
                     (string) $alias['description']
                 );
+                $aliasLangData[$lang]['meta']['sds_version'] = $nextVersion;
             }
 
             $pdfResults = $this->generatePdfsInParallel($aliasLangData);
-
-            $lastVersion = $db->fetch(
-                "SELECT MAX(version) AS max_ver FROM sds_versions WHERE alias_id = ?",
-                [(int) $alias['id']]
-            );
-            $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
 
             foreach ($aliasLangData as $lang => $aliasSds) {
                 if (!($pdfResults[$lang]['ok'] ?? false)) {
@@ -856,6 +910,14 @@ class SDSController
         $count = 0;
 
         foreach ($aliases as $alias) {
+            // Determine next version for this alias BEFORE rendering so the
+            // PDFs are named {alias_code}_v{n}[_{lang}].pdf (meta.sds_version).
+            $lastVersion = $db->fetch(
+                "SELECT MAX(version) AS max_ver FROM sds_versions WHERE alias_id = ?",
+                [(int) $alias['id']]
+            );
+            $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
+
             // Build alias-specific SDS data per language, then generate PDFs
             $aliasLangData = [];
             foreach ($langData as $lang => $sdsData) {
@@ -864,17 +926,11 @@ class SDSController
                     $alias['customer_code'],
                     $alias['description']
                 );
+                $aliasLangData[$lang]['meta']['sds_version'] = $nextVersion;
             }
 
             // Generate PDFs for all languages
             $pdfResults = $this->generatePdfsInParallel($aliasLangData);
-
-            // Determine next version for this alias
-            $lastVersion = $db->fetch(
-                "SELECT MAX(version) AS max_ver FROM sds_versions WHERE alias_id = ?",
-                [(int) $alias['id']]
-            );
-            $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
 
             foreach ($aliasLangData as $lang => $aliasSds) {
                 if (!($pdfResults[$lang]['ok'] ?? false)) {

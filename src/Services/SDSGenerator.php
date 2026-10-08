@@ -516,7 +516,8 @@ class SDSGenerator
 
         // Tag the on-disk filename (PDFService::generate) so a manufacturer-
         // branded document never shares a name with the base or alias SDS of
-        // the same product code: {code}_PL_{manufacturer}_SDS_{lang}_{stamp}.pdf
+        // the same product code: {code}_PL_{manufacturer}_v{n}[_{lang}].pdf
+        // (or ..._SDS_{lang}_{stamp}.pdf for an unversioned preview).
         $mfgSlug = sanitize_filename(substr(trim((string) ($manufacturerInfo['name'] ?? '')), 0, 40));
         $variant['meta']['filename_tag'] = 'PL' . ($mfgSlug !== '' ? '_' . $mfgSlug : '');
 

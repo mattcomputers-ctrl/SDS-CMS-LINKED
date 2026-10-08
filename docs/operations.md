@@ -182,6 +182,13 @@ sudo ls -l /proc/12345/fd/                # open file descriptors / sockets
 - Migration 051 backfills one item per historical (manufacturer, FG, alias)
   combo, tagged in `notes` ("Backfilled ... migration 051"). Review them on
   `/private-label` and retire one-offs BEFORE the next bulk publish.
+- On-disk PDF names carry the version: a published base/alias SDS is
+  `{code}_v{n}.pdf` in the default language (`sds.default_language`, en —
+  e.g. `UVNG009_v1.pdf`) and `{code}_v{n}_{lang}.pdf` for other languages
+  (`UVNG009_v1_es.pdf`); a private label render is
+  `{code}_PL_{Manufacturer}_v{n}[_{lang}].pdf`; only unversioned previews
+  keep the `{code}_SDS_{lang}_{Ymd_His}.pdf` timestamp form. An exact-name
+  clash gets `_2`, `_3`, … rather than overwriting. No random suffixes.
 - Before adding the 052 unique index on `private_label_sds`, run
   `sudo -u www-data php /var/www/sds-system/scripts/check-pl-duplicates.php`
   and confirm it reports no duplicate (item_id, language, version) rows.

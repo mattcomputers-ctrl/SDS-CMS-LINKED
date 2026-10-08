@@ -178,6 +178,12 @@ foreach ($workItems as $i => $item) {
             );
         }
 
+        // The version was assigned per work item by BulkPublishController;
+        // stamp it on meta (after the alias / private label branches so the
+        // PL filename_tag is already present) so PDFService::generate() names
+        // the file {code}[_PL_{Mfg}]_v{n}_{lang}.pdf.
+        $sdsData['meta']['sds_version'] = $version;
+
         $pdfPath      = $pdfService->generate($sdsData);
         $relativePath = str_replace(App::basePath() . '/', '', $pdfPath);
 

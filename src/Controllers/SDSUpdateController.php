@@ -298,31 +298,41 @@ class SDSUpdateController
                 $generator = new SDSGenerator();
                 $baseData = $generator->computeBase($fgId);
 
-                // Generate all languages
-                $langData = [];
-                foreach ($languages as $lang) {
-                    $langData[$lang] = $generator->generateFromBase($baseData, $lang);
-                }
-
-                // Generate PDFs in parallel
-                $pdfResults = $this->generatePdfsInParallel($langData);
-
-                // Determine next version
+                // Determine next version BEFORE rendering so the PDFs are
+                // named {code}_v{n}[_{lang}].pdf (meta.sds_version); the
+                // inserts below use the same number.
                 $lastVersion = $db->fetch(
                     "SELECT MAX(version) AS max_ver FROM sds_versions WHERE finished_good_id = ? AND alias_id IS NULL",
                     [$fgId]
                 );
                 $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
 
+                // Generate all languages
+                $langData = [];
+                foreach ($languages as $lang) {
+                    $langData[$lang] = $generator->generateFromBase($baseData, $lang);
+                    $langData[$lang]['meta']['sds_version'] = $nextVersion;
+                }
+
+                // Generate PDFs in parallel
+                $pdfResults = $this->generatePdfsInParallel($langData);
+
                 $now = date('Y-m-d H:i:s');
 
+                // Check every language before the first insert so a partial
+                // failure leaves no orphan {code}_v{n}[_{lang}].pdf behind (the
+                // retry would otherwise be handed the _2 name) and no row
+                // pointing at a file we are about to remove.
                 foreach ($languages as $lang) {
                     if (!($pdfResults[$lang]['ok'] ?? false)) {
+                        self::unlinkRenderedPdfs($pdfResults);
                         throw new \RuntimeException(
                             'PDF failed for ' . strtoupper($lang) . ': ' . ($pdfResults[$lang]['error'] ?? 'unknown')
                         );
                     }
+                }
 
+                foreach ($languages as $lang) {
                     $relativePath = str_replace(App::basePath() . '/', '', $pdfResults[$lang]['pdf_path']);
 
                     $versionId = $db->insert('sds_versions', [
@@ -619,6 +629,14 @@ class SDSUpdateController
         }
 
         foreach ($aliases as $alias) {
+            // Alias version BEFORE rendering so the PDFs are named
+            // {alias_code}_v{n}[_{lang}].pdf (meta.sds_version).
+            $lastVersion = $db->fetch(
+                "SELECT MAX(version) AS max_ver FROM sds_versions WHERE alias_id = ?",
+                [(int) $alias['id']]
+            );
+            $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
+
             $aliasLangData = [];
             foreach ($langData as $lang => $sdsData) {
                 $aliasLangData[$lang] = SDSGenerator::createAliasVariant(
@@ -626,15 +644,10 @@ class SDSUpdateController
                     $alias['customer_code'],
                     $alias['description']
                 );
+                $aliasLangData[$lang]['meta']['sds_version'] = $nextVersion;
             }
 
             $pdfResults = $this->generatePdfsInParallel($aliasLangData);
-
-            $lastVersion = $db->fetch(
-                "SELECT MAX(version) AS max_ver FROM sds_versions WHERE alias_id = ?",
-                [(int) $alias['id']]
-            );
-            $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
 
             foreach ($aliasLangData as $lang => $aliasSds) {
                 if (!($pdfResults[$lang]['ok'] ?? false)) {
@@ -667,6 +680,24 @@ class SDSUpdateController
                     'engine_version' => \SDS\Services\HazardEngine::ENGINE_VERSION,
                     'trace_json'     => json_encode($traceData, JSON_UNESCAPED_UNICODE),
                 ]);
+            }
+        }
+    }
+
+    /**
+     * Delete the PDFs of a partially failed parallel render so the canonical
+     * {code}_v{n}[_{lang}].pdf names are free for the retry. Mirrors
+     * PrivateLabelPublisher::unlinkAll(); iterates every result, not only the
+     * languages checked so far, since later languages may have succeeded.
+     *
+     * @param array<string,array> $pdfResults  Output of generatePdfsInParallel()
+     */
+    private static function unlinkRenderedPdfs(array $pdfResults): void
+    {
+        foreach ($pdfResults as $r) {
+            $p = $r['pdf_path'] ?? '';
+            if (($r['ok'] ?? false) && is_string($p) && $p !== '' && file_exists($p)) {
+                @unlink($p);
             }
         }
     }

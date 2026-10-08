@@ -212,10 +212,14 @@ class SDSAutoSendService
                         $aliasRow['description']
                     );
 
-                    $filename = preg_replace('/[^a-zA-Z0-9_-]/', '_', $aliasRow['customer_code'])
-                        . '_SDS_' . $lang . '_' . date('Ymd_His') . '.pdf';
-                    $pdfPath = $pdfDir . '/' . $filename;
-                    $pdfService->generateToFile($aliasData, $pdfPath);
+                    $filename = $this->writeVersionedPdf(
+                        $pdfService,
+                        $pdfDir,
+                        (string) $aliasRow['customer_code'],
+                        $aliasNextVer,
+                        $lang,
+                        $aliasData
+                    );
 
                     $this->db->insert('sds_versions', [
                         'finished_good_id' => (int) $aliasRow['fg_id'],
@@ -323,18 +327,25 @@ class SDSAutoSendService
         $basePath = App::basePath();
         $pdfDir = $basePath . '/public/generated-pdfs';
 
+        // Base rows only (alias rows share finished_good_id but number from
+        // their own per-alias counter), so base numbering stays contiguous
+        // and matches SDSUpdateController / BulkPublishController.
         $lastVersion = $this->db->fetch(
-            "SELECT MAX(version) AS max_ver FROM sds_versions WHERE finished_good_id = ?",
+            "SELECT MAX(version) AS max_ver FROM sds_versions WHERE finished_good_id = ? AND alias_id IS NULL",
             [$fgId]
         );
         $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
         $now = date('Y-m-d H:i:s');
 
         foreach ($langData as $lang => $sdsData) {
-            $filename = ($fg['product_code'] ?? 'UNKNOWN') . '_SDS_' . $lang . '_' . date('Ymd_His') . '.pdf';
-            $pdfPath = $pdfDir . '/' . $filename;
-
-            $pdfService->generateToFile($sdsData, $pdfPath);
+            $filename = $this->writeVersionedPdf(
+                $pdfService,
+                $pdfDir,
+                (string) ($fg['product_code'] ?? 'UNKNOWN'),
+                $nextVersion,
+                $lang,
+                $sdsData
+            );
             $relativePath = 'public/generated-pdfs/' . $filename;
 
             $this->db->insert('sds_versions', [
@@ -377,10 +388,14 @@ class SDSAutoSendService
             $aliasNextVer = ((int) ($aliasLastVer['max_ver'] ?? 0)) + 1;
 
             foreach ($aliasLangData as $lang => $aliasData) {
-                $aliasFilename = preg_replace('/[^a-zA-Z0-9_-]/', '_', $alias['customer_code'])
-                    . '_SDS_' . $lang . '_' . date('Ymd_His') . '.pdf';
-                $aliasPdfPath = $pdfDir . '/' . $aliasFilename;
-                $pdfService->generateToFile($aliasData, $aliasPdfPath);
+                $aliasFilename = $this->writeVersionedPdf(
+                    $pdfService,
+                    $pdfDir,
+                    (string) $alias['customer_code'],
+                    $aliasNextVer,
+                    $lang,
+                    $aliasData
+                );
                 $aliasRelPath = 'public/generated-pdfs/' . $aliasFilename;
 
                 $this->db->insert('sds_versions', [
@@ -1317,5 +1332,47 @@ class SDSAutoSendService
         } else {
             $this->db->insert('settings', ['key' => 'auto_send.last_run_at', 'value' => $now]);
         }
+    }
+
+    /**
+     * Render one versioned SDS PDF into $pdfDir and return its basename.
+     *
+     * Names the file exactly as PDFService::generate() would for a versioned
+     * publish — {code}_v{n}[_{lang}].pdf, with the same stem helpers
+     * (strip_pack_extension + sanitize_filename) so the two code paths agree
+     * for both product codes and alias customer codes. The path is reserved
+     * through PDFService::uniquePath(), so an existing file of that name is
+     * never overwritten (the new one becomes {base}_2.pdf). A failed render
+     * removes the reserved placeholder before rethrowing.
+     *
+     * $sdsData is taken by reference so the meta.sds_version stamp lands on
+     * the caller's array and is carried into the snapshot_json it inserts,
+     * matching the other publishers. This also overwrites a version number
+     * inherited from a decoded base snapshot via createAliasVariant().
+     */
+    private function writeVersionedPdf(
+        PDFService $pdfService,
+        string $pdfDir,
+        string $code,
+        int $version,
+        string $lang,
+        array &$sdsData
+    ): string {
+        if (!is_dir($pdfDir) && !@mkdir($pdfDir, 0775, true) && !is_dir($pdfDir)) {
+            throw new \RuntimeException("Unable to create PDF output directory: {$pdfDir}");
+        }
+
+        $sdsData['meta']['sds_version'] = $version;
+        $base    = PDFService::versionedBaseName(sanitize_filename(strip_pack_extension($code)), $version, $lang);
+        $pdfPath = PDFService::uniquePath($pdfDir, $base, '.pdf');
+
+        try {
+            $pdfService->generateToFile($sdsData, $pdfPath);
+        } catch (\Throwable $e) {
+            @unlink($pdfPath);
+            throw $e;
+        }
+
+        return basename($pdfPath);
     }
 }

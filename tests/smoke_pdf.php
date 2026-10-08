@@ -12,11 +12,22 @@ $bp = $ref->getProperty('basePath');
 $bp->setAccessible(true);
 $bp->setValue(null, dirname(__DIR__));
 
+// Per-run output directory. The checks below assert exact fixed basenames
+// (TEST_v3_en.pdf, ..._v2_en.pdf, the [8b] stem), and reserveUniquePath()
+// hands out _2/_3 across processes, so a concurrent run or a leftover from a
+// killed run in the shared storage/temp would fail them spuriously. The
+// random component is what isolates runs: php is PID 1 in every Docker
+// container, so getmypid() alone would not.
+$outputDir = dirname(__DIR__) . '/storage/temp/smoke_' . bin2hex(random_bytes(4));
+if (!is_dir($outputDir)) {
+    mkdir($outputDir, 0755, true);
+}
+
 $cfg = $ref->getProperty('config');
 $cfg->setAccessible(true);
 $cfg->setValue(null, [
     'company' => ['name' => 'Test Co'],
-    'paths'   => ['generated_pdfs' => dirname(__DIR__) . '/storage/temp'],
+    'paths'   => ['generated_pdfs' => $outputDir],
 ]);
 
 // Build a realistic SDS data array that mimics SDSGenerator::generate() output
@@ -234,11 +245,6 @@ try {
     $pdfService = new \SDS\Services\PDFService();
     echo "[1] PDFService instantiated OK\n";
 
-    $outputDir = dirname(__DIR__) . '/storage/temp';
-    if (!is_dir($outputDir)) {
-        mkdir($outputDir, 0755, true);
-    }
-
     $pdfPath = $pdfService->generate($sdsData, $outputDir);
     $created[] = $pdfPath;
     echo "[2] PDF generated OK\n";
@@ -325,6 +331,58 @@ try {
             echo "[9] FAIL: private label filename: " . basename($plPath) . "\n";
             $failed = true;
         }
+
+        // Versioned publish: meta.sds_version replaces the _SDS_{stamp} tail
+        // with _v{n}. The default language (sds.default_language, "en" here)
+        // gets no language suffix: {code}_v{n}.pdf; other languages keep it.
+        $vData = $sdsData;
+        $vData['meta']['sds_version'] = 3;
+        $vPath = $pdfService->generate($vData, $outputDir);
+        $created[] = $vPath;
+        if (basename($vPath) === 'TEST_v3.pdf' && file_exists($vPath) && filesize($vPath) > 1024) {
+            echo "[10] Versioned filename: PASS (" . basename($vPath) . ")\n";
+        } else {
+            echo "[10] FAIL: versioned filename: " . basename($vPath) . "\n";
+            $failed = true;
+        }
+
+        // Private label + version: the manufacturer tag stays in front of _v{n}.
+        $plvData = $plData;
+        $plvData['meta']['sds_version'] = 2;
+        $plvPath = $pdfService->generate($plvData, $outputDir);
+        $created[] = $plvPath;
+        if (basename($plvPath) === 'ACME01_PL_Acme_Printing_Inks_v2.pdf' && file_exists($plvPath)) {
+            echo "[11] Versioned private label filename: PASS (" . basename($plvPath) . ")\n";
+        } else {
+            echo "[11] FAIL: versioned private label filename: " . basename($plvPath) . "\n";
+            $failed = true;
+        }
+
+        // Re-rendering the same version must not overwrite: _2 suffix, first
+        // file untouched.
+        $vSize  = filesize($vPath);
+        $vPath2 = $pdfService->generate($vData, $outputDir);
+        $created[] = $vPath2;
+        clearstatcache();
+        if (basename($vPath2) === 'TEST_v3_2.pdf' && file_exists($vPath2) && filesize($vPath) === $vSize) {
+            echo "[12] Same-version re-render gets _2, first file unchanged: PASS\n";
+        } else {
+            echo "[12] FAIL: re-render: " . basename($vPath2) . " (first size " . $vSize . " -> " . filesize($vPath) . ")\n";
+            $failed = true;
+        }
+
+        // A non-default language keeps its suffix: {code}_v{n}_{lang}.pdf.
+        $vEs = $vData;
+        $vEs['meta']['language'] = 'es';
+        $vEsPath = $pdfService->generate($vEs, $outputDir);
+        $created[] = $vEsPath;
+        if (basename($vEsPath) === 'TEST_v3_es.pdf' && file_exists($vEsPath)) {
+            echo "[13] Non-default language keeps suffix: PASS (" . basename($vEsPath) . ")\n";
+        } else {
+            echo "[13] FAIL: non-default language filename: " . basename($vEsPath) . "\n";
+            $failed = true;
+        }
+
         if ($failed) {
             echo "\n=== FAILURES ===\n";
         } else {
@@ -346,6 +404,14 @@ try {
     foreach ($created as $p) {
         @unlink($p);
     }
+    // Sweep anything a failed assertion left behind, then drop the per-run
+    // directory so storage/temp is left as this run found it.
+    foreach (glob($outputDir . '/*') ?: [] as $p) {
+        if (is_file($p)) {
+            @unlink($p);
+        }
+    }
+    @rmdir($outputDir);
 }
 
 exit($failed ? 1 : 0);

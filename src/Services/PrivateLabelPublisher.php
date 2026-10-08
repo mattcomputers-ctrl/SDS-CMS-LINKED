@@ -249,11 +249,15 @@ final class PrivateLabelPublisher
     /**
      * Publish one new version of one item. ALL-OR-NOTHING:
      *   1. re-validate a shared alias still belongs to the FG,
-     *   2. resolve identity, build the private label variant per language,
+     *   2. version = MAX(version) WHERE item_id + 1 (read before rendering
+     *      so it can go into the PDF filename), resolve identity, build the
+     *      private label variant per language with meta.sds_version set,
      *   3. render every PDF (PdfBatchRenderer) — any failure unlinks the
      *      successful PDFs and returns failure WITHOUT consuming a version,
-     *   4. in one transaction: version = MAX(version) WHERE item_id + 1,
-     *      insert one private_label_sds row per language, commit,
+     *   4. in one transaction: re-read MAX(version) and throw if another
+     *      publish of this item slipped in since step 2 (the rendered files
+     *      would carry a wrong version number), insert one private_label_sds
+     *      row per language, commit,
      *   5. audit 'private_label_sds' / 'publish'.
      *
      * @return array{ok:bool,version?:int,error?:string}
@@ -300,6 +304,14 @@ final class PrivateLabelPublisher
         }
         $mfgInfo = $this->mfgInfoCache[$mfgId];
 
+        // Next version for this item, read BEFORE rendering so the PDFs are
+        // named {code}_PL_{Manufacturer}_v{n}[_{lang}].pdf (meta.sds_version).
+        // Nothing is written here; the transaction below re-checks the
+        // number before inserting.
+        $db      = Database::getInstance();
+        $last    = $db->fetch("SELECT MAX(version) AS max_ver FROM private_label_sds WHERE item_id = ?", [$itemId]);
+        $version = ((int) ($last['max_ver'] ?? 0)) + 1;
+
         // Build the variant for every configured language — one code path for all three sources
         $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
         $variant   = [];
@@ -308,6 +320,7 @@ final class PrivateLabelPublisher
                 return ['ok' => false, 'error' => $label . ': Base SDS data missing for ' . strtoupper((string) $lang)];
             }
             $variant[$lang] = SDSGenerator::createPrivateLabelVariant($baseLangData[$lang], $code, $desc, $mfgInfo);
+            $variant[$lang]['meta']['sds_version'] = $version;
         }
 
         // Render all PDFs first
@@ -330,22 +343,30 @@ final class PrivateLabelPublisher
         }
 
         // All PDFs rendered — insert the version in one transaction
-        $db    = Database::getInstance();
         $pdo   = $db->getPdo();
         $ownTx = !$pdo->inTransaction();
 
         $now      = date('Y-m-d H:i:s');
         $today    = date('Y-m-d');
         $basePath = App::basePath() . '/';
-        $version  = 0;
 
         try {
             if ($ownTx) {
                 $db->beginTransaction();
             }
 
-            $last    = $db->fetch("SELECT MAX(version) AS max_ver FROM private_label_sds WHERE item_id = ?", [$itemId]);
-            $version = ((int) ($last['max_ver'] ?? 0)) + 1;
+            // Consistency check: the version number is already baked into
+            // the rendered filenames, so if a concurrent publish of this item
+            // consumed it meanwhile we must not insert under a different
+            // number. Throwing here rolls back, unlinks the PDFs and leaves
+            // this version unconsumed (the caller can retry).
+            $recheck = $db->fetch("SELECT MAX(version) AS max_ver FROM private_label_sds WHERE item_id = ?", [$itemId]);
+            $expected = ((int) ($recheck['max_ver'] ?? 0)) + 1;
+            if ($expected !== $version) {
+                throw new \RuntimeException(
+                    'Version changed during publish (expected v' . $version . ', now v' . $expected . ') — retry'
+                );
+            }
 
             foreach ($languages as $lang) {
                 $db->insert('private_label_sds', [

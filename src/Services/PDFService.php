@@ -89,18 +89,30 @@ class PDFService
         $pdf = $this->buildPdf($sdsData);
         $meta = $sdsData['meta'];
 
-        // Save to file as {code}[_{tag}]_SDS_{lang}_{Ymd_His}.pdf. The optional
-        // meta.filename_tag distinguishes documents that share a product code
-        // (private label variants carry "PL_<manufacturer>"). reserveUniquePath()
-        // guarantees the file never overwrites an earlier render even when two
-        // documents with the same name are produced in the same second (the
-        // same-request publish cascade, or parallel bulk workers).
+        // On-disk name. The stem is the (pack-stripped) product or alias code,
+        // plus the optional meta.filename_tag that distinguishes documents
+        // sharing a code (private label variants carry "PL_<manufacturer>").
+        // Three forms:
+        //   versioned publish   {code}_v{n}[_{lang}].pdf               (meta.sds_version > 0)
+        //   private label       {code}_PL_{Manufacturer}_v{n}[_{lang}].pdf (tag + sds_version)
+        //   preview / ad hoc    {code}[_{tag}]_SDS_{lang}_{Ymd_His}.pdf  (no sds_version)
+        // Publishers stamp meta.sds_version before rendering so the version
+        // number is part of the name. reserveUniquePath() is the safety net:
+        // an exact-name clash (a re-render of the same version, or two
+        // previews in the same second) gets _2, _3, ... instead of
+        // overwriting the earlier file. No random suffixes.
         $stem = sanitize_filename(strip_pack_extension($meta['product_code']));
         $tag  = trim((string) ($meta['filename_tag'] ?? ''));
         if ($tag !== '') {
             $stem .= '_' . sanitize_filename($tag);
         }
-        $filepath = $this->reserveUniquePath($outputDir, $stem . '_SDS_' . $meta['language'] . '_' . date('Ymd_His'), '.pdf');
+        $version = (int) ($meta['sds_version'] ?? 0);
+        if ($version > 0) {
+            $base = self::versionedBaseName($stem, $version, (string) $meta['language']);
+        } else {
+            $base = $stem . '_SDS_' . $meta['language'] . '_' . date('Ymd_His');
+        }
+        $filepath = self::reserveUniquePath($outputDir, $base, '.pdf');
 
         // Render to memory and write with PHP (same bytes as Output('F')) so a
         // failed or short write is a catchable exception and never leaves the
@@ -116,6 +128,37 @@ class PDFService
     }
 
     /**
+     * Public wrapper around reserveUniquePath() for callers that name their
+     * own files (SDSAutoSendService + generateToFile()). Returns a reserved,
+     * empty "{dir}/{base}{ext}" (or "{base}_2{ext}", ...) that the caller
+     * must write over or unlink.
+     *
+     * @throws \RuntimeException if no path could be reserved
+     */
+    public static function uniquePath(string $dir, string $base, string $ext): string
+    {
+        return self::reserveUniquePath($dir, $base, $ext);
+    }
+
+    /**
+     * Base name (no extension) of a published document: "{stem}_v{n}" for
+     * the default language (sds.default_language, normally "en") and
+     * "{stem}_v{n}_{lang}" for every other language, so UVNG009_v1.pdf is
+     * the English sheet and UVNG009_v1_es.pdf the Spanish one. $stem is the
+     * already-sanitised code (plus any filename tag).
+     */
+    public static function versionedBaseName(string $stem, int $version, string $lang): string
+    {
+        $default = strtolower(trim((string) App::config('sds.default_language', 'en')));
+        $lang    = strtolower(trim($lang));
+        $base    = $stem . '_v' . $version;
+        if ($lang !== '' && $lang !== $default) {
+            $base .= '_' . sanitize_filename($lang);
+        }
+        return $base;
+    }
+
+    /**
      * Atomically reserve an unused path in $dir: "{base}{ext}", then
      * "{base}_2{ext}", "{base}_3{ext}", ... The reservation uses fopen('x'),
      * which fails if the file already exists, so two processes can never be
@@ -123,7 +166,7 @@ class PDFService
      *
      * @throws \RuntimeException if no path could be reserved
      */
-    private function reserveUniquePath(string $dir, string $base, string $ext): string
+    private static function reserveUniquePath(string $dir, string $base, string $ext): string
     {
         for ($n = 1; $n <= 1000; $n++) {
             $candidate = $dir . '/' . $base . ($n > 1 ? '_' . $n : '') . $ext;

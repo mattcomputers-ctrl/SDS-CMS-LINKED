@@ -323,10 +323,22 @@ class AdminController
             $inhalationCasNames[$cas] = $p65 ? $p65['chemical_name'] : '(not in Prop 65 list)';
         }
 
+        // Audit #34: per-language disclaimer textareas + built-in default as placeholder
+        $disclaimerLangs = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
+        if (!is_array($disclaimerLangs) || $disclaimerLangs === []) {
+            $disclaimerLangs = ['en'];
+        }
+        $disclaimerDefaults = [];
+        foreach ($disclaimerLangs as $lang) {
+            $disclaimerDefaults[$lang] = (new \SDS\Services\TranslationService((string) $lang))->get('section16.disclaimer');
+        }
+
         view('admin/settings', [
             'pageTitle' => 'System Settings',
             'settings'  => $settings,
             'inhalationCasNames' => $inhalationCasNames,
+            'disclaimerLangs'    => $disclaimerLangs,
+            'disclaimerDefaults' => $disclaimerDefaults,
         ]);
     }
 
@@ -336,6 +348,16 @@ class AdminController
         CSRF::validateRequest();
 
         $db = Database::getInstance();
+
+        // Audit #2 — refuse the save (nothing written, no logo touched) when
+        // the company emergency phone would be blanked: it prints in Section 1
+        // of every standard SDS and every publish path is gated on it.
+        if (array_key_exists('company__emergency_phone', $_POST)
+            && trim((string) $_POST['company__emergency_phone']) === '') {
+            $_SESSION['_flash']['error'] = 'Settings not saved: Emergency Phone is required. 29 CFR 1910.1200 Appendix D (Section 1(d)) requires an emergency phone number in Section 1 of every SDS.';
+            redirect('/admin/settings');
+            return;
+        }
 
         // Handle logo removal
         if (!empty($_POST['remove_logo'])) {

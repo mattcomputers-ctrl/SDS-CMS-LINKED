@@ -33,7 +33,7 @@ Recorded as items are reviewed with Matt. Items not listed here are still open.
 | 28 | OSHA status sentence follows the classification result. | 2026-10-08 |
 | 30 | SARA 313 block fixed (renderer reads the service's real keys), "none reportable" line, smoke-test fixture corrected. | 2026-10-08 |
 | 31 | State regulations: the operator's note always prints; the Prop 65 fallback is removed; the admin-settings override is still honoured. | 2026-10-08 |
-| 32 | Section 16 prints the SDS version and the effective date only. | 2026-10-08 |
+| 32 | Section 16 prints the SDS version and the effective date only (no generation timestamp, change summary, formula version or per-product revision note). | 2026-10-08 |
 | 33 | Abbreviations built from a master table filtered to the terms used on the sheet. | 2026-10-08 |
 | 34 | Legal disclaimer per language in Admin Settings; per private label manufacturer per language on the manufacturer form (blank = inherit the admin text). | 2026-10-08 |
 | 35 | Render the UV acrylate rule pack (translated) in its target sections; UV detection = membership of a family flagged UV/LED (see #3). | 2026-10-08 |

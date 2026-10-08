@@ -59,6 +59,8 @@ $sdsData = [
         2 => [
             'title'       => 'Hazard(s) Identification',
             'signal_word' => 'Warning',
+            'is_classified' => true,
+            'signal_word_en' => 'Warning',
             'pictograms'  => ['GHS07', 'GHS09'],
             'hazard_classes' => [
                 ['class' => 'Skin Irritation', 'category' => 'Category 2'],
@@ -103,6 +105,7 @@ $sdsData = [
             'skin'       => 'Wash with soap and water.',
             'eyes'       => 'Flush with water for 15 minutes.',
             'ingestion'  => 'Do not induce vomiting. Seek medical attention.',
+            'symptoms'   => 'Acute: Causes skin irritation. Causes serious eye irritation.',
             'notes'      => 'Show this SDS to medical personnel.',
         ],
         5 => [
@@ -127,7 +130,7 @@ $sdsData = [
         8 => [
             'title'           => 'Exposure Controls / Personal Protection',
             'exposure_limits' => [
-                ['cas_number' => '57472-68-1', 'chemical_name' => 'DPGDA', 'limit_type' => 'TWA', 'value' => '10', 'units' => 'mg/m3', 'concentration_pct' => 39.0],
+                ['cas_number' => '57472-68-1', 'chemical_name' => 'DPGDA', 'limit_type' => 'TWA', 'value' => '10', 'units' => 'mg/m3', 'concentration_pct' => 39.0, 'concentration_range' => '30 - 60%'],
             ],
             'engineering'      => 'Use local exhaust ventilation.',
             'respiratory'      => 'NIOSH-approved respirator if needed.',
@@ -169,7 +172,7 @@ $sdsData = [
                 [
                     'cas_number'        => '57472-68-1',
                     'chemical_name'     => 'DPGDA',
-                    'concentration_pct' => 39.0,
+                    'concentration_range' => '35 - 40%',
                     'exposure_limits'   => [
                         ['limit_type' => 'TWA', 'value' => '10', 'units' => 'mg/m3'],
                     ],
@@ -180,15 +183,17 @@ $sdsData = [
         ],
         12 => [
             'title'      => 'Ecological Information',
-            'ecotoxicity'     => 'Avoid release to environment.',
+            'ecotoxicity'     => 'Classified as hazardous to the aquatic environment by the GHS summation method applied to the component classifications and M-factors listed below (GHS Rev. 7, Chapter 4.1): H411: Toxic to aquatic life with long lasting effects. Avoid release to the environment. Prevent entry into waterways, sewers, and soil.',
+            'component_aquatic' => [
+                ['cas_number' => '15206-55-0', 'chemical_name' => 'Trimethylolpropane Triacrylate (TMPTA)', 'concentration_range' => '25 - 30%', 'acute' => 'Category 1 (M = 1)', 'chronic' => 'Category 2'],
+                ['cas_number' => '57472-68-1', 'chemical_name' => 'Dipropylene Glycol Diacrylate (DPGDA)',  'concentration_range' => '35 - 40%', 'acute' => '',                  'chronic' => 'Category 3'],
+            ],
             'persistence'     => 'No data available.',
             'bioaccumulation' => 'No data available.',
-            'note'            => 'Not required by OSHA but included per GHS.',
         ],
         13 => [
             'title'   => 'Disposal Considerations',
             'methods' => 'Dispose per local regulations.',
-            'note'    => 'Not required by OSHA but included per GHS.',
         ],
         14 => [
             'title'                => 'Transport Information',
@@ -203,8 +208,21 @@ $sdsData = [
             'osha_status' => 'Classified as hazardous under OSHA HazCom.',
             'tsca_status' => 'All components listed on TSCA.',
             'sara_313'    => [
-                'listed_chemicals' => [],
-                'requires_reporting' => false,
+                'reportable' => [
+                    [
+                        'cas_number'        => '108-88-3',
+                        'chemical_name'     => 'Toluene',
+                        'concentration_pct' => 4.5,
+                        'threshold_pct'     => 1.0,
+                        'is_pbt'            => false,
+                        'category_code'     => null,
+                        'sara_name'         => 'Toluene',
+                        'status'            => 'reportable',
+                    ],
+                ],
+                'below_threshold' => [],
+                'not_listed'      => [],
+                'summary'         => '1 chemical(s) exceed SARA 313 de minimis thresholds and must be reported.',
             ],
             'prop65' => [
                 'requires_warning' => false,
@@ -212,13 +230,13 @@ $sdsData = [
                 'listed_chemicals' => [],
             ],
             'state_regs' => '',
-            'note'       => 'Not required by OSHA but included per GHS.',
+            'ghs_note'   => 'Sections 12-15 are included as required by 29 CFR 1910.1200(g)(2); content not enforced by OSHA.',
         ],
         16 => [
             'title'        => 'Other Information',
-            'revision_date' => date('m/d/Y'),
+            'version'      => 'Draft (not yet published)',
+            'effective_date' => '',
             'revision_note' => '',
-            'disclaimer'    => 'Information is correct to the best of our knowledge.',
             'abbreviations' => 'CAS = Chemical Abstracts Service; GHS = Globally Harmonized System.',
             'voc_assumptions' => [],
         ],
@@ -228,7 +246,7 @@ $sdsData = [
         'trace'       => [],
     ],
     'voc_result' => [],
-    'sara_result' => ['listed_chemicals' => []],
+    'sara_result' => ['reportable' => [], 'below_threshold' => [], 'not_listed' => [], 'summary' => 'No SARA 313 reportable chemicals above de minimis thresholds.'],
     'prop65_result' => ['requires_warning' => false],
     'carcinogen_result' => ['has_carcinogens' => false],
     'warnings' => [],
@@ -332,11 +350,48 @@ try {
             $failed = true;
         }
 
+        // Audit #2 — a private label variant prints the MANUFACTURER's
+        // emergency number and never inherits the company CHEMTREC line.
+        // Blank -> '' plus a Warnings-box entry; the base data is untouched.
+        $plNoPhone   = $plData; // the [9] fixture carries no emergency_phone
+        $plWithPhone = \SDS\Services\SDSGenerator::createPrivateLabelVariant(
+            $sdsData,
+            'ACME01',
+            'Acme Private Label Ink',
+            ['name' => 'Acme Printing Inks', 'emergency_phone' => 'Acme 24-hr: (800) 555-0199']
+        );
+        $noPhoneWarned = false;
+        foreach ($plNoPhone['warnings'] ?? [] as $w) {
+            if (stripos((string) $w, 'emergency phone') !== false) {
+                $noPhoneWarned = true;
+            }
+        }
+        if (($plNoPhone['sections'][1]['emergency_phone'] ?? 'unset') === ''
+            && $noPhoneWarned
+            && ($plWithPhone['sections'][1]['emergency_phone'] ?? '') === 'Acme 24-hr: (800) 555-0199'
+            && empty($plWithPhone['warnings'])
+            && ($sdsData['sections'][1]['emergency_phone'] ?? '') === 'CHEMTREC: (800) 424-9300') {
+            echo "[9b] Private label emergency phone: PASS (blank -> '' + warning; set -> manufacturer number; base untouched)\n";
+        } else {
+            echo "[9b] FAIL: private label emergency phone: blank='" . ($plNoPhone['sections'][1]['emergency_phone'] ?? 'unset')
+                . "' warned=" . ($noPhoneWarned ? 'yes' : 'no')
+                . " set='" . ($plWithPhone['sections'][1]['emergency_phone'] ?? 'unset') . "'\n";
+            $failed = true;
+        }
+
         // Versioned publish: meta.sds_version replaces the _SDS_{stamp} tail
         // with _v{n}. The default language (sds.default_language, "en" here)
         // gets no language suffix: {code}_v{n}.pdf; other languages keep it.
-        $vData = $sdsData;
-        $vData['meta']['sds_version'] = 3;
+        $vData = \SDS\Services\SDSGenerator::stampPublishedVersion($sdsData, 3, '2026-10-08');
+        if (($vData['meta']['effective_date'] ?? '') === '2026-10-08'
+            && ($vData['sections'][16]['version'] ?? '') === '3'
+            && ($vData['sections'][16]['effective_date'] ?? '') === '10/08/2026'
+            && !array_key_exists('revision_date', $vData['sections'][16])) {
+            echo "[10a] stampPublishedVersion sets meta + Section 16: PASS\n";
+        } else {
+            echo "[10a] FAIL: stampPublishedVersion: " . json_encode($vData['sections'][16]) . "\n";
+            $failed = true;
+        }
         $vPath = $pdfService->generate($vData, $outputDir);
         $created[] = $vPath;
         if (basename($vPath) === 'TEST_v3.pdf' && file_exists($vPath) && filesize($vPath) > 1024) {
@@ -380,6 +435,56 @@ try {
             echo "[13] Non-default language keeps suffix: PASS (" . basename($vEsPath) . ")\n";
         } else {
             echo "[13] FAIL: non-default language filename: " . basename($vEsPath) . "\n";
+            $failed = true;
+        }
+
+        // [14] Section 1 supplier address: shared builder, country rendered
+        // when set, no stray commas when city/state are blank.
+        $addrFull   = \SDS\Services\SDSGenerator::formatManufacturerAddress(
+            ['address' => '1 Main St', 'city' => 'Dayton', 'state' => 'OH', 'zip' => '45400', 'country' => 'USA']
+        );
+        $addrSparse = \SDS\Services\SDSGenerator::formatManufacturerAddress(
+            ['address' => '1 Main St', 'city' => '', 'state' => '', 'zip' => '45400', 'country' => '']
+        );
+        $addrEmpty  = \SDS\Services\SDSGenerator::formatManufacturerAddress([]);
+        if ($addrFull === '1 Main St, Dayton, OH 45400, USA' && $addrSparse === '1 Main St, 45400' && $addrEmpty === '') {
+            echo "[14] Supplier address formatting: PASS\n";
+        } else {
+            echo "[14] FAIL: supplier address formatting: '{$addrFull}' / '{$addrSparse}' / '{$addrEmpty}'\n";
+            $failed = true;
+        }
+
+        // [15] Private label: whole supplier block + logo come from the
+        // manufacturer record, and the PDF /Author names that supplier
+        // (TCPDF writes Info strings as UTF-16BE with a BOM).
+        $plSec1  = $plData['sections'][1];
+        $plBytes = (string) file_get_contents($plPath);
+        $utf16   = "\xFE\xFF" . implode('', array_map(static fn (string $c): string => "\0" . $c, str_split('Acme Printing Inks')));
+        if ($plSec1['manufacturer_name'] === 'Acme Printing Inks'
+            && $plSec1['manufacturer_address'] === '1 Main St, Dayton, OH 45400'
+            && $plSec1['manufacturer_phone'] === '555-0100'
+            && $plSec1['manufacturer_email'] === ''
+            && $plSec1['manufacturer_website'] === ''
+            && $plSec1['emergency_phone'] === '' // audit #2: no fallback to the company number
+            && ($plData['meta']['company_logo_path'] ?? null) === ''
+            && str_contains($plBytes, '/Author (' . $utf16 . ')')
+        ) {
+            echo "[15] Private label supplier block + PDF Author metadata: PASS\n";
+        } else {
+            echo "[15] FAIL: private label supplier block / Author metadata\n";
+            $failed = true;
+        }
+
+        // SARA 313 block (#30): the reportable fixture above must render its
+        // bullet; an empty 'reportable' array must render the "none" sentence
+        // instead, so the two documents must differ and both be valid PDFs.
+        $noneData = $sdsData;
+        $noneData['sections'][15]['sara_313']['reportable'] = [];
+        $noneString = $pdfService->generateString($noneData);
+        if (str_starts_with($noneString, '%PDF-') && $noneString !== $pdfString) {
+            echo "[16] SARA 313 reportable vs none render distinct valid PDFs: PASS\n";
+        } else {
+            echo "[16] FAIL: SARA 313 none-branch output invalid or identical to reportable-branch output\n";
             $failed = true;
         }
 

@@ -516,6 +516,7 @@ class HazardEngine
      *   exposure_limits: array,
      *   hazardous_cas: string[],
      *   ppe_recommendations: array,
+     *   aquatic_components: array,   // per-CAS aquatic category + M-factor (Phase 4 buffer), for SDS Section 12
      *   trace: array,
      * }
      */
@@ -997,6 +998,12 @@ class HazardEngine
             'exposure_limits'     => self::dedupeExposureLimits($exposureLimits),
             'hazardous_cas'       => array_keys($hazardousCas),
             'ppe_recommendations' => $ppeRecommendations,
+            // Per-component aquatic classification + M-factor, flattened
+            // from the Phase 4 aquatic buffer so SDS Section 12 can print a
+            // component table without re-deriving it. Mixture-level
+            // classification is still decided solely by
+            // applyAquaticSummation() above.
+            'aquatic_components'  => $this->buildAquaticComponentSummary(),
             'trace'               => $this->trace,
         ];
     }
@@ -1029,129 +1036,111 @@ class HazardEngine
     }
 
     /**
-     * Derive PPE recommendations from classified H-statements and P-statements.
+     * PPE tiers that are good-practice baselines rather than hazard-driven.
+     * Section 2 shows a PPE field only when its tier is NOT one of these.
+     */
+    public const PPE_BASELINE_TIERS = ['general', 'none'];
+
+    /** Output fields of derivePPE(), in Section 8 print order. */
+    public const PPE_FIELDS = ['respiratory', 'hand_protection', 'eye_protection', 'skin_protection'];
+
+    /**
+     * Derive PPE tiers from the classified H-statements.
      *
-     * Maps hazard codes to specific PPE requirements for respiratory,
-     * hand, eye, and skin/body protection.
+     * Each field maps to one translation key, section8.ppe.<field>.<tier>
+     * in templates/translations/{en,es,fr,de}.php, so the sentence is
+     * rendered in the SDS language by SDSGenerator::resolvePPE(). Tiers
+     * 'general' (product is classified, but no H-code on this route) and
+     * 'none' (no H-codes at all) are baselines, see PPE_BASELINE_TIERS;
+     * every other tier is hazard-driven.
+     *
+     * P-statements are accepted for signature compatibility but do not
+     * influence the result: P280/P284/P285 are themselves assigned from
+     * the same H-codes, so keying on them duplicated the H-code logic.
      *
      * @param  array $hStatements  [['code' => 'H225', 'text' => '...'], ...]
-     * @param  array $pStatements  [['code' => 'P210', 'text' => '...'], ...]
-     * @return array  PPE recommendations keyed by protection type
+     * @param  array $pStatements  Ignored (kept for signature compatibility)
+     * @return array<string, array{tier: string, key: string}>  keyed by PPE_FIELDS
      */
-    public static function derivePPE(array $hStatements, array $pStatements): array
+    public static function derivePPE(array $hStatements, array $pStatements = []): array
     {
-        // Extract individual H-codes (split combined codes like H300+H310+H330)
+        // Individual H-codes (combined codes like H300+H310+H330 are split)
         $hCodes = [];
         foreach ($hStatements as $s) {
-            $code = $s['code'] ?? '';
+            $code = trim((string) ($s['code'] ?? ''));
             if ($code === '') {
                 continue;
             }
-            // Add the full combined code
-            $hCodes[] = $code;
-            // Also split into individual codes
             foreach (explode('+', $code) as $part) {
                 $part = trim($part);
                 if ($part !== '') {
-                    $hCodes[] = $part;
+                    $hCodes[$part] = true;
                 }
             }
         }
-        $hCodes = array_unique($hCodes);
+        $classified = $hCodes !== [];
+        $has = static function (array $codes) use ($hCodes): bool {
+            return array_intersect_key($hCodes, array_flip($codes)) !== [];
+        };
 
-        // Extract individual P-codes
-        $pCodes = [];
-        foreach ($pStatements as $s) {
-            $code = $s['code'] ?? '';
-            if ($code === '') {
-                continue;
-            }
-            $pCodes[] = $code;
-            foreach (explode('+', $code) as $part) {
-                $part = trim($part);
-                if ($part !== '') {
-                    $pCodes[] = $part;
-                }
-            }
-        }
-        $pCodes = array_unique($pCodes);
-
-        $respiratory = null;
-        $hand = null;
-        $eye = null;
-        $skin = null;
+        // Systemic / chronic health codes: the route of exposure is not
+        // specified by the code, so they raise the conditional respirator,
+        // glove and clothing tiers.
+        $systemic = ['H340', 'H341', 'H350', 'H351', 'H360', 'H361', 'H370', 'H371', 'H372', 'H373'];
 
         // ── Respiratory Protection ──
-        $fatalInhalation = !empty(array_intersect($hCodes, ['H330']));
-        $toxicInhalation = !empty(array_intersect($hCodes, ['H331']));
-        $harmfulInhalation = !empty(array_intersect($hCodes, ['H332', 'H333']));
-        $respSensitizer = !empty(array_intersect($hCodes, ['H334']));
-        $respIrritant = !empty(array_intersect($hCodes, ['H335', 'H336']));
-        $respPCode = !empty(array_intersect($pCodes, ['P284', 'P285']));
-
-        if ($fatalInhalation || $toxicInhalation) {
-            $respiratory = 'NIOSH-approved supplied-air respirator or self-contained breathing apparatus (SCBA). Do not use chemical cartridge respirators.';
-        } elseif ($respSensitizer) {
-            $respiratory = 'NIOSH-approved respirator with organic vapor/particulate combination cartridge (P100/OV). Supplied-air respirator if concentrations are high.';
-        } elseif ($harmfulInhalation || $respIrritant || $respPCode) {
-            $respiratory = 'NIOSH-approved respirator with appropriate cartridge if exposure limits are exceeded or if irritation is experienced.';
+        if ($has(['H330', 'H331'])) {
+            $respiratory = 'scba';
+        } elseif ($has(['H334'])) {
+            $respiratory = 'sensitizer';
+        } elseif ($has(array_merge(['H332', 'H333', 'H335', 'H336'], $systemic))) {
+            $respiratory = 'cartridge';
+        } else {
+            $respiratory = $classified ? 'general' : 'none';
         }
 
         // ── Hand Protection ──
-        $fatalDermal = !empty(array_intersect($hCodes, ['H310']));
-        $corrosive = !empty(array_intersect($hCodes, ['H314']));
-        $skinSensitizer = !empty(array_intersect($hCodes, ['H317']));
-        $dermalToxic = !empty(array_intersect($hCodes, ['H311', 'H312', 'H313']));
-        $skinIrritant = !empty(array_intersect($hCodes, ['H315', 'H316']));
-
-        if ($fatalDermal || $corrosive) {
-            $hand = 'Chemical-resistant gloves (butyl rubber or Viton recommended). Double gloving recommended for corrosive/highly toxic materials. Verify breakthrough time with glove manufacturer.';
-        } elseif ($skinSensitizer) {
-            $hand = 'Chemical-resistant gloves (nitrile recommended). Replace gloves frequently to prevent sensitization. Verify breakthrough time with glove manufacturer.';
-        } elseif ($dermalToxic || $skinIrritant) {
-            $hand = 'Chemical-resistant gloves (nitrile or neoprene recommended). Verify breakthrough time with glove manufacturer.';
+        if ($has(['H310', 'H311', 'H314'])) {
+            $hand = 'impervious';
+        } elseif ($has(['H317'])) {
+            $hand = 'sensitizer';
+        } elseif ($has(array_merge(['H312', 'H313', 'H315', 'H316'], $systemic))) {
+            $hand = 'resistant';
+        } else {
+            $hand = $classified ? 'general' : 'none';
         }
 
         // ── Eye Protection ──
-        $severeEyeDamage = !empty(array_intersect($hCodes, ['H318']));
-        $eyeCorrosive = !empty(array_intersect($hCodes, ['H314']));
-        $seriousEyeIrritation = !empty(array_intersect($hCodes, ['H319']));
-        $mildEyeIrritation = !empty(array_intersect($hCodes, ['H320']));
-
-        if ($severeEyeDamage || $eyeCorrosive) {
-            $eye = 'Chemical splash goggles and face shield required. Tightly fitting safety goggles per ANSI Z87.1.';
-        } elseif ($seriousEyeIrritation) {
-            $eye = 'Chemical splash goggles or safety glasses with side shields. Face shield if splash hazard exists.';
-        } elseif ($mildEyeIrritation) {
-            $eye = 'Safety glasses with side shields.';
+        if ($has(['H314', 'H318'])) {
+            $eye = 'goggles_faceshield';
+        } elseif ($has(['H319'])) {
+            $eye = 'goggles';
+        } elseif ($has(['H320'])) {
+            $eye = 'glasses';
+        } else {
+            $eye = $classified ? 'general' : 'none';
         }
 
         // ── Skin / Body Protection ──
-        if ($fatalDermal || $corrosive) {
-            $skin = 'Full chemical-resistant suit. Impervious boots and chemical-resistant apron. Emergency shower and eyewash station should be accessible.';
-        } elseif ($dermalToxic || $skinIrritant || $skinSensitizer) {
-            $skin = 'Wear protective clothing to prevent skin contact. Impervious apron recommended. Launder contaminated clothing before reuse.';
+        if ($has(['H310', 'H311', 'H314'])) {
+            $skin = 'suit';
+        } elseif ($has(array_merge(['H312', 'H313', 'H315', 'H316', 'H317'], $systemic))) {
+            $skin = 'clothing';
+        } else {
+            $skin = $classified ? 'general' : 'none';
         }
 
-        // P280 fallback — if present but no specific PPE was derived from H-codes
-        if (in_array('P280', $pCodes, true)) {
-            if ($hand === null) {
-                $hand = 'Chemical-resistant gloves (nitrile or neoprene recommended).';
-            }
-            if ($eye === null) {
-                $eye = 'Safety glasses with side shields. Use chemical splash goggles if splash hazard exists.';
-            }
-            if ($skin === null) {
-                $skin = 'Wear protective clothing to prevent skin contact.';
-            }
-        }
-
-        return [
+        $tiers = [
             'respiratory'     => $respiratory,
             'hand_protection' => $hand,
             'eye_protection'  => $eye,
             'skin_protection' => $skin,
         ];
+        $out = [];
+        foreach ($tiers as $field => $tier) {
+            $out[$field] = ['tier' => $tier, 'key' => 'section8.ppe.' . $field . '.' . $tier];
+        }
+        return $out;
     }
 
     /**
@@ -1245,6 +1234,59 @@ class HazardEngine
             'm_factor_source' => $mFactorSource,
             'source'          => $source,
         ];
+    }
+
+    /**
+     * Flatten the aquatic buffer into one row per CAS for SDS Section 12.
+     *
+     * Each row: cas, name, conc (the composition-line concentration; the
+     * same CAS is buffered once per route per line, so max() keeps the
+     * line value rather than doubling it), acute_category / acute_m_factor /
+     * acute_m_factor_source and chronic_category / chronic_m_factor /
+     * chronic_m_factor_source (null when the CAS carries no classification
+     * on that route). Categories are canonical ('Cat 1' … 'Cat 4').
+     * M-factor source is 'vendor' | 'cpd' | 'default' (default = 1.0 per
+     * GHS Rev. 7 4.1.3.5.5.5 when no explicit value is on file).
+     * Rows are ordered by descending concentration, then CAS.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildAquaticComponentSummary(): array
+    {
+        $rows = [];
+        foreach (['acute', 'chronic'] as $route) {
+            foreach ($this->aquaticBuffer[$route] ?? [] as $c) {
+                $cas = (string) ($c['cas'] ?? '');
+                if ($cas === '') {
+                    continue;
+                }
+                if (!isset($rows[$cas])) {
+                    $rows[$cas] = [
+                        'cas'                     => $cas,
+                        'name'                    => (string) ($c['name'] ?? ''),
+                        'conc'                    => 0.0,
+                        'acute_category'          => null,
+                        'acute_m_factor'          => null,
+                        'acute_m_factor_source'   => null,
+                        'chronic_category'        => null,
+                        'chronic_m_factor'        => null,
+                        'chronic_m_factor_source' => null,
+                    ];
+                }
+                $rows[$cas]['conc'] = max((float) $rows[$cas]['conc'], (float) ($c['conc'] ?? 0));
+                $rows[$cas][$route . '_category']        = (string) ($c['category'] ?? '');
+                $rows[$cas][$route . '_m_factor']        = (float) ($c['m_factor'] ?? 1.0);
+                $rows[$cas][$route . '_m_factor_source'] = (string) ($c['m_factor_source'] ?? 'default');
+            }
+        }
+        $rows = array_values($rows);
+        usort($rows, static function (array $a, array $b): int {
+            if ($a['conc'] !== $b['conc']) {
+                return $b['conc'] <=> $a['conc'];
+            }
+            return strcmp($a['cas'], $b['cas']);
+        });
+        return $rows;
     }
 
     /**

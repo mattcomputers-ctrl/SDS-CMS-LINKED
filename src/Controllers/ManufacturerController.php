@@ -52,9 +52,11 @@ class ManufacturerController
         }
 
         view('manufacturers/form', [
-            'pageTitle' => 'Add Manufacturer',
-            'mode'      => 'create',
-            'item'      => [],
+            'pageTitle'   => 'Add Manufacturer',
+            'mode'        => 'create',
+            'item'        => [],
+            'languages'   => self::languages(),
+            'disclaimers' => [],
         ]);
     }
 
@@ -69,6 +71,7 @@ class ManufacturerController
 
         $data = $this->extractFormData();
         $data['created_by'] = current_user_id();
+        $this->validateEmergencyPhone($data, '/manufacturers/create');
 
         // Handle logo upload
         $logoPath = $this->processLogoUpload();
@@ -117,6 +120,8 @@ class ManufacturerController
             'item'          => $item,
             'plItemCount'   => (int) ($plStats['c'] ?? 0),
             'plActiveCount' => (int) ($plStats['active'] ?? 0),
+            'languages'     => self::languages(),
+            'disclaimers'   => Manufacturer::decodeDisclaimers($item['disclaimer_json'] ?? null),
         ]);
     }
 
@@ -136,6 +141,7 @@ class ManufacturerController
         }
 
         $data = $this->extractFormData();
+        $this->validateEmergencyPhone($data, '/manufacturers/' . $id . '/edit');
 
         // Handle logo upload
         $logoPath = $this->processLogoUpload((int) $id);
@@ -204,8 +210,30 @@ class ManufacturerController
         redirect('/manufacturers');
     }
 
+    /**
+     * Audit #2 — emergency_phone is required: it prints in Section 1 of
+     * every private label SDS under this manufacturer's name and nothing
+     * falls back to the company number. Flashes the error + old input and
+     * redirects back to the form (redirect() exits).
+     */
+    private function validateEmergencyPhone(array $data, string $backUrl): void
+    {
+        if (trim((string) ($data['emergency_phone'] ?? '')) !== '') {
+            return;
+        }
+        $_SESSION['_flash']['error'] = 'Emergency Phone is required. 29 CFR 1910.1200 Appendix D (Section 1(d)) requires an emergency phone number in Section 1 of every SDS, and private label SDSs print this manufacturer\'s own number.';
+        $_SESSION['_flash']['_old_input'] = $_POST;
+        redirect($backUrl);
+    }
+
     private function extractFormData(): array
     {
+        // Audit #34 — per-language disclaimer override (blank = inherit admin setting)
+        $disclaimers = [];
+        foreach (self::languages() as $lang) {
+            $disclaimers[$lang] = (string) ($_POST['disclaimer_' . $lang] ?? '');
+        }
+
         return [
             'name'            => $_POST['name'] ?? '',
             'address'         => $_POST['address'] ?? '',
@@ -217,7 +245,18 @@ class ManufacturerController
             'emergency_phone' => $_POST['emergency_phone'] ?? '',
             'email'           => $_POST['email'] ?? '',
             'website'         => $_POST['website'] ?? '',
+            'disclaimer_json' => Manufacturer::encodeDisclaimers($disclaimers),
         ];
+    }
+
+    /** Configured SDS languages (never empty). @return list<string> */
+    private static function languages(): array
+    {
+        $langs = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
+        if (!is_array($langs) || $langs === []) {
+            return ['en'];
+        }
+        return array_values(array_map('strval', $langs));
     }
 
     /**

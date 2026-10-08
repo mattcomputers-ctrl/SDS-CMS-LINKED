@@ -161,6 +161,7 @@ class BulkPublishController
 
         view('admin/bulk-publish', [
             'pageTitle'           => 'Bulk SDS Publish',
+            'companyPhoneError'   => \SDS\Services\SDSReadinessService::companyEmergencyPhoneErrorFromDb($db),
             'fgCount'             => count($eligibleFgs),
             'blockedCount'        => count($blockedFgs),
             'aliasCount'          => $aliasCount,
@@ -588,6 +589,8 @@ class BulkPublishController
         array $languages
     ): array {
         $workItems = [];
+        // Audit #2 — manufacturer rows keyed by id, for the emergency phone gate below.
+        $mfgRows   = [];
 
         foreach ($eligibleFgs as $fg) {
             $aliases = self::deduplicateAliasesByBaseCode($db->fetchAll(
@@ -648,6 +651,19 @@ class BulkPublishController
                     $plError = 'Shared alias '
                         . strip_pack_extension((string) ($pli['alias_customer_code'] ?? ('#' . (int) $pli['alias_id'])))
                         . ' no longer belongs to ' . $fg['product_code'];
+                }
+
+                // Audit #2 — same gate as PrivateLabelPublisher::publishOne: a
+                // manufacturer with no emergency phone cannot be printed. Set as
+                // pl_error so the worker fails the item without consuming a version.
+                if ($plError === null) {
+                    $plMfgId = (int) $pli['manufacturer_id'];
+                    if (!array_key_exists($plMfgId, $mfgRows)) {
+                        $mfgRows[$plMfgId] = \SDS\Models\Manufacturer::findById($plMfgId);
+                    }
+                    $plError = $mfgRows[$plMfgId] === null
+                        ? 'Manufacturer not found for private label item'
+                        : \SDS\Services\SDSReadinessService::manufacturerEmergencyPhoneError($mfgRows[$plMfgId]);
                 }
 
                 $identity = \SDS\Services\PrivateLabelPublisher::resolveIdentity($pli);

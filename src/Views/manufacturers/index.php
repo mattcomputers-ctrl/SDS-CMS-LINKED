@@ -59,7 +59,12 @@ $canAddPl   = can_edit('private_label');
                 echo e(implode(', ', $addr) ?: '—');
                 ?>
             </td>
-            <td><?= e($m['phone'] ?: '—') ?></td>
+            <td>
+                <?= e($m['phone'] ?: '—') ?>
+                <?php if (trim((string) ($m['emergency_phone'] ?? '')) === ''): ?>
+                    <br><span class="badge badge-draft" title="Required for SDS Section 1 — private label SDSs for this manufacturer cannot be published until it is entered">No emergency phone</span>
+                <?php endif; ?>
+            </td>
             <td>
                 <?php
                 $pl    = $plCounts[(int) $m['id']] ?? ['total' => 0, 'active' => 0];

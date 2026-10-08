@@ -69,6 +69,12 @@ class SDSController
             $generator = new SDSGenerator();
             $sdsData   = $generator->generate((int) $finished_good_id, $language);
 
+            // Audit #2 — surface a blank company emergency phone in the Warnings box.
+            $phoneError = \SDS\Services\SDSReadinessService::companyEmergencyPhoneErrorFromDb(Database::getInstance());
+            if ($phoneError !== null) {
+                $sdsData['warnings'][] = $phoneError;
+            }
+
             view('sds/preview', [
                 'pageTitle'    => 'SDS Preview: ' . $fg['product_code'],
                 'finishedGood' => $fg,
@@ -286,6 +292,14 @@ class SDSController
 
         $db = Database::getInstance();
 
+        // Audit #2 — the company emergency phone prints on every standard SDS.
+        $phoneError = \SDS\Services\SDSReadinessService::companyEmergencyPhoneErrorFromDb($db);
+        if ($phoneError !== null) {
+            $_SESSION['_flash']['error'] = $phoneError;
+            redirect('/sds/' . $finished_good_id);
+            return;
+        }
+
         try {
             $generator = new SDSGenerator();
 
@@ -323,8 +337,9 @@ class SDSController
                 [(int) $finished_good_id]
             );
             $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
+            $effectiveDate = date('Y-m-d');
             foreach ($langData as &$d) {
-                $d['meta']['sds_version'] = $nextVersion;
+                $d = SDSGenerator::stampPublishedVersion($d, $nextVersion, $effectiveDate);
             }
             unset($d);
 
@@ -368,7 +383,7 @@ class SDSController
                     'language'         => $lang,
                     'version'          => $nextVersion,
                     'status'           => 'published',
-                    'effective_date'   => date('Y-m-d'),
+                    'effective_date'   => $effectiveDate,
                     'published_by'     => current_user_id(),
                     'published_at'     => $now,
                     'snapshot_json'    => json_encode($item['sdsData'], JSON_UNESCAPED_UNICODE),
@@ -656,6 +671,14 @@ class SDSController
         $languages = \SDS\Core\App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
         $db = Database::getInstance();
 
+        // Audit #2 — the company emergency phone prints on every resale SDS.
+        $phoneError = \SDS\Services\SDSReadinessService::companyEmergencyPhoneErrorFromDb($db);
+        if ($phoneError !== null) {
+            $_SESSION['_flash']['error'] = $phoneError;
+            redirect('/sds-review?rm_id=' . $rmId);
+            return;
+        }
+
         try {
             $generator = new SDSGenerator();
             $baseData  = $generator->computeBaseForResaleRawMaterial($rmId);
@@ -689,8 +712,9 @@ class SDSController
                 [$rmId]
             );
             $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
+            $effectiveDate = date('Y-m-d');
             foreach ($langData as &$d) {
-                $d['meta']['sds_version'] = $nextVersion;
+                $d = SDSGenerator::stampPublishedVersion($d, $nextVersion, $effectiveDate);
             }
             unset($d);
 
@@ -725,7 +749,7 @@ class SDSController
                     'language'         => $lang,
                     'version'          => $nextVersion,
                     'status'           => 'published',
-                    'effective_date'   => date('Y-m-d'),
+                    'effective_date'   => $effectiveDate,
                     'published_by'     => current_user_id(),
                     'published_at'     => $now,
                     'snapshot_json'    => json_encode($langData[$lang], JSON_UNESCAPED_UNICODE),
@@ -826,6 +850,7 @@ class SDSController
                 [(int) $alias['id']]
             );
             $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
+            $effectiveDate = substr($now, 0, 10);
 
             $aliasLangData = [];
             foreach ($langData as $lang => $sdsData) {
@@ -834,7 +859,7 @@ class SDSController
                     $displayCode,
                     (string) $alias['description']
                 );
-                $aliasLangData[$lang]['meta']['sds_version'] = $nextVersion;
+                $aliasLangData[$lang] = SDSGenerator::stampPublishedVersion($aliasLangData[$lang], $nextVersion, $effectiveDate);
             }
 
             $pdfResults = $this->generatePdfsInParallel($aliasLangData);
@@ -853,7 +878,7 @@ class SDSController
                     'language'         => $lang,
                     'version'          => $nextVersion,
                     'status'           => 'published',
-                    'effective_date'   => date('Y-m-d'),
+                    'effective_date'   => $effectiveDate,
                     'published_by'     => current_user_id(),
                     'published_at'     => $now,
                     'snapshot_json'    => json_encode($aliasSds, JSON_UNESCAPED_UNICODE),
@@ -917,6 +942,7 @@ class SDSController
                 [(int) $alias['id']]
             );
             $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
+            $effectiveDate = substr($now, 0, 10);
 
             // Build alias-specific SDS data per language, then generate PDFs
             $aliasLangData = [];
@@ -926,7 +952,7 @@ class SDSController
                     $alias['customer_code'],
                     $alias['description']
                 );
-                $aliasLangData[$lang]['meta']['sds_version'] = $nextVersion;
+                $aliasLangData[$lang] = SDSGenerator::stampPublishedVersion($aliasLangData[$lang], $nextVersion, $effectiveDate);
             }
 
             // Generate PDFs for all languages
@@ -945,7 +971,7 @@ class SDSController
                     'language'         => $lang,
                     'version'          => $nextVersion,
                     'status'           => 'published',
-                    'effective_date'   => date('Y-m-d'),
+                    'effective_date'   => $effectiveDate,
                     'published_by'     => current_user_id(),
                     'published_at'     => $now,
                     'snapshot_json'    => json_encode($aliasSds, JSON_UNESCAPED_UNICODE),

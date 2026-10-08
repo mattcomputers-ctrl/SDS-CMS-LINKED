@@ -186,6 +186,7 @@ class SDSAutoSendService
                 );
                 $aliasNextVer = ((int) ($aliasLastVer['max_ver'] ?? 0)) + 1;
                 $now = date('Y-m-d H:i:s');
+                $effectiveDate = date('Y-m-d');
 
                 $published = false;
                 foreach ($languages as $lang) {
@@ -218,7 +219,8 @@ class SDSAutoSendService
                         (string) $aliasRow['customer_code'],
                         $aliasNextVer,
                         $lang,
-                        $aliasData
+                        $aliasData,
+                        $effectiveDate
                     );
 
                     $this->db->insert('sds_versions', [
@@ -227,7 +229,7 @@ class SDSAutoSendService
                         'language'         => $lang,
                         'version'          => $aliasNextVer,
                         'status'           => 'published',
-                        'effective_date'   => date('Y-m-d'),
+                        'effective_date'   => $effectiveDate,
                         'published_at'     => $now,
                         'snapshot_json'    => json_encode($aliasData, JSON_UNESCAPED_UNICODE),
                         'pdf_path'         => 'public/generated-pdfs/' . $filename,
@@ -255,6 +257,11 @@ class SDSAutoSendService
      */
     private function canAutoPublish(int $fgId): bool
     {
+        // Audit #2 — never auto-publish without the company emergency phone.
+        if (\SDS\Services\SDSReadinessService::companyEmergencyPhoneErrorFromDb($this->db) !== null) {
+            return false;
+        }
+
         $formula = Formula::findCurrentByFinishedGood($fgId);
         if (!$formula || empty($formula['lines'])) {
             return false;
@@ -336,6 +343,7 @@ class SDSAutoSendService
         );
         $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
         $now = date('Y-m-d H:i:s');
+        $effectiveDate = date('Y-m-d');
 
         foreach ($langData as $lang => $sdsData) {
             $filename = $this->writeVersionedPdf(
@@ -344,7 +352,8 @@ class SDSAutoSendService
                 (string) ($fg['product_code'] ?? 'UNKNOWN'),
                 $nextVersion,
                 $lang,
-                $sdsData
+                $sdsData,
+                $effectiveDate
             );
             $relativePath = 'public/generated-pdfs/' . $filename;
 
@@ -353,7 +362,7 @@ class SDSAutoSendService
                 'language'         => $lang,
                 'version'          => $nextVersion,
                 'status'           => 'published',
-                'effective_date'   => date('Y-m-d'),
+                'effective_date'   => $effectiveDate,
                 'published_by'     => null,
                 'published_at'     => $now,
                 'snapshot_json'    => json_encode($sdsData, JSON_UNESCAPED_UNICODE),
@@ -394,7 +403,8 @@ class SDSAutoSendService
                     (string) $alias['customer_code'],
                     $aliasNextVer,
                     $lang,
-                    $aliasData
+                    $aliasData,
+                    $effectiveDate
                 );
                 $aliasRelPath = 'public/generated-pdfs/' . $aliasFilename;
 
@@ -404,7 +414,7 @@ class SDSAutoSendService
                     'language'          => $lang,
                     'version'           => $aliasNextVer,
                     'status'            => 'published',
-                    'effective_date'    => date('Y-m-d'),
+                    'effective_date'    => $effectiveDate,
                     'published_by'      => null,
                     'published_at'      => $now,
                     'snapshot_json'     => json_encode($aliasData, JSON_UNESCAPED_UNICODE),
@@ -1345,7 +1355,8 @@ class SDSAutoSendService
      * never overwritten (the new one becomes {base}_2.pdf). A failed render
      * removes the reserved placeholder before rethrowing.
      *
-     * $sdsData is taken by reference so the meta.sds_version stamp lands on
+     * $sdsData is taken by reference so the version / effective-date stamp
+     * (SDSGenerator::stampPublishedVersion) lands on
      * the caller's array and is carried into the snapshot_json it inserts,
      * matching the other publishers. This also overwrites a version number
      * inherited from a decoded base snapshot via createAliasVariant().
@@ -1356,13 +1367,14 @@ class SDSAutoSendService
         string $code,
         int $version,
         string $lang,
-        array &$sdsData
+        array &$sdsData,
+        string $effectiveDate
     ): string {
         if (!is_dir($pdfDir) && !@mkdir($pdfDir, 0775, true) && !is_dir($pdfDir)) {
             throw new \RuntimeException("Unable to create PDF output directory: {$pdfDir}");
         }
 
-        $sdsData['meta']['sds_version'] = $version;
+        $sdsData = SDSGenerator::stampPublishedVersion($sdsData, $version, $effectiveDate);
         $base    = PDFService::versionedBaseName(sanitize_filename(strip_pack_extension($code)), $version, $lang);
         $pdfPath = PDFService::uniquePath($pdfDir, $base, '.pdf');
 

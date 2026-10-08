@@ -824,6 +824,14 @@ try {
     assertContains('aquatic-m100: H400 via aquatic summation', hCodes($result), 'H400');
     assertContains('aquatic-m100: trace logs aquatic_summation_triggered',
         traceSteps($result), 'aquatic_summation_triggered');
+    // Audit item #23: the Phase 4 buffer is exposed for SDS Section 12.
+    assertEquals('aquatic-m100: aquatic_components exposes CAS + M-factor',
+        ['99999-60-0', 'Cat 1', 100.0],
+        [
+            $result['aquatic_components'][0]['cas'] ?? null,
+            $result['aquatic_components'][0]['acute_category'] ?? null,
+            $result['aquatic_components'][0]['acute_m_factor'] ?? null,
+        ]);
 
     // ──────────────────────────────────────────────────────────────────
     echo "\n[31] Phase 4 — Same M=100 substance at 0.1 % (weighted 10) does NOT trigger.\n";

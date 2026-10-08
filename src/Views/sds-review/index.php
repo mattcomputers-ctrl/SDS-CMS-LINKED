@@ -54,6 +54,14 @@
             </div>
         <?php endif; ?>
 
+        <?php if (!empty($review['company_emergency_phone_error'])): ?>
+            <div class="alert alert-warning">
+                <strong>Company emergency phone missing.</strong>
+                <?= e($review['company_emergency_phone_error']) ?>
+                <a href="/admin/settings">Open Admin Settings &rarr;</a>
+            </div>
+        <?php endif; ?>
+
         <?php if (!$review['has_formula']): ?>
             <div class="alert alert-warning">
                 <strong>No formula entered.</strong>
@@ -127,7 +135,7 @@
             <?php endif; ?>
         </p>
 
-        <?php if (!empty($review['is_resale']) && empty($review['unreviewed']) && can_edit('sds')): ?>
+        <?php if (!empty($review['is_resale']) && empty($review['unreviewed']) && empty($review['company_emergency_phone_error']) && can_edit('sds')): ?>
             <form method="POST" action="/sds/resale/<?= (int) $review['resale_rm']['id'] ?>/publish"
                   style="margin-top: 1rem;"
                   onsubmit="return confirm('Publish SDS for <?= e($review['resale_rm']['base_code']) ?> and all resale aliases pointing at it?');">

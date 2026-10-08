@@ -144,6 +144,7 @@ final class PrivateLabelPublisher
      *   - the FG has no published base SDS ("Publish the base SDS for CODE first"),
      *   - computeBase / generateFromBase throws (e.g. no current formula),
      *   - SDSReadinessService::missingHazardDataError() blocks the first language.
+     *   - SDSReadinessService::manufacturerEmergencyPhoneError() refuses the item (failed[]).
      * Retired items (is_active = 0) are skipped individually. Frozen items
      * (auto_republish = 0) ARE republished here — the operator asked.
      *
@@ -304,6 +305,13 @@ final class PrivateLabelPublisher
         }
         $mfgInfo = $this->mfgInfoCache[$mfgId];
 
+        // Audit #2 — a private label SDS prints the manufacturer's own
+        // emergency number; a blank one is refused before a version is consumed.
+        $mfgPhoneError = SDSReadinessService::manufacturerEmergencyPhoneError($mfgInfo);
+        if ($mfgPhoneError !== null) {
+            return ['ok' => false, 'error' => $label . ': ' . $mfgPhoneError];
+        }
+
         // Next version for this item, read BEFORE rendering so the PDFs are
         // named {code}_PL_{Manufacturer}_v{n}[_{lang}].pdf (meta.sds_version).
         // Nothing is written here; the transaction below re-checks the
@@ -314,13 +322,14 @@ final class PrivateLabelPublisher
 
         // Build the variant for every configured language — one code path for all three sources
         $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
-        $variant   = [];
+        $effectiveDate = date('Y-m-d');
+        $variant       = [];
         foreach ($languages as $lang) {
             if (!isset($baseLangData[$lang]) || !is_array($baseLangData[$lang])) {
                 return ['ok' => false, 'error' => $label . ': Base SDS data missing for ' . strtoupper((string) $lang)];
             }
             $variant[$lang] = SDSGenerator::createPrivateLabelVariant($baseLangData[$lang], $code, $desc, $mfgInfo);
-            $variant[$lang]['meta']['sds_version'] = $version;
+            $variant[$lang] = SDSGenerator::stampPublishedVersion($variant[$lang], $version, $effectiveDate);
         }
 
         // Render all PDFs first
@@ -347,7 +356,6 @@ final class PrivateLabelPublisher
         $ownTx = !$pdo->inTransaction();
 
         $now      = date('Y-m-d H:i:s');
-        $today    = date('Y-m-d');
         $basePath = App::basePath() . '/';
 
         try {
@@ -380,7 +388,7 @@ final class PrivateLabelPublisher
                     'version'             => $version,
                     'source_fg_version'   => $sourceFgVersion,
                     'status'              => 'published',
-                    'effective_date'      => $today,
+                    'effective_date'      => $effectiveDate,
                     'published_by'        => $userId,
                     'published_at'        => $now,
                     'snapshot_json'       => json_encode($variant[$lang], JSON_UNESCAPED_UNICODE),

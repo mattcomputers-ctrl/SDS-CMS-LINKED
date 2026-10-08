@@ -43,7 +43,7 @@ $bp->setValue(null, $basePath);
 $cfg = $ref->getProperty('config');
 $cfg->setAccessible(true);
 $cfg->setValue(null, [
-    'company' => ['name' => 'Test Co'],
+    'company' => ['name' => 'Config Placeholder Co'],
     'paths'   => ['generated_pdfs' => $basePath . '/storage/temp'],
 ]);
 
@@ -76,6 +76,8 @@ $sdsData = [
         2 => [
             'title'       => 'Hazard(s) Identification',
             'signal_word' => 'Warning',
+            'is_classified' => true,
+            'signal_word_en' => 'Warning',
             // 'pictograms' and 'ppe_recommendations' are left empty on purpose:
             // PDFService renders both as alpha-channel PNGs, which TCPDF can
             // only embed with GD or Imagick loaded, and the bare php:8.1-cli
@@ -121,6 +123,7 @@ $sdsData = [
             'skin'       => 'Wash with soap and water.',
             'eyes'       => 'Flush with water for 15 minutes.',
             'ingestion'  => 'Do not induce vomiting. Seek medical attention.',
+            'symptoms'   => 'Acute: Causes skin irritation. Causes serious eye irritation.',
             'notes'      => 'Show this SDS to medical personnel.',
         ],
         5 => [
@@ -145,7 +148,7 @@ $sdsData = [
         8 => [
             'title'           => 'Exposure Controls / Personal Protection',
             'exposure_limits' => [
-                ['cas_number' => '57472-68-1', 'chemical_name' => 'DPGDA', 'limit_type' => 'TWA', 'value' => '10', 'units' => 'mg/m3', 'concentration_pct' => 39.0],
+                ['cas_number' => '57472-68-1', 'chemical_name' => 'DPGDA', 'limit_type' => 'TWA', 'value' => '10', 'units' => 'mg/m3', 'concentration_pct' => 39.0, 'concentration_range' => '30 - 60%'],
             ],
             'engineering'      => 'Use local exhaust ventilation.',
             'respiratory'      => 'NIOSH-approved respirator if needed.',
@@ -187,7 +190,7 @@ $sdsData = [
                 [
                     'cas_number'        => '57472-68-1',
                     'chemical_name'     => 'DPGDA',
-                    'concentration_pct' => 39.0,
+                    'concentration_range' => '35 - 40%',
                     'exposure_limits'   => [
                         ['limit_type' => 'TWA', 'value' => '10', 'units' => 'mg/m3'],
                     ],
@@ -198,15 +201,17 @@ $sdsData = [
         ],
         12 => [
             'title'      => 'Ecological Information',
-            'ecotoxicity'     => 'Avoid release to environment.',
+            'ecotoxicity'     => 'Classified as hazardous to the aquatic environment by the GHS summation method applied to the component classifications and M-factors listed below (GHS Rev. 7, Chapter 4.1): H411: Toxic to aquatic life with long lasting effects. Avoid release to the environment. Prevent entry into waterways, sewers, and soil.',
+            'component_aquatic' => [
+                ['cas_number' => '15206-55-0', 'chemical_name' => 'Trimethylolpropane Triacrylate (TMPTA)', 'concentration_range' => '25 - 30%', 'acute' => 'Category 1 (M = 1)', 'chronic' => 'Category 2'],
+                ['cas_number' => '57472-68-1', 'chemical_name' => 'Dipropylene Glycol Diacrylate (DPGDA)',  'concentration_range' => '35 - 40%', 'acute' => '',                  'chronic' => 'Category 3'],
+            ],
             'persistence'     => 'No data available.',
             'bioaccumulation' => 'No data available.',
-            'note'            => 'Not required by OSHA but included per GHS.',
         ],
         13 => [
             'title'   => 'Disposal Considerations',
             'methods' => 'Dispose per local regulations.',
-            'note'    => 'Not required by OSHA but included per GHS.',
         ],
         14 => [
             'title'                => 'Transport Information',
@@ -221,8 +226,10 @@ $sdsData = [
             'osha_status' => 'Classified as hazardous under OSHA HazCom.',
             'tsca_status' => 'All components listed on TSCA.',
             'sara_313'    => [
-                'listed_chemicals' => [],
-                'requires_reporting' => false,
+                'reportable'      => [],
+                'below_threshold' => [],
+                'not_listed'      => [],
+                'summary'         => 'No SARA 313 reportable chemicals above de minimis thresholds.',
             ],
             'prop65' => [
                 'requires_warning' => false,
@@ -230,13 +237,13 @@ $sdsData = [
                 'listed_chemicals' => [],
             ],
             'state_regs' => '',
-            'note'       => 'Not required by OSHA but included per GHS.',
+            'ghs_note'   => 'Sections 12-15 are included as required by 29 CFR 1910.1200(g)(2); content not enforced by OSHA.',
         ],
         16 => [
             'title'        => 'Other Information',
-            'revision_date' => date('m/d/Y'),
+            'version'      => 'Draft (not yet published)',
+            'effective_date' => '',
             'revision_note' => '',
-            'disclaimer'    => 'Information is correct to the best of our knowledge.',
             'abbreviations' => 'CAS = Chemical Abstracts Service; GHS = Globally Harmonized System.',
             'voc_assumptions' => [],
         ],
@@ -246,7 +253,7 @@ $sdsData = [
         'trace'       => [],
     ],
     'voc_result' => [],
-    'sara_result' => ['listed_chemicals' => []],
+    'sara_result' => ['reportable' => [], 'below_threshold' => [], 'not_listed' => [], 'summary' => 'No SARA 313 reportable chemicals above de minimis thresholds.'],
     'prop65_result' => ['requires_warning' => false],
     'carcinogen_result' => ['has_carcinogens' => false],
     'warnings' => [],
@@ -313,6 +320,11 @@ try {
         $header = (string) file_get_contents($target, false, null, 0, 4);
         if ($header !== '%PDF') {
             $failures[] = 'invalid PDF header: ' . bin2hex($header);
+        }
+        $bytes = (string) file_get_contents($target);
+        $utf16 = "\xFE\xFF" . implode('', array_map(static fn (string $c): string => "\0" . $c, str_split('Test Co')));
+        if (!str_contains($bytes, '/Author (' . $utf16 . ')')) {
+            $failures[] = 'PDF /Author must name the Section 1 supplier (Test Co), not config.php';
         }
     }
 

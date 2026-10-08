@@ -5,7 +5,7 @@
         <?= csrf_field() ?>
 
         <h2>Manufacturer Information</h2>
-        <p class="text-muted mb-1">This information appears in Section 1 of every SDS and on the PDF header.</p>
+        <p class="text-muted mb-1">This information appears in Section 1 of every standard SDS, in the PDF header and as the PDF author. Private label SDSs use the manufacturer record instead. Country is printed at the end of the address when set.</p>
 
         <div class="form-grid-2col">
             <div class="form-group full-width"><label>Company Name</label><input type="text" name="company__name" value="<?= e($settings['company.name'] ?? '') ?>"></div>
@@ -15,10 +15,9 @@
             <div class="form-group"><label>ZIP / Postal Code</label><input type="text" name="company__zip" value="<?= e($settings['company.zip'] ?? '') ?>"></div>
             <div class="form-group"><label>Country</label><input type="text" name="company__country" value="<?= e($settings['company.country'] ?? '') ?>"></div>
             <div class="form-group"><label>Phone</label><input type="text" name="company__phone" value="<?= e($settings['company.phone'] ?? '') ?>"></div>
-            <div class="form-group"><label>Fax</label><input type="text" name="company__fax" value="<?= e($settings['company.fax'] ?? '') ?>"></div>
             <div class="form-group"><label>Email</label><input type="email" name="company__email" value="<?= e($settings['company.email'] ?? '') ?>"></div>
             <div class="form-group"><label>Website</label><input type="url" name="company__website" value="<?= e($settings['company.website'] ?? '') ?>" placeholder="https://"></div>
-            <div class="form-group full-width"><label>Emergency Phone (e.g. CHEMTREC)</label><input type="text" name="company__emergency_phone" value="<?= e($settings['company.emergency_phone'] ?? '') ?>"></div>
+            <div class="form-group full-width"><label>Emergency Phone (e.g. CHEMTREC) <span class="text-danger">*</span></label><input type="text" name="company__emergency_phone" required value="<?= e($settings['company.emergency_phone'] ?? '') ?>" placeholder="e.g. CHEMTREC: (800) 424-9300"><small class="text-muted">Required. Printed as the 24-hour emergency phone number in Section 1 of every standard SDS (29 CFR 1910.1200 Appendix D). Publishing is blocked while this is blank.</small></div>
         </div>
 
         <h2>Company Logo</h2>
@@ -121,10 +120,28 @@
         </div>
 
         <h2>Legal / Disclaimer Statement</h2>
-        <p class="text-muted mb-1">This statement will appear at the end of every SDS (after Section 16). Use this for legal disclaimers, liability limitations, or any language required by your legal counsel.</p>
-
+        <p class="text-muted mb-1">Printed after Section 16 on every SDS, in the language of the sheet. Use this for legal disclaimers, liability limitations, or any language required by your legal counsel. Leave a language blank to print the built-in default shown as the placeholder. Private label manufacturers can override this per language on their own form.</p>
+        <?php
+        $disclaimerLangs    = $disclaimerLangs    ?? ['en'];
+        $disclaimerDefaults = $disclaimerDefaults ?? [];
+        $disclaimerNames    = ['en' => 'English', 'es' => 'Spanish', 'fr' => 'French', 'de' => 'German'];
+        ?>
+        <?php foreach ($disclaimerLangs as $lang): ?>
         <div class="form-group">
-            <textarea name="sds__legal_disclaimer" rows="6" style="font-size: 0.9rem;"><?= e($settings['sds.legal_disclaimer'] ?? '') ?></textarea>
+            <label><?= e($disclaimerNames[$lang] ?? strtoupper($lang)) ?> (<?= e(strtoupper($lang)) ?>)</label>
+            <textarea name="sds__legal_disclaimer__<?= e($lang) ?>" rows="5" style="font-size: 0.9rem;" placeholder="<?= e($disclaimerDefaults[$lang] ?? '') ?>"><?= e($settings['sds.legal_disclaimer.' . $lang] ?? '') ?></textarea>
+        </div>
+        <?php endforeach; ?>
+
+        <h2>Sections 12–15 Footnote</h2>
+        <p class="text-muted mb-1">When enabled, a one-line footnote is printed once, at the end of Section 15 of every SDS, stating that the Section 12–15 headings are required by 29 CFR 1910.1200(g)(2) but that their content is regulated by other agencies (EPA, DOT) and is not enforced by OSHA. The wording is translated per SDS language. Most commercial SDSs omit this note; uncheck to drop it from newly generated documents (previously published versions are not changed).</p>
+        <div class="form-group">
+            <input type="hidden" name="sds__show_ghs_section_note" value="0">
+            <label style="font-weight: normal;">
+                <input type="checkbox" name="sds__show_ghs_section_note" value="1"
+                    <?= ((string) ($settings['sds.show_ghs_section_note'] ?? '1')) !== '0' ? 'checked' : '' ?>>
+                Print the Sections 12–15 footnote
+            </label>
         </div>
 
         <h2>Report Disclaimer</h2>

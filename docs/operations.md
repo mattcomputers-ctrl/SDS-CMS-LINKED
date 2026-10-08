@@ -195,3 +195,39 @@ sudo ls -l /proc/12345/fd/                # open file descriptors / sockets
 - `private_label_items.updated_at` and `manufacturers.updated_at` are
   staleness inputs: any metadata-only write to those tables must use
   `updated_at = updated_at` or every item will show as stale.
+
+---
+
+## SDS content policy
+
+Fixed in code, not in admin settings (audit item #8). The constants and the
+policy comment live in `src/Services/SDSGenerator.php` next to
+`PRESCRIBED_RANGES` / `formatConcentration()`; change them, this section and
+`docs/sds-content-audit.md` together.
+
+- **Disclosure cut-off: 0.1 % w/w.** A constituent appears in Section 3 (and
+  its OELs in Sections 8 and 11) only at >= 0.1 % of the finished good, and
+  only if it is classified as hazardous or has an occupational exposure
+  limit on file (29 CFR 1910.1200 App. D, Section 3(c)). 0.1 % is the lowest
+  ingredient cut-off in App. A, so nothing that can drive a classification
+  is hidden. OEL rows between 0.01 % and 0.1 % print `<0.1%` in Section 8.
+- **Exact percentages are never printed.** Section 3, the Section 8
+  "Conc%" column, the Section 11 carcinogenicity line and component
+  toxicology block, and the Section 12 component aquatic table show the
+  widest prescribed band that fully contains the actual concentration (or
+  the supplier min–max range when known); if no single band contains it,
+  the widest band containing the midpoint. Sections 8, 11 and 12 reuse the
+  Section 3 band for the same CAS, so the sections cannot disagree. Bands are the prescribed concentration ranges of
+  29 CFR 1910.1200(i)(1) (May 2024 final rule, 89 FR 44144; same table as
+  Canada HPR s. 5.7(1)): 0.1–1, 0.5–1.5, 1–5, 3–7, 5–10, 7–13, 10–30,
+  15–40, 30–60, 45–70, 60–80, 65–85, 80–100 %.
+- Because exact percentages are withheld on every row, the 29 CFR
+  1910.1200(i)(1) withholding statement (`section3.trade_secret_note`)
+  prints on every SDS that lists components, not only when a raw material
+  is flagged as a trade secret.
+- Section 15 SARA 313 and HAP weight percentages are exact on purpose
+  (40 CFR 372.45(b)(2) supplier notification requires percent by weight).
+- SDS snapshots generated before Section 8/11/12 banding carry no band; a
+  re-render from such a snapshot (send queue, private-label re-brand)
+  shows an empty Conc% cell / no concentration after the CAS, never the
+  exact value. Republish to refresh.

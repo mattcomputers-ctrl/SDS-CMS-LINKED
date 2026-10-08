@@ -181,8 +181,11 @@ foreach ($workItems as $i => $item) {
         // The version was assigned per work item by BulkPublishController;
         // stamp it on meta (after the alias / private label branches so the
         // PL filename_tag is already present) so PDFService::generate() names
-        // the file {code}[_PL_{Mfg}]_v{n}_{lang}.pdf.
-        $sdsData['meta']['sds_version'] = $version;
+        // the file {code}[_PL_{Mfg}]_v{n}_{lang}.pdf. The same call writes the
+        // Section 16 "Version" / "Effective Date" lines (and the footer) from
+        // the version number and the effective date written to the row below.
+        $effectiveDate = $isPrivateLabel ? date('Y-m-d') : $today;   // matches the row written below
+        $sdsData = SDSGenerator::stampPublishedVersion($sdsData, $version, $effectiveDate);
 
         $pdfPath      = $pdfService->generate($sdsData);
         $relativePath = str_replace(App::basePath() . '/', '', $pdfPath);
@@ -212,7 +215,6 @@ foreach ($workItems as $i => $item) {
             // time_zone App sets from date('P'), so published_at and created_at
             // on one row must agree. The gmdate() $today/$now above stay for
             // the sds_versions branch only.
-            $plToday = date('Y-m-d');
             $plNow   = date('Y-m-d H:i:s');
 
             $db->insert('private_label_sds', [
@@ -226,7 +228,7 @@ foreach ($workItems as $i => $item) {
                 'version'             => $version,
                 'source_fg_version'   => (int) $item['source_fg_version'],
                 'status'              => 'published',
-                'effective_date'      => $plToday,
+                'effective_date'      => $effectiveDate,
                 'published_by'        => $userId,
                 'published_at'        => $plNow,
                 'snapshot_json'       => json_encode($sdsData, JSON_UNESCAPED_UNICODE),
@@ -255,7 +257,7 @@ foreach ($workItems as $i => $item) {
                 'language'         => $lang,
                 'version'          => $version,
                 'status'           => 'published',
-                'effective_date'   => $today,
+                'effective_date'   => $effectiveDate,
                 'published_by'     => $userId,
                 'published_at'     => $now,
                 'snapshot_json'    => json_encode($sdsData, JSON_UNESCAPED_UNICODE),

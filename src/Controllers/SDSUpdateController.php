@@ -287,6 +287,13 @@ class SDSUpdateController
         $plPublished = 0;
         $plWarnings = [];
 
+        // Audit #2 — every standard SDS prints the company emergency phone.
+        $phoneError = \SDS\Services\SDSReadinessService::companyEmergencyPhoneErrorFromDb($db);
+        if ($phoneError !== null) {
+            $_SESSION['_flash']['error'] = $phoneError;
+            redirect('/sds-updates');
+        }
+
         foreach ($fgIds as $fgId) {
             $fgId = (int) $fgId;
             $fg = \SDS\Models\FinishedGood::findById($fgId);
@@ -308,10 +315,11 @@ class SDSUpdateController
                 $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
 
                 // Generate all languages
+                $effectiveDate = date('Y-m-d');
                 $langData = [];
                 foreach ($languages as $lang) {
                     $langData[$lang] = $generator->generateFromBase($baseData, $lang);
-                    $langData[$lang]['meta']['sds_version'] = $nextVersion;
+                    $langData[$lang] = SDSGenerator::stampPublishedVersion($langData[$lang], $nextVersion, $effectiveDate);
                 }
 
                 // Generate PDFs in parallel
@@ -340,7 +348,7 @@ class SDSUpdateController
                         'language'         => $lang,
                         'version'          => $nextVersion,
                         'status'           => 'published',
-                        'effective_date'   => date('Y-m-d'),
+                        'effective_date'   => $effectiveDate,
                         'published_by'     => $userId,
                         'published_at'     => $now,
                         'snapshot_json'    => json_encode($langData[$lang], JSON_UNESCAPED_UNICODE),
@@ -636,6 +644,7 @@ class SDSUpdateController
                 [(int) $alias['id']]
             );
             $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
+            $effectiveDate = substr($now, 0, 10);
 
             $aliasLangData = [];
             foreach ($langData as $lang => $sdsData) {
@@ -644,7 +653,7 @@ class SDSUpdateController
                     $alias['customer_code'],
                     $alias['description']
                 );
-                $aliasLangData[$lang]['meta']['sds_version'] = $nextVersion;
+                $aliasLangData[$lang] = SDSGenerator::stampPublishedVersion($aliasLangData[$lang], $nextVersion, $effectiveDate);
             }
 
             $pdfResults = $this->generatePdfsInParallel($aliasLangData);
@@ -662,7 +671,7 @@ class SDSUpdateController
                     'language'         => $lang,
                     'version'          => $nextVersion,
                     'status'           => 'published',
-                    'effective_date'   => date('Y-m-d'),
+                    'effective_date'   => $effectiveDate,
                     'published_by'     => $userId,
                     'published_at'     => $now,
                     'snapshot_json'    => json_encode($aliasSds, JSON_UNESCAPED_UNICODE),

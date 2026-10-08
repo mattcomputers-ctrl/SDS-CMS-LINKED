@@ -70,7 +70,8 @@ class SDSReadinessService
      *   formula_version: int|null,
      *   total_rms: int,
      *   reviewed_count: int,
-     *   unreviewed: array<int,array{id:int,internal_code:string,supplier:?string,supplier_product_name:?string,is_direct:bool,via_fg_codes:array<string>}>
+     *   unreviewed: array<int,array{id:int,internal_code:string,supplier:?string,supplier_product_name:?string,is_direct:bool,via_fg_codes:array<string>}>,
+     *   company_emergency_phone_error: string|null
      * }|null  Null if the FG doesn't exist.
      */
     public static function review(int $fgId): ?array
@@ -103,6 +104,7 @@ class SDSReadinessService
                 'total_rms'       => 0,
                 'reviewed_count'  => 0,
                 'unreviewed'      => [],
+                'company_emergency_phone_error' => self::companyEmergencyPhoneErrorFromDb($db),
             ];
         }
 
@@ -151,6 +153,7 @@ class SDSReadinessService
             'total_rms'       => $total,
             'reviewed_count'  => $reviewed,
             'unreviewed'      => $unreviewed,
+            'company_emergency_phone_error' => self::companyEmergencyPhoneErrorFromDb($db),
         ];
     }
 
@@ -232,6 +235,7 @@ class SDSReadinessService
                 'via_fg_codes'          => [],
             ]],
             'published_versions' => $publishedVersions,
+            'company_emergency_phone_error' => self::companyEmergencyPhoneErrorFromDb($db),
         ];
     }
 
@@ -281,6 +285,66 @@ class SDSReadinessService
         }
 
         return null;
+    }
+
+    /* ------------------------------------------------------------------
+     *  Emergency phone gate (audit #2)
+     *
+     *  29 CFR 1910.1200 Appendix D, Section 1(d) requires an emergency
+     *  phone number on every SDS. A standard SDS prints the company
+     *  number (settings company.emergency_phone); a private label SDS
+     *  prints the manufacturer's own number (manufacturers.emergency_phone)
+     *  with NO fallback to the company number. Both are required, so a
+     *  blank one blocks publishing instead of silently dropping the line.
+     * ----------------------------------------------------------------*/
+
+    private const EMERGENCY_PHONE_RULE =
+        '29 CFR 1910.1200 Appendix D (Section 1(d)) requires an emergency phone number in Section 1 of every SDS.';
+
+    /**
+     * Blocking message when the company emergency phone (the value printed
+     * on every standard, resale and alias SDS) is blank, else null.
+     * DB-free so it can be unit-tested; see companyEmergencyPhoneErrorFromDb().
+     */
+    public static function companyEmergencyPhoneError(?string $value): ?string
+    {
+        if (trim((string) $value) !== '') {
+            return null;
+        }
+        return 'Publishing blocked: the company emergency phone number is blank or has never been saved. '
+            . self::EMERGENCY_PHONE_RULE
+            . ' Enter and save it under Admin > Settings > Manufacturer Information > Emergency Phone, then publish again.';
+    }
+
+    /**
+     * Same check against the settings table. Reads the stored setting only,
+     * so the admin-entered value is what must exist. SDSGenerator::
+     * getCompanySettings() likewise never falls back to the config.php
+     * placeholder for this one key, so the preview and this gate agree.
+     */
+    public static function companyEmergencyPhoneErrorFromDb(Database $db): ?string
+    {
+        $row = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'company.emergency_phone'");
+        return self::companyEmergencyPhoneError($row['value'] ?? null);
+    }
+
+    /**
+     * Blocking message when a private label manufacturer has no emergency
+     * phone, else null. Accepts a manufacturers row or the
+     * Manufacturer::toCompanyInfo() array (both carry name + emergency_phone).
+     */
+    public static function manufacturerEmergencyPhoneError(array $manufacturer): ?string
+    {
+        if (trim((string) ($manufacturer['emergency_phone'] ?? '')) !== '') {
+            return null;
+        }
+        $name = trim((string) ($manufacturer['name'] ?? ''));
+        if ($name === '') {
+            $name = 'the selected manufacturer';
+        }
+        return 'Publishing blocked: private label manufacturer "' . $name . '" has no emergency phone number. '
+            . self::EMERGENCY_PHONE_RULE
+            . ' Enter it on the manufacturer record (Manufacturers > ' . $name . ' > Emergency Phone), then publish again.';
     }
 
     /**

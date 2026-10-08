@@ -118,6 +118,10 @@
                 <textarea name="override[4][ingestion]" class="form-control" rows="2"><?= e($section['ingestion'] ?? '') ?></textarea>
             </div>
             <div class="form-group">
+                <label>Most Important Symptoms/Effects, Acute and Delayed</label>
+                <textarea name="override[4][symptoms]" class="form-control" rows="2"><?= e($section['symptoms'] ?? '') ?></textarea>
+            </div>
+            <div class="form-group">
                 <label>Notes to Physician</label>
                 <textarea name="override[4][notes]" class="form-control" rows="2"><?= e($section['notes'] ?? '') ?></textarea>
             </div>
@@ -194,7 +198,10 @@
             </div>
             <div class="form-group">
                 <label>Odor</label>
-                <input type="text" name="override[9][odor]" class="form-control" value="<?= e($section['odor'] ?? '') ?>">
+                <input type="text" name="override[9][odor]" class="form-control"
+                       value="<?= e($overrides[9]['odor'] ?? '') ?>"
+                       placeholder="<?= e($section['odor'] ?? '') ?>">
+                <p class="text-muted">Leave blank to use the dominant raw material's odor (shown as placeholder). "Not determined" prints when no raw material carries an odor.</p>
             </div>
             <div class="form-group">
                 <label>Boiling Point</label>
@@ -294,12 +301,6 @@
             <div class="form-group">
                 <label>Additional State Regulations</label>
                 <textarea name="override[15][state_regs]" class="form-control" rows="2"><?= e($overrides[15]['state_regs'] ?? '') ?></textarea>
-            </div>
-
-        <?php elseif ($num === 16): ?>
-            <div class="form-group">
-                <label>Revision Note</label>
-                <textarea name="override[16][revision_note]" class="form-control" rows="2"><?= e($section['revision_note'] ?? '') ?></textarea>
             </div>
 
         <?php endif; ?>

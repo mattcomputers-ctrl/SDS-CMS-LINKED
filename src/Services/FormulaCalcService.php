@@ -393,6 +393,8 @@ class FormulaCalcService
                 'flash_point_greater_than' => (int) ($rm['flash_point_greater_than'] ?? 0),
                 'physical_state'           => $rm['physical_state'] ?? null,
                 'solubility'               => $rm['solubility'] ?? null,
+                'appearance'               => $rm['appearance'] ?? null,
+                'odor'                     => $rm['odor'] ?? null,
                 'constituents'             => $rm['constituents'] ?? [],
             ];
         }
@@ -413,6 +415,9 @@ class FormulaCalcService
      *  - flash_point_greater_than: true only if the lowest-FP RM has the ">" flag
      *  - solubility: formula-level solubility string
      *  - has_non_powder_material: true if any RM is not Powder physical state
+     *  - odor: odor of the dominant (highest summed wt%) raw material ('' if blank)
+     *  - appearance: appearance of the dominant raw material ('' if blank)
+     *  - dominant_raw_material_id / dominant_raw_material_pct: which RM was used (null if no lines)
      */
     private function deriveFormulaProperties(array $enrichedLines): array
     {
@@ -420,6 +425,7 @@ class FormulaCalcService
         $lowestFp          = null;
         $lowestFpGt        = false;
         $solubilities      = [];
+        $byRm              = []; // raw_material_id => ['pct', 'odor', 'appearance'] (#17)
 
         foreach ($enrichedLines as $line) {
             // VOC <1% logic: all lines must have the flag set
@@ -442,6 +448,19 @@ class FormulaCalcService
             if ($sol !== null && $sol !== '') {
                 $solubilities[] = $sol;
             }
+
+            // Dominant RM (#17): lines are already scaled through sub-FGs and
+            // the same RM can appear on several lines, so sum wt% per RM
+            // before ranking. Odor/appearance are per-RM, so first line wins.
+            $rmId = (int) ($line['raw_material_id'] ?? 0);
+            if (!isset($byRm[$rmId])) {
+                $byRm[$rmId] = [
+                    'pct'        => 0.0,
+                    'odor'       => trim((string) ($line['odor'] ?? '')),
+                    'appearance' => trim((string) ($line['appearance'] ?? '')),
+                ];
+            }
+            $byRm[$rmId]['pct'] += (float) ($line['pct'] ?? 0);
         }
 
         // Determine formula-level solubility
@@ -455,12 +474,30 @@ class FormulaCalcService
             }
         }
 
+        // Dominant (highest summed wt%) raw material. Strict ">" keeps the
+        // first-seen RM on a tie so the result is stable for a given line order.
+        $dominantId  = null;
+        $dominantPct = -1.0;
+        foreach ($byRm as $rmId => $agg) {
+            if ($agg['pct'] > $dominantPct) {
+                $dominantPct = $agg['pct'];
+                $dominantId  = $rmId;
+            }
+        }
+        $dominant = $dominantId !== null
+            ? $byRm[$dominantId]
+            : ['pct' => 0.0, 'odor' => '', 'appearance' => ''];
+
         return [
-            'all_voc_less_than_one'    => $allVocLessThanOne,
-            'flash_point_c'            => $lowestFp,
-            'flash_point_greater_than' => $lowestFpGt,
-            'solubility'               => $solubility,
-            'enriched_lines'           => $enrichedLines,
+            'all_voc_less_than_one'     => $allVocLessThanOne,
+            'flash_point_c'             => $lowestFp,
+            'flash_point_greater_than'  => $lowestFpGt,
+            'solubility'                => $solubility,
+            'odor'                      => $dominant['odor'],
+            'appearance'                => $dominant['appearance'],
+            'dominant_raw_material_id'  => $dominantId,
+            'dominant_raw_material_pct' => $dominantId !== null ? round($dominantPct, 4) : null,
+            'enriched_lines'            => $enrichedLines,
         ];
     }
 

@@ -61,11 +61,11 @@ $action = $isEdit ? '/manufacturers/' . (int) $item['id'] : '/manufacturers';
             </div>
 
             <div class="form-group">
-                <label for="emergency_phone">Emergency Phone</label>
-                <input type="text" id="emergency_phone" name="emergency_phone"
+                <label for="emergency_phone">Emergency Phone <span class="text-danger">*</span></label>
+                <input type="text" id="emergency_phone" name="emergency_phone" required
                        value="<?= e(old('emergency_phone', $item['emergency_phone'] ?? '')) ?>"
-                       placeholder="e.g. (800) 424-9300">
-                <small class="text-muted">24-hour emergency number for SDS Section 1</small>
+                       placeholder="e.g. CHEMTREC: (800) 424-9300">
+                <small class="text-muted">Required. Printed as the 24-hour emergency phone number in Section 1 of every SDS issued under this manufacturer's name (29 CFR 1910.1200 Appendix D). It must be a number whose emergency-response contract covers this manufacturer's products; nothing falls back to the company number.</small>
             </div>
 
             <div class="form-group">
@@ -122,6 +122,20 @@ $action = $isEdit ? '/manufacturers/' . (int) $item['id'] : '/manufacturers';
             <?php endif; ?>
 
         </div>
+
+        <h3>Legal / Disclaimer Statement</h3>
+        <p class="text-muted mb-1">Printed after Section 16 on every private label SDS issued under this manufacturer. Leave a language blank to inherit the system default for that language (Admin &rarr; Settings &rarr; Legal / Disclaimer Statement).</p>
+        <?php
+        $languages   = $languages   ?? ['en'];
+        $disclaimers = $disclaimers ?? [];
+        $langNames   = ['en' => 'English', 'es' => 'Spanish', 'fr' => 'French', 'de' => 'German'];
+        ?>
+        <?php foreach ($languages as $lang): ?>
+            <div class="form-group">
+                <label for="disclaimer_<?= e($lang) ?>"><?= e($langNames[$lang] ?? strtoupper($lang)) ?> (<?= e(strtoupper($lang)) ?>)</label>
+                <textarea id="disclaimer_<?= e($lang) ?>" name="disclaimer_<?= e($lang) ?>" rows="4" style="font-size: 0.9rem;" placeholder="Blank = inherit system default"><?= e(old('disclaimer_' . $lang, $disclaimers[$lang] ?? '')) ?></textarea>
+            </div>
+        <?php endforeach; ?>
 
         <div class="form-actions">
             <button type="submit" class="btn btn-primary"><?= $isEdit ? 'Update' : 'Create' ?> Manufacturer</button>

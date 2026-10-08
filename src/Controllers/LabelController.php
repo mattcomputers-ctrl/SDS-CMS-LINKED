@@ -221,9 +221,12 @@ class LabelController
                 $mfg = Manufacturer::findById($manufacturerId);
                 if ($mfg) {
                     $mfgInfo = Manufacturer::toCompanyInfo($mfg);
-                    $sdsData['sections'][1]['manufacturer_name']    = $mfgInfo['name'];
-                    $sdsData['sections'][1]['manufacturer_address'] = trim($mfgInfo['address'] . ', ' . $mfgInfo['city'] . ', ' . $mfgInfo['state'] . ' ' . $mfgInfo['zip'], ', ');
-                    $sdsData['sections'][1]['manufacturer_phone']   = $mfgInfo['phone'];
+                    // Same supplier builder as the SDS itself (name, address
+                    // incl. country, phone, email, website).
+                    $sdsData['sections'][1] = array_merge(
+                        $sdsData['sections'][1] ?? [],
+                        SDSGenerator::buildManufacturerBlock($mfgInfo)
+                    );
                 }
             }
 

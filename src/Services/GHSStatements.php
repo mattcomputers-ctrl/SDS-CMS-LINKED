@@ -155,7 +155,7 @@ class GHSStatements
         'P272' => 'Contaminated work clothing should not be allowed out of the workplace',
         'P273' => 'Avoid release to the environment',
         'P280' => 'Wear protective gloves/protective clothing/eye protection/face protection',
-        'P281' => 'Use personal protective equipment as required',
+        'P281' => 'Use personal protective equipment as required', // withdrawn in GHS Rev. 6 (merged into P280); kept for legacy stored data only — never add to class defaults
         'P282' => 'Wear cold insulating gloves and either face shield or eye protection',
         'P283' => 'Wear fire resistant or flame retardant clothing',
         'P284' => 'Wear respiratory protection',

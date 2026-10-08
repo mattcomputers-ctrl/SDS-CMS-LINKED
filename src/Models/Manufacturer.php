@@ -76,6 +76,10 @@ class Manufacturer
         if ($name === '') {
             throw new \InvalidArgumentException('Manufacturer name is required.');
         }
+        // Audit #2 — printed in Section 1 of every private label SDS; no fallback.
+        if (trim((string) ($data['emergency_phone'] ?? '')) === '') {
+            throw new \InvalidArgumentException('Manufacturer emergency phone is required (printed in Section 1 of every private label SDS).');
+        }
 
         $insertData = [
             'name'            => $name,
@@ -89,6 +93,7 @@ class Manufacturer
             'email'           => trim($data['email'] ?? ''),
             'website'         => trim($data['website'] ?? ''),
             'logo_path'       => $data['logo_path'] ?? null,
+            'disclaimer_json' => $data['disclaimer_json'] ?? null,
             'created_by'      => $data['created_by'] ?? null,
         ];
 
@@ -100,13 +105,18 @@ class Manufacturer
         $db = Database::getInstance();
 
         $allowed = ['name', 'address', 'city', 'state', 'zip', 'country', 'phone',
-                     'emergency_phone', 'email', 'website', 'logo_path'];
+                     'emergency_phone', 'email', 'website', 'logo_path', 'disclaimer_json'];
         $updateData = [];
         foreach ($allowed as $col) {
             if (array_key_exists($col, $data)) {
                 $val = $data[$col];
                 $updateData[$col] = is_string($val) ? trim($val) : $val;
             }
+        }
+
+        // Audit #2 — a blank emergency phone may not be saved.
+        if (array_key_exists('emergency_phone', $updateData) && trim((string) $updateData['emergency_phone']) === '') {
+            throw new \InvalidArgumentException('Manufacturer emergency phone is required (printed in Section 1 of every private label SDS).');
         }
 
         if (empty($updateData)) {
@@ -147,6 +157,43 @@ class Manufacturer
     }
 
     /**
+     * Decode manufacturers.disclaimer_json into language => text (blank entries dropped).
+     */
+    public static function decodeDisclaimers(?string $json): array
+    {
+        if ($json === null || trim($json) === '') {
+            return [];
+        }
+        $decoded = json_decode($json, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+        $out = [];
+        foreach ($decoded as $lang => $text) {
+            $text = trim((string) $text);
+            if ($text !== '') {
+                $out[(string) $lang] = $text;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Encode language => text into disclaimer_json; null when every language is blank.
+     */
+    public static function encodeDisclaimers(array $byLang): ?string
+    {
+        $clean = [];
+        foreach ($byLang as $lang => $text) {
+            $text = trim((string) $text);
+            if ($text !== '') {
+                $clean[(string) $lang] = $text;
+            }
+        }
+        return $clean === [] ? null : json_encode($clean, JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
      * Convert a manufacturer record to the company-info array format
      * used by SDSGenerator (matching getCompanySettings() output).
      */
@@ -164,6 +211,7 @@ class Manufacturer
             'email'           => $manufacturer['email'] ?? '',
             'website'         => $manufacturer['website'] ?? '',
             'logo_path'       => $manufacturer['logo_path'] ?? '',
+            'legal_disclaimers' => self::decodeDisclaimers($manufacturer['disclaimer_json'] ?? null),
         ];
     }
 }

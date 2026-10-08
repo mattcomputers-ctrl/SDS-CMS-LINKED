@@ -30,6 +30,7 @@ class PDFService
         'skin'                 => 'skin_contact',
         'eyes'                 => 'eye_contact',
         'ingestion'            => 'ingestion',
+        'symptoms'             => 'symptoms_effects',
         'notes'                => 'notes_to_physician',
         // Section 5
         'suitable_media'       => 'suitable_media',
@@ -57,7 +58,10 @@ class PDFService
         // Section 13
         'methods'              => 'disposal_methods',
         // Section 16
-        'revision_date'        => 'revision_date',
+        'version'              => 'version',
+        'effective_date'       => 'effective_date',
+        'revision_date'        => 'revision_date',   // legacy snapshots only
+        'revision_note'        => 'revision_note',
         'abbreviations'        => 'abbreviations',
         'disclaimer'           => 'disclaimer',
     ];
@@ -96,8 +100,8 @@ class PDFService
         //   versioned publish   {code}_v{n}[_{lang}].pdf               (meta.sds_version > 0)
         //   private label       {code}_PL_{Manufacturer}_v{n}[_{lang}].pdf (tag + sds_version)
         //   preview / ad hoc    {code}[_{tag}]_SDS_{lang}_{Ymd_His}.pdf  (no sds_version)
-        // Publishers stamp meta.sds_version before rendering so the version
-        // number is part of the name. reserveUniquePath() is the safety net:
+        // Publishers stamp meta.sds_version (SDSGenerator::stampPublishedVersion)
+        // before rendering so the version number is part of the name. reserveUniquePath() is the safety net:
         // an exact-name clash (a re-render of the same version, or two
         // previews in the same second) gets _2, _3, ... instead of
         // overwriting the earlier file. No random suffixes.
@@ -250,7 +254,11 @@ class PDFService
 
         // Document metadata
         $pdf->SetCreator('SDS System');
-        $pdf->SetAuthor(App::config('company.name', 'SDS System'));
+        // Author = the supplier named in Section 1 (admin settings for a
+        // standard SDS, the manufacturer record for a private label SDS),
+        // never config.php.
+        $author = trim((string) ($sections[1]['manufacturer_name'] ?? ''));
+        $pdf->SetAuthor($author !== '' ? $author : 'SDS System');
         $pdf->SetTitle('SDS - ' . $meta['product_code']);
         $pdf->SetSubject('Safety Data Sheet');
 
@@ -266,9 +274,10 @@ class PDFService
         $pdf->SetHeaderMargin(5);
         $pdf->setDocumentStrings($this->document);
 
-        // Footer — product code, page number, revision date on every page
-        $revisionDate = $sections[16]['revision_date'] ?? date('m/d/Y');
-        $pdf->setFooterInfo($meta['product_code'], $revisionDate);
+        // Footer — product code, page number and the same version / effective
+        // date Section 16 prints (SDSGenerator::stampPublishedVersion). The
+        // full right-hand text, prefix included, is composed here.
+        $pdf->setFooterInfo($meta['product_code'], $this->footerRevision($meta, $sections[16] ?? []));
 
         // Add first page
         $pdf->AddPage();
@@ -321,6 +330,9 @@ class PDFService
             case 11:
                 $this->renderSection11($pdf, $section);
                 break;
+            case 12:
+                $this->renderSection12($pdf, $section);
+                break;
             case 14:
                 $this->renderSection14($pdf, $section);
                 break;
@@ -331,6 +343,9 @@ class PDFService
                 $this->renderGenericSection($pdf, $section);
                 break;
         }
+
+        // Shared Sections 12-15 footnote (item #25); no-op when absent/empty.
+        $this->renderGhsSectionNote($pdf, $section);
 
         $pdf->Ln(4);
     }
@@ -345,9 +360,14 @@ class PDFService
         $pdf->SetFont('helvetica', 'B', 9);
         $pdf->Cell(0, 5, $this->label('manufacturer_info'), 0, 1);
         $pdf->SetFont('helvetica', '', 9);
+        // App. D 1(c): name, address, telephone; email/website are optional
+        // supplier details; 1(d) emergency number closes the block.
         $this->labelValue($pdf, $this->label('company'), $s['manufacturer_name'] ?? '');
         $this->labelValue($pdf, $this->label('address'), $s['manufacturer_address'] ?? '');
         $this->labelValue($pdf, $this->label('phone'), $s['manufacturer_phone'] ?? '');
+        // English defaults keep pre-existing snapshots (meta.labels without these keys) readable.
+        $this->labelValue($pdf, $this->label('email', 'Email'), $s['manufacturer_email'] ?? '');
+        $this->labelValue($pdf, $this->label('website', 'Website'), $s['manufacturer_website'] ?? '');
         $this->labelValue($pdf, $this->label('emergency'), $s['emergency_phone'] ?? '');
     }
 
@@ -519,7 +539,8 @@ class PDFService
             $pdf->SetLeftMargin($origLeftMargin);
         }
 
-        // PPE Recommendations derived from H/P codes — with pictograms
+        // PPE derived from the H-codes — pictograms plus the same sentences
+        // Section 8 prints (SDSGenerator::resolvePPE), so PDF and preview match.
         $ppe = $s['ppe_recommendations'] ?? [];
         $hasPPE = !empty($ppe['respiratory']) || !empty($ppe['hand_protection'])
                || !empty($ppe['eye_protection']) || !empty($ppe['skin_protection']);
@@ -530,12 +551,28 @@ class PDFService
 
             // Render PPE pictogram table (with descriptions under each pictogram)
             $this->renderPPEPictogramRow($pdf, $ppe);
+
+            // Sentences, same order and labels as src/Views/sds/preview.php
+            $ppeLines = [
+                'respiratory'     => 'respiratory',
+                'hand_protection' => 'hand_protection',
+                'eye_protection'  => 'eye_protection',
+                'skin_protection' => 'skin_body',
+            ];
+            foreach ($ppeLines as $field => $labelKey) {
+                $this->labelValue($pdf, $this->label($labelKey), (string) ($ppe[$field] ?? ''));
+            }
         }
 
-        // Other hazards — only show if a custom override was provided
-        if (!empty($s['has_other_hazards'])) {
+        // Other hazards (29 CFR 1910.1200 App. D, Section 2(c)) — always
+        // printed. SDSGenerator::section2() supplies the per-product override
+        // when one exists, otherwise the translated default ("None known.").
+        // Keyed on the text rather than has_other_hazards so stored snapshots
+        // generated before the default was printed also show the line.
+        $otherHazards = trim((string) ($s['other_hazards'] ?? ''));
+        if ($otherHazards !== '') {
             $pdf->Ln(1);
-            $this->labelValue($pdf, $this->label('other_hazards'), $s['other_hazards'] ?? '');
+            $this->labelValue($pdf, $this->label('other_hazards'), $otherHazards);
         }
     }
 
@@ -753,7 +790,11 @@ class PDFService
                 $ltype   = (string) ($el['limit_type']   ?? '');
                 $value   = (string) ($el['value']         ?? '');
                 $units   = (string) ($el['units']         ?? '');
-                $concPct = (string) round((float) ($el['concentration_pct'] ?? 0), 2);
+                // Prescribed-range band attached by SDSGenerator::section8()
+                // (same band as the Section 3 row for this CAS). Never print
+                // the exact percentage here; snapshots older than this change
+                // carry no band and render an empty cell instead.
+                $concPct = (string) ($el['concentration_range'] ?? '');
                 $notes   = (string) ($el['notes']         ?? '');
 
                 // getStringHeight gives the actual rendered height — using
@@ -829,16 +870,25 @@ class PDFService
 
             foreach ($componentTox as $comp) {
                 $pdf->SetFont('helvetica', 'B', 8);
-                $label = ($comp['chemical_name'] ?? '') . ' (CAS ' . ($comp['cas_number'] ?? '') . ') — '
-                       . round((float) ($comp['concentration_pct'] ?? 0), 2) . '%';
+                // Prescribed-range band only (SDS content policy); a pre-banding
+                // snapshot prints no value here, never the exact percentage.
+                $label = ($comp['chemical_name'] ?? '') . ' (CAS ' . ($comp['cas_number'] ?? '') . ')';
+                $band  = (string) ($comp['concentration_range'] ?? '');
+                if ($band !== '') {
+                    $label .= ' — ' . $band;
+                }
                 $pdf->Cell(0, 5, $label, 0, 1);
                 $pdf->SetFont('helvetica', '', 8);
 
-                // Carcinogen listings
+                // Carcinogen listings (agency: classification — registry description)
                 if (!empty($comp['carcinogen_listings'])) {
                     foreach ($comp['carcinogen_listings'] as $listing) {
                         $pdf->Cell(5, 4, '', 0, 0);
-                        $pdf->MultiCell(0, 4, $listing['agency'] . ': ' . $listing['classification'], 0, 'L');
+                        $listingText = ($listing['agency'] ?? '') . ': ' . ($listing['classification'] ?? '');
+                        if (!empty($listing['description'])) {
+                            $listingText .= ' — ' . $listing['description'];
+                        }
+                        $pdf->MultiCell(0, 4, $listingText, 0, 'L');
                     }
                 }
 
@@ -860,12 +910,71 @@ class PDFService
         // they appear in Section 2 (Hazard Identification) only.
     }
 
+    /**
+     * Section 12 (audit item #23): ecotoxicity text + per-component aquatic
+     * hazard table (category + M-factor per CAS). The shared Sections 12-15
+     * footnote ('ghs_note', item #25) is printed by renderSection(), not here.
+     */
+    private function renderSection12(\TCPDF $pdf, array $s): void
+    {
+        $this->labelValue($pdf, $this->label('ecotoxicity'), (string) ($s['ecotoxicity'] ?? ''));
+
+        // Same Cell/MultiCell pattern as the Section 8 exposure-limit table.
+        $rows = $s['component_aquatic'] ?? [];
+        if (!empty($rows) && is_array($rows)) {
+            $pdf->Ln(1);
+            $pdf->SetFont('helvetica', 'B', 9);
+            $pdf->Cell(0, 5, $this->label('component_ecotox_data') . ':', 0, 1);
+
+            $pdf->SetFont('helvetica', 'B', 7);
+            $pdf->SetFillColor(230, 230, 230);
+            $w = [68, 25, 17, 32, 33];
+            $pdf->Cell($w[0], 5, $this->label('chemical_name'), 1, 0, 'C', true);
+            $pdf->Cell($w[1], 5, $this->label('cas_number'), 1, 0, 'C', true);
+            $pdf->Cell($w[2], 5, $this->label('el_conc_pct'), 1, 0, 'C', true);
+            $pdf->Cell($w[3], 5, $this->label('aquatic_acute'), 1, 0, 'C', true);
+            $pdf->Cell($w[4], 5, $this->label('aquatic_chronic'), 1, 1, 'C', true);
+            $pdf->SetFont('helvetica', '', 7);
+
+            foreach ($rows as $row) {
+                $name    = (string) ($row['chemical_name'] ?? '');
+                $cas     = (string) ($row['cas_number'] ?? '');
+                // Prescribed-range band only (SDS content policy); never the exact value.
+                $concPct = (string) ($row['concentration_range'] ?? '');
+                $acute   = (string) ($row['acute'] ?? '');
+                $chronic = (string) ($row['chronic'] ?? '');
+                if ($acute === '')   { $acute   = "\xE2\x80\x94"; }   // em dash: no classification on this route
+                if ($chronic === '') { $chronic = "\xE2\x80\x94"; }
+
+                $rowH = max(
+                    5,
+                    $pdf->getStringHeight($w[0], $name),
+                    $pdf->getStringHeight($w[3], $acute),
+                    $pdf->getStringHeight($w[4], $chronic)
+                );
+
+                $pdf->MultiCell($w[0], $rowH, $name,    1, 'L', false, 0, '', '', true, 0, false, true, $rowH, 'M');
+                $pdf->MultiCell($w[1], $rowH, $cas,     1, 'C', false, 0, '', '', true, 0, false, true, $rowH, 'M');
+                $pdf->MultiCell($w[2], $rowH, $concPct, 1, 'C', false, 0, '', '', true, 0, false, true, $rowH, 'M');
+                $pdf->MultiCell($w[3], $rowH, $acute,   1, 'C', false, 0, '', '', true, 0, false, true, $rowH, 'M');
+                $pdf->MultiCell($w[4], $rowH, $chronic, 1, 'C', false, 1, '', '', true, 0, false, true, $rowH, 'M');
+            }
+            $pdf->SetFont('helvetica', '', 9);
+            $pdf->Ln(2);
+        }
+
+        $this->labelValue($pdf, $this->label('persistence'), (string) ($s['persistence'] ?? ''));
+        $this->labelValue($pdf, $this->label('bioaccumulation'), (string) ($s['bioaccumulation'] ?? ''));
+    }
+
     private function renderSection14(\TCPDF $pdf, array $s): void
     {
         $this->labelValue($pdf, $this->label('un_number'), $s['un_number'] ?? '');
         $this->labelValue($pdf, $this->label('proper_shipping_name'), $s['proper_shipping_name'] ?? '');
         $this->labelValue($pdf, $this->label('transport_hazard_class'), $s['hazard_class'] ?? '');
         $this->labelValue($pdf, $this->label('packing_group'), $s['packing_group'] ?? '');
+        // Carrier-verification note (was preview-only before item #25)
+        $this->labelValue($pdf, $this->label('note'), $s['note'] ?? '');
     }
 
     private function renderSection15(\TCPDF $pdf, array $s): void
@@ -873,17 +982,30 @@ class PDFService
         $this->labelValue($pdf, $this->label('osha_status'), $s['osha_status'] ?? '');
         $this->labelValue($pdf, $this->label('tsca_status'), $s['tsca_status'] ?? '');
 
-        // SARA 313 data
+        // SARA 313 / TRI supplier notification (40 CFR 372.45). SARA313Service::analyse()
+        // emits 'reportable' (>= applicable de minimis), 'below_threshold' and 'not_listed'
+        // with 'threshold_pct' / 'is_pbt' / 'sara_name' per entry. Heading + sentence always
+        // print (like HAP / Prop 65); only reportable entries are listed.
+        // English defaults keep pre-existing snapshots (meta.labels without these keys) readable.
         $sara = $s['sara_313'] ?? [];
-        if (!empty($sara['listed_chemicals'] ?? [])) {
+        if (isset($sara['reportable']) && is_array($sara['reportable'])) {
             $pdf->SetFont('helvetica', 'B', 9);
             $pdf->Cell(0, 5, $this->label('sara_313_title') . ':', 0, 1);
             $pdf->SetFont('helvetica', '', 8);
-            foreach ($sara['listed_chemicals'] as $chem) {
-                $text = ($chem['chemical_name'] ?? '') . ' (CAS ' . ($chem['cas_number'] ?? '') . ') — '
-                      . round((float) ($chem['concentration_pct'] ?? 0), 2) . '% (de minimis: '
-                      . ($chem['deminimis_pct'] ?? '1.0') . '%)';
-                $pdf->MultiCell(0, 4, "\xE2\x80\xA2 " . $text, 0, 'L');
+            if (!empty($sara['reportable'])) {
+                $pdf->MultiCell(0, 4, $this->label('sara_313_statement', 'This product contains the following toxic chemical(s) subject to the reporting requirements of Section 313 of Title III of the Superfund Amendments and Reauthorization Act of 1986 (SARA) and 40 CFR Part 372 (supplier notification per 40 CFR 372.45):'), 0, 'L');
+                foreach ($sara['reportable'] as $chem) {
+                    $name      = (string) ((($chem['sara_name'] ?? '') !== '') ? $chem['sara_name'] : ($chem['chemical_name'] ?? ''));
+                    $threshold = rtrim(rtrim(number_format((float) ($chem['threshold_pct'] ?? 1.0), 4), '0'), '.');
+                    $text = $name . ' (CAS ' . ($chem['cas_number'] ?? '') . ') — '
+                          . number_format((float) ($chem['concentration_pct'] ?? 0), 2) . '% ('
+                          . $this->label('sara_313_threshold', 'de minimis threshold') . ': ' . $threshold . '%'
+                          . (!empty($chem['is_pbt']) ? '; ' . $this->label('sara_313_pbt', 'PBT chemical') : '')
+                          . ')';
+                    $pdf->MultiCell(0, 4, "\xE2\x80\xA2 " . $text, 0, 'L');
+                }
+            } else {
+                $pdf->MultiCell(0, 4, $this->label('sara_313_none', 'This product does not contain any toxic chemicals subject to the reporting requirements of SARA Title III Section 313 (40 CFR Part 372) at or above the applicable de minimis concentration.'), 0, 'L');
             }
             $pdf->Ln(2);
         }
@@ -997,17 +1119,67 @@ class PDFService
     private function renderGenericSection(\TCPDF $pdf, array $section): void
     {
         foreach ($section as $key => $value) {
-            if ($key === 'title' || $key === 'has_other_hazards' || $key === 'uv_acrylate_note') {
+            if ($key === 'title' || $key === 'has_other_hazards' || $key === 'uv_acrylate_note' || $key === 'ghs_note') {
                 continue;
             }
             if (is_string($value) && $value !== '') {
                 $labelKey = self::FIELD_LABEL_MAP[$key] ?? null;
+                $fallback = ucwords(str_replace('_', ' ', $key));
                 $label = $labelKey !== null
-                    ? $this->label($labelKey)
-                    : ucwords(str_replace('_', ' ', $key));
+                    ? $this->label($labelKey, $fallback)
+                    : $fallback;
                 $this->labelValue($pdf, $label, $value);
             }
         }
+    }
+
+    /**
+     * Shared Sections 12-15 footnote (audit item #25): 7pt italic grey, no
+     * label, printed after the section body. The generator sets 'ghs_note'
+     * to '' when the admin toggle is off, so this is a no-op in that case.
+     */
+    private function renderGhsSectionNote(\TCPDF $pdf, array $s): void
+    {
+        $note = (string) ($s['ghs_note'] ?? '');
+        if ($note === '') {
+            return;
+        }
+        $pdf->Ln(1);
+        $pdf->SetFont('helvetica', 'I', 7);
+        $pdf->SetTextColor(90, 90, 90);
+        $pdf->MultiCell(0, 3, $note, 0, 'L');
+        $pdf->SetTextColor(0, 0, 0);
+        $pdf->SetFont('helvetica', '', 9);
+    }
+
+    /**
+     * Right-hand footer text, prefix included:
+     *   "Rev. 3 — 10/08/2026"          published version (Section 16 values)
+     *   "Draft (not yet published)"     unstamped preview (translated via Section 16)
+     *   "Rev. 10/01/2026"               snapshot published before versions were
+     *                                   stamped (legacy generation-time revision_date)
+     */
+    private function footerRevision(array $meta, array $s16): string
+    {
+        $prefix  = (string) ($this->document['revision_prefix'] ?? 'Rev.');
+        $version = (int) ($meta['sds_version'] ?? 0);
+
+        if ($version > 0) {
+            $date = (string) ($s16['effective_date'] ?? '');
+            if ($date === '' && !empty($meta['effective_date'])) {
+                $date = format_date((string) $meta['effective_date'], 'm/d/Y');
+            }
+            if ($date === '' && !empty($s16['revision_date'])) {
+                $date = (string) $s16['revision_date'];
+            }
+            return $prefix . ' ' . $version . ($date !== '' ? ' — ' . $date : '');
+        }
+
+        if (!empty($s16['revision_date'])) {
+            return $prefix . ' ' . (string) $s16['revision_date'];
+        }
+
+        return (string) ($s16['version'] ?? 'Draft (not yet published)');
     }
 
     /**

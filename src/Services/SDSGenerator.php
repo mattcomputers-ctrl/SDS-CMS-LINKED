@@ -33,7 +33,7 @@ use SDS\Models\FinishedGood;
  *  14. Transport Information *
  *  15. Regulatory Information *
  *  16. Other Information
- *  (* Not enforced by OSHA but required by GHS)
+ *  (* Headings required by 29 CFR 1910.1200(g)(2); content not enforced by OSHA — see item #25 footnote)
  */
 class SDSGenerator
 {
@@ -41,6 +41,17 @@ class SDSGenerator
 
     /** @var array|null Cached company settings (shared across instances within a request). */
     private static ?array $companySettingsCache = null;
+
+    /**
+     * H-code families whose effects are delayed (sensitisation, CMR,
+     * lactation, STOT-RE). Sensitisation (H317/H334) needs an induction
+     * phase before elicitation (GHS Rev. 7 ch. 3.4), so it is grouped with
+     * the repeated-exposure effects, matching Section 11's treatment.
+     * Prefix-matched against the first four characters so H360FD, H350i
+     * etc. match. Every other H3xx code is treated as an acute effect in
+     * the Section 4(b) symptoms line.
+     */
+    private const DELAYED_EFFECT_H_PREFIXES = ['H317', 'H334', 'H340', 'H341', 'H350', 'H351', 'H360', 'H361', 'H362', 'H372', 'H373'];
 
     public function __construct(?TranslationService $translator = null)
     {
@@ -159,11 +170,11 @@ class SDSGenerator
                 5  => $this->section5($calcResult, $hazardResult, $overrides),
                 6  => $this->section6($hazardResult, $fg, $overrides),
                 7  => $this->section7($hazardResult, $overrides),
-                8  => $this->section8($hazardResult, $overrides),
+                8  => $this->section8($hazardResult, $calcResult['composition'], $overrides),
                 9  => $this->section9($fg, $calcResult, $overrides),
                 10 => $this->section10($hazardResult, $overrides),
                 11 => $this->section11($hazardResult, $calcResult['composition'], $carcinogenResult, $overrides),
-                12 => $this->section12($hazardResult, $overrides),
+                12 => $this->section12($hazardResult, $calcResult['composition'], $overrides),
                 13 => $this->section13($hazardResult, $calcResult, $overrides),
                 14 => $this->section14($dotInfo, $overrides),
                 15 => $this->section15($saraResult, $prop65Result, $hapResult, $calcResult, $overrides),
@@ -176,7 +187,7 @@ class SDSGenerator
             'carcinogen_result'   => $carcinogenResult,
             'hap_result'          => $hapResult,
             'warnings'            => array_merge($calcResult['warnings'], $uvWarnings),
-            'legal_disclaimer'    => $company['legal_disclaimer'] ?? '',
+            'legal_disclaimer'    => $this->resolveLegalDisclaimer($company, $language),
         ];
 
         // Append UV acrylate safe-handling language to relevant sections
@@ -185,6 +196,11 @@ class SDSGenerator
                 $sds['sections'][$secNum]['uv_acrylate_note'] = $appendText;
             }
         }
+
+        // Section 16 abbreviations: master table filtered to the terms that
+        // actually print on this sheet (audit #33). Needs every section and
+        // meta.labels assembled, so it runs last.
+        $sds['sections'][16]['abbreviations'] = AbbreviationService::build($sds, $this->t);
 
         return $sds;
     }
@@ -427,11 +443,11 @@ class SDSGenerator
                 5  => $this->section5($calcResult, $hazardResult, $overrides),
                 6  => $this->section6($hazardResult, $fg, $overrides),
                 7  => $this->section7($hazardResult, $overrides),
-                8  => $this->section8($hazardResult, $overrides),
+                8  => $this->section8($hazardResult, $calcResult['composition'], $overrides),
                 9  => $this->section9($fg, $calcResult, $overrides),
                 10 => $this->section10($hazardResult, $overrides),
                 11 => $this->section11($hazardResult, $calcResult['composition'], $carcinogenResult, $overrides),
-                12 => $this->section12($hazardResult, $overrides),
+                12 => $this->section12($hazardResult, $calcResult['composition'], $overrides),
                 13 => $this->section13($hazardResult, $calcResult, $overrides),
                 14 => $this->section14($dotInfo, $overrides),
                 15 => $this->section15($saraResult, $prop65Result, $hapResult, $calcResult, $overrides),
@@ -444,7 +460,7 @@ class SDSGenerator
             'carcinogen_result'   => $carcinogenResult,
             'hap_result'          => $hapResult,
             'warnings'            => array_merge($calcResult['warnings'], $uvWarnings),
-            'legal_disclaimer'    => $company['legal_disclaimer'] ?? '',
+            'legal_disclaimer'    => $this->resolveLegalDisclaimer($company, $language),
         ];
 
         foreach ($uvSectionAppend as $secNum => $appendText) {
@@ -452,6 +468,10 @@ class SDSGenerator
                 $sds['sections'][$secNum]['uv_acrylate_note'] = $appendText;
             }
         }
+
+        // Section 16 abbreviations: master table filtered to the terms that
+        // actually print on this sheet (audit #33). Runs last on purpose.
+        $sds['sections'][16]['abbreviations'] = AbbreviationService::build($sds, $this->t);
 
         return $sds;
     }
@@ -482,36 +502,95 @@ class SDSGenerator
     }
 
     /**
+     * Compose the Section 1 supplier address line from a company-info array.
+     *
+     * Accepts either getCompanySettings() (standard SDS, admin settings) or
+     * Manufacturer::toCompanyInfo() (private label). Blank parts are skipped
+     * so a missing city/state never leaves stray commas, and the country is
+     * rendered when set:  "123 Industrial Blvd, Anytown, OH 44000, USA".
+     *
+     * @param array $info name/address/city/state/zip/country/... (any may be absent)
+     */
+    public static function formatManufacturerAddress(array $info): string
+    {
+        $street   = trim((string) ($info['address'] ?? ''));
+        $city     = trim((string) ($info['city'] ?? ''));
+        $stateZip = trim(trim((string) ($info['state'] ?? '')) . ' ' . trim((string) ($info['zip'] ?? '')));
+        $country  = trim((string) ($info['country'] ?? ''));
+
+        $parts = array_values(array_filter(
+            [$street, $city, $stateZip, $country],
+            static fn (string $p): bool => $p !== ''
+        ));
+        return implode(', ', $parts);
+    }
+
+    /**
+     * Build the Section 1 manufacturer/supplier fields (29 CFR 1910.1200
+     * App. D, 1(c)) from a company-info array. This is the single builder
+     * used for BOTH a standard SDS (admin company.* settings) and a private
+     * label SDS (Manufacturer::toCompanyInfo()), so the two document kinds
+     * can never drift. It deliberately does NOT set emergency_phone (App. D
+     * 1(d)): section1() prints the company number and
+     * createManufacturerVariant() the manufacturer's own (no fallback, audit #2).
+     *
+     * @return array{manufacturer_name:string,manufacturer_address:string,manufacturer_phone:string,manufacturer_email:string,manufacturer_website:string}
+     */
+    public static function buildManufacturerBlock(array $info): array
+    {
+        return [
+            'manufacturer_name'    => trim((string) ($info['name'] ?? '')),
+            'manufacturer_address' => self::formatManufacturerAddress($info),
+            'manufacturer_phone'   => trim((string) ($info['phone'] ?? '')),
+            'manufacturer_email'   => trim((string) ($info['email'] ?? '')),
+            'manufacturer_website' => trim((string) ($info['website'] ?? '')),
+        ];
+    }
+
+    /**
      * Create a variant of SDS data with manufacturer info overridden.
      *
      * Used for private-label SDS generation where a different company
      * identity is placed on the document.
      *
      * @param array  $sdsData         Base SDS data array from generate()
-     * @param array  $manufacturerInfo Company info array (name, address, city, state, zip, phone, etc.)
+     * @param array  $manufacturerInfo Manufacturer::toCompanyInfo() array (name, address, city, state, zip, country, phone, emergency_phone, email, website, logo_path, legal_disclaimers (lang => text))
      * @return array Modified SDS data with manufacturer overrides.
      */
     public static function createManufacturerVariant(array $sdsData, array $manufacturerInfo): array
     {
         $variant = $sdsData;
 
-        // Override Section 1 manufacturer fields
-        $variant['sections'][1]['manufacturer_name']    = $manufacturerInfo['name'] ?? '';
-        $variant['sections'][1]['manufacturer_address'] = trim(
-            ($manufacturerInfo['address'] ?? '') . ', ' .
-            ($manufacturerInfo['city'] ?? '') . ', ' .
-            ($manufacturerInfo['state'] ?? '') . ' ' .
-            ($manufacturerInfo['zip'] ?? ''),
-            ', '
+        // Override Section 1 manufacturer fields through the same builder a
+        // standard SDS uses (name, address incl. country, phone, email,
+        // website). array_merge keeps the existing key order, so the
+        // emergency_phone line below stays where it is.
+        $variant['sections'][1] = array_merge(
+            $variant['sections'][1] ?? [],
+            self::buildManufacturerBlock($manufacturerInfo)
         );
-        $variant['sections'][1]['manufacturer_phone']   = $manufacturerInfo['phone'] ?? '';
-        $variant['sections'][1]['emergency_phone']      = $manufacturerInfo['emergency_phone'] ?? ($variant['sections'][1]['emergency_phone'] ?? '');
-        $variant['sections'][1]['manufacturer_email']   = $manufacturerInfo['email'] ?? '';
-        $variant['sections'][1]['manufacturer_website'] = $manufacturerInfo['website'] ?? '';
+        // Private label SDSs print the MANUFACTURER's emergency number — never
+        // the company CHEMTREC line (audit #2). A blank number is not a
+        // fallback case: it is flagged here (preview Warnings box) and refused
+        // by the publish gate (SDSReadinessService::manufacturerEmergencyPhoneError).
+        $variant['sections'][1]['emergency_phone']      = trim((string) ($manufacturerInfo['emergency_phone'] ?? ''));
+        $mfgPhoneError = SDSReadinessService::manufacturerEmergencyPhoneError($manufacturerInfo);
+        if ($mfgPhoneError !== null) {
+            $variant['warnings'][] = $mfgPhoneError;
+        }
 
-        // Override logo in meta
-        if (!empty($manufacturerInfo['logo_path'])) {
-            $variant['meta']['company_logo_path'] = $manufacturerInfo['logo_path'];
+        // Logo comes from the manufacturer record only. A manufacturer with
+        // no logo gets NO logo — a private label document must never carry
+        // the base company's branding.
+        $variant['meta']['company_logo_path'] = trim((string) ($manufacturerInfo['logo_path'] ?? ''));
+
+        // Private-label disclaimer (audit #34): the manufacturer's own text for
+        // this sheet's language wins; blank = inherit the base (admin per-language
+        // setting, else translation default) already resolved in $sdsData.
+        $lang    = (string) ($variant['meta']['language'] ?? 'en');
+        $mfgText = trim((string) ($manufacturerInfo['legal_disclaimers'][$lang] ?? ''));
+        if ($mfgText !== '') {
+            $variant['legal_disclaimer'] = $mfgText;
         }
 
         // Tag the on-disk filename (PDFService::generate) so a manufacturer-
@@ -520,6 +599,18 @@ class SDSGenerator
         // (or ..._SDS_{lang}_{stamp}.pdf for an unversioned preview).
         $mfgSlug = sanitize_filename(substr(trim((string) ($manufacturerInfo['name'] ?? '')), 0, 40));
         $variant['meta']['filename_tag'] = 'PL' . ($mfgSlug !== '' ? '_' . $mfgSlug : '');
+
+        // Section 16 abbreviations (audit #33) were filtered against the BASE
+        // sheet; the disclaimer and the Section 1 supplier block (and, via
+        // createPrivateLabelVariant(), the alias identifier) have just
+        // changed, so refilter against what this private label sheet prints.
+        // DB-free fixtures without a Section 16 are left alone.
+        if (isset($variant['sections'][16]) && is_array($variant['sections'][16])) {
+            $variant['sections'][16]['abbreviations'] = AbbreviationService::build(
+                $variant,
+                new TranslationService($lang)
+            );
+        }
 
         return $variant;
     }
@@ -536,6 +627,51 @@ class SDSGenerator
         $variant = self::createAliasVariant($sdsData, $productCode, $description);
         $variant = self::createManufacturerVariant($variant, $manufacturerInfo);
         return $variant;
+    }
+
+    /**
+     * Stamp the published version number and effective date on SDS data.
+     *
+     * Publishers call this once per language right before rendering, with the
+     * SAME version number and effective date (Y-m-d) they are about to write
+     * to sds_versions / private_label_sds. It sets:
+     *   - meta.sds_version      (PDFService::generate() filename {code}_v{n})
+     *   - meta.effective_date   (Y-m-d, machine form kept in the snapshot)
+     *   - sections[16].version / sections[16].effective_date (printed lines,
+     *     date as m/d/Y in every language — user decision)
+     * so the PDF, the stored snapshot and the database row always agree.
+     * Until this is called the document is a draft: section16() prints the
+     * translated "Draft (not yet published)" text and no effective date.
+     *
+     * A decoded legacy base snapshot (published before these keys existed)
+     * may still carry a generation-time revision_date and lack the two new
+     * labels; both are handled here so a republished alias never prints a
+     * stale date or a raw label key.
+     *
+     * @param  array  $sdsData        Output of generate()/generateFromBase() or a variant of it.
+     * @param  int    $version        Version number being published (>= 1).
+     * @param  string $effectiveDate  Effective date as Y-m-d (the value written to the row).
+     * @return array  Stamped copy of $sdsData.
+     */
+    public static function stampPublishedVersion(array $sdsData, int $version, string $effectiveDate): array
+    {
+        $sdsData['meta']['sds_version']    = $version;
+        $sdsData['meta']['effective_date'] = $effectiveDate;
+
+        $sdsData['sections'][16]['version']        = (string) $version;
+        $sdsData['sections'][16]['effective_date'] = format_date($effectiveDate, 'm/d/Y');
+        unset($sdsData['sections'][16]['revision_date']);
+
+        // Legacy base snapshots (published before labels.version /
+        // labels.effective_date existed) lack these two keys; resolve them
+        // for the sheet's own language, never a hard-coded English string.
+        if (!isset($sdsData['meta']['labels']['version']) || !isset($sdsData['meta']['labels']['effective_date'])) {
+            $t = new TranslationService((string) ($sdsData['meta']['language'] ?? 'en'));
+            $sdsData['meta']['labels']['version']        ??= $t->get('labels.version');
+            $sdsData['meta']['labels']['effective_date'] ??= $t->get('labels.effective_date');
+        }
+
+        return $sdsData;
     }
 
     /* ------------------------------------------------------------------
@@ -575,31 +711,36 @@ class SDSGenerator
 
     private function section1(array $fg, array $company, array $overrides): array
     {
+        // Supplier block (App. D 1(c)) via the shared builder — same code
+        // path createManufacturerVariant() uses for private label.
+        $block = self::buildManufacturerBlock($company);
         return [
             'title' => $this->t->get('section1.title', []),
             'product_identifier'    => $fg['product_code'] . ' — ' . $fg['description'],
             'product_family'        => $fg['family'] ?? '',
             'recommended_use'       => $overrides[1]['recommended_use'] ?? ($fg['recommended_use'] ?? '') ?: $this->t->get('section1.recommended_use'),
             'restrictions'          => $overrides[1]['restrictions'] ?? ($fg['restrictions_on_use'] ?? '') ?: $this->t->get('section1.restrictions'),
-            'manufacturer_name'     => $company['name'] ?? '',
-            'manufacturer_address'  => trim(($company['address'] ?? '') . ', ' . ($company['city'] ?? '') . ', ' . ($company['state'] ?? '') . ' ' . ($company['zip'] ?? ''), ', '),
-            'manufacturer_phone'    => $company['phone'] ?? '',
+            'manufacturer_name'     => $block['manufacturer_name'],
+            'manufacturer_address'  => $block['manufacturer_address'],
+            'manufacturer_phone'    => $block['manufacturer_phone'],
             'emergency_phone'       => $company['emergency_phone'] ?? '',
-            'manufacturer_email'    => $company['email'] ?? '',
-            'manufacturer_website'  => $company['website'] ?? '',
+            'manufacturer_email'    => $block['manufacturer_email'],
+            'manufacturer_website'  => $block['manufacturer_website'],
         ];
     }
 
     private function section2(array $hazard, array $overrides): array
     {
-        // PPE: use derived PPE from hazard codes, falling back to Section 8 overrides
-        $derivedPpe = $hazard['ppe_recommendations'] ?? [];
-        $ppe = [
-            'respiratory'     => $derivedPpe['respiratory'] ?? ($overrides[8]['respiratory'] ?? null),
-            'hand_protection' => $derivedPpe['hand_protection'] ?? ($overrides[8]['hand_protection'] ?? null),
-            'eye_protection'  => $derivedPpe['eye_protection'] ?? ($overrides[8]['eye_protection'] ?? null),
-            'skin_protection' => $derivedPpe['skin_protection'] ?? ($overrides[8]['skin_protection'] ?? null),
-        ];
+        // PPE: the same resolved values Section 8 prints (operator override,
+        // else the translated sentence for the H-code-derived tier — see
+        // resolvePPE()). Section 2 only shows the hazard-driven fields; the
+        // 'general' / 'none' baselines stay in Section 8, so an unclassified
+        // product gets no PPE pictograms here.
+        $resolved = $this->resolvePPE($hazard, $overrides);
+        $ppe = [];
+        foreach (HazardEngine::PPE_FIELDS as $field) {
+            $ppe[$field] = $resolved['hazard_driven'][$field] ? $resolved['text'][$field] : null;
+        }
 
         $customOtherHazards = $overrides[2]['other_hazards'] ?? null;
 
@@ -711,7 +852,13 @@ class SDSGenerator
                 continue;
             }
 
-            // Must be disclosable and above disclosure threshold.
+            // Must be disclosable and at/above the 0.1 % w/w disclosure
+            // cut-off. 0.1 % is fixed policy, not a setting — see the
+            // PRESCRIBED_RANGES docblock and docs/operations.md "SDS content
+            // policy". It is the lowest ingredient cut-off in 29 CFR
+            // 1910.1200 Appendix A (carcinogens, reproductive toxicants,
+            // germ cell mutagens cat. 1, respiratory sensitisers), so no
+            // constituent that can drive a classification is ever hidden.
             // Disclosable = classified as hazardous OR has an exposure limit.
             if ($cas === '' || $conc < 0.1) {
                 continue;
@@ -780,7 +927,10 @@ class SDSGenerator
             'title'                => $this->t->get('section3.title'),
             'substance_or_mixture' => $this->t->get('labels.mixture'),
             'components'           => $disclosed,
-            'trade_secret_note'    => $this->hasTradeSecrets($composition)
+            // Exact percentages are withheld on every row (prescribed-range
+            // bands — see PRESCRIBED_RANGES), so the 1910.1200(i)(1)
+            // withholding statement prints whenever components are listed.
+            'trade_secret_note'    => !empty($disclosed)
                 ? $this->t->get('section3.trade_secret_note')
                 : null,
         ];
@@ -789,52 +939,114 @@ class SDSGenerator
     private function section4(array $hazard, array $overrides): array
     {
         $hCodes = self::extractHCodes($hazard);
+        $has    = static fn(array $codes): bool => !empty(array_intersect($hCodes, $codes));
 
-        // --- Inhalation smart logic ---
+        // 4(a) Necessary measures by route of exposure (29 CFR 1910.1200 App. D).
+        // Two kinds of hazard logic, deliberately different:
+        //   - SEVERE fragments (acute tox. 1-3, skin corrosion, serious eye
+        //     damage, aspiration) are complete paragraphs that REPLACE the
+        //     base text, because the base advice ("...if irritation persists")
+        //     is too weak for them;
+        //   - ADDITIVE fragments are single sentences APPENDED to whichever
+        //     paragraph was chosen, so the common ink codes (H302/H312/H315/
+        //     H317/H319/H332/H334/H335/H336) add route-specific advice.
+        // A per-FG override replaces the whole field, fragments included.
+
+        // --- Inhalation ---
         $inhalation = $overrides[4]['inhalation'] ?? null;
         if ($inhalation === null) {
-            if (!empty(array_intersect($hCodes, ['H330']))) {
+            if ($has(['H330'])) {
                 $inhalation = $this->t->get('section4.inhalation_fatal');
-            } elseif (!empty(array_intersect($hCodes, ['H331']))) {
+            } elseif ($has(['H331'])) {
                 $inhalation = $this->t->get('section4.inhalation_toxic');
             } else {
                 $inhalation = $this->t->get('section4.inhalation');
+                if ($has(['H332'])) {
+                    $inhalation .= ' ' . $this->t->get('section4.inhalation_harmful');
+                }
+            }
+            if ($has(['H334'])) {
+                $inhalation .= ' ' . $this->t->get('section4.inhalation_resp_sensitizer');
+            }
+            if ($has(['H335'])) {
+                $inhalation .= ' ' . $this->t->get('section4.inhalation_irritant');
+            }
+            if ($has(['H336'])) {
+                $inhalation .= ' ' . $this->t->get('section4.inhalation_narcotic');
             }
         }
 
-        // --- Skin smart logic ---
+        // --- Skin ---
         $skin = $overrides[4]['skin'] ?? null;
         if ($skin === null) {
-            if (!empty(array_intersect($hCodes, ['H314']))) {
+            if ($has(['H314'])) {
                 $skin = $this->t->get('section4.skin_corrosive');
-            } elseif (!empty(array_intersect($hCodes, ['H317']))) {
-                $skin = $this->t->get('section4.skin_sensitizer');
+            } elseif ($has(['H310', 'H311'])) {
+                $skin = $this->t->get('section4.skin_toxic');
             } else {
                 $skin = $this->t->get('section4.skin');
+                if ($has(['H312'])) {
+                    $skin .= ' ' . $this->t->get('section4.skin_harmful');
+                }
+                if ($has(['H315'])) {
+                    $skin .= ' ' . $this->t->get('section4.skin_irritant');
+                }
+            }
+            if ($has(['H317'])) {
+                $skin .= ' ' . $this->t->get('section4.skin_sensitizer');
             }
         }
 
-        // --- Eyes smart logic ---
+        // --- Eyes ---
         $eyes = $overrides[4]['eyes'] ?? null;
         if ($eyes === null) {
-            if (!empty(array_intersect($hCodes, ['H314']))) {
+            if ($has(['H314'])) {
                 $eyes = $this->t->get('section4.eyes_corrosive');
-            } elseif (!empty(array_intersect($hCodes, ['H318']))) {
+            } elseif ($has(['H318'])) {
                 $eyes = $this->t->get('section4.eyes_serious_damage');
             } else {
                 $eyes = $this->t->get('section4.eyes');
             }
+            if ($has(['H314', 'H318', 'H319'])) {
+                $eyes .= ' ' . $this->t->get('section4.eyes_contact_lenses');
+            }
         }
 
-        // --- Ingestion smart logic ---
+        // --- Ingestion ---
         $ingestion = $overrides[4]['ingestion'] ?? null;
         if ($ingestion === null) {
-            if (!empty(array_intersect($hCodes, ['H304', 'H305']))) {
+            if ($has(['H304', 'H305'])) {
                 $ingestion = $this->t->get('section4.ingestion_aspiration');
-            } elseif (!empty(array_intersect($hCodes, ['H300', 'H301']))) {
+            } elseif ($has(['H300', 'H301'])) {
                 $ingestion = $this->t->get('section4.ingestion_toxic');
             } else {
                 $ingestion = $this->t->get('section4.ingestion');
+                if ($has(['H302'])) {
+                    $ingestion .= ' ' . $this->t->get('section4.ingestion_harmful');
+                }
+            }
+        }
+
+        // 4(b) Most important symptoms/effects, acute and delayed — derived
+        // from the health H-statements already on the hazard result (their
+        // text was localised by GHSStatements::translateHazardResult()).
+        $symptoms = $overrides[4]['symptoms'] ?? null;
+        if ($symptoms === null) {
+            $symptoms = $this->deriveSymptoms($hazard['h_statements'] ?? []);
+        }
+
+        // 4(c) Notes to physician: same base + appended-fragment pattern.
+        $notes = $overrides[4]['notes'] ?? null;
+        if ($notes === null) {
+            $notes = $this->t->get('section4.notes');
+            if ($has(['H304', 'H305'])) {
+                $notes .= ' ' . $this->t->get('section4.notes_aspiration');
+            }
+            if ($has(['H314'])) {
+                $notes .= ' ' . $this->t->get('section4.notes_corrosive');
+            }
+            if ($has(['H330', 'H331'])) {
+                $notes .= ' ' . $this->t->get('section4.notes_inhalation_delayed');
             }
         }
 
@@ -844,8 +1056,55 @@ class SDSGenerator
             'skin'        => $skin,
             'eyes'        => $eyes,
             'ingestion'   => $ingestion,
-            'notes'       => $overrides[4]['notes'] ?? $this->t->get('section4.notes'),
+            'symptoms'    => $symptoms,
+            'notes'       => $notes,
         ];
+    }
+
+    /**
+     * Build the Section 4(b) "most important symptoms/effects, acute and
+     * delayed" line from the H3xx statements present. Physical (H2xx) and
+     * environmental (H4xx) codes are not symptoms and are skipped. Texts are
+     * de-duplicated and each is terminated with a period.
+     *
+     * @param  array $hStatements  [['code' => 'H315', 'text' => '...'], ...]
+     */
+    private function deriveSymptoms(array $hStatements): string
+    {
+        $acute   = [];
+        $delayed = [];
+        foreach ($hStatements as $s) {
+            $code = strtoupper(trim((string) ($s['code'] ?? '')));
+            if ($code === '' || strncmp($code, 'H3', 2) !== 0) {
+                continue;
+            }
+            $text = trim((string) ($s['text'] ?? ''));
+            if ($text === '') {
+                $text = GHSStatements::hText($code, $this->t->getLanguage());
+            }
+            if ($text === '') {
+                continue;
+            }
+            $text = rtrim($text, '.') . '.';
+            if (in_array(substr($code, 0, 4), self::DELAYED_EFFECT_H_PREFIXES, true)) {
+                $delayed[$text] = true;
+            } else {
+                $acute[$text] = true;
+            }
+        }
+
+        if ($acute === [] && $delayed === []) {
+            return $this->t->get('section4.symptoms_none');
+        }
+
+        $parts = [];
+        if ($acute !== []) {
+            $parts[] = $this->t->get('section4.symptoms_acute_prefix') . ' ' . implode(' ', array_keys($acute));
+        }
+        if ($delayed !== []) {
+            $parts[] = $this->t->get('section4.symptoms_delayed_prefix') . ' ' . implode(' ', array_keys($delayed));
+        }
+        return implode(' ', $parts);
     }
 
     private function section5(array $calcResult, array $hazardResult, array $overrides): array
@@ -1026,20 +1285,79 @@ class SDSGenerator
         ];
     }
 
-    private function section8(array $hazard, array $overrides): array
+    private function section8(array $hazard, array $composition, array $overrides): array
     {
-        // PPE: use overrides first, then auto-derived from hazard codes, then translation defaults
-        $ppe = $hazard['ppe_recommendations'] ?? [];
+        // Conc% column: print the SAME prescribed-range band Section 3 shows
+        // for this CAS (SDS content policy — see PRESCRIBED_RANGES and
+        // docs/operations.md "SDS content policy"). Band the composition row
+        // so a supplier min–max range yields the identical band Section 3
+        // printed; fall back to the limit's own value when the CAS is not in
+        // the composition (e.g. 0.01–0.1 % OEL rows → "<0.1%"). The exact
+        // percentage is dropped from the Section 8 copy so no renderer can
+        // print it.
+        $compByCas = [];
+        foreach ($composition as $c) {
+            $cCas = (string) ($c['cas_number'] ?? '');
+            if ($cCas !== '' && !isset($compByCas[$cCas])) {
+                $compByCas[$cCas] = $c;
+            }
+        }
+        $exposureLimits = [];
+        foreach (($hazard['exposure_limits'] ?? []) as $el) {
+            $elCas  = (string) ($el['cas_number'] ?? '');
+            $source = $compByCas[$elCas]
+                ?? ['concentration_pct' => (float) ($el['concentration_pct'] ?? 0)];
+            $el['concentration_range'] = $this->formatConcentration($source);
+            unset($el['concentration_pct']);
+            $exposureLimits[] = $el;
+        }
+
+        // PPE: operator override, else the translated sentence for the tier
+        // HazardEngine::derivePPE selected from the H-codes (see resolvePPE()).
+        // derivePPE always yields a tier, so there is no third-level default.
+        $ppe = $this->resolvePPE($hazard, $overrides)['text'];
 
         return [
             'title'            => $this->t->get('section8.title'),
-            'exposure_limits'  => $hazard['exposure_limits'],
+            'exposure_limits'  => $exposureLimits,
             'engineering'      => $overrides[8]['engineering'] ?? $this->t->get('section8.engineering'),
-            'respiratory'      => $overrides[8]['respiratory'] ?? $ppe['respiratory'] ?? $this->t->get('section8.respiratory'),
-            'hand_protection'  => $overrides[8]['hand_protection'] ?? $ppe['hand_protection'] ?? $this->t->get('section8.hand_protection'),
-            'eye_protection'   => $overrides[8]['eye_protection'] ?? $ppe['eye_protection'] ?? $this->t->get('section8.eye_protection'),
-            'skin_protection'  => $overrides[8]['skin_protection'] ?? $ppe['skin_protection'] ?? $this->t->get('section8.skin_protection'),
+            'respiratory'      => $ppe['respiratory'],
+            'hand_protection'  => $ppe['hand_protection'],
+            'eye_protection'   => $ppe['eye_protection'],
+            'skin_protection'  => $ppe['skin_protection'],
         ];
+    }
+
+    /**
+     * Resolve the four PPE sentences once so Sections 2 and 8 print the
+     * same text. Precedence per field: operator override (text_overrides,
+     * section 8) → translated sentence for the tier derivePPE selected.
+     *
+     * The tiers are re-derived here from the final H-statements rather
+     * than read from $hazard['ppe_recommendations'], so every post-classify
+     * mutation (carbon black logic, carcinogen registry, FG override) is
+     * reflected and the engine's own copy is informational only.
+     *
+     * @return array{text: array<string,string>, hazard_driven: array<string,bool>}
+     */
+    private function resolvePPE(array $hazard, array $overrides): array
+    {
+        $derived = HazardEngine::derivePPE($hazard['h_statements'] ?? [], $hazard['p_statements'] ?? []);
+
+        $text = [];
+        $hazardDriven = [];
+        foreach (HazardEngine::PPE_FIELDS as $field) {
+            $tier = $derived[$field]['tier'] ?? 'none';
+            $key  = $derived[$field]['key'] ?? ('section8.ppe.' . $field . '.none');
+
+            $override = $overrides[8][$field] ?? null;
+            $text[$field] = ($override !== null && trim((string) $override) !== '')
+                ? (string) $override
+                : $this->t->get($key);
+            $hazardDriven[$field] = !in_array($tier, HazardEngine::PPE_BASELINE_TIERS, true);
+        }
+
+        return ['text' => $text, 'hazard_driven' => $hazardDriven];
     }
 
     private function section9(array $fg, array $calcResult, array $overrides): array
@@ -1087,13 +1405,31 @@ class SDSGenerator
             }
             $appearance = implode(' ', $parts);
         }
+        // #17: only when neither an override nor FG colour/state gives an
+        // appearance, fall back to the dominant raw material's appearance.
+        // (Physical state / colour derivation itself is unchanged — see #18.)
+        if ($appearance === '') {
+            $appearance = (string) ($props['appearance'] ?? '');
+        }
+
+        // #17 Odor: per-FG override wins; otherwise the dominant (highest
+        // wt%) raw material's odor (formula_props.odor); otherwise print the
+        // "no applicable information" statement required by
+        // 29 CFR 1910.1200(g)(3) instead of dropping the App D line.
+        $odor = trim((string) ($overrides[9]['odor'] ?? ''));
+        if ($odor === '') {
+            $odor = (string) ($props['odor'] ?? '');
+        }
+        if ($odor === '') {
+            $odor = $notDetermined;
+        }
 
         return [
             'title'                => $this->t->get('section9.title'),
             'physical_state'       => $physicalState,
             'color'                => $color,
             'appearance'           => $appearance,
-            'odor'                 => $overrides[9]['odor'] ?? '',
+            'odor'                 => $odor,
             'boiling_point'        => $overrides[9]['boiling_point'] ?? $notDetermined,
             'flash_point'          => $flashPoint,
             'solubility'           => $solubility,
@@ -1163,22 +1499,249 @@ class SDSGenerator
         ];
     }
 
+    /**
+     * Section 11 "Chronic Effects" (audit #21).
+     *
+     * Builds the sentence from health-hazard fragments keyed off the
+     * classified H-codes instead of printing the EUH066-style defatting
+     * sentence on every sheet. Fragment order mirrors the GHS Rev. 7 /
+     * HazCom 2024 health-class order: sensitisation (respiratory, skin),
+     * germ cell mutagenicity, carcinogenicity, reproductive toxicity
+     * (incl. lactation), STOT-RE, then repeated-contact irritation.
+     * Falls back to a "none known" statement when no chronic class fires.
+     * Admin text_overrides[11]['chronic_effects'] is applied by the caller.
+     */
+    private function buildChronicEffects(array $hazard, array $carcinogenResult): string
+    {
+        $hCodes = self::extractHCodes($hazard);
+
+        $has = static fn(array $codes): bool => !empty(array_intersect($hCodes, $codes));
+        // Prefix match for sub-coded statements: H350i, H360F/D/FD/Fd/Df, H361f/d/fd.
+        $hasPrefix = static function (string $prefix) use ($hCodes): bool {
+            foreach ($hCodes as $c) {
+                if (strncasecmp((string) $c, $prefix, strlen($prefix)) === 0) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        $fragments = [];
+
+        // Sensitisation (Resp. Sens. 1 / Skin Sens. 1)
+        if ($has(['H334'])) {
+            $fragments[] = $this->t->get('section11.chronic_resp_sens');
+        }
+        if ($has(['H317'])) {
+            $fragments[] = $this->t->get('section11.chronic_skin_sens');
+        }
+
+        // Germ cell mutagenicity (Muta. 1A/1B vs 2)
+        if ($has(['H340'])) {
+            $fragments[] = $this->t->get('section11.chronic_muta_1');
+        } elseif ($has(['H341'])) {
+            $fragments[] = $this->t->get('section11.chronic_muta_2');
+        }
+
+        // Carcinogenicity (Carc. 1A/1B vs 2); cross-reference the
+        // Carcinogenicity paragraph that follows. If the carcinogen registry
+        // flagged a listing but no H350/H351 survived (e.g. inhalation-only
+        // listings stripped by removeInhalationOnlyFromResults), still point
+        // the reader at the paragraph below.
+        if ($has(['H350']) || $hasPrefix('H350')) {
+            $fragments[] = $this->t->get('section11.chronic_carc_1');
+        } elseif ($has(['H351'])) {
+            $fragments[] = $this->t->get('section11.chronic_carc_2');
+        } elseif (!empty($carcinogenResult['has_carcinogens'])) {
+            $fragments[] = $this->t->get('section11.chronic_carc_listed');
+        }
+
+        // Reproductive toxicity (Repr. 1A/1B vs 2) and lactation
+        if ($hasPrefix('H360')) {
+            $fragments[] = $this->t->get('section11.chronic_repr_1');
+        } elseif ($hasPrefix('H361')) {
+            $fragments[] = $this->t->get('section11.chronic_repr_2');
+        }
+        if ($has(['H362'])) {
+            $fragments[] = $this->t->get('section11.chronic_lactation');
+        }
+
+        // STOT — repeated exposure (Cat 1 vs Cat 2)
+        if ($has(['H372'])) {
+            $fragments[] = $this->t->get('section11.chronic_stot_re_1');
+        } elseif ($has(['H373'])) {
+            $fragments[] = $this->t->get('section11.chronic_stot_re_2');
+        }
+
+        // Repeated-contact irritation (Skin Corr./Irrit., Eye Dam./Irrit.)
+        if ($has(['H314', 'H315'])) {
+            $fragments[] = $this->t->get('section11.chronic_repeated_skin');
+        }
+        if ($has(['H318', 'H319'])) {
+            $fragments[] = $this->t->get('section11.chronic_repeated_eye');
+        }
+
+        if (empty($fragments)) {
+            return $this->t->get('section11.chronic_none');
+        }
+
+        return implode(' ', $fragments);
+    }
+
+    /**
+     * Section 11 "Acute Toxicity" (audit #20).
+     *
+     * Derived per route (oral, dermal, inhalation) from the engine's
+     * classification so this line can never contradict Section 2 or the
+     * Section 4(b) symptoms line: each classified route prints its category,
+     * the resolved H-statement and, for an ATE-mixture classification, the
+     * calculated ATEmix value. Falls back to the "criteria are not met"
+     * constant only when no acute-toxicity route is classified. Admin
+     * text_overrides[11]['acute_toxicity'] is applied by the caller.
+     */
+    private function buildAcuteToxicity(array $hazard): string
+    {
+        $lang   = $this->t->getLanguage();
+        $routes = [
+            GHSHazardClass::ACUTE_TOXICITY_ORAL       => 'oral',
+            GHSHazardClass::ACUTE_TOXICITY_DERMAL     => 'dermal',
+            GHSHazardClass::ACUTE_TOXICITY_INHALATION => 'inhalation',
+        ];
+        // Default statement per route and category when the class entry
+        // carries no h_codes (per-component triggers); GHS Rev. 7 Table 3.1.3.
+        $routeCodes = [
+            'oral'       => [1 => 'H300', 2 => 'H300', 3 => 'H301', 4 => 'H302'],
+            'dermal'     => [1 => 'H310', 2 => 'H310', 3 => 'H311', 4 => 'H312'],
+            'inhalation' => [1 => 'H330', 2 => 'H330', 3 => 'H331', 4 => 'H332'],
+        ];
+
+        // Most severe category per route, keeping the ATE value when present.
+        $byRoute = [];
+        foreach ($hazard['hazard_classes'] ?? [] as $hc) {
+            $canonical = (string) ($hc['canonical'] ?? '');
+            $route     = $routes[$canonical] ?? null;
+            if ($route === null) {
+                // Entries without a canonical (e.g. finished-good override):
+                // match on the display name "Acute Toxicity (Oral)" etc.
+                $className = strtolower((string) ($hc['class'] ?? ''));
+                if (!str_contains($className, 'acute tox')) {
+                    continue;
+                }
+                foreach (['oral', 'dermal', 'inhalation'] as $r) {
+                    if (str_contains($className, $r)) {
+                        $route = $r;
+                        break;
+                    }
+                }
+                if ($route === null) {
+                    continue;
+                }
+            }
+            $catRaw = (string) ($hc['category_canonical'] ?? $hc['category'] ?? '');
+            if (!preg_match('/(\d)/', $catRaw, $m)) {
+                continue;
+            }
+            $catNum = (int) $m[1];
+            if ($catNum < 1 || $catNum > 5) {
+                continue;
+            }
+            $ate = isset($hc['ate_mix']) && is_numeric($hc['ate_mix']) ? (float) $hc['ate_mix'] : null;
+            if (!isset($byRoute[$route]) || $catNum < $byRoute[$route]['cat']) {
+                $byRoute[$route] = ['cat' => $catNum, 'ate' => $ate, 'h_codes' => $hc['h_codes'] ?? []];
+            } elseif ($catNum === $byRoute[$route]['cat'] && $ate !== null && $byRoute[$route]['ate'] === null) {
+                $byRoute[$route]['ate'] = $ate;
+            }
+        }
+
+        if ($byRoute === []) {
+            return $this->t->get('section11.acute_toxicity');
+        }
+
+        // Resolved (already translated) statement text keyed by code.
+        $hText = [];
+        foreach ($hazard['h_statements'] ?? [] as $s) {
+            $code = strtoupper(trim((string) ($s['code'] ?? '')));
+            $text = trim((string) ($s['text'] ?? ''));
+            if ($code !== '' && $text !== '') {
+                $hText[$code] = $text;
+            }
+        }
+
+        $lines = [];
+        foreach (['oral', 'dermal', 'inhalation'] as $route) {
+            if (!isset($byRoute[$route])) {
+                continue;
+            }
+            $cat  = $byRoute[$route]['cat'];
+            $code = '';
+            foreach ((array) $byRoute[$route]['h_codes'] as $c) {
+                $c = strtoupper(trim((string) $c));
+                if (preg_match('/^H3[0-3]\d$/', $c)) {
+                    $code = $c;
+                    break;
+                }
+            }
+            if ($code === '') {
+                $code = $routeCodes[$route][$cat] ?? '';
+            }
+            $statement = $hText[$code] ?? ($code !== '' ? GHSStatements::hText($code, $lang) : '');
+            $statement = rtrim($statement, '.');
+
+            $lines[] = $this->t->get('section11.acute_route_line', [
+                'route'     => $this->t->get('section11.acute_route_' . $route),
+                'category'  => GHSStatements::categoryName('Category ' . $cat, $lang),
+                'statement' => $statement,
+                'code'      => $code,
+            ]);
+            if ($byRoute[$route]['ate'] !== null) {
+                $lines[] = $this->t->get('section11.acute_ate', [
+                    'value' => rtrim(rtrim(number_format($byRoute[$route]['ate'], 2, '.', ''), '0'), '.'),
+                    'unit'  => $this->t->get('section11.acute_unit_' . $route),
+                ]);
+            }
+        }
+
+        return implode(' ', $lines);
+    }
+
+    /**
+     * First composition row per CAS, for the Section 3 band lookups in
+     * Sections 11 and 12 (same map section8() builds inline).
+     */
+    private static function compositionByCas(array $composition): array
+    {
+        $compByCas = [];
+        foreach ($composition as $c) {
+            $cCas = (string) ($c['cas_number'] ?? '');
+            if ($cCas !== '' && !isset($compByCas[$cCas])) {
+                $compByCas[$cCas] = $c;
+            }
+        }
+        return $compByCas;
+    }
+
     private function section11(array $hazard, array $composition, array $carcinogenResult, array $overrides): array
     {
+        // Concentrations print as the SAME prescribed-range band Section 3
+        // shows for this CAS (SDS content policy — PRESCRIBED_RANGES). The
+        // exact percentage is not carried on the Section 11 copies, so no
+        // renderer can print it.
+        $compByCas = self::compositionByCas($composition);
+
         // Build component-level toxicological detail
         $componentTox = [];
         foreach ($composition as $c) {
             $cas  = $c['cas_number'] ?? '';
             $name = $c['chemical_name'] ?? '';
             $conc = (float) ($c['concentration_pct'] ?? 0);
-            if ($cas === '' || $conc < 0.1) {
+            if ($cas === '' || $conc < CarcinogenService::LISTING_THRESHOLD_PCT) {
                 continue;
             }
 
             $entry = [
                 'cas_number'    => $cas,
                 'chemical_name' => $name,
-                'concentration_pct' => $conc,
+                'concentration_range' => $this->formatConcentration($c),
                 'exposure_limits' => [],
                 'carcinogen_listings' => [],
             ];
@@ -1202,18 +1765,40 @@ class SDSGenerator
             }
         }
 
-        // Override carcinogenicity text if we have actual data
+        // Carcinogenicity text: manual override wins; otherwise build it in
+        // the sheet language from the (already filtered) registry findings.
+        // $carcinogenResult['summary_text'] is English base data computed
+        // once per FG (computeBase) and is NOT printed.
         $carcinogenText = $overrides[11]['carcinogenicity'] ?? null;
         if ($carcinogenText === null) {
-            $carcinogenText = $carcinogenResult['has_carcinogens']
-                ? $carcinogenResult['summary_text']
-                : $this->t->get('section11.carcinogenicity');
+            if (!empty($carcinogenResult['has_carcinogens'])) {
+                // Band each finding with the Section 3 range for its CAS so
+                // the carcinogenicity line never states the exact percentage.
+                $bandedFindings = [];
+                foreach ($carcinogenResult['findings'] ?? [] as $f) {
+                    $fCas = (string) ($f['cas_number'] ?? '');
+                    $f['concentration_range'] = $this->formatConcentration(
+                        $compByCas[$fCas] ?? ['concentration_pct' => (float) ($f['concentration_pct'] ?? 0)]
+                    );
+                    unset($f['concentration_pct']);
+                    $bandedFindings[] = $f;
+                }
+                $carcinogenText = CarcinogenService::buildSummaryText($bandedFindings, $this->t);
+            } else {
+                // Negative sentence carries the same 0.1 % qualifier as the
+                // positive intro: a listed carcinogen below the cut-off is
+                // neither disclosed nor classified, so "no components" alone
+                // would be untrue for the product.
+                $carcinogenText = $this->t->get('section11.carcinogenicity', [
+                    'threshold' => (string) CarcinogenService::LISTING_THRESHOLD_PCT,
+                ]);
+            }
         }
 
         return [
             'title'              => $this->t->get('section11.title'),
-            'acute_toxicity'     => $overrides[11]['acute_toxicity'] ?? $this->t->get('section11.acute_toxicity'),
-            'chronic_effects'    => $overrides[11]['chronic_effects'] ?? $this->t->get('section11.chronic_effects'),
+            'acute_toxicity'     => $overrides[11]['acute_toxicity'] ?? $this->buildAcuteToxicity($hazard),
+            'chronic_effects'    => $overrides[11]['chronic_effects'] ?? $this->buildChronicEffects($hazard, $carcinogenResult),
             'carcinogenicity'    => $carcinogenText,
             'hazard_classes'     => $hazard['hazard_classes'],
             'component_toxicology' => $componentTox,
@@ -1221,40 +1806,113 @@ class SDSGenerator
         ];
     }
 
-    private function section12(array $hazardResult, array $overrides): array
+    private function section12(array $hazardResult, array $composition, array $overrides): array
     {
-        $hCodes = self::extractHCodes($hazardResult);
+        $lang = $this->t->getLanguage();
 
-        // Aquatic toxicity H-codes
-        $acuteAquatic  = !empty(array_intersect($hCodes, ['H400', 'H401', 'H402']));
-        $chronicAquatic = !empty(array_intersect($hCodes, ['H410', 'H411', 'H412', 'H413']));
+        // Conc% column: the SAME prescribed-range band Section 3 prints for
+        // this CAS (SDS content policy — PRESCRIBED_RANGES). Exact
+        // percentages are never emitted here, so no renderer can print them.
+        $compByCas = self::compositionByCas($composition);
 
-        // --- Ecotoxicity smart logic ---
+        // Echo the aquatic H-statements exactly as resolved by the engine.
+        // h_statements text is already translated for $lang (see
+        // GHSStatements::translateHazardResult in generate()/generateFromBase()).
+        // GHS Rev. 7 Chapter 4.1: H400-H402 = acute, H410-H413 = chronic.
+        $aquaticStatements = [];
+        foreach ($hazardResult['h_statements'] ?? [] as $stmt) {
+            $code = strtoupper(trim((string) ($stmt['code'] ?? '')));
+            if (preg_match('/^H4(0[0-2]|1[0-3])$/', $code)) {
+                $aquaticStatements[$code] = trim((string) ($stmt['text'] ?? ''));
+            }
+        }
+        ksort($aquaticStatements);
+
+        // Per-component aquatic classification + M-factor from the engine's
+        // Phase 4 aquatic buffer (HazardEngine::classify() 'aquatic_components').
+        $componentAquatic = [];
+        foreach ($hazardResult['aquatic_components'] ?? [] as $row) {
+            $cas  = (string) ($row['cas'] ?? '');
+            $name = (string) ($row['name'] ?? '');
+            $comp = $compByCas[$cas] ?? null;
+            if ($cas === 'TRADE_SECRET' || !empty($comp['is_trade_secret'])) {
+                // Section 3 withholds this constituent's identity; do the same
+                // here. A manual-JSON trade-secret row reaches the engine at a
+                // nominal 100 % (HazardEngine), which is not a printable value.
+                $range = $comp !== null ? $this->formatConcentration($comp) : '';
+                $cas   = 'TRADE SECRET';
+                $name  = (string) (($comp['trade_secret_description'] ?? '') ?: 'Trade Secret');
+            } else {
+                $range = $this->formatConcentration($comp ?? ['concentration_pct' => (float) ($row['conc'] ?? 0)]);
+            }
+            $componentAquatic[] = [
+                'cas_number'          => $cas,
+                'chemical_name'       => $name,
+                'concentration_range' => $range,
+                'acute'               => $this->formatAquaticCategory($row['acute_category'] ?? null, $row['acute_m_factor'] ?? null, $lang),
+                'chronic'             => $this->formatAquaticCategory($row['chronic_category'] ?? null, $row['chronic_m_factor'] ?? null, $lang),
+            ];
+        }
+
+        // --- Ecotoxicity (audit item #23) ---
         $ecotoxicity = $overrides[12]['ecotoxicity'] ?? null;
         if ($ecotoxicity === null) {
-            if ($acuteAquatic && $chronicAquatic) {
-                $ecotoxicity = $this->t->get('section12.ecotoxicity_acute_chronic');
-            } elseif ($chronicAquatic) {
-                $ecotoxicity = $this->t->get('section12.ecotoxicity_chronic');
-            } elseif ($acuteAquatic) {
-                $ecotoxicity = $this->t->get('section12.ecotoxicity_acute');
+            if (!empty($aquaticStatements)) {
+                $parts = [];
+                foreach ($aquaticStatements as $code => $text) {
+                    $parts[] = $text !== ''
+                        ? $code . ': ' . rtrim($text, '.') . '.'
+                        : $code . '.';
+                }
+                // The "summation method ... listed below" lead-in is only true
+                // when a component table follows. A finished-good hazard
+                // override can add an aquatic H-code with no buffered rows;
+                // then state the classification without claiming a method.
+                $lead = $componentAquatic !== []
+                    ? $this->t->get('section12.ecotoxicity_classified')
+                    : $this->t->get('section12.ecotoxicity_classified_no_table');
+                $ecotoxicity = $lead . ' '
+                    . implode(' ', $parts) . ' '
+                    . $this->t->get('section12.environmental_warning');
+            } elseif (!empty($componentAquatic)) {
+                // Components carry aquatic data but the summation did not
+                // reach a mixture classification — say so rather than
+                // "No data available", which the table below would contradict.
+                $ecotoxicity = $this->t->get('section12.ecotoxicity_not_classified');
             } else {
                 $ecotoxicity = $this->t->get('section12.ecotoxicity');
-            }
-
-            // Append environmental warning when any aquatic codes are present
-            if ($acuteAquatic || $chronicAquatic) {
-                $ecotoxicity .= ' ' . $this->t->get('section12.environmental_warning');
             }
         }
 
         return [
-            'title'           => $this->t->get('section12.title'),
-            'ecotoxicity'     => $ecotoxicity,
-            'persistence'     => $overrides[12]['persistence'] ?? $this->t->get('section12.persistence'),
-            'bioaccumulation' => $overrides[12]['bioaccumulation'] ?? $this->t->get('section12.bioaccumulation'),
-            'note'            => $this->t->get('section12.note'),
+            'title'             => $this->t->get('section12.title'),
+            'ecotoxicity'       => $ecotoxicity,
+            'component_aquatic' => $componentAquatic,
+            'persistence'       => $overrides[12]['persistence'] ?? $this->t->get('section12.persistence'),
+            'bioaccumulation'   => $overrides[12]['bioaccumulation'] ?? $this->t->get('section12.bioaccumulation'),
+            // The shared Sections 12-15 footnote is emitted once, on section15().
         ];
+    }
+
+    /**
+     * Render a canonical aquatic category ('Cat 1' … 'Cat 4') for Section 12
+     * in the SDS language, appending the M-factor for Category 1 only
+     * (GHS Rev. 7 4.1.3.5.5.5 — M-factors apply to Category 1 substances).
+     * Returns '' when the component has no classification on that route.
+     */
+    private function formatAquaticCategory(?string $canonical, $mFactor, string $lang): string
+    {
+        $canonical = trim((string) $canonical);
+        if ($canonical === '') {
+            return '';
+        }
+        $display = preg_replace('/^Cat\s+/i', 'Category ', $canonical);
+        $text = GHSStatements::categoryName($display, $lang);
+        if (strcasecmp($canonical, 'Cat 1') === 0 && $mFactor !== null) {
+            $m = rtrim(rtrim(number_format((float) $mFactor, 2, '.', ''), '0'), '.');
+            $text .= ' (M = ' . $m . ')';
+        }
+        return $text;
     }
 
     private function section13(array $hazardResult, array $calcResult, array $overrides): array
@@ -1300,7 +1958,7 @@ class SDSGenerator
         return [
             'title'   => $this->t->get('section13.title'),
             'methods' => $methods,
-            'note'    => $this->t->get('section13.note'),
+            // The shared Sections 12-15 footnote is emitted once, on section15().
         ];
     }
 
@@ -1316,6 +1974,7 @@ class SDSGenerator
             'hazard_class'        => $dotInfo['hazard_class'] ?? $overrides[14]['hazard_class'] ?? $notRegulated,
             'packing_group'       => $dotInfo['packing_group'] ?? $overrides[14]['packing_group'] ?? $notApplicable,
             'note'                => $this->t->get('section14.note'),
+            // The shared Sections 12-15 footnote is emitted once, on section15().
         ];
     }
 
@@ -1339,17 +1998,24 @@ class SDSGenerator
             'hap'            => $hapResult,
             'snur'           => $snurResult,
             'state_regs'     => $stateRegs,
-            'note'           => $this->t->get('section15.note'),
+            'ghs_note'       => $this->ghsSectionNote(),
         ];
     }
 
     private function section16(array $calcResult, array $overrides): array
     {
+        // 'version' / 'effective_date' start as the draft placeholders. Every
+        // publisher replaces them through stampPublishedVersion() right before
+        // rendering, with the same version number and effective date it writes
+        // to sds_versions / private_label_sds (29 CFR 1910.1200 App. D §16:
+        // date of preparation or last revision). Nothing else about the
+        // revision is printed: no generation timestamp, change summary or
+        // formula version.
         return [
             'title'          => $this->t->get('section16.title'),
-            'revision_date'  => date('m/d/Y'),
-            'revision_note'  => $overrides[16]['revision_note'] ?? '',
-            'abbreviations'  => $this->t->get('section16.abbreviations'),
+            'version'        => $this->t->get('section16.draft'),
+            'effective_date' => '',
+            'abbreviations'  => '', // filled by AbbreviationService::build() once every section exists (audit #33)
             'voc_assumptions' => $calcResult['voc']['assumptions'] ?? [],
         ];
     }
@@ -1370,28 +2036,84 @@ class SDSGenerator
 
         $db = Database::getInstance();
         $rows = $db->fetchAll(
-            "SELECT `key`, `value` FROM settings WHERE `key` LIKE 'company.%' OR `key` = 'sds.legal_disclaimer'"
+            "SELECT `key`, `value` FROM settings WHERE `key` LIKE 'company.%' OR `key` LIKE 'sds.legal_disclaimer.%'"
         );
 
-        $settings = [];
+        // legal_disclaimers: language => text (admin setting sds.legal_disclaimer.<lang>).
+        // The legacy single key sds.legal_disclaimer is no longer read; migration 052
+        // copied it into sds.legal_disclaimer.en. See resolveLegalDisclaimer().
+        $settings = ['legal_disclaimers' => []];
         foreach ($rows as $row) {
+            if (str_starts_with($row['key'], 'sds.legal_disclaimer.')) {
+                $settings['legal_disclaimers'][substr($row['key'], 21)] = (string) $row['value'];
+                continue;
+            }
             // Strip the 'company.' prefix for company keys
-            $shortKey = str_starts_with($row['key'], 'company.')
-                ? substr($row['key'], 8)
-                : ($row['key'] === 'sds.legal_disclaimer' ? 'legal_disclaimer' : $row['key']);
-            $settings[$shortKey] = $row['value'];
+            $settings[substr($row['key'], 8)] = $row['value'];
         }
 
-        // Fall back to static config for any missing values
+        // The settings table is the source of truth for the supplier block.
+        // config.php is consulted only for a key the table has never stored
+        // (fresh install); a value the admin saved as blank is authoritative,
+        // so a cleared website/email is not replaced by a config placeholder.
+        // The emergency phone is the exception (audit #2): the publish gate
+        // (SDSReadinessService::companyEmergencyPhoneErrorFromDb) accepts
+        // only a number saved in Admin > Settings, never the config.php
+        // placeholder, so the sheet must not print the placeholder either —
+        // otherwise a fresh-install preview shows a number while every
+        // publish path reports it as missing.
         $configCompany = App::config('company', []);
         foreach ($configCompany as $k => $v) {
-            if (!isset($settings[$k]) || $settings[$k] === '') {
-                $settings[$k] = $v;
+            if ($k === 'emergency_phone') {
+                continue;
+            }
+            if (!array_key_exists($k, $settings)) {
+                $settings[$k] = (string) $v;
             }
         }
 
         self::$companySettingsCache = $settings;
         return $settings;
+    }
+
+    /**
+     * Legal disclaimer for one language (audit #34):
+     *   admin setting sds.legal_disclaimer.<lang>  →  translation file section16.disclaimer.
+     * Private-label manufacturer text is layered on top in createManufacturerVariant().
+     */
+    private function resolveLegalDisclaimer(array $company, string $language): string
+    {
+        $text = trim((string) ($company['legal_disclaimers'][$language] ?? ''));
+        if ($text !== '') {
+            return $text;
+        }
+        return $this->t->get('section16.disclaimer');
+    }
+
+    /** @var bool|null Cached 'sds.show_ghs_section_note' setting (audit item #25). */
+    private static ?bool $showGhsSectionNote = null;
+
+    /**
+     * Shared Sections 12-15 footnote (audit item #25).
+     *
+     * 29 CFR 1910.1200(g)(2) requires the Section 12-15 headings; OSHA does
+     * not enforce their content (EPA/DOT jurisdiction). One sentence, one
+     * translation key ('document.ghs_section_note'), one admin toggle.
+     * Returns '' when settings.sds.show_ghs_section_note is '0'; a missing
+     * row means ON. Renderers print it footnote-style and skip it when ''.
+     * The sentence speaks about Sections 12-15 collectively, so only
+     * section15() carries 'ghs_note': it prints once, after Section 15.
+     */
+    private function ghsSectionNote(): string
+    {
+        if (self::$showGhsSectionNote === null) {
+            $row = Database::getInstance()->fetch(
+                "SELECT `value` FROM settings WHERE `key` = 'sds.show_ghs_section_note'"
+            );
+            self::$showGhsSectionNote = !($row && (string) $row['value'] === '0');
+        }
+
+        return self::$showGhsSectionNote ? $this->t->get('document.ghs_section_note') : '';
     }
 
     private function getOverrides(int $fgId, string $language): array
@@ -1431,21 +2153,43 @@ class SDSGenerator
     }
 
     /**
-     * Format concentration for Section 3 display.
-     * Uses actual min/max range when available from the supplier SDS,
-     * otherwise falls back to GHS-standard banding.
-     */
-    /**
-     * Prescribed concentration ranges for Section 3 disclosure.
-     * Each line displays the WIDEST prescribed range that fully contains
-     * its actual concentration (or min–max range), protecting exact
-     * formula percentages while staying truthful.
+     * SDS content policy — concentration disclosure (audit item #8).
+     * Fixed by code, not by settings. Keep this comment and
+     * docs/operations.md ("SDS content policy") in step.
+     *
+     * 1. Disclosure cut-off: 0.1 % w/w of the finished good. A constituent
+     *    is listed in Section 3 (and its OELs in Sections 8 and 11) only at
+     *    >= 0.1 % (section3()/section11(): `$conc < 0.1`), and only if it is
+     *    classified as hazardous or has an occupational exposure limit on
+     *    file (29 CFR 1910.1200 Appendix D, Section 3(c)). 0.1 % is the
+     *    lowest ingredient cut-off in Appendix A, so nothing that can drive
+     *    a classification is hidden. Rows below the cut-off that still
+     *    reach Section 8 (OEL at 0.01–0.1 %) print "<0.1%".
+     *
+     * 2. Prescribed-range bands: exact percentages are never printed. Every
+     *    Section 3 row, the Section 8 Conc% column, the Section 11
+     *    carcinogenicity line and component block, and the Section 12
+     *    component aquatic table (all of which reuse the Section 3 band for
+     *    the same CAS via section8()/section11()/section12()) show the WIDEST
+     *    range below that fully contains the actual concentration or the
+     *    supplier min–max range; if no single range contains it, the widest
+     *    range containing the midpoint. The table is the set of prescribed
+     *    concentration ranges in 29 CFR 1910.1200(i)(1) as amended by the
+     *    May 2024 HazCom final rule (89 FR 44144), identical to Canada's
+     *    HPR s. 5.7(1). Section 15 SARA 313 / HAP weight percentages stay
+     *    exact on purpose (40 CFR 372.45(b)(2) requires percent by weight).
      */
     private const PRESCRIBED_RANGES = [
         [0.1, 1], [0.5, 1.5], [1, 5], [3, 7], [5, 10], [7, 13],
         [10, 30], [15, 40], [30, 60], [45, 70], [60, 80], [65, 85], [80, 100],
     ];
 
+    /**
+     * Format a concentration for Section 3 and Section 8 display.
+     * Uses the supplier min/max range when available, otherwise the exact
+     * value, and maps it onto PRESCRIBED_RANGES per the policy above.
+     * Returns e.g. "10 - 30%" or "<0.1%".
+     */
     private function formatConcentration(array $component): string
     {
         $min = $component['concentration_min'] ?? null;
@@ -1501,7 +2245,7 @@ class SDSGenerator
         $keys = [
             // Section 1
             'product_identifier', 'product_family', 'recommended_use', 'restrictions',
-            'manufacturer_info', 'company', 'address', 'phone', 'emergency',
+            'manufacturer_info', 'company', 'address', 'phone', 'emergency', 'email', 'website',
             // Section 2
             'pictograms', 'ghs_classification',
             'physical_hazards', 'health_hazards', 'environmental_hazards',
@@ -1512,7 +2256,7 @@ class SDSGenerator
             'type', 'cas_number', 'chemical_name', 'concentration',
             'hazardous_only_note', 'no_hazardous_note', 'mixture',
             // Section 4
-            'inhalation', 'skin_contact', 'eye_contact', 'ingestion', 'notes_to_physician',
+            'inhalation', 'skin_contact', 'eye_contact', 'ingestion', 'symptoms_effects', 'notes_to_physician',
             // Section 5
             'suitable_media', 'unsuitable_media', 'specific_hazards', 'firefighter_advice',
             // Section 6
@@ -1536,16 +2280,18 @@ class SDSGenerator
             'component_tox_data', 'health_hazard',
             // Section 12
             'ecotoxicity', 'persistence', 'bioaccumulation',
+            'component_ecotox_data', 'aquatic_acute', 'aquatic_chronic', 'm_factor',
             // Section 13
             'disposal_methods',
             // Section 14
             'un_number', 'proper_shipping_name', 'transport_hazard_class', 'packing_group',
             // Section 15
             'osha_status', 'tsca_status', 'sara_313_title',
+            'sara_313_statement', 'sara_313_none', 'sara_313_threshold', 'sara_313_pbt',
             'hap_title', 'hap_triggering', 'hap_wt_pct', 'hap_total', 'hap_none',
             'prop65_title', 'prop65_none', 'snur_title', 'state_regulations',
             // Section 16
-            'revision_date', 'abbreviations', 'disclaimer',
+            'version', 'effective_date', 'revision_note', 'abbreviations', 'disclaimer',
             // Generic
             'not_determined', 'not_regulated', 'not_applicable', 'note',
             // PPE pictogram labels
@@ -1743,16 +2489,9 @@ class SDSGenerator
                     $hazardResult['signal_word'] = 'Warning';
                 }
 
-                $carcinPCodes = ['P201', 'P202', 'P281', 'P308+P313', 'P405', 'P501'];
-                $existingPCodes = array_map(fn($s) => $s['code'] ?? '', $hazardResult['p_statements']);
-                foreach ($carcinPCodes as $pCode) {
-                    if (!in_array($pCode, $existingPCodes)) {
-                        $hazardResult['p_statements'][] = [
-                            'code' => $pCode,
-                            'text' => GHSStatements::pText($pCode),
-                        ];
-                    }
-                }
+                // Class-default P-codes for Carcinogenicity Cat 2 (GHS Rev. 7
+                // Annex 3): P201, P202, P280, P308+P313, P405, P501.
+                $this->appendClassDefaultPStatements($hazardResult, 'Carcinogenicity - Category 2');
             }
         } else {
             // Remove Carcinogen Cat 2 for these CAS numbers if added by HazardEngine
@@ -1912,28 +2651,9 @@ class SDSGenerator
             fn($f) => !isset($suppressedSet[$f['cas_number']])
         ));
 
-        // Remove suppressed CAS from component_texts
-        foreach ($suppressedCas as $cas) {
-            unset($carcinogenResult['component_texts'][$cas]);
-        }
-
-        // Recalculate has_carcinogens and summary_text
-        $carcinogenResult['has_carcinogens'] = !empty($carcinogenResult['findings']);
-        if ($carcinogenResult['has_carcinogens']) {
-            $lines = [];
-            foreach ($carcinogenResult['findings'] as $f) {
-                $parts = [];
-                foreach ($f['agencies'] as $a) {
-                    $parts[] = $a['agency'] . ' ' . $a['classification'];
-                }
-                $lines[] = $f['chemical_name'] . ' (CAS ' . $f['cas_number'] . ', '
-                         . round($f['concentration_pct'], 2) . '%): '
-                         . implode('; ', $parts);
-            }
-            $carcinogenResult['summary_text'] = "The following component(s) are listed as carcinogens:\n" . implode("\n", $lines);
-        } else {
-            $carcinogenResult['summary_text'] = 'No components of this product are listed as carcinogens by IARC, NTP, or OSHA.';
-        }
+        // Recalculate has_carcinogens, summary_text and component_texts
+        // from the filtered findings (single builder in CarcinogenService).
+        CarcinogenService::resummarise($carcinogenResult);
 
         // --- Filter exposure limits from hazard result ---
         $hazardResult['exposure_limits'] = array_values(array_filter(
@@ -1995,27 +2715,7 @@ class SDSGenerator
             $carcinogenResult['findings'] ?? [],
             fn($f) => !isset($casSet[$f['cas_number'] ?? ''])
         ));
-        foreach (array_keys($casSet) as $cas) {
-            unset($carcinogenResult['component_texts'][$cas]);
-        }
-        $carcinogenResult['has_carcinogens'] = !empty($carcinogenResult['findings']);
-        if ($carcinogenResult['has_carcinogens']) {
-            $lines = [];
-            foreach ($carcinogenResult['findings'] as $f) {
-                $parts = [];
-                foreach ($f['agencies'] ?? [] as $a) {
-                    $parts[] = ($a['agency'] ?? '') . ' ' . ($a['classification'] ?? '');
-                }
-                $lines[] = ($f['chemical_name'] ?? '') . ' (CAS ' . ($f['cas_number'] ?? '') . ', '
-                         . round((float) ($f['concentration_pct'] ?? 0), 2) . '%): '
-                         . implode('; ', $parts);
-            }
-            $carcinogenResult['summary_text'] = "The following component(s) are listed as carcinogens:\n"
-                . implode("\n", $lines);
-        } else {
-            $carcinogenResult['summary_text'] =
-                'No components of this product are listed as carcinogens by IARC, NTP, or OSHA.';
-        }
+        CarcinogenService::resummarise($carcinogenResult);
     }
 
     /**
@@ -2068,6 +2768,37 @@ class SDSGenerator
     }
 
     /**
+     * Append the default P-statements for a GHSHazardData classification key
+     * (e.g. 'Carcinogenicity - Category 2') to $hazardResult['p_statements'],
+     * skipping any code already present. Keeps GHSHazardData as the single
+     * source of truth for class-default P-codes (GHS Rev. 7 Annex 3 /
+     * OSHA 2024 HazCom Appendix C) instead of hardcoded lists here.
+     */
+    private function appendClassDefaultPStatements(array &$hazardResult, string $classificationKey): void
+    {
+        $pCodes = GHSHazardData::HAZARD_CLASSIFICATIONS[$classificationKey]['p_codes'] ?? [];
+        if (empty($pCodes)) {
+            return;
+        }
+
+        $existing = [];
+        foreach ($hazardResult['p_statements'] ?? [] as $s) {
+            $existing[(string) ($s['code'] ?? '')] = true;
+        }
+
+        foreach ($pCodes as $pCode) {
+            if (isset($existing[$pCode])) {
+                continue;
+            }
+            $hazardResult['p_statements'][] = [
+                'code' => $pCode,
+                'text' => GHSStatements::pText($pCode),
+            ];
+            $existing[$pCode] = true;
+        }
+    }
+
+    /**
      * Merge carcinogen registry findings (IARC/NTP/OSHA) into the hazard result.
      *
      * When HazardEngine finds no GHS hazard data for a CAS number but
@@ -2098,15 +2829,14 @@ class SDSGenerator
         $existingCas['1333-86-4'] = true;
 
         $existingHCodes = array_map(fn($s) => $s['code'] ?? '', $hazardResult['h_statements']);
-        $existingPCodes = array_map(fn($s) => $s['code'] ?? '', $hazardResult['p_statements']);
 
         foreach ($carcinogenResult['findings'] as $finding) {
             $cas  = $finding['cas_number'];
             $conc = (float) ($finding['concentration_pct'] ?? 0);
             $name = $finding['chemical_name'] ?? '';
 
-            // Skip if below GHS carcinogenicity cutoff (0.1%)
-            if ($conc < 0.1) {
+            // Skip if below the GHS/HazCom carcinogenicity cutoff (0.1%)
+            if ($conc < CarcinogenService::LISTING_THRESHOLD_PCT) {
                 continue;
             }
 
@@ -2171,7 +2901,7 @@ class SDSGenerator
                 'cas'               => $cas,
                 'chemical'          => $name,
                 'concentration_pct' => $conc,
-                'cutoff_pct'        => 0.1,
+                'cutoff_pct'        => CarcinogenService::LISTING_THRESHOLD_PCT,
                 'source'            => 'Carcinogen registry',
             ];
 
@@ -2201,17 +2931,13 @@ class SDSGenerator
                 $hazardResult['hazardous_cas'][] = $cas;
             }
 
-            // Add carcinogenicity P-statements if not present
-            $carcinPCodes = ['P201', 'P202', 'P281', 'P308+P313', 'P405', 'P501'];
-            foreach ($carcinPCodes as $pCode) {
-                if (!in_array($pCode, $existingPCodes)) {
-                    $hazardResult['p_statements'][] = [
-                        'code' => $pCode,
-                        'text' => GHSStatements::pText($pCode),
-                    ];
-                    $existingPCodes[] = $pCode;
-                }
-            }
+            // Add the class-default P-statements for the derived category
+            // (GHS Rev. 7 Annex 3: P201, P202, P280, P308+P313, P405, P501).
+            // $category is 'Cat 1A' | 'Cat 1B' | 'Cat 2' -> GHSHazardData key.
+            $this->appendClassDefaultPStatements(
+                $hazardResult,
+                'Carcinogenicity - ' . str_replace('Cat ', 'Category ', $category)
+            );
         }
 
         // Re-derive PPE if we added hazard data

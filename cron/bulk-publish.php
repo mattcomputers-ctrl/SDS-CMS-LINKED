@@ -73,6 +73,13 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
 
     echo "\n[" . date('Y-m-d H:i:s') . "] Bulk SDS Publish starting (job #{$jobId})...\n";
 
+    // Audit #2 — every standard SDS prints the company emergency phone.
+    // Refuse the whole job (the caller marks it failed with this message).
+    $phoneError = \SDS\Services\SDSReadinessService::companyEmergencyPhoneErrorFromDb($db);
+    if ($phoneError !== null) {
+        throw new \RuntimeException($phoneError);
+    }
+
     // ── Eligibility ──────────────────────────────────────────────
     $eligibility       = BulkPublishController::computeEligibleFinishedGoods($db);
     $resaleEligibility = BulkPublishController::computeEligibleResaleItems($db);

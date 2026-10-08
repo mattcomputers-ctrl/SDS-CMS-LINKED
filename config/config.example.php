@@ -51,7 +51,6 @@ return [
         'zip'     => '44000',
         'country' => 'US',
         'phone'   => '(555) 123-4567',
-        'fax'     => '(555) 123-4568',
         'email'   => 'sds@yourinkcompany.com',
         'emergency_phone' => 'CHEMTREC: (800) 424-9300',
         'website' => 'https://www.yourinkcompany.com',

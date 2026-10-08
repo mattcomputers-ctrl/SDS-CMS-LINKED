@@ -18,7 +18,7 @@ class SDSTcpdf extends \TCPDF
     /** @var string Product code shown in the footer. */
     protected string $footerProductCode = '';
 
-    /** @var string Revision date shown in the footer. */
+    /** @var string Version / effective date text shown in the footer (prefix included). */
     protected string $footerRevisionDate = '';
 
     /** @var array Translated document-level strings. */
@@ -97,7 +97,7 @@ class SDSTcpdf extends \TCPDF
     }
 
     /**
-     * Footer — every page: product code (left), page number (center), revision date (right).
+     * Footer — every page: product code (left), page number (center), version / effective date (right).
      */
     public function Footer(): void // @phpcs:ignore
     {
@@ -131,8 +131,8 @@ class SDSTcpdf extends \TCPDF
                  . $this->getAliasNbPages();
         $this->Cell($cellWidth, 5, $pageTxt, 0, 0, 'C');
 
-        // Revision date — right (translated prefix)
-        $revPrefix = $this->documentStrings['revision_prefix'] ?? 'Rev.';
-        $this->Cell($cellWidth, 5, $revPrefix . ' ' . $this->footerRevisionDate, 0, 0, 'R');
+        // Version / effective date — right. PDFService::footerRevision() composes
+        // the whole text (prefix included) so a draft prints without "Rev.".
+        $this->Cell($cellWidth, 5, $this->footerRevisionDate, 0, 0, 'R');
     }
 }

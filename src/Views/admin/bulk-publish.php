@@ -15,6 +15,13 @@
 <?php $totalAliases  = (int) ($aliasCount ?? 0) + (int) ($resaleAliasCount ?? 0); ?>
 <?php $totalPlItems  = (int) ($plItemCount ?? 0); ?>
 
+<?php if (!empty($companyPhoneError)): ?>
+<div class="alert alert-danger" style="max-width: 700px;">
+    <strong>Bulk publish will fail:</strong> <?= e($companyPhoneError) ?>
+    <a href="/admin/settings">Open Admin Settings &rarr;</a>
+</div>
+<?php endif; ?>
+
 <div class="card" style="max-width: 700px;">
     <h2>Publish Summary</h2>
     <table class="table table-sm" style="max-width: 500px;">

@@ -34,7 +34,32 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
     <div class="sds-section" id="section-<?= $num ?>">
         <h3 class="sds-section-title"><?= e($sectionPrefix) ?> <?= $num ?>: <?= e(strtoupper($section['title'] ?? '')) ?></h3>
 
-        <?php if ($num === 2): // ── Hazard Identification ── ?>
+        <?php if ($num === 1): // ── Identification — same field set/order as PDFService::renderSection1() ── ?>
+            <?php
+                $s1Product = [
+                    'product_identifier' => $l('product_identifier'),
+                    'product_family'     => $l('product_family'),
+                    'recommended_use'    => $l('recommended_use'),
+                    'restrictions'       => $l('restrictions'),
+                ];
+                $s1Supplier = [
+                    'manufacturer_name'    => $l('company'),
+                    'manufacturer_address' => $l('address'),
+                    'manufacturer_phone'   => $l('phone'),
+                    'manufacturer_email'   => $l('email', 'Email'),       // English default for pre-existing snapshots
+                    'manufacturer_website' => $l('website', 'Website'),
+                    'emergency_phone'      => $l('emergency'),
+                ];
+            ?>
+            <?php foreach ($s1Product as $k => $lbl): if (is_string($section[$k] ?? null) && $section[$k] !== ''): ?>
+                <p><strong><?= e($lbl) ?>:</strong> <?= e($section[$k]) ?></p>
+            <?php endif; endforeach; ?>
+            <p style="margin-top: 0.6rem; margin-bottom: 0.2rem;"><strong><?= e($l('manufacturer_info')) ?></strong></p>
+            <?php foreach ($s1Supplier as $k => $lbl): if (is_string($section[$k] ?? null) && $section[$k] !== ''): ?>
+                <p style="margin-left: 1rem; margin-bottom: 0.1rem;"><strong><?= e($lbl) ?>:</strong> <?= e($section[$k]) ?></p>
+            <?php endif; endforeach; ?>
+
+        <?php elseif ($num === 2): // ── Hazard Identification ── ?>
             <?php if (empty($section['is_classified'])): ?>
                 <p style="margin: 0.5rem 0;"><?= e($section['not_classified_text'] ?? 'Not a hazardous substance or mixture.') ?></p>
             <?php endif; ?>
@@ -196,13 +221,16 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                 </div>
             <?php endif; ?>
 
-            <?php if (!empty($section['has_other_hazards'])): ?>
-                <p><strong><?= e($l('other_hazards')) ?>:</strong> <?= e($section['other_hazards']) ?></p>
+            <?php // Other hazards (App. D 2(c)) — always shown; override or translated default. ?>
+            <?php $otherHazards = trim((string) ($section['other_hazards'] ?? '')); ?>
+            <?php if ($otherHazards !== ''): ?>
+                <p><strong><?= e($l('other_hazards')) ?>:</strong> <?= e($otherHazards) ?></p>
             <?php endif; ?>
 
         <?php elseif ($num === 3): // ── Composition ── ?>
             <p><strong><?= e($l('type')) ?>:</strong> <?= e($section['substance_or_mixture'] ?? $l('mixture')) ?></p>
             <?php if (!empty($section['components'])): ?>
+            <p class="text-muted" style="font-size: 0.85rem; font-style: italic; margin: 0.25rem 0;"><?= e($l('hazardous_only_note')) ?></p>
             <table class="table table-sm">
                 <thead><tr>
                     <th><?= e($l('cas_number')) ?></th>
@@ -221,9 +249,15 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                 <?php endforeach; ?>
                 </tbody>
             </table>
+            <?php else: ?>
+            <p class="text-muted" style="font-size: 0.85rem; font-style: italic; margin: 0.25rem 0;"><?= e($l('no_hazardous_note')) ?></p>
+            <?php endif; ?>
+            <?php if (!empty($section['trade_secret_note'])): ?>
+            <p class="text-muted" style="font-size: 0.85rem; font-style: italic; margin: 0.25rem 0;"><?= e($section['trade_secret_note']) ?></p>
             <?php endif; ?>
 
-        <?php elseif ($num === 8 && !empty($section['exposure_limits'])): // ── Exposure Controls ── ?>
+        <?php elseif ($num === 8): // ── Exposure Controls — same columns/labels as PDFService::renderSection8() ── ?>
+            <?php if (!empty($section['exposure_limits'])): ?>
             <table class="table table-sm">
                 <thead><tr>
                     <th><?= e($l('el_cas')) ?></th>
@@ -231,21 +265,25 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                     <th><?= e($l('el_type')) ?></th>
                     <th><?= e($l('el_value')) ?></th>
                     <th><?= e($l('el_units')) ?></th>
+                    <th><?= e($l('el_conc_pct')) ?></th>
                     <th><?= e($l('el_notes')) ?></th>
                 </tr></thead>
                 <tbody>
                 <?php foreach ($section['exposure_limits'] as $el): ?>
                     <tr>
-                        <td><?= e($el['cas_number']) ?></td>
-                        <td><?= e($el['chemical_name']) ?></td>
-                        <td><?= e($el['limit_type']) ?></td>
-                        <td><?= e($el['value']) ?></td>
-                        <td><?= e($el['units']) ?></td>
+                        <td><?= e($el['cas_number'] ?? '') ?></td>
+                        <td><?= e($el['chemical_name'] ?? '') ?></td>
+                        <td><?= e($el['limit_type'] ?? '') ?></td>
+                        <td><?= e($el['value'] ?? '') ?></td>
+                        <td><?= e($el['units'] ?? '') ?></td>
+                        <?php // Prescribed-range band from SDSGenerator::section8() (audit #8); never the exact %. ?>
+                        <td><?= e($el['concentration_range'] ?? '') ?></td>
                         <td><?= e($el['notes'] ?? '') ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
             </table>
+            <?php endif; ?>
             <?php
                 // Field-key-to-label mapping for section 8 remaining fields
                 $sec8LabelMap = [
@@ -303,7 +341,7 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                 <?php foreach ($section['component_toxicology'] as $comp): ?>
                     <div style="margin: 0.5rem 0; padding: 0.5rem; background: #f8f8f8; border-left: 3px solid #003366;">
                         <strong><?= e($comp['chemical_name']) ?></strong>
-                        (CAS <?= e($comp['cas_number']) ?>) &mdash; <?= number_format((float) $comp['concentration_pct'], 2) ?>%
+                        (CAS <?= e($comp['cas_number']) ?>)<?php if (($comp['concentration_range'] ?? '') !== ''): ?> &mdash; <?= e($comp['concentration_range']) ?><?php endif; /* prescribed-range band only, never the exact % */ ?>
 
                         <?php if (!empty($comp['carcinogen_listings'])): ?>
                             <div style="margin-top: 0.3rem;">
@@ -311,6 +349,9 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                                     <span class="badge badge-warning" style="background: #d9534f; color: #fff; padding: 2px 6px; border-radius: 3px; margin-right: 4px;">
                                         <?= e($listing['agency']) ?>: <?= e($listing['classification']) ?>
                                     </span>
+                                    <?php if (!empty($listing['description'])): ?>
+                                        <span style="font-size: 0.85rem; margin-right: 8px;"><?= e($listing['description']) ?></span>
+                                    <?php endif; ?>
                                 <?php endforeach; ?>
                             </div>
                         <?php endif; ?>
@@ -341,13 +382,44 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
 
             <?php /* Pictograms are intentionally NOT shown in Section 11; they appear in Section 2 only. */ ?>
 
+        <?php elseif ($num === 12): // ── Ecological Information (item #23) ── ?>
+            <p><strong><?= e($l('ecotoxicity')) ?>:</strong> <?= e($section['ecotoxicity'] ?? '') ?></p>
+
+            <?php if (!empty($section['component_aquatic']) && is_array($section['component_aquatic'])): ?>
+                <h4 style="margin-top: 1rem;"><?= e($l('component_ecotox_data')) ?></h4>
+                <table class="table table-sm" style="font-size: 0.85rem;">
+                    <thead><tr>
+                        <th><?= e($l('chemical_name')) ?></th>
+                        <th><?= e($l('cas_number')) ?></th>
+                        <th><?= e($l('el_conc_pct')) ?></th>
+                        <th><?= e($l('aquatic_acute')) ?></th>
+                        <th><?= e($l('aquatic_chronic')) ?></th>
+                    </tr></thead>
+                    <tbody>
+                    <?php foreach ($section['component_aquatic'] as $row): ?>
+                        <tr>
+                            <td><?= e($row['chemical_name'] ?? '') ?></td>
+                            <td><?= e($row['cas_number'] ?? '') ?></td>
+                            <td><?= e($row['concentration_range'] ?? '') ?></td><?php /* prescribed-range band only */ ?>
+                            <td><?= ($row['acute'] ?? '') !== '' ? e($row['acute']) : '&mdash;' ?></td>
+                            <td><?= ($row['chronic'] ?? '') !== '' ? e($row['chronic']) : '&mdash;' ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
+
+            <p><strong><?= e($l('persistence')) ?>:</strong> <?= e($section['persistence'] ?? '') ?></p>
+            <p><strong><?= e($l('bioaccumulation')) ?>:</strong> <?= e($section['bioaccumulation'] ?? '') ?></p>
+            <?php /* ghs_note (item #25) is printed by the shared footnote after this if/elseif chain. */ ?>
+
         <?php elseif ($num === 14): // ── Transport Information ── ?>
             <p><strong><?= e($l('un_number')) ?>:</strong> <?= e($section['un_number'] ?? '') ?></p>
             <p><strong><?= e($l('proper_shipping_name')) ?>:</strong> <?= e($section['proper_shipping_name'] ?? '') ?></p>
             <p><strong><?= e($l('transport_hazard_class')) ?>:</strong> <?= e($section['hazard_class'] ?? '') ?></p>
             <p><strong><?= e($l('packing_group')) ?>:</strong> <?= e($section['packing_group'] ?? '') ?></p>
             <?php if (!empty($section['note'])): ?>
-                <p class="text-muted"><em><?= e($section['note']) ?></em></p>
+                <p><strong><?= e($l('note')) ?>:</strong> <?= e($section['note']) ?></p>
             <?php endif; ?>
 
         <?php elseif ($num === 15): // ── Regulatory Information ── ?>
@@ -355,17 +427,29 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
             <p><strong><?= e($l('tsca_status')) ?>:</strong> <?= e($section['tsca_status'] ?? '') ?></p>
 
             <?php
+                // SARA 313 / TRI supplier notification (40 CFR 372.45): SARA313Service emits
+                // 'reportable' / 'threshold_pct' / 'is_pbt' / 'sara_name'. Always print the
+                // heading; list reportable entries or the translated "none" sentence.
                 $sara = $section['sara_313'] ?? [];
-                if (!empty($sara['listed_chemicals'] ?? [])):
+                if (isset($sara['reportable']) && is_array($sara['reportable'])):
             ?>
                 <h4><?= e($l('sara_313_title')) ?></h4>
+                <?php if (!empty($sara['reportable'])): ?>
+                <p><?= e($l('sara_313_statement', 'This product contains the following toxic chemical(s) subject to the reporting requirements of Section 313 of Title III of the Superfund Amendments and Reauthorization Act of 1986 (SARA) and 40 CFR Part 372 (supplier notification per 40 CFR 372.45):')) ?></p>
                 <ul>
-                <?php foreach ($sara['listed_chemicals'] as $chem): ?>
-                    <li><?= e($chem['chemical_name']) ?> (CAS <?= e($chem['cas_number']) ?>) &mdash;
+                <?php foreach ($sara['reportable'] as $chem): ?>
+                    <?php
+                        $saraName      = (string) ((($chem['sara_name'] ?? '') !== '') ? $chem['sara_name'] : ($chem['chemical_name'] ?? ''));
+                        $saraThreshold = rtrim(rtrim(number_format((float) ($chem['threshold_pct'] ?? 1.0), 4), '0'), '.');
+                    ?>
+                    <li><?= e($saraName) ?> (CAS <?= e($chem['cas_number'] ?? '') ?>) &mdash;
                         <?= number_format((float) ($chem['concentration_pct'] ?? 0), 2) ?>%
-                        (de minimis: <?= e($chem['deminimis_pct'] ?? '1.0') ?>%)</li>
+                        (<?= e($l('sara_313_threshold', 'de minimis threshold')) ?>: <?= e($saraThreshold) ?>%<?= !empty($chem['is_pbt']) ? '; ' . e($l('sara_313_pbt', 'PBT chemical')) : '' ?>)</li>
                 <?php endforeach; ?>
                 </ul>
+                <?php else: ?>
+                <p><?= e($l('sara_313_none', 'This product does not contain any toxic chemicals subject to the reporting requirements of SARA Title III Section 313 (40 CFR Part 372) at or above the applicable de minimis concentration.')) ?></p>
+                <?php endif; ?>
             <?php endif; ?>
 
             <?php
@@ -449,6 +533,7 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                     'skin'                 => 'skin_contact',
                     'eyes'                 => 'eye_contact',
                     'ingestion'            => 'ingestion',
+                    'symptoms'             => 'symptoms_effects',
                     'notes'                => 'notes_to_physician',
                     'suitable_media'       => 'suitable_media',
                     'unsuitable_media'     => 'unsuitable_media',
@@ -469,21 +554,27 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                     'bioaccumulation'      => 'bioaccumulation',
                     'methods'              => 'disposal_methods',
                     'note'                 => 'note',
+                    'version'              => 'version',
+                    'effective_date'       => 'effective_date',
                     'revision_date'        => 'revision_date',
+                    'revision_note'        => 'revision_note',
                     'abbreviations'        => 'abbreviations',
                     'disclaimer'           => 'disclaimer',
                 ];
             ?>
             <?php foreach ($section as $key => $val): ?>
-                <?php if ($key === 'title' || $key === 'hazard_classes' || $key === 'component_toxicology' || $key === 'carcinogen_result' || $key === 'prop65' || $key === 'sara_313' || $key === 'hap' || $key === 'has_other_hazards' || $key === 'uv_acrylate_note') continue; ?>
+                <?php if ($key === 'title' || $key === 'hazard_classes' || $key === 'component_toxicology' || $key === 'carcinogen_result' || $key === 'prop65' || $key === 'sara_313' || $key === 'hap' || $key === 'has_other_hazards' || $key === 'uv_acrylate_note' || $key === 'ghs_note') continue; ?>
                 <?php if (is_string($val) && $val !== ''): ?>
-                    <?php $fieldLabel = isset($genericLabelMap[$key]) ? $l($genericLabelMap[$key]) : ucwords(str_replace('_', ' ', $key)); ?>
+                    <?php $fieldLabel = isset($genericLabelMap[$key]) ? $l($genericLabelMap[$key], ucwords(str_replace('_', ' ', $key))) : ucwords(str_replace('_', ' ', $key)); ?>
                     <p><strong><?= e($fieldLabel) ?>:</strong> <?= e($val) ?></p>
                 <?php elseif (is_numeric($val)): ?>
-                    <?php $fieldLabel = isset($genericLabelMap[$key]) ? $l($genericLabelMap[$key]) : ucwords(str_replace('_', ' ', $key)); ?>
+                    <?php $fieldLabel = isset($genericLabelMap[$key]) ? $l($genericLabelMap[$key], ucwords(str_replace('_', ' ', $key))) : ucwords(str_replace('_', ' ', $key)); ?>
                     <p><strong><?= e($fieldLabel) ?>:</strong> <?= $val ?></p>
                 <?php endif; ?>
             <?php endforeach; ?>
+        <?php endif; ?>
+        <?php if (!empty($section['ghs_note'])): // shared Sections 12-15 footnote (item #25) ?>
+            <p class="sds-ghs-note text-muted" style="font-size: 0.75rem; font-style: italic; margin-top: 0.5rem;"><?= e($section['ghs_note']) ?></p>
         <?php endif; ?>
     </div>
     <?php endforeach; ?>

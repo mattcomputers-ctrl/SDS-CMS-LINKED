@@ -101,7 +101,7 @@ final class AbbreviationService
      * Everything PDFService / preview.php print for this sheet, joined by
      * newlines. Mirrors the renderers' skip rules so hidden payloads
      * (hazard_result trace, section 11 hazard_classes / carcinogen_result,
-     * UV notes, the Prop 65 warning when no warning is required, ...)
+     * the Section 8 UV note, the Prop 65 warning when no warning is required, ...)
      * never trigger a definition.
      */
     public static function collectCorpus(array $sds): string
@@ -152,7 +152,7 @@ final class AbbreviationService
 
                 case 11: // only these keys are rendered (hazard_classes /
                          // carcinogen_result are never printed)
-                    foreach (['acute_toxicity', 'chronic_effects', 'carcinogenicity'] as $k) {
+                    foreach (['acute_toxicity', 'chronic_effects', 'carcinogenicity', 'uv_acrylate_note'] as $k) { // uv_acrylate_note: audit #35
                         $parts[] = (string) ($section[$k] ?? '');
                     }
                     if (!empty($section['component_toxicology'])) {
@@ -199,7 +199,9 @@ final class AbbreviationService
 
                 default:
                     $copy = $section;
-                    unset($copy['uv_acrylate_note']); // skipped by both renderers (audit #35)
+                    if ((int) $num === 8) {
+                        unset($copy['uv_acrylate_note']); // Section 8 never prints it: the PPE advice is folded into the fields (audit #35)
+                    }
                     self::walk($copy, $parts);
             }
         }
@@ -240,6 +242,15 @@ final class AbbreviationService
         $saraBlock = isset($sara['reportable']) && is_array($sara['reportable']);
         $saraList  = $saraBlock && $sara['reportable'] !== [];
 
+        // labels.uv_acrylate_note prints wherever a section carries the note (audit #35).
+        $hasUvNote = false;
+        foreach ([4, 5, 6, 7, 11] as $n) {
+            if (is_array($sections[$n] ?? null) && trim((string) ($sections[$n]['uv_acrylate_note'] ?? '')) !== '') {
+                $hasUvNote = true;
+                break;
+            }
+        }
+
         return [
             'ghs_classification'   => !empty($s2['hazard_classes']),
             'physical_hazards'     => !empty($s2['hazard_classes']),
@@ -277,7 +288,7 @@ final class AbbreviationService
             'state_regulations'    => trim((string) ($s15['state_regs'] ?? '')) !== ''
                                       && trim((string) ($s15['state_regs'] ?? '')) !== trim((string) ($prop65['warning_text'] ?? '')),
             'revision_note'        => !empty($s16['revision_note']),
-            'uv_acrylate_note'     => false,
+            'uv_acrylate_note'     => $hasUvNote,
         ];
     }
 

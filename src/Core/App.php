@@ -234,6 +234,9 @@ class App
         $router->get('/determinations/create',       'AdminController@createDetermination');
         $router->post('/determinations',             'AdminController@storeDetermination');
         $router->post('/determinations/descriptions', 'AdminController@saveCasDescription');
+        // ── Audit #19: Section 10 element flags on cas_master (same page key; literal path must precede /determinations/{id}) ──
+        $router->post('/determinations/element-flags', 'AdminController@saveCasElementFlags');
+        $router->post('/determinations/tsca',         'AdminController@saveTscaOverride'); // audit #29 per-CAS TSCA override
         $router->get('/determinations/{id}/edit',    'AdminController@editDetermination');
         $router->post('/determinations/{id}',        'AdminController@updateDetermination');
 
@@ -260,6 +263,22 @@ class App
         $router->get('/haps/{id}/edit',    'AdminController@editHap');
         $router->post('/haps/{id}',        'AdminController@updateHap');
         $router->post('/haps/{id}/delete', 'AdminController@deleteHap');
+
+        // ── TSCA Inventory (permission-gated, audit #29) ────────────
+        $router->get('/tsca',                 'AdminController@tsca');
+        $router->get('/tsca/create',          'AdminController@createTsca');
+        $router->post('/tsca',                'AdminController@storeTsca');
+        $router->get('/tsca/{cas}/edit',      'AdminController@editTsca');
+        $router->post('/tsca/{cas}',          'AdminController@updateTsca');
+        $router->post('/tsca/{cas}/delete',   'AdminController@deleteTsca');
+
+        // ── EPA RCRA Waste Codes (permission-gated; audit #26, T3) ───
+        $router->get('/rcra',              'AdminController@rcra');
+        $router->get('/rcra/create',       'AdminController@createRcra');
+        $router->post('/rcra',             'AdminController@storeRcra');
+        $router->get('/rcra/{id}/edit',    'AdminController@editRcra');
+        $router->post('/rcra/{id}',        'AdminController@updateRcra');
+        $router->post('/rcra/{id}/delete', 'AdminController@deleteRcra');
 
         // ── Bulk SDS Publish (permission-gated) ─────────────────────
         $router->get('/bulk-publish',                           'BulkPublishController@page');
@@ -377,6 +396,19 @@ class App
             $r->post('/settings', 'AdminController@saveSettings');
             $r->post('/settings/bump-inhalation-cas', 'AdminController@bumpInhalationCas');
             $r->post('/settings/bump-all-sds', 'AdminController@bumpAllUnblockedSds');
+
+            // ── Product Families (SDS content audit #3, track T1) ────────
+            // Literal paths before {id} — the router takes the first regex match.
+            $r->get('/product-families',                              'AdminController@productFamilies');
+            $r->get('/product-families/create',                       'AdminController@createProductFamily');
+            $r->get('/product-families/recompute',                    'AdminController@recomputeProductFamilies');
+            $r->post('/product-families/recompute',                   'AdminController@applyProductFamilies');
+            $r->post('/product-families',                             'AdminController@storeProductFamily');
+            $r->get('/product-families/{id}/edit',                    'AdminController@editProductFamily');
+            $r->post('/product-families/{id}',                        'AdminController@updateProductFamily');
+            $r->post('/product-families/{id}/delete',                 'AdminController@deleteProductFamily');
+            $r->post('/product-families/{id}/rules',                  'AdminController@storeProductFamilyRule');
+            $r->post('/product-families/{id}/rules/{rule_id}/delete', 'AdminController@deleteProductFamilyRule');
 
             // Federal data
             $r->get('/federal-data',          'AdminController@federalData');

@@ -74,6 +74,29 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
             <div class="form-group full-width">
                 <small class="text-muted">Supplier, Product Description, and Supplier Product Code are automatically populated from CMS on each sync. Manual edits will be overwritten when CMS has matching data.</small>
             </div>
+            <div class="form-group full-width">
+                <label for="family_id">Product Family</label>
+                <?php
+                    $familyRows   = $families ?? [];
+                    $familyIdVal  = old('family_id', (($item['family_source'] ?? '') === 'manual') ? (string) ($item['family_id'] ?? '') : '');
+                    $familyName   = null;
+                    foreach ($familyRows as $f) {
+                        if ((int) $f['id'] === (int) ($item['family_id'] ?? 0)) {
+                            $familyName = $f['name'];
+                        }
+                    }
+                ?>
+                <select id="family_id" name="family_id">
+                    <option value="">Auto — resolve from Product Family rules</option>
+                    <?php foreach ($familyRows as $f): if (empty($f['is_active']) && $familyIdVal !== (string) $f['id']) continue; ?>
+                        <option value="<?= (int) $f['id'] ?>" <?= $familyIdVal === (string) $f['id'] ? 'selected' : '' ?>><?= e($f['name']) ?><?= !empty($f['is_uv']) ? ' (UV/LED)' : '' ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <small class="text-muted">
+                    <?php if ($mode === 'edit'): ?>Currently: <?= $familyName !== null ? e($familyName) . ' (' . e((string) ($item['family_source'] ?? '')) . ')' : 'unclassified' ?>.<?php endif; ?>
+                    Feeds Section 1 of this material's resale SDS and, by weight, the family of every product containing it. Changing it flags the affected SDSs for republish. Rules are managed under <a href="/admin/product-families">Settings &rarr; Product Families</a>.
+                </small>
+            </div>
         </div>
 
         <!-- Supplier SDS Upload -->
@@ -316,6 +339,24 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
                 </div>
             </div>
             <div class="form-group">
+                <label for="boiling_point_c">Initial Boiling Point (&deg;C)</label>
+                <input type="number" id="boiling_point_c" name="boiling_point_c" step="0.1"
+                       value="<?= e(old('boiling_point_c', $item['boiling_point_c'] ?? '')) ?>">
+                <small class="text-muted"><span id="boiling_point_f"></span>Lowest-boiling component. Leave blank when not known (pigments, resins); the SDS prints the lowest value among the formula's raw materials, or "Not determined".</small>
+            </div>
+            <script>
+            (function() {
+                var bp  = document.getElementById('boiling_point_c');
+                var out = document.getElementById('boiling_point_f');
+                function show() {
+                    var v = parseFloat(bp.value);
+                    out.textContent = isNaN(v) ? '' : '= ' + (v * 9 / 5 + 32).toFixed(1) + ' °F. ';
+                }
+                bp.addEventListener('input', show);
+                show();
+            })();
+            </script>
+            <div class="form-group">
                 <label for="physical_state">Physical State</label>
                 <select id="physical_state" name="physical_state">
                     <option value="">—</option>
@@ -328,7 +369,7 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
                 <label for="solubility">Solubility</label>
                 <select id="solubility" name="solubility">
                     <option value="">—</option>
-                    <?php foreach (['Insoluble in water', 'Partially soluble in water', 'Soluble in water'] as $sol): ?>
+                    <?php foreach (['Insoluble in water', 'Negligible solubility in water', 'Partially soluble in water', 'Soluble in water'] as $sol): // #18(d) ?>
                         <option value="<?= $sol ?>" <?= (old('solubility', $item['solubility'] ?? '') === $sol) ? 'selected' : '' ?>><?= $sol ?></option>
                     <?php endforeach; ?>
                 </select>
@@ -342,6 +383,15 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
                 <label for="odor">Odor</label>
                 <input type="text" id="odor" name="odor"
                        value="<?= e(old('odor', $item['odor'] ?? '')) ?>">
+            </div>
+            <div class="form-group">
+                <label for="substance_mixture">Substance / Mixture (SDS Section 3)</label>
+                <select id="substance_mixture" name="substance_mixture">
+                    <?php foreach (['auto' => 'Auto (treated as Mixture)', 'substance' => 'Substance', 'mixture' => 'Mixture'] as $smVal => $smLabel): ?>
+                        <option value="<?= e($smVal) ?>" <?= (old('substance_mixture', $item['substance_mixture'] ?? 'auto') === $smVal) ? 'selected' : '' ?>><?= e($smLabel) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <small class="text-muted">Mark Substance for a single-substance material. Used by this material's resale SDS and by any finished good whose formula is 100 % this material. Changing it bumps the material so affected SDSs republish.</small>
             </div>
             <div class="form-group full-width">
                 <label for="notes">Notes</label>

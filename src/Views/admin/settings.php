@@ -59,15 +59,19 @@
         <h2>SDS Configuration</h2>
         <div class="form-grid-2col">
             <div class="form-group">
-                <label>Default VOC Calc Mode</label>
-                <select name="sds__voc_calc_mode">
-                    <option value="method24_standard" <?= ($settings['sds.voc_calc_mode'] ?? '') === 'method24_standard' ? 'selected' : '' ?>>Method 24 Standard</option>
-                    <option value="method24_less_water_exempt" <?= ($settings['sds.voc_calc_mode'] ?? '') === 'method24_less_water_exempt' ? 'selected' : '' ?>>Method 24 Less Water/Exempt</option>
-                </select>
+                <label>Missing Hazard Data Gate</label>
+                <input type="hidden" name="sds__block_publish_missing" value="0">
+                <label style="font-weight: normal;">
+                    <input type="checkbox" name="sds__block_publish_missing" value="1"
+                        <?= ((string) ($settings['sds.block_publish_missing'] ?? '1')) !== '0' ? 'checked' : '' ?>>
+                    Block publishing when a constituent at or above the threshold has no federal hazard data and no Competent Person Determination
+                </label>
+                <small class="text-muted">Applies to manual publish, bulk publish and automatic sending. Default on.</small>
             </div>
             <div class="form-group">
                 <label>Missing Data Threshold (%)</label>
                 <input type="number" name="sds__missing_threshold_pct" step="0.1" value="<?= e($settings['sds.missing_threshold_pct'] ?? '1.0') ?>">
+                <small class="text-muted">Constituent concentration at or above which missing federal hazard data blocks publishing (when the gate above is on).</small>
             </div>
             <div class="form-group">
                 <label>Publishing CPU Workers</label>
@@ -90,10 +94,7 @@
         </div>
 
         <h2>Product Families</h2>
-        <p class="text-muted mb-1">Enter one product family per line. These appear as dropdown options when creating/editing a finished good.</p>
-        <div class="form-group">
-            <textarea name="sds__product_families" rows="5" style="font-size: 0.9rem;" placeholder="UV Offset&#10;Aqueous&#10;Solvent&#10;Flexo&#10;Digital"><?= e($settings['sds.product_families'] ?? '') ?></textarea>
-        </div>
+        <p class="text-muted mb-1">Families, their UV/LED flag, membership rules and the per-language Section 1 defaults are managed on <a href="/admin/product-families">Settings &rarr; Product Families</a>. The former one-per-line list was migrated there (migration 053).</p>
 
         <h2>Physical State Options</h2>
         <p class="text-muted mb-1">Enter one physical state per line. These appear as dropdown options on the finished good form and populate SDS Section 9.</p>
@@ -141,6 +142,17 @@
                 <input type="checkbox" name="sds__show_ghs_section_note" value="1"
                     <?= ((string) ($settings['sds.show_ghs_section_note'] ?? '1')) !== '0' ? 'checked' : '' ?>>
                 Print the Sections 12–15 footnote
+            </label>
+        </div>
+
+        <h2>UV Acrylate Rule Pack</h2>
+        <p class="text-muted mb-1">When enabled, products whose resolved product family is flagged UV/LED (Settings → Product Families) and whose formula contains acrylate monomers/oligomers receive supplementary safe-handling text in Sections 4, 5, 6, 7 and 11 and UV-specific PPE sentences in Section 8, in the language of the sheet. Hazard classifications are not affected, and the Section 10 "protect from UV light" condition is printed for every UV product regardless of this switch. Changing it affects newly generated documents only (previously published versions are not changed; republish affected products).</p>
+        <div class="form-group">
+            <input type="hidden" name="uv_acrylate_rule_pack" value="disabled">
+            <label style="font-weight: normal;">
+                <input type="checkbox" name="uv_acrylate_rule_pack" value="enabled"
+                    <?= ((string) ($settings['uv_acrylate_rule_pack'] ?? 'enabled')) === 'enabled' ? 'checked' : '' ?>>
+                Apply the UV acrylate rule pack
             </label>
         </div>
 

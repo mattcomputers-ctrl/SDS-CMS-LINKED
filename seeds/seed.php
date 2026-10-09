@@ -270,13 +270,17 @@ try {
     // -------------------------------------------------------
     $setStmt = $pdo->prepare("INSERT INTO settings (`key`, `value`) VALUES (?, ?)
                               ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+    // Keys match what the code reads: company.name (settings page /
+    // getCompanySettings), sds.block_publish_missing + sds.missing_threshold_pct
+    // (SDSReadinessService / SDSController / auto-send), uv_acrylate_rule_pack
+    // (UVAcrylateRulePack). Audit #40 dropped the VOC calc-mode, source
+    // priority and SARA de minimis default rows (nothing reads them; SARA
+    // de minimis is per-row in sara_313_list).
     $settings = [
-        ['voc_calc_mode', 'method24_standard'],
-        ['source_priority', 'pubchem,niosh,epa,dot'],
-        ['company_name', 'AccuColor Inks, Inc.'],
+        ['company.name', 'AccuColor Inks, Inc.'],
+        ['sds.block_publish_missing', '1'],
+        ['sds.missing_threshold_pct', '1.0'],
         ['uv_acrylate_rule_pack', 'enabled'],
-        ['sara_deminimis_default', '1.0'],
-        ['sds_block_publish_missing', '1'],
     ];
     foreach ($settings as $s) {
         $setStmt->execute($s);

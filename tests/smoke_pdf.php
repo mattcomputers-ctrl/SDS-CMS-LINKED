@@ -40,6 +40,7 @@ $sdsData = [
         'language'         => 'en',
         'generated_at'     => gmdate('Y-m-d\TH:i:s\Z'),
         'company_logo_path' => '',
+        'labels'           => ['uv_acrylate_note' => 'UV Acrylate Information'], // audit #35: deterministic label for [7c]
     ],
     'sections' => [
         1 => [
@@ -106,6 +107,7 @@ $sdsData = [
             'ingestion'  => 'Do not induce vomiting. Seek medical attention.',
             'symptoms'   => 'Acute: Causes skin irritation. Causes serious eye irritation.',
             'notes'      => 'Show this SDS to medical personnel.',
+            'uv_acrylate_note' => 'UV/EB curable product containing acrylate monomers/oligomers (TMPTA). Wash skin immediately with soap and water.', // audit #35
         ],
         5 => [
             'title'            => 'Fire-Fighting Measures',
@@ -113,17 +115,20 @@ $sdsData = [
             'unsuitable_media' => 'Do not use direct water stream.',
             'specific_hazards' => 'Combustion may produce CO and CO2.',
             'firefighter_advice' => 'Wear SCBA and full protective gear.',
+            'uv_acrylate_note'   => 'UV-curable formulations may generate acrid smoke in a fire.', // audit #35
         ],
         6 => [
             'title' => 'Accidental Release Measures',
             'personal_precautions' => 'Use appropriate PPE.',
             'environmental'        => 'Prevent entry into drains.',
             'containment'          => 'Contain spill with inert absorbent.',
+            'uv_acrylate_note'     => 'Uncured acrylate monomers must not enter waterways.', // audit #35
         ],
         7 => [
             'title'    => 'Handling and Storage',
             'handling' => 'Use in well-ventilated areas.',
             'storage'  => 'Store in a cool, dry place.',
+            'uv_acrylate_note' => 'Store away from UV light sources and direct sunlight.', // audit #35
         ],
         8 => [
             'title'           => 'Exposure Controls / Personal Protection',
@@ -145,10 +150,8 @@ $sdsData = [
             'flash_point'     => '> 200°F (93°C)',
             'specific_gravity' => '1.08',
             'voc_lb_per_gal'  => '0.45',
-            'voc_less_water_exempt' => '0.42',
             'voc_wt_pct'      => '5.2',
             'solids_wt_pct'   => '40.1',
-            'solids_vol_pct'  => '38.5',
         ],
         10 => [
             'title'            => 'Stability and Reactivity',
@@ -163,6 +166,7 @@ $sdsData = [
             'acute_toxicity'  => "Acute toxicity (oral): Not classified based on available data.\nAcute toxicity (dermal): Not classified based on available data.\nAcute toxicity (inhalation): Not classified based on available data.",
             'chronic_effects' => 'Prolonged exposure may cause skin drying.',
             'carcinogenicity' => 'No listed carcinogens.',
+            'uv_acrylate_note' => 'Contains acrylate monomers that are known skin sensitizers.', // audit #35
             'hazard_classes'  => [
                 ['class' => 'Skin Irritation', 'category' => 'Category 2'],
             ],
@@ -193,6 +197,7 @@ $sdsData = [
         13 => [
             'title'   => 'Disposal Considerations',
             'methods' => 'Dispose per local regulations.',
+            'rcra_classification' => 'If discarded as sold, this product may be regulated as hazardous waste under US EPA RCRA (40 CFR 261): ignitable (D001) — flash point below 60 °C (140 °F). Listed-waste codes of components, for reference (they do not apply to this product as sold): contains Toluene (U220 applies only to the unused chemical itself or a formulation in which it is the sole active ingredient; F005 applies to spent solvent containing it). The waste generator is responsible for the final hazardous waste determination at the time of disposal; use, contamination or mixing may change the classification.',
         ],
         14 => [
             'title'                => 'Transport Information',
@@ -200,6 +205,7 @@ $sdsData = [
             'proper_shipping_name' => 'Not regulated',
             'hazard_class'         => 'Not regulated',
             'packing_group'        => 'Not applicable',
+            'environmental_hazards' => 'Marine pollutant: No',
             'note'                 => 'Verify with carrier.',
         ],
         15 => [
@@ -319,6 +325,16 @@ try {
             echo "[7b] Draft text in Section 16 + footer: PASS ({$draftHits} occurrences)\n";
         } else {
             echo "[7b] FAIL: expected 'Draft (not yet published)' in Section 16 and the footer, found {$draftHits}\n";
+            $failed = true;
+        }
+
+        // Audit #35 — the UV acrylate note prints in Sections 4, 5, 6, 7 and 11
+        // (meta.labels pins the label text so the count is deterministic).
+        $uvHits = substr_count($pdfText($pdfString), 'UV Acrylate Information');
+        if ($uvHits >= 5) {
+            echo "[7c] UV acrylate note in Sections 4/5/6/7/11: PASS ({$uvHits} occurrences)\n";
+        } else {
+            echo "[7c] FAIL: expected >= 5 'UV Acrylate Information' labels, found {$uvHits}\n";
             $failed = true;
         }
 

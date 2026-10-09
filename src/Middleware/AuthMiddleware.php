@@ -62,6 +62,8 @@ class AuthMiddleware
         '/formulas/mass-replace' => 'rm_mass_replace',
         '/determinations'        => 'cas_determinations',
         '/exempt-vocs'           => 'exempt_vocs',
+        '/tsca'                  => 'tsca_list',        // audit #29
+        '/rcra'                  => 'rcra_list',        // audit #26 (T3): EPA RCRA waste codes
         '/bulk-publish'          => 'bulk_publish',
         '/bulk-export'           => 'bulk_export',
         '/cms-import'            => 'cms_import',

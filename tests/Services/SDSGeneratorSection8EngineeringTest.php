@@ -106,5 +106,33 @@ foreach (['en', 'es', 'fr', 'de'] as $lang) {
     }
 }
 
+echo "h. UV acrylate PPE fold (audit #35)\n";
+$ppeFields = \SDS\Services\HazardEngine::PPE_FIELDS;
+$uvOn  = $m->invoke($gen, $hz(['H315', 'H317', 'H319']), [], [], ['physical_state' => 'Liquid'], true);
+$uvOff = $m->invoke($gen, $hz(['H315', 'H317', 'H319']), [], [], ['physical_state' => 'Liquid'], false);
+$uvDef = $m->invoke($gen, $hz(['H315', 'H317', 'H319']), [], [], ['physical_state' => 'Liquid']);
+foreach ($ppeFields as $f) {
+    $uvSentence = $t->get('section8.uv_' . $f);
+    check(str_ends_with((string) $uvOn[$f], ' ' . $uvSentence), "uvPack true: {$f} ends with the UV sentence", $uvOn[$f]);
+    check(strlen((string) $uvOn[$f]) > strlen($uvSentence) + 1, "uvPack true: {$f} keeps the tier sentence in front");
+    check(!str_contains((string) $uvOff[$f], $uvSentence), "uvPack false: {$f} has no UV sentence");
+    check(!str_contains((string) $uvDef[$f], $uvSentence), "uvPack omitted: {$f} has no UV sentence");
+    check($uvOff[$f] === $uvDef[$f], "uvPack false === omitted for {$f}");
+}
+check(!isset($uvOn['uv_acrylate_note']), 'Section 8 carries no uv_acrylate_note key');
+$uvOv = $m->invoke($gen, $hz(['H315', 'H317', 'H319']), [], [8 => ['hand_protection' => 'Custom gloves']], ['physical_state' => 'Liquid'], true);
+check($uvOv['hand_protection'] === 'Custom gloves', 'override replaces the whole hand_protection field (no UV append)', $uvOv['hand_protection']);
+check(str_ends_with((string) $uvOv['eye_protection'], ' ' . $t->get('section8.uv_eye_protection')), 'eye_protection still ends with the UV sentence beside an override');
+$uvBlank = $m->invoke($gen, $hz(['H315']), [], [8 => ['skin_protection' => '   ']], ['physical_state' => 'Liquid'], true);
+check(str_ends_with((string) $uvBlank['skin_protection'], ' ' . $t->get('section8.uv_skin_protection')), 'blank override does not block the UV append');
+foreach (['es', 'fr', 'de'] as $lang) {
+    $tl = new \SDS\Services\TranslationService($lang);
+    $gl = new \SDS\Services\SDSGenerator($tl);
+    $ml = new ReflectionMethod($gl, 'section8');
+    $ml->setAccessible(true);
+    $sl = $ml->invoke($gl, $hz(['H315', 'H317']), [], [], ['physical_state' => 'Liquid'], true);
+    check(str_ends_with((string) $sl['hand_protection'], ' ' . $tl->get('section8.uv_hand_protection')) && $tl->get('section8.uv_hand_protection') !== $t->get('section8.uv_hand_protection'), "{$lang} hand_protection ends with the translated UV sentence");
+}
+
 echo "\n{$checks} checks, {$failures} failures\n";
 exit($failures === 0 ? 0 : 1);

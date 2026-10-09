@@ -71,7 +71,8 @@ class SDSReadinessService
      *   total_rms: int,
      *   reviewed_count: int,
      *   unreviewed: array<int,array{id:int,internal_code:string,supplier:?string,supplier_product_name:?string,is_direct:bool,via_fg_codes:array<string>}>,
-     *   company_emergency_phone_error: string|null
+     *   company_emergency_phone_error: string|null,
+     *   tsca_warning: string|null
      * }|null  Null if the FG doesn't exist.
      */
     public static function review(int $fgId): ?array
@@ -104,6 +105,7 @@ class SDSReadinessService
                 'total_rms'       => 0,
                 'reviewed_count'  => 0,
                 'unreviewed'      => [],
+                'tsca_warning'    => null,
                 'company_emergency_phone_error' => self::companyEmergencyPhoneErrorFromDb($db),
             ];
         }
@@ -153,6 +155,7 @@ class SDSReadinessService
             'total_rms'       => $total,
             'reviewed_count'  => $reviewed,
             'unreviewed'      => $unreviewed,
+            'tsca_warning'    => self::tscaWarningForRawMaterialIds(array_keys($rmContext), $db, $fgId),
             'company_emergency_phone_error' => self::companyEmergencyPhoneErrorFromDb($db),
         ];
     }
@@ -235,6 +238,7 @@ class SDSReadinessService
                 'via_fg_codes'          => [],
             ]],
             'published_versions' => $publishedVersions,
+            'tsca_warning'    => self::tscaWarningForRawMaterialIds([$rmId], $db),
             'company_emergency_phone_error' => self::companyEmergencyPhoneErrorFromDb($db),
         ];
     }
@@ -345,6 +349,65 @@ class SDSReadinessService
         return 'Publishing blocked: private label manufacturer "' . $name . '" has no emergency phone number. '
             . self::EMERGENCY_PHONE_RULE
             . ' Enter it on the manufacturer record (Manufacturers > ' . $name . ' > Emergency Phone), then publish again.';
+    }
+
+    /* ------------------------------------------------------------------
+     *  TSCA inventory check (audit #29) — a WARNING, never a block
+     * ----------------------------------------------------------------*/
+
+    /** Warning from generated SDS data (sections[15]['tsca']); DB-free. */
+    public static function tscaWarning(array $sdsData): ?string
+    {
+        return TSCAService::warningText($sdsData['sections'][15]['tsca'] ?? []);
+    }
+
+    /**
+     * Readiness-page variant: resolve from the formula tree's raw materials
+     * without generating the SDS. An operator Section 15 "TSCA Status"
+     * override (text_overrides) owns the sentence, so no warning then.
+     *
+     * @param int[] $rmIds
+     */
+    public static function tscaWarningForRawMaterialIds(array $rmIds, Database $db, ?int $fgId = null): ?string
+    {
+        if ($rmIds === []) {
+            return null;
+        }
+        if ($fgId !== null) {
+            $own = $db->fetch(
+                "SELECT 1 FROM text_overrides
+                 WHERE finished_good_id = ? AND section_number = 15 AND field_key = 'tsca_status'
+                   AND sds_version_id IS NULL AND TRIM(COALESCE(override_text, '')) <> ''
+                 LIMIT 1",
+                [$fgId]
+            );
+            if ($own) {
+                return null;
+            }
+        }
+        return TSCAService::warningText(TSCAService::rollUpForRawMaterialIds($rmIds));
+    }
+
+    /* ------------------------------------------------------------------
+     *  Section 14 transport gate (audit #27)
+     *
+     *  SDSGenerator::section14() derives the DOT classification from the
+     *  flash point and the hazard classification. When the formula has no
+     *  flash point at all and the engine returned no classification data the
+     *  section prints "Not determined" — a sheet that cannot be issued.
+     *  DB-free so it can be unit-tested.
+     * ----------------------------------------------------------------*/
+
+    public static function transportNotDeterminedError(array $sdsData): ?string
+    {
+        if (($sdsData['sections'][14]['status'] ?? '') !== \SDS\Services\TransportClassifier::STATUS_NOT_DETERMINED) {
+            return null;
+        }
+        $code = trim((string) ($sdsData['meta']['product_code'] ?? ''));
+        return 'Publishing blocked: the Section 14 transport classification for '
+            . ($code !== '' ? $code : 'this product')
+            . ' is "Not determined" — no raw material in the formula carries a flash point and the hazard classification returned no data.'
+            . ' Enter the flash point on the raw material(s) (Raw Materials > Edit > Flash Point), or record the determined UN number and hazard class as Section 14 overrides (SDS > Edit Text), then publish again.';
     }
 
     /**

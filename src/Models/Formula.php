@@ -98,6 +98,7 @@ class Formula
                     fl.pct, fl.sort_order,
                     rm.internal_code, rm.supplier, rm.supplier_product_name,
                     rm.voc_wt, rm.exempt_voc_wt, rm.water_wt, rm.flash_point_c,
+                    rm.substance_mixture,
                     fg_comp.product_code AS component_product_code,
                     fg_comp.description AS component_description,
                     CASE
@@ -290,7 +291,10 @@ class Formula
                     COALESCE(NULLIF(p65.chemical_name, ''), NULLIF(cm.preferred_name, ''), rmc.chemical_name) AS chemical_name,
                     rmc.pct_exact, rmc.pct_min, rmc.pct_max,
                     rmc.is_trade_secret, rmc.is_non_hazardous,
-                    rmc.trade_secret_description, rmc.trade_secret_h_codes
+                    rmc.trade_secret_description, rmc.trade_secret_h_codes,
+                    COALESCE(cm.has_nitrogen, 0) AS has_nitrogen,
+                    COALESCE(cm.has_sulfur, 0)   AS has_sulfur,
+                    COALESCE(cm.has_halogen, 0)  AS has_halogen
              FROM formula_lines fl
              JOIN raw_materials rm ON rm.id = fl.raw_material_id
              JOIN raw_material_constituents rmc ON rmc.raw_material_id = fl.raw_material_id
@@ -345,6 +349,10 @@ class Formula
                     'is_trade_secret'          => false,
                     'is_non_hazardous'         => true,
                     'trade_secret_description' => null,
+                    // Audit #19: cas_master element flags for Section 10 decomposition products
+                    'has_nitrogen'             => (int) ($row['has_nitrogen'] ?? 0) === 1,
+                    'has_sulfur'               => (int) ($row['has_sulfur'] ?? 0) === 1,
+                    'has_halogen'              => (int) ($row['has_halogen'] ?? 0) === 1,
                     'contributing_materials'    => [],
                 ];
             }
@@ -550,6 +558,10 @@ class Formula
                         'is_trade_secret'          => false,
                         'is_non_hazardous'         => true,
                         'trade_secret_description' => null,
+                        // Audit #19: cas_master element flags for Section 10 decomposition products
+                        'has_nitrogen'             => !empty($subEntry['has_nitrogen']),
+                        'has_sulfur'               => !empty($subEntry['has_sulfur']),
+                        'has_halogen'              => !empty($subEntry['has_halogen']),
                         'contributing_materials'    => [],
                     ];
                 }
@@ -565,6 +577,13 @@ class Formula
 
                 if (!$subEntry['is_non_hazardous']) {
                     $casBuckets[$cas]['is_non_hazardous'] = false;
+                }
+
+                // Audit #19: element flags are per-CAS constants; OR them through the merge.
+                foreach (['has_nitrogen', 'has_sulfur', 'has_halogen'] as $flag) {
+                    if (!empty($subEntry[$flag])) {
+                        $casBuckets[$cas][$flag] = true;
+                    }
                 }
 
                 // Tag contributing materials as coming through the FG component

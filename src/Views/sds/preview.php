@@ -5,7 +5,7 @@ $doc = $sds['meta']['document'] ?? [];
 $l = function(string $key, string $fallback = '') use ($labels) {
     return $labels[$key] ?? ($fallback ?: $key);
 };
-$sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
+$sectionPrefix = strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, 'section_prefix'));
 ?>
 
 <?php if (!empty($backUrl)): ?>
@@ -26,7 +26,7 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
         <?php if (!empty($sds['meta']['company_logo_path'])): ?>
             <img src="<?= e($sds['meta']['company_logo_path']) ?>" alt="Company Logo" style="max-height: 60px; max-width: 250px; margin-bottom: 0.5rem;">
         <?php endif; ?>
-        <h2><?= e($doc['title'] ?? 'SAFETY DATA SHEET') ?></h2>
+        <h2><?= e(\SDS\Services\SDSDocumentStrings::resolve($doc, 'title')) ?></h2>
         <p class="text-muted">Preview &mdash; <?= e(strtoupper($language)) ?> &mdash; Generated <?= date('m/d/Y H:i') ?></p>
     </div>
 
@@ -295,7 +295,7 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                 ];
             ?>
             <?php foreach ($section as $key => $val): ?>
-                <?php if (!is_string($val) || $key === 'title' || $val === '' || $key === 'exposure_limits') continue; ?>
+                <?php if (!is_string($val) || $key === 'title' || $val === '' || $key === 'exposure_limits' || $key === 'uv_acrylate_note') continue; // uv_acrylate_note: pre-#35 snapshots only; PDFService::renderSection8() never prints it ?>
                 <?php $fieldLabel = isset($sec8LabelMap[$key]) ? $l($sec8LabelMap[$key]) : ucwords(str_replace('_', ' ', $key)); ?>
                 <p><strong><?= e($fieldLabel) ?>:</strong> <?= e($val) ?></p>
             <?php endforeach; ?>
@@ -312,14 +312,12 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                     'solubility'           => 'solubility',
                     'specific_gravity'     => 'specific_gravity',
                     'voc_lb_per_gal'       => 'voc_lb_gal',
-                    'voc_less_water_exempt' => 'voc_less_we',
                     'voc_wt_pct'           => 'voc_wt_pct',
                     'solids_wt_pct'        => 'solids_wt_pct',
-                    'solids_vol_pct'       => 'solids_vol_pct',
                 ];
             ?>
             <?php foreach ($section as $key => $val): ?>
-                <?php if ($key === 'title') continue; ?>
+                <?php if ($key === 'title' || $key === 'voc_less_water_exempt' || $key === 'solids_vol_pct') continue; // #18(c): old snapshots still carry the two keys ?>
                 <?php if (is_string($val) && $val !== ''): ?>
                     <?php $fieldLabel = isset($sec9LabelMap[$key]) ? $l($sec9LabelMap[$key]) : ucwords(str_replace('_', ' ', $key)); ?>
                     <p><strong><?= e($fieldLabel) ?>:</strong> <?= e($val) ?></p>
@@ -380,6 +378,10 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                 <?php endforeach; ?>
             <?php endif; ?>
 
+            <?php if (!empty($section['uv_acrylate_note'])): // UV acrylate rule-pack note (audit #35) — same position as PDFService::renderSection11() ?>
+                <p style="margin-top: 0.5rem;"><strong><?= e($l('uv_acrylate_note', 'UV Acrylate Information')) ?>:</strong> <?= e($section['uv_acrylate_note']) ?></p>
+            <?php endif; ?>
+
             <?php /* Pictograms are intentionally NOT shown in Section 11; they appear in Section 2 only. */ ?>
 
         <?php elseif ($num === 12): // ── Ecological Information (item #23) ── ?>
@@ -419,6 +421,9 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
             <p><strong><?= e($l('proper_shipping_name')) ?>:</strong> <?= e($section['proper_shipping_name'] ?? '') ?></p>
             <p><strong><?= e($l('transport_hazard_class')) ?>:</strong> <?= e($section['hazard_class'] ?? '') ?></p>
             <p><strong><?= e($l('packing_group')) ?>:</strong> <?= e($section['packing_group'] ?? '') ?></p>
+            <?php if (($section['environmental_hazards'] ?? '') !== ''): // audit #27 ?>
+                <p><strong><?= e($l('environmental_hazards', 'Environmental Hazards')) ?>:</strong> <?= e($section['environmental_hazards']) ?></p>
+            <?php endif; ?>
             <?php if (!empty($section['note'])): ?>
                 <p><strong><?= e($l('note')) ?>:</strong> <?= e($section['note']) ?></p>
             <?php endif; ?>
@@ -559,6 +564,7 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                     'containment'          => 'containment_cleanup',
                     'handling'             => 'handling',
                     'storage'              => 'storage',
+                    'uv_acrylate_note'     => 'uv_acrylate_note', // audit #35 (Sections 4-7)
                     'reactivity'           => 'reactivity',
                     'stability'            => 'chemical_stability',
                     'conditions_avoid'     => 'conditions_avoid',
@@ -568,17 +574,18 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                     'persistence'          => 'persistence',
                     'bioaccumulation'      => 'bioaccumulation',
                     'methods'              => 'disposal_methods',
+                    'rcra_classification'  => 'rcra_classification', // audit #26
                     'note'                 => 'note',
                     'version'              => 'version',
                     'effective_date'       => 'effective_date',
                     'revision_date'        => 'revision_date',
-                    'revision_note'        => 'revision_note',
+                    'revision_note'        => 'revision_note',   // legacy snapshots only (section16() stopped emitting it in #32)
                     'abbreviations'        => 'abbreviations',
                     'disclaimer'           => 'disclaimer',
                 ];
             ?>
             <?php foreach ($section as $key => $val): ?>
-                <?php if ($key === 'title' || $key === 'hazard_classes' || $key === 'component_toxicology' || $key === 'carcinogen_result' || $key === 'prop65' || $key === 'sara_313' || $key === 'hap' || $key === 'has_other_hazards' || $key === 'uv_acrylate_note' || $key === 'ghs_note' || $key === 'flash_point_c') continue; ?>
+                <?php if ($key === 'title' || $key === 'hazard_classes' || $key === 'component_toxicology' || $key === 'carcinogen_result' || $key === 'prop65' || $key === 'sara_313' || $key === 'hap' || $key === 'has_other_hazards' || $key === 'ghs_note' || $key === 'flash_point_c') continue; ?>
                 <?php if (is_string($val) && $val !== ''): ?>
                     <?php $fieldLabel = isset($genericLabelMap[$key]) ? $l($genericLabelMap[$key], ucwords(str_replace('_', ' ', $key))) : ucwords(str_replace('_', ' ', $key)); ?>
                     <p><strong><?= e($fieldLabel) ?>:</strong> <?= e($val) ?></p>

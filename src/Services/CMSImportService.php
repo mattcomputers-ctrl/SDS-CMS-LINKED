@@ -271,6 +271,9 @@ class CMSImportService
             'customers_created'     => 0,
             'errors'                => [],
             'incomplete_materials'  => [],
+            'families_changed'      => 0,
+            'families_bumped_rms'   => 0,
+            'families_queued'       => 0,
         ];
 
         // Phase 1: Create all finished goods first (so sub-components exist)
@@ -293,6 +296,10 @@ class CMSImportService
 
         // Phase 5: Import aliases from CMS
         $this->importAliases($results);
+
+        // Phase 5b: Product families (audit #3) — needs the formulas (content
+        // inheritance) and the aliases (alias code/description rules) above.
+        $this->recomputeProductFamilies($userId, $results);
 
         // Phase 6: Import shipment data from CMS
         $this->importShipments($results);
@@ -1418,6 +1425,28 @@ class CMSImportService
 
         $results['aliases_created'] = $total;
         $results['aliases_updated'] = 0;
+    }
+
+    /* ------------------------------------------------------------------
+     *  Phase 5b: Product families (audit #3)
+     * ----------------------------------------------------------------*/
+
+    /**
+     * Re-resolve every raw material / finished good family (manual > rule >
+     * content) and apply the result. Reassigned raw materials are bumped and
+     * reassigned products flagged by FamilyResolver, so the bulk publish that
+     * follows in cron/cms-sync.php regenerates the affected SDSs.
+     */
+    private function recomputeProductFamilies(?int $userId, array &$results): void
+    {
+        try {
+            $r = \SDS\Services\FamilyResolver::recompute(true, $userId, 'CMS import: product family recompute');
+            $results['families_changed']    = (int) $r['counts']['rm_changed'] + (int) $r['counts']['fg_changed'];
+            $results['families_bumped_rms'] = (int) $r['bumped_rms'];
+            $results['families_queued']     = (int) $r['queued'];
+        } catch (\Throwable $e) {
+            $results['errors'][] = 'Product family recompute failed: ' . $e->getMessage();
+        }
     }
 
     /* ------------------------------------------------------------------

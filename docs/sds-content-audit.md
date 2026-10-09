@@ -306,7 +306,7 @@ _Same numbering as the summary table. 'Recommended' is the synthesis agent's pic
 
 ### #6 — Section 3 — Composition: Type: 'Mixture'
 - **Concern:** high
-- **Current behaviour:** section3() unconditionally sets substance_or_mixture = labels.mixture (SDSGenerator.php:774); no 'Substance' branch exists, so resale raw-material SDSs built by generateForResaleRawMaterial (:368) with one CAS at ~100% still say Mixture.
+- **Current behaviour:** section3() prints SubstanceMixtureResolver's result: the FG/RM substance_mixture column (auto|substance|mixture, migration 054), auto = Substance only for a single-line formula whose RM is marked Substance (resale: the RM's own column); default Mixture; aliases inherit (SDSGenerator.php section3(), SubstanceMixtureResolver.php).
 - **Where:** `src/Services/SDSGenerator.php:774`
 - **Why it matters:** Substance vs mixture determines what Section 3 must contain; wrong on single-substance resale products.
 - **Options:**
@@ -408,7 +408,7 @@ _Same numbering as the summary table. 'Recommended' is the synthesis agent's pic
 
 ### #16 — Section 9 — Physical and Chemical Properties: Boiling Point
 - **Concern:** medium
-- **Current behaviour:** Always labels.not_determined unless a per-FG override exists (SDSGenerator.php:1090); raw_materials has no boiling-point column, so no data path exists.
+- **Current behaviour:** Section 9 prints the per-product override, else the lowest `raw_materials.boiling_point_c` among the expanded composition (FormulaCalcService formula_props.boiling_point_c, recursive, weight-independent, raws without a value skipped) as 'n °C (n °F)', else labels.not_determined. (Implemented: migration 054, RawMaterial model/form, FormulaCalcService::deriveFormulaProperties, SDSGenerator::section9.)
 - **Where:** `src/Services/SDSGenerator.php:1090`
 - **Why it matters:** App D requires the property (a 'not available' statement is acceptable), but RM boiling points are easy to capture and would make the line meaningful for solvent inks.
 - **Options:**
@@ -515,6 +515,7 @@ _Same numbering as the summary table. 'Recommended' is the synthesis agent's pic
   - List every applicable characteristic; use formula_props.flash_point_c; add a CAS-based D004-D043 / P / U lookup table (admin-managed like SARA/HAP) — _Accurate waste guidance; a new regulatory list to maintain._
   - Fix flash point source only, keep single pick — _Minimal._
 - **Recommended:** Option 1 (the regulatory-list pattern already exists for HAP/SARA/Prop 65).
+- **Batch C fixer notes (2026-10-08):** D001 now reads the same flash point Sections 5/9/14 use (`SDSGenerator::resolveFlashPointNumeric()`: Section 9 override first — a °C value wins wherever it sits in the string, °F-only converted — else formula_props). A "> n" value with n < 60 prints D001 with the `rcra_reason_flash_point_gt` reason ("not determined to be at or above 60 °C"), the same conservative reading TransportClassifier applies for Class 3, so one sheet can no longer say Class 3 and "no characteristic". F/K/P/U listings moved out of the "as sold" sentence into a separate "for reference (do not apply to this product as sold)" sentence with conditions reworded per 261.31 / 261.33(d) (U/P: unused chemical or sole-active-ingredient formulation; F: spent solvent); D codes stay in the "as sold" sentence and are reported at any concentration (RCRAService floor applies to F/K/P/U only).
 
 ### #27 — Section 14 — Transport Information: UN Number / Proper Shipping Name / Hazard Class / Packing Group defaults
 - **Concern:** high
@@ -525,6 +526,7 @@ _Same numbering as the summary table. 'Recommended' is the synthesis agent's pic
   - Derive from product data: flash point + boiling point -> Class 3 PG I/II/III and UN1210/UN1263/UN1993 with technical names; Skin Corr. 1 -> Class 8; Aquatic Acute/Chronic 1 -> UN3082/UN3077 + marine pollutant; dot.csv only supplies technical names; override wins over auto — _Real mixture classification; needs a small rules module and review of edge cases (viscous-liquid exception, limited quantity)._
   - Add an explicit FG-level transport determination (fields or family default) with 'Not determined' blocking publish; invert precedence — _Manual but auditable; no false 'Not regulated'._
 - **Recommended:** Option 1 with Option 2's 'Not determined blocks publish' as the fallback state and override-wins precedence.
+- **Batch C fixer notes (2026-10-08):** (a) 49 CFR 173.2a(b) precedence implemented for the 3 / 8 / 6.1 cells: Class 8 outranks a Class 3 PG III product when 8 is PG I or II (and 3 PG II when 8 is PG I) → UN2920 "Corrosive liquids, flammable, n.o.s." 8 (3); Division 6.1 outranks Class 3 PG III when 6.1 is PG I or II, and 6.1 PG I by inhalation outranks Class 3 at any flash point (173.2a(a)) → UN2929 "Toxic liquids, flammable, organic, n.o.s." 6.1 (3); 3 + 8 + 6.1 with 8 or 6.1 primary has no generic entry → Not determined (publish gate). Non-flammable 8 vs 6.1 follows the same table (UN2927 / UN2928 6.1 (8) when 6.1 wins). Packing group = most stringent of all classes (Note 1). (b) H224 (Flam. Liq. 1 = IBP ≤ 35 °C) gives PG I whenever no IBP is known, before the fp < 23 °C test. (c) A "> n" flash point with n < 60 is still Class 3 (conservative; Section 13 D001 now agrees) but a "> n" value never earns the combustible note. (d) The Section 9 flash-point override is parsed °C-first ("75 °F (24 °C)" reads 24). (e) The viscous-liquid note (173.121(b)(1): a viscous PG II liquid may be ASSIGNED PG III) now prints on Class 3 PG II sheets with no subsidiary, not on PG III. (f) An n.o.s. entry with no derivable technical name (172.203(k)) raises a preview warning asking for a Proper Shipping Name override.
 
 ### #28 — Section 15 — Regulatory Information: OSHA Status
 - **Concern:** high

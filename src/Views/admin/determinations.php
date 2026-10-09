@@ -27,6 +27,12 @@
             <span style="background: #6c757d; color: #fff; border-radius: 10px; padding: 1px 7px; font-size: 0.8rem; margin-left: 4px;"><?= count($descriptions) ?></span>
         <?php endif; ?>
     </button>
+    <button class="tab-btn" data-tab="tsca" style="padding: 0.5rem 1.2rem; border: 2px solid #003366; border-bottom: none; background: #e9ecef; color: #003366; cursor: pointer; border-radius: 4px 4px 0 0; font-weight: bold; margin-left: 2px;">
+        TSCA Review
+        <?php if (!empty($tscaReview)): ?>
+            <span style="background: #fd7e14; color: #fff; border-radius: 10px; padding: 1px 7px; font-size: 0.8rem; margin-left: 4px;"><?= count($tscaReview) ?></span>
+        <?php endif; ?>
+    </button>
 </div>
 
 <!-- Tab: Needs Determination -->
@@ -137,6 +143,9 @@
         One description per CAS number — the single source of truth used on all SDSs and everywhere a CAS appears.
         Saving a description here updates every raw material constituent with that CAS.
         Substances on the <a href="/prop65">Prop 65 list</a> take their description from that page and cannot be edited here.
+        The <strong>N / S / Hal</strong> boxes mark substances containing nitrogen, sulfur or a halogen; SDS Section 10 lists
+        nitrogen oxides, sulfur oxides or hydrogen halides as decomposition products for every product that contains them.
+        Saving flags bumps the affected raw materials for republish.
     </p>
     <div style="margin-bottom: 0.5rem;">
         <input type="text" id="descFilter" placeholder="Filter by CAS or description..." style="max-width: 320px;">
@@ -148,14 +157,24 @@
                 <th>Description</th>
                 <th style="width: 110px;">Source</th>
                 <th style="width: 110px;">Used in RMs</th>
-                <th style="width: 90px;">Action</th>
+                <th style="width: 44px; text-align: center;" title="Contains nitrogen (Section 10: nitrogen oxides)">N</th>
+                <th style="width: 44px; text-align: center;" title="Contains sulfur (Section 10: sulfur oxides)">S</th>
+                <th style="width: 50px; text-align: center;" title="Contains a halogen (Section 10: hydrogen halides)">Hal</th>
+                <th style="width: 150px;">Action</th>
             </tr>
         </thead>
         <tbody>
         <?php foreach ($descriptions ?? [] as $idx => $d): ?>
-            <?php $isP65 = !empty($d['prop65_name']); $formId = 'desc-form-' . $idx; ?>
+            <?php $isP65 = !empty($d['prop65_name']); $formId = 'desc-form-' . $idx; $flagsId = 'flags-form-' . $idx; ?>
             <tr>
-                <td><strong><?= e($d['cas_number']) ?></strong></td>
+                <td>
+                    <strong><?= e($d['cas_number']) ?></strong>
+                    <?php // Audit #19: element flags post separately (Prop 65 rows have no description form) ?>
+                    <form method="POST" action="/determinations/element-flags" id="<?= $flagsId ?>">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="cas_number" value="<?= e($d['cas_number']) ?>">
+                    </form>
+                </td>
                 <td>
                     <?php if ($isP65): ?>
                         <?= e($d['prop65_name']) ?>
@@ -175,17 +194,103 @@
                     <?php endif; ?>
                 </td>
                 <td><?= (int) $d['rm_count'] > 0 ? (int) $d['rm_count'] : '<span class="text-muted">—</span>' ?></td>
+                <?php foreach (['has_nitrogen' => 'nitrogen', 'has_sulfur' => 'sulfur', 'has_halogen' => 'halogen'] as $flag => $flagLabel): ?>
+                    <td style="text-align: center;">
+                        <input type="checkbox" name="<?= $flag ?>" value="1" form="<?= $flagsId ?>" <?= !empty($d[$flag]) ? 'checked' : '' ?> title="Contains <?= $flagLabel ?>">
+                    </td>
+                <?php endforeach; ?>
                 <td>
                     <?php if ($isP65): ?>
                         <a href="/prop65" class="btn btn-sm">Edit on Prop 65</a>
                     <?php else: ?>
                         <button type="submit" form="<?= $formId ?>" class="btn btn-sm btn-primary">Save</button>
                     <?php endif; ?>
+                    <button type="submit" form="<?= $flagsId ?>" class="btn btn-sm" title="Save N / S / Hal flags<?= !empty($d['element_flags_source']) ? ' (source: ' . e($d['element_flags_source']) . ')' : '' ?>">Flags</button>
                 </td>
             </tr>
         <?php endforeach; ?>
         </tbody>
     </table>
+</div>
+
+<!-- Tab: TSCA Review (audit #29) -->
+<div class="tab-panel" id="tab-tsca" style="display: none;">
+    <p class="text-muted" style="margin-bottom: 0.5rem;">
+        Constituent CAS numbers in use that are <strong>not on the <a href="/tsca">TSCA inventory</a></strong> and have no override.
+        Products containing them print "TSCA inventory status has not been verified for all components" in Section 15 and raise a publish warning.
+        Set <em>Listed</em> for crossover / confidential-inventory CAS, <em>Exempt</em> for exemptions (e.g. polymer exemption), or <em>Not listed</em> when verified absent. A note is required. <em>Auto</em> removes the override.
+    </p>
+    <div style="margin-bottom: 0.5rem;">
+        <input type="text" id="tscaFilter" placeholder="Filter by CAS, description or raw material..." style="max-width: 360px;">
+    </div>
+    <?php if (empty($tscaReview)): ?>
+        <div style="text-align: center; padding: 1.5rem; color: #28a745;"><strong>Every constituent CAS in use is on the TSCA inventory or has an override.</strong></div>
+    <?php else: ?>
+    <table class="table" id="tscaTable">
+        <thead><tr><th style="width:130px;">CAS Number</th><th>Description</th><th>Raw Materials</th><th style="width:90px;">In Formula</th><th style="width:420px;">TSCA Override</th></tr></thead>
+        <tbody>
+        <?php foreach ($tscaReview as $idx => $r): ?>
+            <?php $formId = 'tsca-form-' . $idx; ?>
+            <tr>
+                <td><strong><?= e($r['cas_number']) ?></strong></td>
+                <td><?= e($r['chemical_name'] ?? '') ?></td>
+                <td><span title="<?= e($r['raw_material_codes'] ?? '') ?>"><?= e($r['raw_material_codes'] ?? '') ?></span>
+                    <?php if ((int) ($r['raw_material_count'] ?? 0) > 1): ?><small class="text-muted">(<?= (int) $r['raw_material_count'] ?> materials)</small><?php endif; ?></td>
+                <td><?= (int) ($r['in_formula'] ?? 0) ? '<span style="color:#28a745;font-weight:bold;">Yes</span>' : '<span class="text-muted">No</span>' ?></td>
+                <td>
+                    <form method="POST" action="/determinations/tsca" id="<?= $formId ?>" style="display:flex; gap:0.35rem; align-items:center;">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="cas_number" value="<?= e($r['cas_number']) ?>">
+                        <select name="tsca_status">
+                            <?php foreach ($tscaOptions as $val => $label): ?>
+                                <option value="<?= e($val) ?>"><?= e($label) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <input type="text" name="tsca_note" placeholder="Note (required)" style="flex:1;">
+                        <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                    </form>
+                </td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+    <?php endif; ?>
+
+    <h4 style="margin-top:1.5rem;">Overrides in effect <?php if (!empty($tscaOverrides)): ?><small class="text-muted">(<?= count($tscaOverrides) ?>)</small><?php endif; ?></h4>
+    <?php if (empty($tscaOverrides)): ?>
+        <p class="text-muted">No TSCA overrides recorded.</p>
+    <?php else: ?>
+    <table class="table table-sm" id="tscaOverrideTable">
+        <thead><tr><th style="width:130px;">CAS Number</th><th>Description</th><th style="width:110px;">Status</th><th>Note</th><th style="width:100px;">On inventory</th><th style="width:90px;">Used in RMs</th><th style="width:150px;">Set by</th><th style="width:150px;">Change</th></tr></thead>
+        <tbody>
+        <?php foreach ($tscaOverrides as $idx => $o): ?>
+            <?php $formId = 'tsca-ov-' . $idx; ?>
+            <tr>
+                <td><strong><?= e($o['cas_number']) ?></strong></td>
+                <td><?= e($o['preferred_name'] ?? '') ?></td>
+                <td><span class="badge badge-warning"><?= e($o['tsca_status']) ?></span></td>
+                <td><?= e($o['tsca_note'] ?? '') ?></td>
+                <td><?= (int) ($o['on_inventory'] ?? 0) ? 'Yes' : '<span class="text-muted">No</span>' ?></td>
+                <td><?= (int) ($o['rm_count'] ?? 0) > 0 ? (int) $o['rm_count'] : '<span class="text-muted">—</span>' ?></td>
+                <td><small><?= e($o['tsca_updated_by_name'] ?? '—') ?><?= !empty($o['tsca_updated_at']) ? ' · ' . e(date('m/d/Y', strtotime($o['tsca_updated_at']))) : '' ?></small></td>
+                <td>
+                    <form method="POST" action="/determinations/tsca" id="<?= $formId ?>" style="display:flex; gap:0.35rem; align-items:center;">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="cas_number" value="<?= e($o['cas_number']) ?>">
+                        <input type="hidden" name="tsca_note" value="<?= e($o['tsca_note'] ?? '') ?>">
+                        <select name="tsca_status">
+                            <?php foreach ($tscaOptions as $val => $label): ?>
+                                <option value="<?= e($val) ?>" <?= ($o['tsca_status'] ?? '') === $val ? 'selected' : '' ?>><?= e($val) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <button type="submit" class="btn btn-sm">Save</button>
+                    </form>
+                </td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+    <?php endif; ?>
 </div>
 
 <script>
@@ -198,6 +303,20 @@ document.getElementById('descFilter').addEventListener('input', function() {
             }) ? 'none' : '';
     });
 });
+
+// TSCA Review filter (audit #29) — the table is absent when the list is empty.
+(function() {
+    var tscaFilter = document.getElementById('tscaFilter');
+    var tscaTable  = document.getElementById('tscaTable');
+    if (tscaFilter && tscaTable) {
+        tscaFilter.addEventListener('input', function() {
+            var term = this.value.toLowerCase();
+            tscaTable.querySelectorAll('tbody tr').forEach(function(row) {
+                row.style.display = row.textContent.toLowerCase().indexOf(term) === -1 ? 'none' : '';
+            });
+        });
+    }
+})();
 
 document.querySelectorAll('.tab-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {

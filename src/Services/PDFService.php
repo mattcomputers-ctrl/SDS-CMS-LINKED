@@ -46,6 +46,8 @@ class PDFService
         // Section 7
         'handling'             => 'handling',
         'storage'              => 'storage',
+        // Sections 4-7 UV acrylate rule-pack note (audit #35); Section 11 prints it in renderSection11()
+        'uv_acrylate_note'     => 'uv_acrylate_note',
         // Section 10
         'reactivity'           => 'reactivity',
         'stability'            => 'chemical_stability',
@@ -59,11 +61,12 @@ class PDFService
         'note'                 => 'note',
         // Section 13
         'methods'              => 'disposal_methods',
+        'rcra_classification'  => 'rcra_classification',   // audit #26: computed RCRA code line
         // Section 16
         'version'              => 'version',
         'effective_date'       => 'effective_date',
         'revision_date'        => 'revision_date',   // legacy snapshots only
-        'revision_note'        => 'revision_note',
+        'revision_note'        => 'revision_note',   // legacy snapshots only (section16() stopped emitting it in #32)
         'abbreviations'        => 'abbreviations',
         'disclaimer'           => 'disclaimer',
     ];
@@ -309,7 +312,7 @@ class PDFService
     private function renderSection(\TCPDF $pdf, int $sectionNum, array $section): void
     {
         $title = $section['title'] ?? "Section {$sectionNum}";
-        $sectionPrefix = $this->document['section_prefix'] ?? 'SECTION';
+        $sectionPrefix = SDSDocumentStrings::resolve($this->document, 'section_prefix');
 
         // Section header
         $pdf->SetFont('helvetica', 'B', 11);
@@ -846,10 +849,9 @@ class PDFService
             'solubility'        => $s['solubility'] ?? '',
             'specific_gravity'  => $s['specific_gravity'] ?? '',
             'voc_lb_gal'        => $s['voc_lb_per_gal'] ?? '',
-            'voc_less_we'       => $s['voc_less_water_exempt'] ?? '',
             'voc_wt_pct'        => $s['voc_wt_pct'] ?? '',
             'solids_wt_pct'     => $s['solids_wt_pct'] ?? '',
-            'solids_vol_pct'    => $s['solids_vol_pct'] ?? '',
+            // #18(c): VOC less water & exempts and solids vol% are not printed.
         ];
 
         foreach ($props as $labelKey => $value) {
@@ -914,6 +916,13 @@ class PDFService
                     }
                 }
             }
+        }
+
+        // UV acrylate rule-pack note (audit #35), after the component table.
+        $uvNote = (string) ($s['uv_acrylate_note'] ?? '');
+        if ($uvNote !== '') {
+            $pdf->Ln(1);
+            $this->labelValue($pdf, $this->label('uv_acrylate_note', 'UV Acrylate Information'), $uvNote);
         }
 
         // Pictograms are intentionally NOT shown in Section 11;
@@ -987,6 +996,8 @@ class PDFService
         $this->labelValue($pdf, $this->label('proper_shipping_name'), $s['proper_shipping_name'] ?? '');
         $this->labelValue($pdf, $this->label('transport_hazard_class'), $s['hazard_class'] ?? '');
         $this->labelValue($pdf, $this->label('packing_group'), $s['packing_group'] ?? '');
+        // Audit #27: App. D 14(e) environmental hazards (marine pollutant). Old snapshots have no key → line skipped.
+        $this->labelValue($pdf, $this->label('environmental_hazards', 'Environmental Hazards'), (string) ($s['environmental_hazards'] ?? ''));
         // Carrier-verification note (was preview-only before item #25)
         $this->labelValue($pdf, $this->label('note'), $s['note'] ?? '');
     }
@@ -1155,7 +1166,7 @@ class PDFService
     private function renderGenericSection(\TCPDF $pdf, array $section): void
     {
         foreach ($section as $key => $value) {
-            if ($key === 'title' || $key === 'has_other_hazards' || $key === 'uv_acrylate_note' || $key === 'ghs_note') {
+            if ($key === 'title' || $key === 'has_other_hazards' || $key === 'ghs_note') {
                 continue;
             }
             if (is_string($value) && $value !== '') {
@@ -1197,7 +1208,7 @@ class PDFService
      */
     private function footerRevision(array $meta, array $s16): string
     {
-        $prefix  = (string) ($this->document['revision_prefix'] ?? 'Rev.');
+        $prefix  = SDSDocumentStrings::resolve($this->document, 'revision_prefix');
         $version = (int) ($meta['sds_version'] ?? 0);
 
         if ($version > 0) {

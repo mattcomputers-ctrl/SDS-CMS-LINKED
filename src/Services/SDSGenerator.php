@@ -7,6 +7,7 @@ namespace SDS\Services;
 use SDS\Core\App;
 use SDS\Core\Database;
 use SDS\Models\FinishedGood;
+use SDS\Models\ProductFamily;
 
 /**
  * SDSGenerator — Assembles the complete 16-section SDS data structure.
@@ -43,6 +44,22 @@ class SDSGenerator
     private static ?array $companySettingsCache = null;
 
     /**
+     * Audit #36: when true, getOverrides() returns [] so generate() /
+     * generateFromBase() yield the fully automatic text for every field.
+     * The override editor (SDSController::edit/saveEdits) and
+     * scripts/cleanup-default-overrides.php use it to learn the computed
+     * default. Never set on a preview or publish path.
+     */
+    private bool $ignoreOverrides = false;
+
+    /** Fluent: `(new SDSGenerator())->ignoreOverrides()->generate($fg, $lang)`. */
+    public function ignoreOverrides(bool $ignore = true): self
+    {
+        $this->ignoreOverrides = $ignore;
+        return $this;
+    }
+
+    /**
      * H-code families whose effects are delayed (sensitisation, CMR,
      * lactation, STOT-RE). Sensitisation (H317/H334) needs an induction
      * phase before elicitation (GHS Rev. 7 ch. 3.4), so it is grouped with
@@ -74,9 +91,21 @@ class SDSGenerator
             throw new \RuntimeException('Finished good #' . $finishedGoodId . ' not found.');
         }
 
+        $this->attachFamily($fg); // audit #3: Section 1 defaults + UV flag
+
         // Run formula calculations
         $calcService = new FormulaCalcService();
         $calcResult  = $calcService->calculate($finishedGoodId);
+
+        // #18(b): one physical state for Sections 6, 8 and 9.
+        $fg['physical_state'] = self::resolvePhysicalState($fg, $calcResult);
+
+        // Audit #6: Section 3 "Type:" — the FG's own column, else Substance
+        // only for a single-line formula whose RM is marked Substance.
+        $substanceMixture = SubstanceMixtureResolver::resolveForFinishedGood(
+            $fg['substance_mixture'] ?? null,
+            $calcResult['formula']['lines'] ?? []
+        );
 
         // Run hazard classification, passing any Phase-5 finished-good
         // hazard override the user has configured for this FG.
@@ -114,6 +143,9 @@ class SDSGenerator
         // Run HAP analysis (Clean Air Act Section 112(b) + manual entries)
         $hapResult = HAPService::analyse($calcResult['composition'], $manualHaps);
 
+        // RCRA toxicity-characteristic / listed-waste lookup for Section 13 (audit #26)
+        $rcraResult = RCRAService::analyse($calcResult['composition']);
+
         // Solid/powder-in-liquid filtering: suppress carcinogen findings,
         // exposure controls, and Prop 65 (carbon black) for solid/powder
         // ingredients that are mixed with a liquid component.
@@ -128,25 +160,26 @@ class SDSGenerator
         // Translate GHS data (H/P statements, signal word, pictograms) for target language
         $hazardResult = GHSStatements::translateHazardResult($hazardResult, $language);
 
-        // Load DOT transport info
-        $dotInfo = $this->getDOTInfo($calcResult['composition']);
-
         // Load text overrides
         $overrides = $this->getOverrides($finishedGoodId, $language);
 
         // Company info from admin settings (DB), with config fallback
         $company = $this->getCompanySettings();
 
-        // UV Acrylate Rule Pack — detect and append safe-handling language
-        $uvWarnings = [];
-        $uvSectionAppend = [];
-        if (UVAcrylateRulePack::isApplicable($fg['family'] ?? null)) {
-            $acrylates = UVAcrylateRulePack::detectAcrylates($calcResult['composition']);
-            if (!empty($acrylates)) {
-                $uvSectionAppend = UVAcrylateRulePack::getSafeHandlingLanguage($acrylates);
-                $uvWarnings      = UVAcrylateRulePack::getFormulatorWarnings($acrylates);
+        // UV Acrylate Rule Pack (audit #35): applies when the RESOLVED product
+        // family is flagged UV/LED (decision #3, fg.family_is_uv) and the pack
+        // is enabled; text is built in the sheet language below.
+        $uvWarnings  = [];
+        $uvAcrylates = [];
+        $isUvProduct = UVAcrylateRulePack::familyIsUv($fg);
+        if (UVAcrylateRulePack::isApplicable($fg)) {
+            $uvAcrylates = UVAcrylateRulePack::detectAcrylates($calcResult['composition']);
+            if (!empty($uvAcrylates)) {
+                $uvWarnings = UVAcrylateRulePack::getFormulatorWarnings($uvAcrylates);
             }
         }
+        // The sensitizer sentences print only when the mixture carries H317.
+        $uvSectionAppend = UVAcrylateRulePack::getSafeHandlingLanguage($uvAcrylates, $this->t, in_array('H317', self::extractHCodes($hazardResult), true));
 
         // Assemble all 16 sections
         $sds = [
@@ -164,18 +197,18 @@ class SDSGenerator
             'sections' => [
                 1  => $this->section1($fg, $company, $overrides),
                 2  => $this->section2($hazardResult, $overrides),
-                3  => $this->section3($calcResult['composition'], $hazardResult, $overrides),
+                3  => $this->section3($calcResult['composition'], $hazardResult, $overrides, $substanceMixture),
                 4  => $this->section4($hazardResult, $overrides),
                 5  => $this->section5($calcResult, $hazardResult, $overrides),
                 6  => $this->section6($hazardResult, $fg, $overrides),
                 7  => $this->section7($hazardResult, $overrides),
-                8  => $this->section8($hazardResult, $calcResult['composition'], $overrides, $fg),
+                8  => $this->section8($hazardResult, $calcResult['composition'], $overrides, $fg, $uvAcrylates !== []),
                 9  => $this->section9($fg, $calcResult, $overrides),
-                10 => $this->section10($hazardResult, $overrides),
+                10 => $this->section10($hazardResult, $overrides, $isUvProduct, $calcResult['composition']),
                 11 => $this->section11($hazardResult, $calcResult['composition'], $carcinogenResult, $overrides),
                 12 => $this->section12($hazardResult, $calcResult['composition'], $overrides, $saraResult),
-                13 => $this->section13($hazardResult, $calcResult, $overrides),
-                14 => $this->section14($dotInfo, $overrides),
+                13 => $this->section13($hazardResult, $calcResult, $overrides, $rcraResult),
+                14 => $this->section14($fg, $calcResult, $hazardResult, $overrides),
                 15 => $this->section15($hazardResult, $saraResult, $prop65Result, $hapResult, $calcResult, $overrides),
                 16 => $this->section16($calcResult, $overrides),
             ],
@@ -195,6 +228,21 @@ class SDSGenerator
                 $sds['sections'][$secNum]['uv_acrylate_note'] = $appendText;
             }
         }
+
+        // Audit #29: TSCA inventory not verified for every constituent →
+        // operator warning (preview Warnings box / publish flash; never printed).
+        $tscaWarning = TSCAService::warningText($sds['sections'][15]['tsca'] ?? []);
+        if ($tscaWarning !== null) {
+            $sds['warnings'][] = $tscaWarning;
+        }
+
+        // Audit #27: an n.o.s. entry whose technical names (49 CFR 172.203(k))
+        // could not be derived → operator warning (never printed; the flag
+        // itself never reaches the snapshot). Publishing is not blocked.
+        if (!empty($sds['sections'][14]['technical_names_missing'])) {
+            $sds['warnings'][] = 'Transport warning: Section 14 prints an n.o.s. proper shipping name without the technical names 49 CFR 172.203(k) requires — none could be derived from the composition (no disclosed constituent carries the primary hazard; e.g. Class 3 from the formula flash point alone, or trade-secret constituents only). Enter them in the Section 14 Proper Shipping Name override. Publishing is not blocked.';
+        }
+        unset($sds['sections'][14]['technical_names_missing']);
 
         // Section 16 abbreviations: master table filtered to the terms that
         // actually print on this sheet (audit #33). Needs every section and
@@ -222,8 +270,19 @@ class SDSGenerator
             throw new \RuntimeException('Finished good #' . $finishedGoodId . ' not found.');
         }
 
+        $this->attachFamily($fg); // audit #3: Section 1 defaults + UV flag
+
         $calcService = new FormulaCalcService();
         $calcResult  = $calcService->calculate($finishedGoodId);
+
+        // #18(b): one physical state for Sections 6, 8 and 9.
+        $fg['physical_state'] = self::resolvePhysicalState($fg, $calcResult);
+
+        // Audit #6 (language-independent; carried to generateFromBase via $base)
+        $substanceMixture = SubstanceMixtureResolver::resolveForFinishedGood(
+            $fg['substance_mixture'] ?? null,
+            $calcResult['formula']['lines'] ?? []
+        );
 
         $hazardEngine = new HazardEngine();
         $fgOverride   = $this->buildFinishedGoodOverride($fg);
@@ -247,21 +306,23 @@ class SDSGenerator
 
         $prop65Result     = Prop65Service::analyse($calcResult['composition'], $manualProp65);
         $hapResult        = HAPService::analyse($calcResult['composition'], $manualHaps);
+        $rcraResult       = RCRAService::analyse($calcResult['composition']); // Section 13 (audit #26)
 
         // Solid/powder-in-liquid filtering (before merging carcinogen findings)
         $this->applySolidPowderLiquidFiltering($carcinogenResult, $hazardResult, $prop65Result, $calcResult);
         $this->applyCarcinogenFindings($hazardResult, $carcinogenResult);
 
-        $dotInfo = $this->getDOTInfo($calcResult['composition']);
         $company = $this->getCompanySettings();
 
-        $uvWarnings      = [];
-        $uvSectionAppend = [];
-        if (UVAcrylateRulePack::isApplicable($fg['family'] ?? null)) {
-            $acrylates = UVAcrylateRulePack::detectAcrylates($calcResult['composition']);
-            if (!empty($acrylates)) {
-                $uvSectionAppend = UVAcrylateRulePack::getSafeHandlingLanguage($acrylates);
-                $uvWarnings      = UVAcrylateRulePack::getFormulatorWarnings($acrylates);
+        // Audit #35: language-independent part only (detection + UV flag);
+        // generateFromBase() builds the translated sentences per language.
+        $uvWarnings  = [];
+        $uvAcrylates = [];
+        $isUvProduct = UVAcrylateRulePack::familyIsUv($fg);
+        if (UVAcrylateRulePack::isApplicable($fg)) {
+            $uvAcrylates = UVAcrylateRulePack::detectAcrylates($calcResult['composition']);
+            if (!empty($uvAcrylates)) {
+                $uvWarnings = UVAcrylateRulePack::getFormulatorWarnings($uvAcrylates);
             }
         }
 
@@ -273,10 +334,12 @@ class SDSGenerator
             'prop65Result'     => $prop65Result,
             'carcinogenResult' => $carcinogenResult,
             'hapResult'        => $hapResult,
-            'dotInfo'          => $dotInfo,
+            'rcraResult'       => $rcraResult,       // audit #26
             'company'          => $company,
             'uvWarnings'       => $uvWarnings,
-            'uvSectionAppend'  => $uvSectionAppend,
+            'uvAcrylates'      => $uvAcrylates,
+            'isUvProduct'      => $isUvProduct,
+            'substanceMixture' => $substanceMixture, // audit #6
         ];
     }
 
@@ -303,11 +366,16 @@ class SDSGenerator
         $rm = $calcResult['formula']['lines'][0] ?? [];
         $rmModel = \SDS\Models\RawMaterial::findById($rawMaterialId);
         $baseCode = AliasResolver::stripPack((string) ($rmModel['internal_code'] ?? ''));
+        // Audit #6: resale sheet prints Substance only when the RM itself is marked Substance.
+        $substanceMixture = SubstanceMixtureResolver::resolveForRawMaterial($rmModel['substance_mixture'] ?? null);
         $fg = [
             'id'                         => null,
             'product_code'               => $baseCode,
             'description'                => $rmModel['supplier_product_name'] ?? $baseCode,
-            'family'                     => null,
+            'family'                     => null,     // filled by attachFamily() from the RM's family
+            'family_id'                  => isset($rmModel['family_id']) ? (int) $rmModel['family_id'] : null,
+            'family_source'              => $rmModel['family_source'] ?? null,
+            'is_resale'                  => true,     // audit #3: Section 1 falls back to the resale defaults
             'is_active'                  => 1,
             'physical_state'             => $rmModel['physical_state'] ?? null,
             'color'                      => $rmModel['color'] ?? null,
@@ -319,6 +387,10 @@ class SDSGenerator
             'hazard_override_set_at'     => null,
             'hazard_override_rationale'  => null,
         ];
+        $this->attachFamily($fg);
+
+        // #18(b): blank RM physical state -> dominant RM (itself) -> 'Liquid'.
+        $fg['physical_state'] = self::resolvePhysicalState($fg, $calcResult);
 
         $hazardEngine = new HazardEngine();
         $hazardResult = $hazardEngine->classify($calcResult['composition'], null);
@@ -340,17 +412,25 @@ class SDSGenerator
 
         $prop65Result = Prop65Service::analyse($calcResult['composition'], $manualProp65);
         $hapResult    = HAPService::analyse($calcResult['composition'], $manualHaps);
+        $rcraResult   = RCRAService::analyse($calcResult['composition']); // Section 13 (audit #26)
 
         $this->applySolidPowderLiquidFiltering($carcinogenResult, $hazardResult, $prop65Result, $calcResult);
         $this->applyCarcinogenFindings($hazardResult, $carcinogenResult);
 
-        $dotInfo = $this->getDOTInfo($calcResult['composition']);
         $company = $this->getCompanySettings();
 
-        // Resale RMs have no family so the UV acrylate rule pack is
-        // skipped — it gates on FG family and we don't have one here.
-        $uvWarnings      = [];
-        $uvSectionAppend = [];
+        // UV acrylate rule pack (audit #35): a resale RM belongs to a family
+        // like any other item (decision #3), so the pack runs here as well.
+        // Language-independent part only; generateFromBase() translates.
+        $uvWarnings  = [];
+        $uvAcrylates = [];
+        $isUvProduct = UVAcrylateRulePack::familyIsUv($fg);
+        if (UVAcrylateRulePack::isApplicable($fg)) {
+            $uvAcrylates = UVAcrylateRulePack::detectAcrylates($calcResult['composition']);
+            if (!empty($uvAcrylates)) {
+                $uvWarnings = UVAcrylateRulePack::getFormulatorWarnings($uvAcrylates);
+            }
+        }
 
         return [
             'fg'               => $fg,
@@ -360,10 +440,12 @@ class SDSGenerator
             'prop65Result'     => $prop65Result,
             'carcinogenResult' => $carcinogenResult,
             'hapResult'        => $hapResult,
-            'dotInfo'          => $dotInfo,
+            'rcraResult'       => $rcraResult,       // audit #26
             'company'          => $company,
             'uvWarnings'       => $uvWarnings,
-            'uvSectionAppend'  => $uvSectionAppend,
+            'uvAcrylates'      => $uvAcrylates,
+            'isUvProduct'      => $isUvProduct,
+            'substanceMixture' => $substanceMixture, // audit #6
             // Source tracking — consumers that insert into sds_versions
             // need to know the RM id and that finished_good_id is null.
             'resale_source'    => [
@@ -407,10 +489,17 @@ class SDSGenerator
         $prop65Result     = $base['prop65Result'];
         $carcinogenResult = $base['carcinogenResult'];
         $hapResult        = $base['hapResult'];
-        $dotInfo          = $base['dotInfo'];
+        $rcraResult       = $base['rcraResult'] ?? ['components' => [], 'has_matches' => false]; // Section 13 (audit #26); tolerant of hand-built bases
         $company          = $base['company'];
-        $uvWarnings       = $base['uvWarnings'];
-        $uvSectionAppend  = $base['uvSectionAppend'];
+        $uvWarnings       = $base['uvWarnings'] ?? [];
+        $uvAcrylates      = $base['uvAcrylates'] ?? [];
+        $isUvProduct      = (bool) ($base['isUvProduct'] ?? false);
+        $substanceMixture = $base['substanceMixture'] ?? SubstanceMixtureResolver::MIXTURE; // audit #6
+
+        // Audit #35: pack sentences are built in the sheet language here so
+        // ES/FR/DE sheets get translated text (computeBase() is language-free).
+        // The sensitizer sentences print only when the mixture carries H317.
+        $uvSectionAppend  = UVAcrylateRulePack::getSafeHandlingLanguage($uvAcrylates, $this->t, in_array('H317', self::extractHCodes($hazardResult), true));
 
         // Language-specific: translate GHS data
         $hazardResult = GHSStatements::translateHazardResult($hazardResult, $language);
@@ -436,18 +525,18 @@ class SDSGenerator
             'sections' => [
                 1  => $this->section1($fg, $company, $overrides),
                 2  => $this->section2($hazardResult, $overrides),
-                3  => $this->section3($calcResult['composition'], $hazardResult, $overrides),
+                3  => $this->section3($calcResult['composition'], $hazardResult, $overrides, $substanceMixture),
                 4  => $this->section4($hazardResult, $overrides),
                 5  => $this->section5($calcResult, $hazardResult, $overrides),
                 6  => $this->section6($hazardResult, $fg, $overrides),
                 7  => $this->section7($hazardResult, $overrides),
-                8  => $this->section8($hazardResult, $calcResult['composition'], $overrides, $fg),
+                8  => $this->section8($hazardResult, $calcResult['composition'], $overrides, $fg, $uvAcrylates !== []),
                 9  => $this->section9($fg, $calcResult, $overrides),
-                10 => $this->section10($hazardResult, $overrides),
+                10 => $this->section10($hazardResult, $overrides, $isUvProduct, $calcResult['composition']),
                 11 => $this->section11($hazardResult, $calcResult['composition'], $carcinogenResult, $overrides),
                 12 => $this->section12($hazardResult, $calcResult['composition'], $overrides, $saraResult),
-                13 => $this->section13($hazardResult, $calcResult, $overrides),
-                14 => $this->section14($dotInfo, $overrides),
+                13 => $this->section13($hazardResult, $calcResult, $overrides, $rcraResult),
+                14 => $this->section14($fg, $calcResult, $hazardResult, $overrides),
                 15 => $this->section15($hazardResult, $saraResult, $prop65Result, $hapResult, $calcResult, $overrides),
                 16 => $this->section16($calcResult, $overrides),
             ],
@@ -466,6 +555,21 @@ class SDSGenerator
                 $sds['sections'][$secNum]['uv_acrylate_note'] = $appendText;
             }
         }
+
+        // Audit #29: TSCA inventory not verified for every constituent →
+        // operator warning (preview Warnings box / publish flash; never printed).
+        $tscaWarning = TSCAService::warningText($sds['sections'][15]['tsca'] ?? []);
+        if ($tscaWarning !== null) {
+            $sds['warnings'][] = $tscaWarning;
+        }
+
+        // Audit #27: an n.o.s. entry whose technical names (49 CFR 172.203(k))
+        // could not be derived → operator warning (never printed; the flag
+        // itself never reaches the snapshot). Publishing is not blocked.
+        if (!empty($sds['sections'][14]['technical_names_missing'])) {
+            $sds['warnings'][] = 'Transport warning: Section 14 prints an n.o.s. proper shipping name without the technical names 49 CFR 172.203(k) requires — none could be derived from the composition (no disclosed constituent carries the primary hazard; e.g. Class 3 from the formula flash point alone, or trade-secret constituents only). Enter them in the Section 14 Proper Shipping Name override. Publishing is not blocked.';
+        }
+        unset($sds['sections'][14]['technical_names_missing']);
 
         // Section 16 abbreviations: master table filtered to the terms that
         // actually print on this sheet (audit #33). Runs last on purpose.
@@ -716,14 +820,73 @@ class SDSGenerator
             'title' => $this->t->get('section1.title', []),
             'product_identifier'    => $fg['product_code'] . ' — ' . $fg['description'],
             'product_family'        => $fg['family'] ?? '',
-            'recommended_use'       => $overrides[1]['recommended_use'] ?? ($fg['recommended_use'] ?? '') ?: $this->t->get('section1.recommended_use'),
-            'restrictions'          => $overrides[1]['restrictions'] ?? ($fg['restrictions_on_use'] ?? '') ?: $this->t->get('section1.restrictions'),
+            'recommended_use'       => $this->resolveUseText($fg, $overrides, 'recommended_use'),
+            'restrictions'          => $this->resolveUseText($fg, $overrides, 'restrictions'),
             'manufacturer_name'     => $block['manufacturer_name'],
             'manufacturer_address'  => $block['manufacturer_address'],
             'manufacturer_phone'    => $block['manufacturer_phone'],
             'emergency_phone'       => $company['emergency_phone'] ?? '',
             'manufacturer_email'    => $block['manufacturer_email'],
             'manufacturer_website'  => $block['manufacturer_website'],
+        ];
+    }
+
+    /**
+     * Section 1 Recommended Use / Restrictions on Use fallback chain (audit #3):
+     *   per-FG text override (text_overrides)
+     *   > finished_goods.recommended_use / restrictions_on_use (per-product override)
+     *   > product family default for this language (blank -> en)
+     *   > translation file: section1.<field> for products,
+     *     section1.<field>_resale for resale raw-material SDSs.
+     * $field is 'recommended_use' | 'restrictions'.
+     */
+    private function resolveUseText(array $fg, array $overrides, string $field): string
+    {
+        $text = trim((string) ($overrides[1][$field] ?? ''));
+        if ($text !== '') {
+            return $text;
+        }
+        $column = $field === 'restrictions' ? 'restrictions_on_use' : 'recommended_use';
+        $text   = trim((string) ($fg[$column] ?? ''));
+        if ($text !== '') {
+            return $text;
+        }
+        $defaults = $fg['family_defaults'][$field] ?? [];
+        $text     = trim((string) ($defaults[$this->t->getLanguage()] ?? ''));
+        if ($text === '') {
+            $text = trim((string) ($defaults['en'] ?? ''));
+        }
+        if ($text !== '') {
+            return $text;
+        }
+        return $this->t->get('section1.' . $field . (!empty($fg['is_resale']) ? '_resale' : ''));
+    }
+
+    /**
+     * Audit #3: attach the resolved product family's name, UV/LED flag and
+     * per-language Section 1 defaults to a finished-good (or synthesised
+     * resale) row, so section1() and the UV gate stay DB-free afterwards.
+     * Keys added: family (name, overwritten when a family is resolved),
+     * family_is_uv (bool|null), family_defaults
+     * (['recommended_use' => [lang => text], 'restrictions' => [lang => text]]).
+     */
+    private function attachFamily(array &$fg): void
+    {
+        $fg['family_defaults'] = ['recommended_use' => [], 'restrictions' => []];
+        $fg['family_is_uv']    = null;
+        $familyId = (int) ($fg['family_id'] ?? 0);
+        if ($familyId <= 0) {
+            return;
+        }
+        $family = ProductFamily::findById($familyId);
+        if ($family === null) {
+            return;
+        }
+        $fg['family']          = $family['name'];
+        $fg['family_is_uv']    = (int) $family['is_uv'] === 1;
+        $fg['family_defaults'] = [
+            'recommended_use' => ProductFamily::decodeLangJson($family['recommended_use_json'] ?? null),
+            'restrictions'    => ProductFamily::decodeLangJson($family['restrictions_json'] ?? null),
         ];
     }
 
@@ -777,8 +940,12 @@ class SDSGenerator
         ];
     }
 
-    private function section3(array $composition, array $hazardResult, array $overrides): array
-    {
+    private function section3(
+        array $composition,
+        array $hazardResult,
+        array $overrides,
+        string $substanceMixture = SubstanceMixtureResolver::MIXTURE
+    ): array {
         // Disclose CAS numbers that are either classified as hazardous
         // OR have an exposure limit on file. OSHA HazCom requires
         // Section 3 disclosure for any constituent with an exposure
@@ -937,7 +1104,13 @@ class SDSGenerator
 
         return [
             'title'                => $this->t->get('section3.title'),
-            'substance_or_mixture' => $this->t->get('labels.mixture'),
+            // Audit #6: resolved by SubstanceMixtureResolver (FG/RM column, or a
+            // single-line formula of a Substance RM); default Mixture. The
+            // machine key is kept beside the printed label for renderers/tests.
+            'substance_mixture'    => $substanceMixture,
+            'substance_or_mixture' => $this->t->get(
+                $substanceMixture === SubstanceMixtureResolver::SUBSTANCE ? 'labels.substance' : 'labels.mixture'
+            ),
             'components'           => $disclosed,
             // Exact percentages are withheld on every row (prescribed-range
             // bands — see PRESCRIBED_RANGES), so the 1910.1200(i)(1)
@@ -1159,6 +1332,38 @@ class SDSGenerator
         return self::flashPointDisplay($props);
     }
 
+    /**
+     * Initial boiling point display string for Section 9 (audit #16): the
+     * recursive formula_props value (lowest boiling point among the raw
+     * materials in the expanded composition that carry one; weight-
+     * independent), formatted "78.4 °C (173.1 °F)" like the flash point.
+     * Null when no raw material in the formula carries a boiling point.
+     */
+    private static function boilingPointDisplay(array $props): ?string
+    {
+        $bpC = $props['boiling_point_c'] ?? null;
+        if ($bpC === null || $bpC === '') {
+            return null;
+        }
+        $bpC = (float) $bpC;
+        $bpF = round($bpC * 9 / 5 + 32, 1);
+        return "{$bpC} °C ({$bpF} °F)";
+    }
+
+    /**
+     * #16: the Section 9 initial boiling point — the per-product override
+     * when a non-blank one is stored, otherwise the derived formula_props
+     * value. Null when neither exists (Section 9 prints labels.not_determined).
+     */
+    private static function resolveBoilingPointDisplay(array $props, array $overrides): ?string
+    {
+        $override = $overrides[9]['boiling_point'] ?? null;
+        if ($override !== null && trim((string) $override) !== '') {
+            return (string) $override;
+        }
+        return self::boilingPointDisplay($props);
+    }
+
     private function section5(array $calcResult, array $hazardResult, array $overrides): array
     {
         // #11: the same flash point Section 9 prints (Section 9 override first,
@@ -1350,6 +1555,49 @@ class SDSGenerator
             'environmental'        => $environmental,
             'containment'          => $containment,
         ];
+    }
+
+    /**
+     * Canonical print order of the Section 10 "Conditions to avoid" items
+     * (audit #19). Each key maps to translation key section10.cond_<key>;
+     * natural case, composed additively exactly like INCOMPAT_ORDER.
+     */
+    private const COND_ORDER = [
+        'heat', 'storage_temp', 'ignition', 'air', 'water', 'shock', 'oxidizers', 'combustibles', 'uv',
+    ];
+
+    /** Composition flag => translation suffix, in Section 10 print order (audit #19). */
+    private const DECOMP_ELEMENTS = [
+        'has_nitrogen' => 'nitrogen',
+        'has_sulfur'   => 'sulfur',
+        'has_halogen'  => 'halogen',
+    ];
+
+    /**
+     * Elements present in the composition, from the cas_master has_* flags
+     * carried by Formula::getExpandedComposition() / buildResaleComposition()
+     * (audit #19), in DECOMP_ELEMENTS order. TRADE_SECRET buckets carry no
+     * flags. Any flagged constituent counts, at any concentration.
+     *
+     * @return string[] subset of ['nitrogen', 'sulfur', 'halogen']
+     */
+    private static function decompositionElements(array $composition): array
+    {
+        $found = [];
+        foreach ($composition as $c) {
+            if (!is_array($c)) {
+                continue;
+            }
+            foreach (self::DECOMP_ELEMENTS as $flag => $element) {
+                if (!empty($c[$flag])) {
+                    $found[$element] = true;
+                }
+            }
+        }
+        return array_values(array_filter(
+            self::DECOMP_ELEMENTS,
+            static fn(string $e): bool => isset($found[$e])
+        ));
     }
 
     /**
@@ -1571,7 +1819,7 @@ class SDSGenerator
         ];
     }
 
-    private function section8(array $hazard, array $composition, array $overrides, array $fg = []): array
+    private function section8(array $hazard, array $composition, array $overrides, array $fg = [], bool $uvPack = false): array
     {
         // Conc% column: print the SAME prescribed-range band Section 3 shows
         // for this CAS (SDS content policy — see PRESCRIBED_RANGES and
@@ -1601,7 +1849,21 @@ class SDSGenerator
         // PPE: operator override, else the translated sentence for the tier
         // HazardEngine::derivePPE selected from the H-codes (see resolvePPE()).
         // derivePPE always yields a tier, so there is no third-level default.
+        // UV acrylate products additionally get the pack's PPE sentences (below).
         $ppe = $this->resolvePPE($hazard, $overrides)['text'];
+
+        // Audit #35: UV acrylate rule-pack PPE advice is folded into the four
+        // PPE fields (Section 8 carries no separate note). An operator override
+        // on a field replaces the whole field, fragments included (section4()
+        // rule), so nothing is appended to an overridden field.
+        if ($uvPack) {
+            foreach (UVAcrylateRulePack::getPpeSupplement($this->t) as $field => $sentence) {
+                $override = $overrides[8][$field] ?? null;
+                if (($override === null || trim((string) $override) === '') && isset($ppe[$field])) {
+                    $ppe[$field] .= ' ' . $sentence;
+                }
+            }
+        }
 
         return [
             'title'            => $this->t->get('section8.title'),
@@ -1677,6 +1939,43 @@ class SDSGenerator
         return ['text' => $text, 'hazard_driven' => $hazardDriven];
     }
 
+    /**
+     * #18(b) Physical state used by Sections 6, 8 and 9.
+     *
+     * The finished good's own physical_state wins when set; otherwise the
+     * physical_state of the highest-wt% raw material in the expanded
+     * composition (FormulaCalcService::deriveFormulaProperties ->
+     * formula_props.physical_state); otherwise 'Liquid'. generate(),
+     * computeBase() and computeBaseForResaleRawMaterial() write the result
+     * back into $fg['physical_state'] before any section is built so the
+     * three sections can never disagree.
+     */
+    public static function resolvePhysicalState(array $fg, array $calcResult): string
+    {
+        $own = trim((string) ($fg['physical_state'] ?? ''));
+        if ($own !== '') {
+            return $own;
+        }
+        $derived = trim((string) ($calcResult['formula_props']['physical_state'] ?? ''));
+        return $derived !== '' ? $derived : 'Liquid';
+    }
+
+    /**
+     * #18(d) Map FormulaCalcService's solubility_key to the printed term.
+     * Returns '' when no raw material in the formula carries a solubility
+     * value (the caller prints labels.not_determined).
+     */
+    private function solubilityText(?string $key): string
+    {
+        return match ($key) {
+            'soluble'           => $this->t->get('section9.solubility_soluble'),
+            'partially_soluble' => $this->t->get('section9.solubility_partially_soluble'),
+            'negligible'        => $this->t->get('section9.solubility_negligible'),
+            'not_soluble'       => $this->t->get('section9.solubility_not_soluble'),
+            default             => '',
+        };
+    }
+
     private function section9(array $fg, array $calcResult, array $overrides): array
     {
         $voc   = $calcResult['voc'];
@@ -1684,13 +1983,21 @@ class SDSGenerator
 
         $notDetermined = $this->t->get('labels.not_determined');
 
-        // Physical state and color from the finished good record
-        $physicalState = $fg['physical_state'] ?? '';
+        // Physical state: already resolved by the caller (#18(b):
+        // FG field -> dominant RM -> 'Liquid'); re-resolve here so a direct
+        // call with an unresolved $fg (tests) prints the same thing.
+        $physicalState = self::resolvePhysicalState($fg, $calcResult);
         $color = $fg['color'] ?? '';
 
         // Flash point: override first, then auto-derived from the formula.
         // Shared resolver with Section 5 (#11) so both sections print one value.
         $flashPoint = self::resolveFlashPointDisplay($props, $overrides) ?? $notDetermined;
+
+        // #16 Initial boiling point: override first, then the lowest raw
+        // material boiling point in the expanded composition (formula_props,
+        // recursive, weight-independent), else "Not determined" — App D
+        // accepts a no-data statement.
+        $boilingPoint = self::resolveBoilingPointDisplay($props, $overrides) ?? $notDetermined;
 
         // VOC wt%: if all materials are <1%, display "<1%"
         $vocWtPctDisplay = round((float) ($voc['total_voc_wt_pct'] ?? 0), 2);
@@ -1698,26 +2005,30 @@ class SDSGenerator
             $vocWtPctDisplay = '<1';
         }
 
-        // Solubility: auto-derive from formula
-        $solubility = $overrides[9]['solubility'] ?? ($props['solubility'] ?? '');
-
-        // Build appearance from physical state + color if not overridden
-        $appearance = $overrides[9]['appearance'] ?? '';
-        if ($appearance === '' && ($physicalState !== '' || $color !== '')) {
-            $parts = [];
-            if ($color !== '') {
-                $parts[] = $color;
-            }
-            if ($physicalState !== '') {
-                $parts[] = strtolower($physicalState);
-            }
-            $appearance = implode(' ', $parts);
+        // #18(d) Solubility: per-FG override wins; otherwise the formula's
+        // soluble-fraction band (FormulaCalcService::deriveFormulaProperties
+        // -> solubility_key); otherwise "Not determined".
+        $solubility = trim((string) ($overrides[9]['solubility'] ?? ''));
+        if ($solubility === '') {
+            $solubility = $this->solubilityText($props['solubility_key'] ?? null);
         }
-        // #17: only when neither an override nor FG colour/state gives an
-        // appearance, fall back to the dominant raw material's appearance.
-        // (Physical state / colour derivation itself is unchanged — see #18.)
+        if ($solubility === '') {
+            $solubility = $notDetermined;
+        }
+
+        // Appearance: override; else FG colour + resolved state when a colour is
+        // set; else (#17) the dominant raw material's appearance; else the bare
+        // resolved state. (#18(b) made the state always non-empty, so the RM
+        // appearance must be tried BEFORE the state-only fallback or it can
+        // never print — a product with no colour would say just "liquid".)
+        $appearance = trim((string) ($overrides[9]['appearance'] ?? ''));
         if ($appearance === '') {
-            $appearance = (string) ($props['appearance'] ?? '');
+            $appearance = $color !== ''
+                ? trim($color . ' ' . strtolower($physicalState))
+                : trim((string) ($props['appearance'] ?? ''));
+            if ($appearance === '') {
+                $appearance = strtolower($physicalState);
+            }
         }
 
         // #17 Odor: per-FG override wins; otherwise the dominant (highest
@@ -1732,65 +2043,150 @@ class SDSGenerator
             $odor = $notDetermined;
         }
 
+        // #18(a): missing RM specific gravity (-> 1.0) and missing VOC data
+        // (-> 0) are applied silently inside VOCCalculator; no "estimated"
+        // marker is printed. #18(c): "VOC less water & exempts" and
+        // "solids vol%" are no longer part of the sheet.
         return [
             'title'                => $this->t->get('section9.title'),
             'physical_state'       => $physicalState,
             'color'                => $color,
             'appearance'           => $appearance,
             'odor'                 => $odor,
-            'boiling_point'        => $overrides[9]['boiling_point'] ?? $notDetermined,
+            'boiling_point'        => $boilingPoint,
             'flash_point'          => $flashPoint,
             'solubility'           => $solubility,
             'specific_gravity'     => round((float) ($voc['mixture_sg'] ?? 0), 3) ?: $notDetermined,
             'voc_lb_per_gal'       => round((float) ($voc['voc_lb_per_gal'] ?? 0), 2),
-            'voc_less_water_exempt' => round((float) ($voc['voc_lb_per_gal_less_water_exempt'] ?? 0), 2),
             'solids_wt_pct'        => round((float) ($voc['solids_wt_pct'] ?? 0), 1),
-            'solids_vol_pct'       => $voc['solids_vol_pct'] !== null ? round((float) $voc['solids_vol_pct'], 1) : $notDetermined,
             'voc_wt_pct'           => $vocWtPctDisplay,
         ];
     }
 
-    private function section10(array $hazardResult, array $overrides): array
+    /**
+     * Section 10 (audit #19). One flag set drives every paragraph so combined
+     * classes keep every fragment (as Section 7, audit #13):
+     *   - Reactivity / Stability branch on H240-242 (self-reactive), H250
+     *     (pyrophoric), H260-261 (water-reactive): "Unstable under the
+     *     following conditions: ..." instead of "Stable ...".
+     *   - Conditions to avoid are additive items in COND_ORDER; ignition
+     *     wording only for ignition classes; oxidizers swap "strong
+     *     oxidizers" for combustibles/reducing materials; UV/LED families
+     *     ($isUv — the resolved family flag, decision #3 / audit #35, fed by
+     *     UVAcrylateRulePack::familyIsUv() at the call sites, not gated on
+     *     the rule-pack setting) add the light / premature-polymerization
+     *     condition.
+     *   - Decomposition products come from the cas_master element flags on
+     *     the composition (nitrogen oxides / sulfur oxides / hydrogen halides).
+     * $isUv / $composition default so the DB-free tests that only care about
+     * the incompatibles helper keep their two-argument calls.
+     */
+    private function section10(array $hazardResult, array $overrides, bool $isUv = false, array $composition = []): array
     {
         $hCodes = self::extractHCodes($hazardResult);
+        $has    = static fn(array $codes): bool => !empty(array_intersect($hCodes, $codes));
 
-        $flammable    = !empty(array_intersect($hCodes, ['H220', 'H221', 'H222', 'H223', 'H224', 'H225', 'H226', 'H227', 'H228']));
-        $oxidizer     = !empty(array_intersect($hCodes, ['H271', 'H272']));
-        $waterReactive = !empty(array_intersect($hCodes, ['H260', 'H261']));
-        $pyrophoric   = !empty(array_intersect($hCodes, ['H250']));
-        $selfReactive = !empty(array_intersect($hCodes, ['H240', 'H241', 'H242']));
+        $flammable     = $has(['H220', 'H221', 'H222', 'H223', 'H224', 'H225', 'H226', 'H227', 'H228']);
+        $oxidizer      = $has(['H270', 'H271', 'H272']);
+        $selfReactive  = $has(['H240', 'H241', 'H242']);
+        $selfHeating   = $has(['H251', 'H252']);
+        $pyrophoric    = $has(['H250']);
+        $waterReactive = $has(['H260', 'H261']);
 
-        // --- Conditions to avoid smart logic ---
+        // --- Reactivity / Stability: branch on the reactive classes ---
+        $reactiveKeys = array_keys(array_filter([
+            'self_reactive'  => $selfReactive,
+            'pyrophoric'     => $pyrophoric,
+            'water_reactive' => $waterReactive,
+        ]));
+
+        $reactivity = $overrides[10]['reactivity'] ?? null;
+        if ($reactivity === null) {
+            $reactivity = $reactiveKeys === []
+                ? $this->t->get('section10.reactivity')
+                : implode(' ', array_map(
+                    fn(string $k): string => $this->t->get('section10.reactivity_' . $k),
+                    $reactiveKeys
+                ));
+        }
+
+        $stability = $overrides[10]['stability'] ?? null;
+        if ($stability === null) {
+            $stability = $reactiveKeys === []
+                ? $this->t->get('section10.stability')
+                : $this->t->get('section10.stability_unstable', [
+                    'conditions' => implode('; ', array_map(
+                        fn(string $k): string => $this->t->get('section10.stability_cond_' . $k),
+                        $reactiveKeys
+                    )),
+                ]);
+        }
+
+        // --- Conditions to avoid: additive items in COND_ORDER ---
         $conditionsAvoid = $overrides[10]['conditions_avoid'] ?? null;
         if ($conditionsAvoid === null) {
-            if ($pyrophoric) {
-                $conditionsAvoid = $this->t->get('section10.conditions_avoid_pyrophoric');
-            } elseif ($waterReactive) {
-                $conditionsAvoid = $this->t->get('section10.conditions_avoid_water_reactive');
-            } elseif ($selfReactive) {
-                $conditionsAvoid = $this->t->get('section10.conditions_avoid_self_reactive');
-            } else {
-                $conditionsAvoid = $this->t->get('section10.conditions_avoid');
+            $selected = ['heat' => true];
+            if ($selfReactive || $selfHeating) {
+                $selected['storage_temp'] = true;
             }
+            if ($flammable || $pyrophoric || $selfReactive) {
+                $selected['ignition'] = true;
+            }
+            if ($pyrophoric) {
+                $selected += ['air' => true, 'water' => true];
+            }
+            if ($waterReactive) {
+                $selected['water'] = true;
+            }
+            if ($selfReactive) {
+                $selected['shock'] = true;
+            }
+            if ($oxidizer) {
+                $selected['combustibles'] = true;
+            } else {
+                $selected['oxidizers'] = true;
+            }
+            if ($isUv) {
+                $selected['uv'] = true;
+            }
+            $items = [];
+            foreach (self::COND_ORDER as $key) {
+                if (isset($selected[$key])) {
+                    $items[] = $this->t->get('section10.cond_' . $key);
+                }
+            }
+            $list = implode(', ', $items);
+            $conditionsAvoid = mb_strtoupper(mb_substr($list, 0, 1)) . mb_substr($list, 1) . '.';
         }
 
         // --- Incompatible materials (shared with Section 7 storage, audit #13) ---
         $incompatible = $this->resolveIncompatibleMaterials($hazardResult, $overrides);
 
-        // --- Decomposition products smart logic ---
-        // Look at classified hazard classes to detect nitrogen/sulfur/halogen-containing chemicals
+        // --- Decomposition products from the cas_master element flags ---
         $decomposition = $overrides[10]['decomposition'] ?? null;
         if ($decomposition === null) {
-            $decomposition = $this->t->get('section10.decomposition');
+            $elements = self::decompositionElements($composition);
+            if ($elements === []) {
+                $decomposition = $this->t->get('section10.decomposition');
+            } elseif (count($elements) === 1) {
+                $decomposition = $this->t->get('section10.decomposition_' . $elements[0]);
+            } else {
+                $decomposition = $this->t->get('section10.decomposition_multi', [
+                    'products' => implode(', ', array_map(
+                        fn(string $e): string => $this->t->get('section10.decomp_' . $e),
+                        $elements
+                    )),
+                ]);
+            }
         }
 
         return [
-            'title'             => $this->t->get('section10.title'),
-            'reactivity'        => $overrides[10]['reactivity'] ?? $this->t->get('section10.reactivity'),
-            'stability'         => $overrides[10]['stability'] ?? $this->t->get('section10.stability'),
-            'conditions_avoid'  => $conditionsAvoid,
-            'incompatible'      => $incompatible,
-            'decomposition'     => $decomposition,
+            'title'            => $this->t->get('section10.title'),
+            'reactivity'       => $reactivity,
+            'stability'        => $stability,
+            'conditions_avoid' => $conditionsAvoid,
+            'incompatible'     => $incompatible,
+            'decomposition'    => $decomposition,
         ];
     }
 
@@ -2400,67 +2796,302 @@ class SDSGenerator
         return $text;
     }
 
-    private function section13(array $hazardResult, array $calcResult, array $overrides): array
+    /**
+     * Section 13 (audit #26). The generic disposal sentence stays (override
+     * wins). A second, computed-only line lists EVERY applicable RCRA code:
+     *   D001 ignitable  — the Section 9 flash point (resolveFlashPointNumeric:
+     *                     per-product override first, else formula_props —
+     *                     the same value Sections 5, 9 and 14 use) < 60 °C, or
+     *                     Flam. Liq. 1–3 (H224–H226). A "> n" value with
+     *                     n < 60 is read the way TransportClassifier reads it
+     *                     for Class 3 (conservative) and prints the
+     *                     "not determined to be at or above 60 °C" reason, so
+     *                     one sheet can never say "Class 3" in Section 14 and
+     *                     "no characteristic" here. Oxidizers (H270–H272) and
+     *                     pyrophoric / self-heating solids (H250–H252) are
+     *                     D001 under 40 CFR 261.21(a)(2)/(a)(4)
+     *   D002 corrosive  — H314 (the pH criterion of 261.22 is not available;
+     *                     the line says so)
+     *   D003 reactive   — water-reactive (H260/H261), explosive (H200–H205),
+     *                     self-reactive / organic peroxide (H240–H242)
+     *   D004–D043       — rcra_waste_codes matches by component CAS
+     *                     (RCRAService, any concentration); name only, never a
+     *                     percentage; inside the "as sold" sentence
+     *   F / K / P / U   — listed wastes never apply to the product as sold
+     *                     (261.31 spent solvents; 261.33(d) only the pure
+     *                     chemical or a sole-active-ingredient formulation):
+     *                     printed in a separate "for reference" sentence and
+     *                     never the reason for "may be regulated"
+     * The line is never overridden (like the #24 PBT line) and always ends
+     * with the generator-responsibility sentence.
+     */
+    private function section13(array $hazardResult, array $calcResult, array $overrides, array $rcraResult = []): array
     {
         $hCodes = self::extractHCodes($hazardResult);
+        $has    = static fn (array $codes): bool => array_intersect($hCodes, $codes) !== [];
 
-        // Determine flash point from formula lines
-        $flashPoint = null;
-        foreach ($calcResult['formula']['lines'] ?? [] as $line) {
-            $fp = $line['flash_point_c'] ?? null;
-            if ($fp !== null && ($flashPoint === null || (float) $fp < $flashPoint)) {
-                $flashPoint = (float) $fp;
-            }
+        // D001 from the Section 9 flash point (override first, then formula_props —
+        // the same numeric value Section 14 classifies from).
+        $props       = $calcResult['formula_props'] ?? [];
+        $fpR         = self::resolveFlashPointNumeric($props, $overrides);
+        $fpIgnitable = $fpR['fp'] !== null && $fpR['fp'] < 60.0;
+
+        $items  = [];
+        $listed = [];   // F / K / P / U component fragments (reference sentence)
+
+        $d001 = [];
+        if ($has(['H224', 'H225', 'H226']) || ($fpIgnitable && !$fpR['gt'])) {
+            $d001[] = $this->t->get('section13.rcra_reason_flash_point');
+        } elseif ($fpIgnitable) {
+            // "> n" with n < 60: not established at or above 60 °C — never "below 60 °C".
+            $d001[] = $this->t->get('section13.rcra_reason_flash_point_gt');
+        }
+        if ($has(['H270', 'H271', 'H272'])) {
+            $d001[] = $this->t->get('section13.rcra_reason_oxidizer');
+        }
+        if ($has(['H250', 'H251', 'H252'])) {
+            $d001[] = $this->t->get('section13.rcra_reason_ignitable_solid');
+        }
+        if ($d001 !== []) {
+            $items[] = $this->t->get('section13.rcra_d001', ['reasons' => implode(', ', $d001)]);
         }
 
-        $corrosive     = !empty(array_intersect($hCodes, ['H314']));
-        $acuteToxic    = !empty(array_intersect($hCodes, ['H300', 'H301', 'H310', 'H311', 'H330', 'H331']));
-        $waterReactive = !empty(array_intersect($hCodes, ['H260', 'H261']));
-        $selfReactive  = !empty(array_intersect($hCodes, ['H240', 'H241', 'H242']));
-        $aquatic       = !empty(array_intersect($hCodes, ['H400', 'H401', 'H402', 'H410', 'H411', 'H412', 'H413']));
-        // EPA ignitable: flash point < 60°C (140°F)
-        $ignitable     = $flashPoint !== null && $flashPoint < 60.0;
+        if ($has(['H314'])) {
+            $items[] = $this->t->get('section13.rcra_d002');
+        }
 
-        // --- Disposal methods smart logic ---
-        $methods = $overrides[13]['methods'] ?? null;
-        if ($methods === null) {
-            // Pick the most relevant disposal guidance (priority order)
-            if ($waterReactive || $selfReactive) {
-                $methods = $this->t->get('section13.methods_reactive');
-            } elseif ($corrosive) {
-                $methods = $this->t->get('section13.methods_corrosive');
-            } elseif ($acuteToxic) {
-                $methods = $this->t->get('section13.methods_toxic');
-            } elseif ($ignitable) {
-                $methods = $this->t->get('section13.methods_ignitable');
-            } elseif ($aquatic) {
-                $methods = $this->t->get('section13.methods_aquatic');
+        $d003 = [];
+        if ($has(['H260', 'H261'])) {
+            $d003[] = $this->t->get('section13.rcra_reason_water_reactive');
+        }
+        if ($has(['H200', 'H201', 'H202', 'H203', 'H204', 'H205'])) {
+            $d003[] = $this->t->get('section13.rcra_reason_explosive');
+        }
+        if ($has(['H240', 'H241', 'H242'])) {
+            $d003[] = $this->t->get('section13.rcra_reason_unstable');
+        }
+        if ($d003 !== []) {
+            $items[] = $this->t->get('section13.rcra_d003', ['reasons' => implode(', ', $d003)]);
+        }
+
+        // Toxicity-characteristic constituents (D codes: "as sold" sentence) and
+        // listed wastes (F / K / P / U: reference sentence) from rcra_waste_codes.
+        foreach ($rcraResult['components'] ?? [] as $comp) {
+            $asSold = [];
+            $ref    = [];
+            foreach ($comp['codes'] ?? [] as $code) {
+                if (!is_array($code) || ($code['waste_code'] ?? '') === '') {
+                    continue;
+                }
+                $kind = strtoupper((string) (($code['kind'] ?? '') ?: substr((string) $code['waste_code'], 0, 1)));
+                if ($kind === 'D') {
+                    $asSold[] = $this->formatRcraCode($code);
+                } else {
+                    $ref[] = $this->formatRcraCode($code);
+                }
+            }
+            if ($asSold === [] && $ref === []) {
+                continue;
+            }
+            if (!empty($comp['is_trade_secret'])) {
+                $name = (string) (($comp['trade_secret_description'] ?? '') ?: 'Trade Secret');
             } else {
-                $methods = $this->t->get('section13.methods');
+                $name = (string) ($comp['chemical_name'] ?? '');
+            }
+            if ($name === '') {
+                $name = (string) ($comp['cas_number'] ?? '');
+            }
+            if ($asSold !== []) {
+                $items[] = $this->t->get('section13.rcra_component', ['name' => $name, 'list' => implode('; ', $asSold)]);
+            }
+            if ($ref !== []) {
+                $listed[] = $this->t->get('section13.rcra_component', ['name' => $name, 'list' => implode('; ', $ref)]);
             }
         }
+
+        // Assembly: [as-sold sentence | "no characteristic" | rcra_none] + [reference sentence] + generator.
+        $parts = [];
+        if ($items !== []) {
+            $parts[] = $this->t->get('section13.rcra_intro') . ' ' . implode('; ', $items) . '.';
+        } else {
+            // rcra_none also denies listed components, so it only prints when nothing matched at all.
+            $parts[] = $this->t->get($listed !== [] ? 'section13.rcra_none_characteristic' : 'section13.rcra_none');
+        }
+        if ($listed !== []) {
+            $parts[] = $this->t->get('section13.rcra_listed_intro') . ' ' . implode('; ', $listed) . '.';
+        }
+        $parts[] = $this->t->get('section13.rcra_generator');
+        $rcra = implode(' ', $parts);
 
         return [
-            'title'   => $this->t->get('section13.title'),
-            'methods' => $methods,
+            'title'               => $this->t->get('section13.title'),
+            'methods'             => $overrides[13]['methods'] ?? $this->t->get('section13.methods'),
+            'rcra_classification' => $rcra,
             // The shared Sections 12-15 footnote is emitted once, on section15().
         ];
     }
 
-    private function section14(array $dotInfo, array $overrides): array
+    /**
+     * One "<code> <condition>" fragment for a rcra_waste_codes row (audit #26).
+     * D-codes carry the TCLP regulatory level (mg/L, trailing zeros trimmed);
+     * F / K / P / U get their listing condition. Kind defaults to the code's
+     * first letter for rows saved without one.
+     */
+    private function formatRcraCode(array $code): string
     {
+        $wc   = (string) ($code['waste_code'] ?? '');
+        $kind = strtoupper((string) (($code['kind'] ?? '') ?: substr($wc, 0, 1)));
+        switch ($kind) {
+            case 'D':
+                $limit = $code['limit_mg_l'] ?? null;
+                if ($limit === null || $limit === '') {
+                    return $this->t->get('section13.rcra_code_d_nolimit', ['code' => $wc]);
+                }
+                $limitText = rtrim(rtrim(number_format((float) $limit, 3, '.', ''), '0'), '.');
+                return $this->t->get('section13.rcra_code_d', ['code' => $wc, 'limit' => $limitText]);
+            case 'F':
+                return $this->t->get('section13.rcra_code_f', ['code' => $wc]);
+            case 'K':
+                return $this->t->get('section13.rcra_code_k', ['code' => $wc]);
+            case 'P':
+                return $this->t->get('section13.rcra_code_p', ['code' => $wc]);
+            default:
+                return $this->t->get('section13.rcra_code_u', ['code' => $wc]);
+        }
+    }
+
+    /**
+     * The ONE numeric flash point Sections 13 (D001) and 14 (Class 3) classify
+     * from — the same precedence Sections 5 and 9 PRINT (#11,
+     * resolveFlashPointDisplay): the Section 9 override string when it carries
+     * a number, else the recursive formula_props value with its ">" flag.
+     *
+     * Override parsing: an explicit °C value wins wherever it sits in the
+     * string ("24 °C (75 °F)" and "75 °F (24 °C)" both read 24 — an operator's
+     * °F-first override must not be read as °C); else a °F value is converted;
+     * else the first number is taken as °C. A ">" anywhere in the string sets
+     * the greater-than flag ("> 200°F (93°C)" keeps it). An override without a
+     * number ("Not determined") is ignored and formula_props is used.
+     *
+     * @return array{fp: ?float, gt: bool}
+     */
+    private static function resolveFlashPointNumeric(array $props, array $overrides): array
+    {
+        $fp = null;
+        $gt = false;
+        $fpOverride = trim((string) ($overrides[9]['flash_point'] ?? ''));
+        if ($fpOverride !== '' && preg_match('/-?\d+(?:\.\d+)?/u', $fpOverride, $mAny)) {
+            $gt = str_contains($fpOverride, '>');
+            if (preg_match('/(-?\d+(?:\.\d+)?)\s*°\s*C/iu', $fpOverride, $mC)) {
+                $fp = (float) $mC[1];
+            } elseif (preg_match('/(-?\d+(?:\.\d+)?)\s*°\s*F/iu', $fpOverride, $mF)) {
+                $fp = ((float) $mF[1] - 32) * 5 / 9;
+            } else {
+                $fp = (float) $mAny[0];
+            }
+        } elseif (isset($props['flash_point_c']) && $props['flash_point_c'] !== '' && $props['flash_point_c'] !== null) {
+            $fp = (float) $props['flash_point_c'];
+            $gt = !empty($props['flash_point_greater_than']);
+        }
+        return ['fp' => $fp, 'gt' => $gt];
+    }
+
+    /**
+     * Section 14 — Transport Information (audit #27).
+     *
+     * Derived by TransportClassifier from the Section 9 flash point
+     * (resolveFlashPointNumeric: per-product override, else formula_props —
+     * lowest raw material, ">" flag; the value Section 13 D001 also uses),
+     * the initial boiling point (formula_props.boiling_point_c, #16), the
+     * engine's resolved H-codes and the finished good's
+     * transport_product_type / description / family.
+     * Per-product text_overrides (section 14) WIN over the derivation.
+     * 'status' is not printed: the publish gates read it
+     * (SDSReadinessService::transportNotDeterminedError).
+     * 'technical_names_missing' (present only when true) is not printed
+     * either: generate() turns it into an operator warning and drops it.
+     */
+    private function section14(array $fg, array $calcResult, array $hazardResult, array $overrides): array
+    {
+        $props = $calcResult['formula_props'] ?? [];
+
+        ['fp' => $fp, 'gt' => $gt] = self::resolveFlashPointNumeric($props, $overrides);
+
+        $physicalState = trim((string) ($fg['physical_state'] ?? ''));
+        if ($physicalState === '') {
+            $physicalState = (string) ($props['physical_state'] ?? '');
+        }
+
+        $r = TransportClassifier::classify([
+            'flash_point_c'            => $fp,
+            'flash_point_greater_than' => $gt,
+            'boiling_point_c'          => (isset($props['boiling_point_c']) && $props['boiling_point_c'] !== '' && $props['boiling_point_c'] !== null) ? (float) $props['boiling_point_c'] : null,
+            'h_codes'                  => self::extractHCodes($hazardResult),
+            'hazard_classes'           => $hazardResult['hazard_classes'] ?? [],
+            'cas_h_codes'              => TransportClassifier::casHCodeMap($hazardResult),
+            'composition'              => $calcResult['composition'] ?? [],
+            'physical_state'           => $physicalState,
+            'product_type'             => $fg['transport_product_type'] ?? null,
+            'description'              => (string) ($fg['description'] ?? ''),
+            'family'                   => $fg['family'] ?? null,
+        ]);
+
         $notRegulated  = $this->t->get('labels.not_regulated');
         $notApplicable = $this->t->get('labels.not_applicable');
+        $notDetermined = $this->t->get('labels.not_determined');
 
-        return [
-            'title'               => $this->t->get('section14.title'),
-            'un_number'           => $dotInfo['un_number'] ?? $overrides[14]['un_number'] ?? $notRegulated,
-            'proper_shipping_name' => $dotInfo['proper_shipping_name'] ?? $overrides[14]['proper_shipping_name'] ?? $notRegulated,
-            'hazard_class'        => $dotInfo['hazard_class'] ?? $overrides[14]['hazard_class'] ?? $notRegulated,
-            'packing_group'       => $dotInfo['packing_group'] ?? $overrides[14]['packing_group'] ?? $notApplicable,
-            'note'                => $this->t->get('section14.note'),
+        if ($r['status'] === TransportClassifier::STATUS_NOT_DETERMINED) {
+            $un = $psn = $class = $pg = $env = $notDetermined;
+        } elseif ($r['status'] === TransportClassifier::STATUS_NOT_REGULATED) {
+            $un = $psn = $class = $notRegulated;
+            $pg  = $notApplicable;
+            $env = $this->t->get('section14.marine_pollutant_no');
+        } else {
+            $un    = (string) $r['un_number'];
+            $psn   = $this->t->get('section14.psn_' . $r['psn_key']);
+            if (!empty($r['technical_names'])) {
+                $psn .= ' (' . implode(', ', $r['technical_names']) . ')';
+            }
+            $class = (string) $r['hazard_class'];
+            $pg    = (string) $r['packing_group'];
+            $env   = $this->t->get($r['marine_pollutant'] ? 'section14.marine_pollutant_yes' : 'section14.marine_pollutant_no');
+        }
+
+        $noteParts = [];
+        foreach ($r['notes'] as $noteKey) {
+            $noteParts[] = $this->t->get('section14.note_' . $noteKey);
+        }
+        $noteParts[] = $this->t->get('section14.note');
+
+        // Per-product override wins (inverted precedence, #27). An operator
+        // who typed a UN number or hazard class has made the determination.
+        $ov = static function (string $key, string $auto) use ($overrides): string {
+            $v = trim((string) ($overrides[14][$key] ?? ''));
+            return $v !== '' ? $v : $auto;
+        };
+        $status = $r['status'];
+        if (trim((string) ($overrides[14]['un_number'] ?? '')) !== '' || trim((string) ($overrides[14]['hazard_class'] ?? '')) !== '') {
+            $status = 'override';
+        }
+
+        $out = [
+            'title'                => $this->t->get('section14.title'),
+            'un_number'            => $ov('un_number', $un),
+            'proper_shipping_name' => $ov('proper_shipping_name', $psn),
+            'hazard_class'         => $ov('hazard_class', $class),
+            'packing_group'        => $ov('packing_group', $pg),
+            'environmental_hazards' => $ov('environmental_hazards', $env),
+            'note'                 => implode(' ', $noteParts),
+            'status'               => $status,   // not printed; publish gate
             // The shared Sections 12-15 footnote is emitted once, on section15().
         ];
+        // n.o.s. entry with no derivable technical names (49 CFR 172.203(k)) and
+        // no PSN override: generate() turns this into an operator warning and
+        // drops the key before the snapshot. Present only when true.
+        if (!empty($r['technical_names_missing']) && trim((string) ($overrides[14]['proper_shipping_name'] ?? '')) === '') {
+            $out['technical_names_missing'] = true;
+        }
+        return $out;
     }
 
     private function section15(array $hazardResult, array $saraResult, array $prop65Result, array $hapResult, array $calcResult, array $overrides): array
@@ -2489,10 +3120,26 @@ class SDSGenerator
         $prop65Result['listed_lines'] = $this->buildProp65ListedLines($prop65Result);
         unset($prop65Result['listed_chemicals']);
 
+        // TSCA (audit #29): every constituent CAS is resolved against the EPA
+        // inventory + the per-CAS override on cas_master (TSCAService). The
+        // "all listed/exempt" sentence prints only when every CAS is covered
+        // and nothing is unverifiable; otherwise the "not verified" sentence
+        // prints and TSCAService::warningText() raises an operator warning
+        // (never a publish block). The operator's Section 15 override wins
+        // and owns the statement (no warning). DB-free for an empty composition.
+        $tsca         = TSCAService::analyse($calcResult['composition'] ?? []);
+        $tscaOverride = trim((string) ($overrides[15]['tsca_status'] ?? ''));
+        if ($tscaOverride !== '') {
+            $tsca['overridden'] = true;
+        }
+
         return [
             'title'          => $this->t->get('section15.title'),
             'osha_status'    => $this->resolveOshaStatus($hazardResult, $overrides),
-            'tsca_status'    => $overrides[15]['tsca_status'] ?? $this->t->get('section15.tsca_status'),
+            'tsca_status'    => $tscaOverride !== ''
+                ? $tscaOverride
+                : $this->t->get($tsca['all_covered'] ? 'section15.tsca_status' : 'section15.tsca_status_not_verified'),
+            'tsca'           => $tsca,
             'sara_313'       => $saraResult,
             'prop65'         => $prop65Result,
             'hap'            => $hapResult,
@@ -2632,6 +3279,9 @@ class SDSGenerator
 
     private function getOverrides(int $fgId, string $language): array
     {
+        if ($this->ignoreOverrides) {
+            return []; // audit #36: caller wants the automatic text
+        }
         $db  = Database::getInstance();
         $rows = $db->fetchAll(
             "SELECT section_number, field_key, override_text
@@ -2646,24 +3296,6 @@ class SDSGenerator
             $overrides[(int) $row['section_number']][$row['field_key']] = $row['override_text'];
         }
         return $overrides;
-    }
-
-    private function getDOTInfo(array $composition): array
-    {
-        $db = Database::getInstance();
-
-        // Check each component for DOT data, return the most hazardous
-        foreach ($composition as $c) {
-            $dot = $db->fetch(
-                "SELECT * FROM dot_transport_info WHERE cas_number = ? ORDER BY retrieved_at DESC LIMIT 1",
-                [$c['cas_number']]
-            );
-            if ($dot && !empty($dot['un_number'])) {
-                return $dot;
-            }
-        }
-
-        return [];
     }
 
     /**
@@ -2764,12 +3396,11 @@ class SDSGenerator
             // Section 2
             'pictograms', 'ghs_classification',
             'physical_hazards', 'health_hazards', 'environmental_hazards',
-            'hazard_statements',
             'precautionary_statements', 'ppe_recommendations', 'other_hazards',
             'ppe_wear_eye', 'ppe_wear_gloves', 'ppe_wear_respiratory', 'ppe_wear_skin',
             // Section 3
             'type', 'cas_number', 'chemical_name', 'concentration',
-            'hazardous_only_note', 'no_hazardous_note', 'mixture',
+            'hazardous_only_note', 'no_hazardous_note', 'mixture', 'substance',
             // Section 4
             'inhalation', 'skin_contact', 'eye_contact', 'ingestion', 'symptoms_effects', 'notes_to_physician',
             // Section 5
@@ -2782,31 +3413,31 @@ class SDSGenerator
             'engineering_controls', 'respiratory_protection', 'hand_protection',
             'eye_protection', 'skin_protection', 'respiratory', 'skin_body',
             'el_cas', 'el_chemical', 'el_type', 'el_value', 'el_units', 'el_conc_pct', 'el_notes',
-            // Section 9
+            // Section 9 (#18(c): voc_less_we / solids_vol_pct dropped)
             'physical_state', 'color',
             'appearance', 'odor', 'boiling_point', 'flash_point', 'solubility',
-            'specific_gravity', 'voc_lb_gal', 'voc_less_we', 'voc_wt_pct',
-            'solids_wt_pct', 'solids_vol_pct',
+            'specific_gravity', 'voc_lb_gal', 'voc_wt_pct',
+            'solids_wt_pct',
             // Section 10
             'reactivity', 'chemical_stability', 'conditions_avoid',
             'incompatible_materials', 'decomposition_products',
             // Section 11
             'acute_toxicity', 'chronic_effects', 'carcinogenicity',
-            'component_tox_data', 'health_hazard',
+            'component_tox_data',
             // Section 12
             'ecotoxicity', 'persistence', 'bioaccumulation', 'mobility',
             'component_ecotox_data', 'aquatic_acute', 'aquatic_chronic', 'm_factor',
             // Section 13
-            'disposal_methods',
+            'disposal_methods', 'rcra_classification',
             // Section 14
-            'un_number', 'proper_shipping_name', 'transport_hazard_class', 'packing_group',
+            'un_number', 'proper_shipping_name', 'transport_hazard_class', 'packing_group',   // #27: 'environmental_hazards' label is shared with Section 2 (listed above)
             // Section 15
             'osha_status', 'tsca_status', 'sara_313_title',
             'sara_313_statement', 'sara_313_none', 'sara_313_threshold', 'sara_313_pbt',
             'hap_title', 'hap_triggering', 'hap_wt_pct', 'hap_total', 'hap_none',
             'prop65_title', 'prop65_none', 'prop65_listed', 'sara_313_range_note', 'snur_title', 'state_regulations',
             // Section 16
-            'version', 'effective_date', 'revision_note', 'abbreviations', 'disclaimer',
+            'version', 'effective_date', 'abbreviations', 'disclaimer',
             // Generic
             'not_determined', 'not_regulated', 'not_applicable', 'note',
             // PPE pictogram labels
@@ -2825,13 +3456,13 @@ class SDSGenerator
      */
     private function getDocumentStrings(): array
     {
-        return [
-            'title'           => $this->t->get('document.title'),
-            'section_prefix'  => $this->t->get('document.section_prefix'),
-            'page'            => $this->t->get('document.page'),
-            'page_of'         => $this->t->get('document.page_of'),
-            'revision_prefix' => $this->t->get('document.revision_prefix'),
-        ];
+        // Key list lives in SDSDocumentStrings::DEFAULTS (audit #39): one
+        // place for the document strings and their fallbacks.
+        $strings = [];
+        foreach (array_keys(SDSDocumentStrings::DEFAULTS) as $key) {
+            $strings[$key] = $this->t->get('document.' . $key);
+        }
+        return $strings;
     }
 
     /**

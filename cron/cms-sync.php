@@ -146,6 +146,7 @@ try {
     echo "  RM metadata:     " . ($results['rm_refreshed'] ?? 0) . " refreshed\n";
     echo "  Formulas:        " . $results['formulas_created'] . " created, " . $results['formulas_updated'] . " updated, " . $results['formulas_skipped'] . " skipped\n";
     echo "  Aliases:         " . ($results['aliases_created'] ?? 0) . " created, " . ($results['aliases_updated'] ?? 0) . " updated\n";
+    echo "  Families:        " . ($results['families_changed'] ?? 0) . " changed, " . ($results['families_bumped_rms'] ?? 0) . " RM(s) bumped, " . ($results['families_queued'] ?? 0) . " queued\n";
     echo "  Shipments:       " . ($results['shipments_imported'] ?? 0) . " imported\n";
     echo "  Customers:       " . ($results['customers_created'] ?? 0) . " created\n";
 

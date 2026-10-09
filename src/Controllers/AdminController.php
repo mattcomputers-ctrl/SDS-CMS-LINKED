@@ -13,6 +13,7 @@ use SDS\Services\BackupService;
 use SDS\Services\NetworkService;
 use SDS\Services\PermissionService;
 use SDS\Services\SARA313Service;
+use SDS\Services\TSCAService;
 use SDS\Services\TrainingDataService;
 use SDS\Services\FederalData\Connectors\PubChemConnector;
 use SDS\Services\FederalData\Connectors\NIOSHConnector;
@@ -610,6 +611,280 @@ class AdminController
         $msg = "Bumped {$bumped} raw material(s). {$countPart} at the next Bulk SDS Publish — "
              . 'expect it to take a long time to complete, likely several hours.';
         echo json_encode(['success' => true, 'message' => $msg, 'eligible' => $eligibleCount]);
+    }
+
+    /* ------------------------------------------------------------------
+     *  Product Families (SDS content audit #3) — Settings > Product Families
+     *  Admin-only like settings(): /admin/* is gated in AuthMiddleware and
+     *  requireAdmin() below. No PAGE_KEYS entry (same as Settings).
+     * ----------------------------------------------------------------*/
+
+    /** Languages for the per-language default text (config sds.supported_languages). */
+    private function familyLanguages(): array
+    {
+        $langs = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
+        return (is_array($langs) && $langs !== []) ? array_map('strval', $langs) : ['en'];
+    }
+
+    public function productFamilies(): void
+    {
+        $this->requireAdmin();
+        $families = \SDS\Models\ProductFamily::all(false);
+        $usage    = \SDS\Models\ProductFamily::usageCounts();
+        $pending  = null;
+        try {
+            $pending = \SDS\Services\FamilyResolver::recompute(false)['counts'];
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error'] = 'Could not compute pending family changes: ' . $e->getMessage();
+        }
+        view('admin/product-families', [
+            'pageTitle' => 'Product Families',
+            'families'  => $families,
+            'usage'     => $usage,
+            'pending'   => $pending,
+        ]);
+    }
+
+    public function createProductFamily(): void
+    {
+        $this->requireAdmin();
+        view('admin/product-family-form', [
+            'pageTitle' => 'Add Product Family',
+            'item'      => null,
+            'mode'      => 'create',
+            'langs'     => $this->familyLanguages(),
+            'defaults'  => $this->familyTranslationDefaults(),
+            'rules'     => [],
+            'usage'     => null,
+        ]);
+    }
+
+    public function storeProductFamily(): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+        $data = $this->collectProductFamilyInput();
+        try {
+            $id = \SDS\Models\ProductFamily::create($data);
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error']      = $e->getMessage();
+            $_SESSION['_flash']['_old_input'] = $_POST;
+            redirect('/admin/product-families/create');
+        }
+        AuditService::log('product_family', $id, 'create', $data);
+        $_SESSION['_flash']['success'] = 'Product family created. Add rules below, then Recompute to assign items.';
+        redirect('/admin/product-families/' . $id . '/edit');
+    }
+
+    public function editProductFamily(string $id): void
+    {
+        $this->requireAdmin();
+        $item = \SDS\Models\ProductFamily::findById((int) $id);
+        if ($item === null) {
+            $_SESSION['_flash']['error'] = 'Product family not found.';
+            redirect('/admin/product-families');
+        }
+        view('admin/product-family-form', [
+            'pageTitle' => 'Edit Product Family: ' . $item['name'],
+            'item'      => $item,
+            'mode'      => 'edit',
+            'langs'     => $this->familyLanguages(),
+            'defaults'  => $this->familyTranslationDefaults(),
+            'rules'     => \SDS\Models\ProductFamily::rules((int) $id),
+            'usage'     => \SDS\Models\ProductFamily::usageCounts()[(int) $id] ?? null,
+        ]);
+    }
+
+    public function updateProductFamily(string $id): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+        $item = \SDS\Models\ProductFamily::findById((int) $id);
+        if ($item === null) {
+            $_SESSION['_flash']['error'] = 'Product family not found.';
+            redirect('/admin/product-families');
+        }
+        $data = $this->collectProductFamilyInput();
+        try {
+            \SDS\Models\ProductFamily::update((int) $id, $data);
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error']      = $e->getMessage();
+            $_SESSION['_flash']['_old_input'] = $_POST;
+            redirect('/admin/product-families/' . (int) $id . '/edit');
+        }
+        AuditService::log('product_family', (int) $id, 'update', AuditService::diff($item, [
+            'name'                 => $data['name'],
+            'is_uv'                => $data['is_uv'],
+            'is_active'            => $data['is_active'],
+            'sort_order'           => $data['sort_order'],
+            'recommended_use_json' => \SDS\Models\ProductFamily::encodeLangJson($data['recommended_use']),
+            'restrictions_json'    => \SDS\Models\ProductFamily::encodeLangJson($data['restrictions']),
+        ]));
+
+        $msg = 'Product family updated.';
+        // Default text, UV/LED flag or name changed -> the printed sheet of every item
+        // resolved to this family changes (Section 1 text / family name, which Section
+        // 14 also keyword-matches; the UV flag drives the UV rule pack and the Section
+        // 10 UV condition). None of these alter RESOLUTION, so the recompute diff never
+        // flags them: bump / flag here (count was shown on the form before Save).
+        $textChanged = \SDS\Models\ProductFamily::encodeLangJson($data['recommended_use']) !== ($item['recommended_use_json'] ?? null)
+            || \SDS\Models\ProductFamily::encodeLangJson($data['restrictions']) !== ($item['restrictions_json'] ?? null);
+        $uvChanged   = (int) ($item['is_uv'] ?? 0) !== (int) $data['is_uv'];
+        $nameChanged = (string) ($item['name'] ?? '') !== (string) $data['name'];
+        if ($textChanged || $uvChanged || $nameChanged) {
+            $what = implode(' / ', array_keys(array_filter(['default text' => $textChanged, 'UV/LED flag' => $uvChanged, 'name' => $nameChanged])));
+            $f = \SDS\Services\FamilyResolver::flagFamilyTextChange((int) $id, current_user_id(), 'Product family "' . $data['name'] . '" ' . $what . ' changed');
+            $msg .= self::bumpedTail($f['bumped_rms']) . self::queuedTail($f['queued']);
+        }
+        // Active-flag changes alter resolution: report pending, do not apply (Recompute
+        // applies and flags reassignments). A rename also shows the legacy fg.family
+        // name sync as pending; that write is metadata-only.
+        $msg .= $this->pendingFamilyTail();
+        $_SESSION['_flash']['success'] = $msg;
+        redirect('/admin/product-families/' . (int) $id . '/edit');
+    }
+
+    public function deleteProductFamily(string $id): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+        $item = \SDS\Models\ProductFamily::findById((int) $id);
+        if ($item === null) {
+            $_SESSION['_flash']['error'] = 'Product family not found.';
+            redirect('/admin/product-families');
+        }
+        // Capture the rule / content members BEFORE the delete: the FK (ON DELETE SET
+        // NULL) nulls their family_id first, so the recompute below sees old = new =
+        // NULL and would write them as metadata only (updated_at = updated_at) —
+        // yet their Section 1 family text / UV flag leave the sheet on the next
+        // generation. Bump and flag them explicitly, after the delete succeeds (a
+        // delete refused for manual overrides must bump nothing).
+        $db    = \SDS\Core\Database::getInstance();
+        $rmIds = array_map(static fn(array $r): int => (int) $r['id'], $db->fetchAll('SELECT id FROM raw_materials WHERE family_id = ?', [(int) $id]));
+        $fgIds = array_map(static fn(array $r): int => (int) $r['id'], $db->fetchAll('SELECT id FROM finished_goods WHERE family_id = ?', [(int) $id]));
+        try {
+            \SDS\Models\ProductFamily::delete((int) $id);
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error'] = $e->getMessage();
+            redirect('/admin/product-families');
+        }
+        AuditService::log('product_family', (int) $id, 'delete', ['name' => $item['name']]);
+        $reason = 'Product family "' . $item['name'] . '" deleted';
+        // Rule/content references were released by the FK (SET NULL): re-resolve now.
+        $r = \SDS\Services\FamilyResolver::recompute(true, current_user_id(), $reason);
+        if ($rmIds !== []) {
+            // Content change (family text / UV flag gone): the bulk-publish staleness signal.
+            $db->query('UPDATE raw_materials SET updated_at = UTC_TIMESTAMP() WHERE id IN (' . implode(',', array_fill(0, count($rmIds), '?')) . ')', $rmIds);
+        }
+        $f = \SDS\Services\FamilyResolver::flagFinishedGoods($fgIds, current_user_id(), $reason);
+        $r['bumped_rms'] = ($r['bumped_rms'] ?? 0) + count($rmIds) + $f['bumped_rms'];
+        $r['queued']     = ($r['queued'] ?? 0) + $f['queued'];
+        $_SESSION['_flash']['success'] = 'Product family "' . $item['name'] . '" deleted.' . \SDS\Services\FamilyResolver::summaryLine($r)
+            . self::bumpedTail(count($rmIds) + $f['bumped_rms']) . self::queuedTail($f['queued']);
+        redirect('/admin/product-families');
+    }
+
+    public function storeProductFamilyRule(string $id): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+        $item = \SDS\Models\ProductFamily::findById((int) $id);
+        if ($item === null) {
+            $_SESSION['_flash']['error'] = 'Product family not found.';
+            redirect('/admin/product-families');
+        }
+        try {
+            $ruleId = \SDS\Models\ProductFamily::addRule(
+                (int) $id,
+                (string) ($_POST['rule_type'] ?? ''),
+                (string) ($_POST['pattern'] ?? ''),
+                (string) ($_POST['applies_to'] ?? 'both'),
+                current_user_id()
+            );
+            AuditService::log('product_family_rule', $ruleId, 'create', ['family_id' => (int) $id, 'rule_type' => $_POST['rule_type'] ?? '', 'pattern' => $_POST['pattern'] ?? '', 'applies_to' => $_POST['applies_to'] ?? '']);
+            $_SESSION['_flash']['success'] = 'Rule added.' . $this->pendingFamilyTail();
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error'] = $e->getMessage();
+        }
+        redirect('/admin/product-families/' . (int) $id . '/edit');
+    }
+
+    public function deleteProductFamilyRule(string $id, string $rule_id): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+        $n = \SDS\Models\ProductFamily::deleteRule((int) $id, (int) $rule_id);
+        if ($n > 0) {
+            AuditService::log('product_family_rule', (int) $rule_id, 'delete', ['family_id' => (int) $id]);
+            $_SESSION['_flash']['success'] = 'Rule removed.' . $this->pendingFamilyTail();
+        } else {
+            $_SESSION['_flash']['error'] = 'Rule not found.';
+        }
+        redirect('/admin/product-families/' . (int) $id . '/edit');
+    }
+
+    /** GET /admin/product-families/recompute — preview every item whose family would change. */
+    public function recomputeProductFamilies(): void
+    {
+        $this->requireAdmin();
+        $r = \SDS\Services\FamilyResolver::recompute(false);
+        view('admin/product-families-recompute', [
+            'pageTitle' => 'Product Families — Recompute',
+            'result'    => $r,
+        ]);
+    }
+
+    /** POST /admin/product-families/recompute — apply the preview. */
+    public function applyProductFamilies(): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+        $r = \SDS\Services\FamilyResolver::recompute(true, current_user_id(), 'Product family recompute (Settings > Product Families)');
+        AuditService::log('product_family', 'recompute', 'apply', ['counts' => $r['counts'], 'bumped_rms' => $r['bumped_rms'], 'queued' => $r['queued']]);
+        $_SESSION['_flash']['success'] = 'Recompute applied.' . \SDS\Services\FamilyResolver::summaryLine($r);
+        redirect('/admin/product-families');
+    }
+
+    /** Validate + normalise the family form. Never fails (model validates name/dup). */
+    private function collectProductFamilyInput(): array
+    {
+        $rec = [];
+        $res = [];
+        foreach ($this->familyLanguages() as $lang) {
+            $rec[$lang] = trim((string) ($_POST['recommended_use'][$lang] ?? ''));
+            $res[$lang] = trim((string) ($_POST['restrictions'][$lang] ?? ''));
+        }
+        return [
+            'name'            => trim((string) ($_POST['name'] ?? '')),
+            'is_uv'           => !empty($_POST['is_uv']) ? 1 : 0,
+            'is_active'       => !empty($_POST['is_active']) ? 1 : 0,
+            'sort_order'      => (int) ($_POST['sort_order'] ?? 0),
+            'recommended_use' => $rec,
+            'restrictions'    => $res,
+        ];
+    }
+
+    /** Translation-file Section 1 defaults per language, shown as placeholders. */
+    private function familyTranslationDefaults(): array
+    {
+        $out = [];
+        foreach ($this->familyLanguages() as $lang) {
+            $t = new \SDS\Services\TranslationService($lang);
+            $out[$lang] = ['recommended_use' => $t->get('section1.recommended_use'), 'restrictions' => $t->get('section1.restrictions')];
+        }
+        return $out;
+    }
+
+    /** " N item(s) would change family — review and apply on Recompute." or ''. */
+    private function pendingFamilyTail(): string
+    {
+        try {
+            $c = \SDS\Services\FamilyResolver::recompute(false)['counts'];
+            $n = (int) $c['rm_changed'] + (int) $c['fg_changed'];
+            return $n > 0 ? " {$n} item(s) would change family — review and apply on Recompute." : '';
+        } catch (\Throwable $e) {
+            return '';
+        }
     }
 
     /**
@@ -1359,6 +1634,457 @@ class AdminController
     }
 
     /* ------------------------------------------------------------------
+     *  TSCA Inventory (audit #29)
+     *
+     *  Prop 65 pattern. Rows saved here are tagged source_ref='manual' so
+     *  scripts/import-tsca-inventory.php never overwrites them; EPA rows
+     *  carry source_ref='EPA' + source_version. The table is large
+     *  (~40–90k rows) so the list caps at 200 rows until a filter narrows it.
+     * ----------------------------------------------------------------*/
+
+    private const TSCA_LIST_CAP = 200;
+
+    public function tsca(): void
+    {
+        $this->requirePageAccess('tsca_list');
+        $db = Database::getInstance();
+
+        $q      = trim((string) ($_GET['q'] ?? ''));
+        $source = (string) ($_GET['source'] ?? 'all');
+        $active = (string) ($_GET['active'] ?? 'all');
+        $inUse  = (string) ($_GET['in_use'] ?? '') === '1';
+
+        $where  = [];
+        $params = [];
+        if ($q !== '') {
+            $where[]  = '(t.cas_number LIKE ? OR t.chemical_name LIKE ?)';
+            $params[] = $q . '%';
+            $params[] = '%' . $q . '%';
+        }
+        if ($source === 'manual') {
+            $where[] = "t.source_ref = 'manual'";
+        } elseif ($source === 'epa') {
+            $where[] = "(t.source_ref IS NULL OR t.source_ref <> 'manual')";
+        }
+        if ($active === 'active') {
+            $where[] = 't.is_active_inventory = 1';
+        } elseif ($active === 'inactive') {
+            $where[] = 't.is_active_inventory = 0';
+        }
+        if ($inUse) {
+            $where[] = 'EXISTS (SELECT 1 FROM raw_material_constituents rmc WHERE rmc.cas_number = t.cas_number)';
+        }
+
+        $sql = "SELECT t.*,
+                       (SELECT COUNT(DISTINCT rmc.raw_material_id) FROM raw_material_constituents rmc
+                         WHERE rmc.cas_number = t.cas_number) AS rm_count
+                FROM tsca_inventory t";
+        if ($where !== []) {
+            $sql .= ' WHERE ' . implode(' AND ', $where);
+        }
+        $sql .= ' ORDER BY t.cas_number LIMIT ' . (self::TSCA_LIST_CAP + 1);
+
+        $items     = $db->fetchAll($sql, $params);
+        $truncated = count($items) > self::TSCA_LIST_CAP;
+        if ($truncated) {
+            array_pop($items);
+        }
+
+        $counts = $db->fetch(
+            "SELECT COUNT(*) AS total,
+                    SUM(CASE WHEN source_ref = 'manual' THEN 1 ELSE 0 END) AS manual,
+                    SUM(CASE WHEN is_active_inventory = 1 THEN 1 ELSE 0 END) AS active,
+                    MAX(source_version) AS latest_version,
+                    MAX(imported_at)    AS last_import
+             FROM tsca_inventory"
+        );
+
+        view('admin/tsca', [
+            'pageTitle' => 'TSCA Inventory',
+            'items'     => $items,
+            'truncated' => $truncated,
+            'cap'       => self::TSCA_LIST_CAP,
+            'q'         => $q,
+            'source'    => $source,
+            'active'    => $active,
+            'inUse'     => $inUse,
+            'counts'    => $counts,
+        ]);
+    }
+
+    public function createTsca(): void
+    {
+        $this->requirePageAccess('tsca_list', 'full');
+        view('admin/tsca-form', ['pageTitle' => 'Add TSCA Inventory Entry', 'item' => null, 'mode' => 'create']);
+    }
+
+    public function storeTsca(): void
+    {
+        $this->requirePageAccess('tsca_list', 'full');
+        CSRF::validateRequest();
+        $db   = Database::getInstance();
+        $data = $this->collectTscaInput();
+        if ($data === null) {
+            redirect('/tsca/create');
+            return;
+        }
+        if ($db->fetch("SELECT cas_number FROM tsca_inventory WHERE cas_number = ?", [$data['cas_number']])) {
+            $_SESSION['_flash']['error'] = "CAS {$data['cas_number']} is already on the TSCA inventory list. Edit the existing entry instead.";
+            redirect('/tsca');
+            return;
+        }
+        $db->insert('tsca_inventory', array_merge($data, ['source_ref' => 'manual', 'source_version' => null, 'imported_at' => null]));
+
+        $bumped = \SDS\Services\RegulatoryListBumper::bumpByCas($data['cas_number']);
+        $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByCas([$data['cas_number']], current_user_id(), 'TSCA inventory entry added for CAS ' . $data['cas_number']);
+        AuditService::log('tsca_inventory', $data['cas_number'], 'create');
+        $_SESSION['_flash']['success'] = "TSCA entry added for CAS {$data['cas_number']}." . self::bumpedTail($bumped) . self::queuedTail($queued);
+        redirect('/tsca');
+    }
+
+    public function editTsca(string $cas): void
+    {
+        $this->requirePageAccess('tsca_list', 'full');
+        $item = Database::getInstance()->fetch("SELECT * FROM tsca_inventory WHERE cas_number = ?", [TSCAService::normaliseCas($cas)]);
+        if (!$item) {
+            $_SESSION['_flash']['error'] = 'TSCA entry not found.';
+            redirect('/tsca');
+            return;
+        }
+        view('admin/tsca-form', ['pageTitle' => 'Edit TSCA Inventory Entry: ' . $item['cas_number'], 'item' => $item, 'mode' => 'edit']);
+    }
+
+    public function updateTsca(string $cas): void
+    {
+        $this->requirePageAccess('tsca_list', 'full');
+        CSRF::validateRequest();
+        $db  = Database::getInstance();
+        $cas = TSCAService::normaliseCas($cas);
+        $item = $db->fetch("SELECT * FROM tsca_inventory WHERE cas_number = ?", [$cas]);
+        if (!$item) {
+            $_SESSION['_flash']['error'] = 'TSCA entry not found.';
+            redirect('/tsca');
+            return;
+        }
+        $_POST['cas_number'] = $cas;              // CAS is the key: immutable on edit
+        $data = $this->collectTscaInput();
+        if ($data === null) {
+            redirect('/tsca/' . rawurlencode($cas) . '/edit');
+            return;
+        }
+        unset($data['cas_number']);
+        $db->update('tsca_inventory', array_merge($data, ['source_ref' => 'manual']), 'cas_number = ?', [$cas]);
+
+        // Name/active/flags do not change the resolution (presence does), but
+        // the row is now operator-owned; keep the Prop 65 behaviour and bump.
+        $bumped = \SDS\Services\RegulatoryListBumper::bumpByCas($cas);
+        AuditService::log('tsca_inventory', $cas, 'update');
+        $_SESSION['_flash']['success'] = 'TSCA entry updated.' . self::bumpedTail($bumped);
+        redirect('/tsca');
+    }
+
+    public function deleteTsca(string $cas): void
+    {
+        $this->requirePageAccess('tsca_list', 'full');
+        CSRF::validateRequest();
+        $db  = Database::getInstance();
+        $cas = TSCAService::normaliseCas($cas);
+        $db->query("DELETE FROM tsca_inventory WHERE cas_number = ?", [$cas]);
+
+        $bumped = \SDS\Services\RegulatoryListBumper::bumpByCas($cas);
+        $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByCas([$cas], current_user_id(), 'TSCA inventory entry removed for CAS ' . $cas);
+        AuditService::log('tsca_inventory', $cas, 'delete');
+        $_SESSION['_flash']['success'] = 'TSCA entry removed.' . self::bumpedTail($bumped) . self::queuedTail($queued);
+        redirect('/tsca');
+    }
+
+    /** Collect/validate TSCA form input (Prop 65 pattern). Null + flash on failure. */
+    private function collectTscaInput(): ?array
+    {
+        $cas   = TSCAService::normaliseCas((string) ($_POST['cas_number'] ?? ''));
+        $name  = trim((string) ($_POST['chemical_name'] ?? ''));
+        $flags = mb_substr(trim((string) ($_POST['flags'] ?? '')), 0, 50);
+
+        if ($cas === '' || !preg_match(TSCAService::CAS_PATTERN, $cas)) {
+            $_SESSION['_flash']['error']      = 'A valid CAS number is required (e.g. 108-88-3).';
+            $_SESSION['_flash']['_old_input'] = $_POST;
+            return null;
+        }
+        if ($name === '') {
+            $_SESSION['_flash']['error']      = 'Chemical name is required.';
+            $_SESSION['_flash']['_old_input'] = $_POST;
+            return null;
+        }
+        return [
+            'cas_number'          => $cas,
+            'chemical_name'       => mb_substr($name, 0, 500),
+            'is_active_inventory' => isset($_POST['is_active_inventory']) ? 1 : 0,
+            'flags'               => $flags !== '' ? $flags : null,
+        ];
+    }
+
+    /* ------------------------------------------------------------------
+     *  EPA RCRA Waste Codes (40 CFR 261) — audit #26 (T3)
+     *
+     *  Same pattern as the HAP admin page. One row per (CAS, waste code):
+     *  a CAS can carry a toxicity-characteristic code (D004–D043, with its
+     *  TCLP regulatory level in mg/L) and one or more listed-waste codes
+     *  (F / K / P / U). Section 13 prints "contains <name> (<codes>)" for
+     *  every component whose CAS appears here (RCRAService). D001–D003 are
+     *  derived from product properties and are refused here. Every save /
+     *  delete bumps raw_materials.updated_at for the RMs carrying the CAS
+     *  (RegulatoryListBumper) so affected SDSs republish on the next bulk
+     *  publish. Rows saved here are tagged source_ref='manual'; migration
+     *  055 seeds carry their CFR citation.
+     * ----------------------------------------------------------------*/
+
+    private const RCRA_KINDS = ['D', 'F', 'K', 'P', 'U'];
+
+    public function rcra(): void
+    {
+        $this->requirePageAccess('rcra_list');
+        $db = Database::getInstance();
+
+        $q      = trim((string) ($_GET['q'] ?? ''));
+        $kind   = strtoupper(trim((string) ($_GET['kind'] ?? '')));
+        $source = (string) ($_GET['source'] ?? 'all');
+
+        $where  = [];
+        $params = [];
+        if ($q !== '') {
+            $where[]  = '(cas_number LIKE ? OR waste_code LIKE ? OR description LIKE ?)';
+            $params[] = '%' . $q . '%';
+            $params[] = '%' . $q . '%';
+            $params[] = '%' . $q . '%';
+        }
+        if (in_array($kind, self::RCRA_KINDS, true)) {
+            $where[]  = 'kind = ?';
+            $params[] = $kind;
+        } else {
+            $kind = '';
+        }
+        if ($source === 'manual') {
+            $where[] = "source_ref = 'manual'";
+        } elseif ($source === 'seed') {
+            $where[] = "(source_ref IS NULL OR source_ref <> 'manual')";
+        }
+        $sql = 'SELECT * FROM rcra_waste_codes';
+        if ($where !== []) {
+            $sql .= ' WHERE ' . implode(' AND ', $where);
+        }
+        $sql .= ' ORDER BY waste_code, cas_number';
+
+        $items = $db->fetchAll($sql, $params);
+
+        $counts = $db->fetch(
+            "SELECT
+                SUM(CASE WHEN source_ref = 'manual'                          THEN 1 ELSE 0 END) AS manual,
+                SUM(CASE WHEN source_ref IS NULL OR source_ref <> 'manual'   THEN 1 ELSE 0 END) AS seed,
+                COUNT(*) AS total
+             FROM rcra_waste_codes"
+        );
+
+        view('admin/rcra', [
+            'pageTitle' => 'EPA RCRA Waste Codes',
+            'items'     => $items,
+            'q'         => $q,
+            'kind'      => $kind,
+            'source'    => $source,
+            'counts'    => $counts,
+        ]);
+    }
+
+    public function createRcra(): void
+    {
+        $this->requirePageAccess('rcra_list', 'full');
+        view('admin/rcra-form', [
+            'pageTitle' => 'Add RCRA Waste Code',
+            'item'      => null,
+            'mode'      => 'create',
+        ]);
+    }
+
+    public function storeRcra(): void
+    {
+        $this->requirePageAccess('rcra_list', 'full');
+        CSRF::validateRequest();
+
+        $db   = Database::getInstance();
+        $data = $this->collectRcraInput();
+        if ($data === null) {
+            redirect('/rcra/create');
+            return;
+        }
+
+        $existing = $db->fetch(
+            "SELECT id FROM rcra_waste_codes WHERE cas_number = ? AND waste_code = ?",
+            [$data['cas_number'], $data['waste_code']]
+        );
+        if ($existing) {
+            $_SESSION['_flash']['error'] = "CAS {$data['cas_number']} already carries {$data['waste_code']}. Edit the existing entry instead.";
+            redirect('/rcra');
+            return;
+        }
+
+        $db->insert('rcra_waste_codes', array_merge($data, ['source_ref' => 'manual']));
+
+        $bumped = \SDS\Services\RegulatoryListBumper::bumpByCas($data['cas_number']);
+        $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByCas([$data['cas_number']], current_user_id(), 'RCRA waste code ' . $data['waste_code'] . ' added for CAS ' . $data['cas_number']);
+        AuditService::log('rcra_waste_codes', $data['cas_number'] . ' ' . $data['waste_code'], 'create');
+        $_SESSION['_flash']['success'] = "RCRA code {$data['waste_code']} added for CAS {$data['cas_number']}." . self::bumpedTail($bumped) . self::queuedTail($queued);
+        redirect('/rcra');
+    }
+
+    public function editRcra(string $id): void
+    {
+        $this->requirePageAccess('rcra_list', 'full');
+        $db = Database::getInstance();
+
+        $item = $db->fetch("SELECT * FROM rcra_waste_codes WHERE id = ?", [(int) $id]);
+        if (!$item) {
+            $_SESSION['_flash']['error'] = 'RCRA waste code entry not found.';
+            redirect('/rcra');
+            return;
+        }
+
+        view('admin/rcra-form', [
+            'pageTitle' => 'Edit RCRA Waste Code: ' . $item['waste_code'] . ' / ' . $item['cas_number'],
+            'item'      => $item,
+            'mode'      => 'edit',
+        ]);
+    }
+
+    public function updateRcra(string $id): void
+    {
+        $this->requirePageAccess('rcra_list', 'full');
+        CSRF::validateRequest();
+        $db = Database::getInstance();
+
+        $item = $db->fetch("SELECT * FROM rcra_waste_codes WHERE id = ?", [(int) $id]);
+        if (!$item) {
+            $_SESSION['_flash']['error'] = 'RCRA waste code entry not found.';
+            redirect('/rcra');
+            return;
+        }
+
+        $data = $this->collectRcraInput();
+        if ($data === null) {
+            redirect('/rcra/' . (int) $id . '/edit');
+            return;
+        }
+
+        // (CAS, code) uniqueness check on rename.
+        if ($data['cas_number'] !== $item['cas_number'] || $data['waste_code'] !== $item['waste_code']) {
+            $clash = $db->fetch(
+                "SELECT id FROM rcra_waste_codes WHERE cas_number = ? AND waste_code = ? AND id <> ?",
+                [$data['cas_number'], $data['waste_code'], (int) $id]
+            );
+            if ($clash) {
+                $_SESSION['_flash']['error'] = "CAS {$data['cas_number']} already carries {$data['waste_code']}.";
+                redirect('/rcra/' . (int) $id . '/edit');
+                return;
+            }
+        }
+
+        $db->update(
+            'rcra_waste_codes',
+            array_merge($data, ['source_ref' => 'manual']),
+            'id = ?',
+            [(int) $id]
+        );
+
+        $cases = [$data['cas_number']];
+        if ($item['cas_number'] !== $data['cas_number']) {
+            $cases[] = $item['cas_number'];
+        }
+        $bumped = \SDS\Services\RegulatoryListBumper::bumpByCasMany($cases);
+        $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByCas($cases, current_user_id(), 'RCRA waste code ' . $data['waste_code'] . ' updated for CAS ' . $data['cas_number']);
+
+        AuditService::log('rcra_waste_codes', $data['cas_number'] . ' ' . $data['waste_code'], 'update');
+        $_SESSION['_flash']['success'] = 'RCRA waste code entry updated.' . self::bumpedTail($bumped) . self::queuedTail($queued);
+        redirect('/rcra');
+    }
+
+    public function deleteRcra(string $id): void
+    {
+        $this->requirePageAccess('rcra_list', 'full');
+        CSRF::validateRequest();
+        $db = Database::getInstance();
+
+        $item = $db->fetch("SELECT cas_number, waste_code FROM rcra_waste_codes WHERE id = ?", [(int) $id]);
+        $db->query("DELETE FROM rcra_waste_codes WHERE id = ?", [(int) $id]);
+
+        $bumped = 0;
+        $queued = 0;
+        if (isset($item['cas_number'])) {
+            $bumped = \SDS\Services\RegulatoryListBumper::bumpByCas($item['cas_number']);
+            $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByCas([$item['cas_number']], current_user_id(), 'RCRA waste code ' . $item['waste_code'] . ' removed for CAS ' . $item['cas_number']);
+        }
+
+        AuditService::log('rcra_waste_codes', isset($item['cas_number']) ? $item['cas_number'] . ' ' . $item['waste_code'] : $id, 'delete');
+        $_SESSION['_flash']['success'] = 'RCRA waste code entry removed.' . self::bumpedTail($bumped) . self::queuedTail($queued);
+        redirect('/rcra');
+    }
+
+    /**
+     * Collect, validate and normalise RCRA form input. Returns null and
+     * sets a flash error on failure. D001–D003 are characteristic codes
+     * derived by the generator and are refused; limit_mg_l is accepted
+     * for D-codes only.
+     */
+    private function collectRcraInput(): ?array
+    {
+        $cas   = trim((string) ($_POST['cas_number']  ?? ''));
+        $code  = strtoupper(trim((string) ($_POST['waste_code'] ?? '')));
+        $desc  = trim((string) ($_POST['description'] ?? ''));
+        $kind  = strtoupper(trim((string) ($_POST['kind']        ?? '')));
+        $limit = trim((string) ($_POST['limit_mg_l']  ?? ''));
+
+        $fail = static function (string $msg): ?array {
+            $_SESSION['_flash']['error']      = $msg;
+            $_SESSION['_flash']['_old_input'] = $_POST;
+            return null;
+        };
+
+        if ($cas === '' || !preg_match('/^\d{1,7}-\d{2}-\d$/', $cas)) {
+            return $fail('A valid CAS number is required (e.g. 108-88-3).');
+        }
+        if (!preg_match('/^[DFKPU]\d{3}$/', $code)) {
+            return $fail('Waste code must be D, F, K, P or U followed by three digits (e.g. D035, U220).');
+        }
+        if (in_array($code, ['D001', 'D002', 'D003'], true)) {
+            return $fail('D001–D003 are characteristic codes derived from the product (flash point / H-codes) and cannot be assigned to a CAS.');
+        }
+        if ($kind === '') {
+            $kind = $code[0];
+        }
+        if (!in_array($kind, self::RCRA_KINDS, true) || $kind !== $code[0]) {
+            return $fail('Kind must match the first letter of the waste code.');
+        }
+        if ($desc === '') {
+            return $fail('Description (chemical / waste name) is required.');
+        }
+        $limitVal = null;
+        if ($limit !== '') {
+            if ($kind !== 'D') {
+                return $fail('A TCLP regulatory level applies to D-codes only.');
+            }
+            if (!is_numeric($limit) || (float) $limit <= 0) {
+                return $fail('TCLP regulatory level must be a positive number (mg/L).');
+            }
+            $limitVal = round((float) $limit, 3);
+        }
+
+        return [
+            'cas_number'  => $cas,
+            'waste_code'  => $code,
+            'description' => $desc,
+            'kind'        => $kind,
+            'limit_mg_l'  => $limitVal,
+        ];
+    }
+
+    /* ------------------------------------------------------------------
      *  Competent Person Determinations
      * ----------------------------------------------------------------*/
 
@@ -1417,6 +2143,7 @@ class AdminController
         // take their description from the Prop 65 page instead.
         $descriptions = $db->fetchAll(
             "SELECT cm.cas_number, cm.preferred_name,
+                    cm.has_nitrogen, cm.has_sulfur, cm.has_halogen, cm.element_flags_source,
                     p.chemical_name AS prop65_name,
                     (SELECT COUNT(DISTINCT rmc.raw_material_id)
                      FROM raw_material_constituents rmc
@@ -1426,11 +2153,19 @@ class AdminController
              ORDER BY cm.cas_number"
         );
 
+        // Audit #29 — TSCA Review tab: constituent CAS not on the inventory
+        // with no override, plus the overrides currently in effect.
+        $tscaReview    = TSCAService::reviewCandidates();
+        $tscaOverrides = TSCAService::overridesInEffect();
+
         view('admin/determinations', [
             'pageTitle'          => 'CAS Number Determinations',
             'items'              => $items,
             'needsDetermination' => $needsDetermination,
             'descriptions'       => $descriptions,
+            'tscaReview'         => $tscaReview,
+            'tscaOverrides'      => $tscaOverrides,
+            'tscaOptions'        => TSCAService::OVERRIDE_OPTIONS,
         ]);
     }
 
@@ -1486,6 +2221,129 @@ class AdminController
         AuditService::log('cas_description', $cas, 'update', ['description' => $desc]);
         $_SESSION['_flash']['success'] = "Description for CAS {$cas} updated"
             . ($updated > 0 ? " and applied to {$updated} constituent row(s)." : '.')
+            . self::bumpedTail($bumped) . self::queuedTail($queued);
+        redirect('/determinations?tab=descriptions');
+    }
+
+    /**
+     * POST /determinations/tsca — per-CAS TSCA override (audit #29).
+     * 'auto' clears the override. A note is required for any override.
+     */
+    public function saveTscaOverride(): void
+    {
+        $this->requirePageAccess('cas_determinations', 'full');
+        CSRF::validateRequest();
+        $db = Database::getInstance();
+
+        $cas    = TSCAService::normaliseCas((string) ($_POST['cas_number'] ?? ''));
+        $status = (string) ($_POST['tsca_status'] ?? 'auto');
+        $note   = mb_substr(trim((string) ($_POST['tsca_note'] ?? '')), 0, 500);
+
+        if ($cas === '' || !preg_match(TSCAService::CAS_PATTERN, $cas)) {
+            $_SESSION['_flash']['error'] = 'A valid CAS number is required.';
+            redirect('/determinations?tab=tsca');
+            return;
+        }
+        if (!array_key_exists($status, TSCAService::OVERRIDE_OPTIONS)) {
+            $_SESSION['_flash']['error'] = 'Unknown TSCA status.';
+            redirect('/determinations?tab=tsca');
+            return;
+        }
+        if ($status !== 'auto' && $note === '') {
+            $_SESSION['_flash']['error'] = "A note explaining the TSCA override for CAS {$cas} is required (e.g. crossover CAS, polymer exemption).";
+            redirect('/determinations?tab=tsca');
+            return;
+        }
+
+        // cas_master is the override's home; create the registry row if the
+        // CAS is not there yet (same as saveCasDescription), naming it from
+        // the most common constituent description.
+        $existing = $db->fetch("SELECT cas_number FROM cas_master WHERE cas_number = ?", [$cas]);
+        if (!$existing) {
+            $nameRow = $db->fetch(
+                "SELECT chemical_name FROM raw_material_constituents
+                 WHERE cas_number = ? AND chemical_name <> ''
+                 GROUP BY chemical_name ORDER BY COUNT(*) DESC LIMIT 1",
+                [$cas]
+            );
+            $db->insert('cas_master', ['cas_number' => $cas, 'preferred_name' => (string) ($nameRow['chemical_name'] ?? '')]);
+        }
+
+        $db->update('cas_master', [
+            'tsca_status'     => $status,
+            'tsca_note'       => $status === 'auto' ? null : $note,
+            'tsca_updated_by' => current_user_id(),
+            'tsca_updated_at' => gmdate('Y-m-d H:i:s'),
+        ], 'cas_number = ?', [$cas]);
+
+        // The Section 15 TSCA sentence of every product carrying this CAS may
+        // change: bump the RMs (bulk-publish staleness) and queue SDS updates.
+        $bumped = \SDS\Services\RegulatoryListBumper::bumpByCas($cas);
+        $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByCas(
+            [$cas],
+            current_user_id(),
+            'TSCA status override set to ' . $status . ' for CAS ' . $cas
+        );
+
+        AuditService::log('tsca_override', $cas, 'update', ['status' => $status, 'note' => $note]);
+        $_SESSION['_flash']['success'] = "TSCA status for CAS {$cas} set to '{$status}'." . self::bumpedTail($bumped) . self::queuedTail($queued);
+        redirect('/determinations?tab=tsca');
+    }
+
+    /**
+     * POST /determinations/element-flags — audit #19. Sets the nitrogen /
+     * sulfur / halogen flags that drive the Section 10 "Hazardous
+     * decomposition products" sentence. A change is SDS content, so every
+     * RM carrying the CAS is bumped (bulk-publish staleness) and the
+     * affected published SDSs are queued, exactly like saveCasDescription().
+     */
+    public function saveCasElementFlags(): void
+    {
+        $this->requirePageAccess('cas_determinations', 'full');
+        CSRF::validateRequest();
+        $db = Database::getInstance();
+
+        $cas = trim($_POST['cas_number'] ?? '');
+        if ($cas === '') {
+            $_SESSION['_flash']['error'] = 'CAS number is required.';
+            redirect('/determinations?tab=descriptions');
+            return;
+        }
+
+        $new = [
+            'has_nitrogen' => isset($_POST['has_nitrogen']) ? 1 : 0,
+            'has_sulfur'   => isset($_POST['has_sulfur']) ? 1 : 0,
+            'has_halogen'  => isset($_POST['has_halogen']) ? 1 : 0,
+        ];
+
+        $existing = $db->fetch(
+            "SELECT has_nitrogen, has_sulfur, has_halogen FROM cas_master WHERE cas_number = ?",
+            [$cas]
+        );
+        if ($existing === null) {
+            $_SESSION['_flash']['error'] = "CAS {$cas} is not in the registry.";
+            redirect('/determinations?tab=descriptions');
+            return;
+        }
+        $old = array_map('intval', $existing);
+        if ($old == $new) {
+            $_SESSION['_flash']['success'] = "Element flags for CAS {$cas} unchanged.";
+            redirect('/determinations?tab=descriptions');
+            return;
+        }
+
+        $db->update('cas_master', $new + ['element_flags_source' => 'manual'], 'cas_number = ?', [$cas]);
+
+        // Deliberate content change: Section 10 text changes for every product carrying this CAS.
+        $bumped = \SDS\Services\RegulatoryListBumper::bumpByCas($cas);
+        $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByCas(
+            [$cas],
+            current_user_id(),
+            "Section 10 element flags updated for {$cas}"
+        );
+
+        AuditService::log('cas_element_flags', $cas, 'update', ['before' => $old, 'after' => $new]);
+        $_SESSION['_flash']['success'] = "Element flags for CAS {$cas} saved."
             . self::bumpedTail($bumped) . self::queuedTail($queued);
         redirect('/determinations?tab=descriptions');
     }

@@ -620,11 +620,17 @@ class FinishedGood
         $insertData = [
             'product_code'       => $code,
             'description'        => trim($data['description'] ?? ''),
-            'family'             => $data['family'] ?? null,
+            'family'             => $data['family'] ?? null,   // legacy name; FamilyResolver keeps it in sync
+            'family_id'          => (int) ($data['family_id'] ?? 0) > 0 ? (int) $data['family_id'] : null,
+            'family_source'      => (int) ($data['family_id'] ?? 0) > 0 ? 'manual' : null,
             'recommended_use'    => $strOrNull('recommended_use'),
             'restrictions_on_use' => $strOrNull('restrictions_on_use'),
             'physical_state'     => $strOrNull('physical_state'),
             'color'              => $strOrNull('color'),
+            'transport_product_type' => self::transportTypeOrNull($data['transport_product_type'] ?? null),   // audit #27
+            // Audit #6: Section 3 Type line. Validated here because this
+            // feeds an ENUM; blank/absent = 'auto'.
+            'substance_mixture'  => self::validatedSubstanceMixture($data['substance_mixture'] ?? null),
             'is_active'          => isset($data['is_active']) ? (int) $data['is_active'] : 1,
             'created_by'         => $data['created_by'] ?? null,
         ];
@@ -671,7 +677,15 @@ class FinishedGood
             }
         }
 
-        $allowed = ['product_code', 'description', 'family', 'is_active', 'recommended_use', 'restrictions_on_use', 'physical_state', 'color'];
+        // Audit #6: substance_mixture is sheet content, not metadata. It goes
+        // through the normal UPDATE (no `updated_at = updated_at`), and every
+        // FG form save also creates a new formula version (Formula::create via
+        // FinishedGoodController::saveFormulaLines), which is the FG-side
+        // staleness signal bulk publish / the update scan / auto-send use.
+        if (array_key_exists('substance_mixture', $data)) {
+            $data['substance_mixture'] = self::validatedSubstanceMixture($data['substance_mixture']);
+        }
+        $allowed = ['product_code', 'description', 'family', 'family_id', 'family_source', 'is_active', 'recommended_use', 'restrictions_on_use', 'physical_state', 'color', 'substance_mixture', 'transport_product_type'];
         $updateData = [];
         foreach ($allowed as $col) {
             if (array_key_exists($col, $data)) {
@@ -680,11 +694,22 @@ class FinishedGood
             }
         }
 
+        if (array_key_exists('transport_product_type', $updateData)) {
+            $updateData['transport_product_type'] = self::transportTypeOrNull($updateData['transport_product_type']);   // audit #27: '' → NULL (ENUM)
+        }
+
         if (empty($updateData)) {
             return 0;
         }
 
         return $db->update('finished_goods', $updateData, 'id = ?', [$id]);
+    }
+
+    /** Audit #27: finished_goods.transport_product_type — a known value or NULL (= automatic). */
+    private static function transportTypeOrNull($value): ?string
+    {
+        $value = strtolower(trim((string) $value));
+        return ($value !== '' && isset(\SDS\Services\TransportClassifier::PRODUCT_TYPE_LABELS[$value])) ? $value : null;
     }
 
     /**
@@ -743,5 +768,20 @@ class FinishedGood
             "SELECT DISTINCT family FROM finished_goods WHERE family IS NOT NULL AND family != '' ORDER BY family"
         );
         return array_column($rows, 'family');
+    }
+
+    /**
+     * Audit #6: validate a posted Substance / Mixture value for the ENUM
+     * column. Blank or missing = 'auto'; anything else outside
+     * SubstanceMixtureResolver::VALUES is rejected with a user-facing error.
+     *
+     * @throws \InvalidArgumentException
+     */
+    private static function validatedSubstanceMixture($value): string
+    {
+        if (!\SDS\Services\SubstanceMixtureResolver::isValid($value)) {
+            throw new \InvalidArgumentException('Substance / Mixture must be Auto, Substance or Mixture.');
+        }
+        return \SDS\Services\SubstanceMixtureResolver::normalize($value);
     }
 }

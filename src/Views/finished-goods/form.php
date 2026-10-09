@@ -23,13 +23,20 @@ $selfId = $isEdit ? (int) $item['id'] : 0;
                        value="<?= e(old('product_code', $item['product_code'] ?? '')) ?>" required>
             </div>
             <div class="form-group">
-                <label for="family">Product Family</label>
-                <select id="family" name="family">
-                    <option value="">— Select —</option>
-                    <?php foreach ($families as $f): ?>
-                        <option value="<?= e($f) ?>" <?= (old('family', $item['family'] ?? '') === $f) ? 'selected' : '' ?>><?= e($f) ?></option>
+                <label for="family_id">Product Family</label>
+                <?php $familyIdVal = old('family_id', (($item['family_source'] ?? '') === 'manual') ? (string) ($item['family_id'] ?? '') : ''); ?>
+                <select id="family_id" name="family_id">
+                    <option value="">Auto — resolve from family rules / formula content</option>
+                    <?php foreach ($families as $f): if (empty($f['is_active']) && $familyIdVal !== (string) $f['id']) continue; // inactive: listed only when it is the current manual pick (raw-materials/form.php rule) ?>
+                        <option value="<?= (int) $f['id'] ?>" <?= $familyIdVal === (string) $f['id'] ? 'selected' : '' ?>><?= e($f['name']) ?><?= !empty($f['is_uv']) ? ' (UV/LED)' : '' ?><?= empty($f['is_active']) ? ' (inactive)' : '' ?></option>
                     <?php endforeach; ?>
                 </select>
+                <small class="text-muted">
+                    <?php if ($isEdit): ?>
+                        Currently: <?= !empty($item['family']) ? e($item['family']) . ' (' . e((string) ($item['family_source'] ?? 'manual')) . ')' : 'unresolved' ?>.
+                    <?php endif; ?>
+                    A chosen family is a manual override; Auto re-resolves on save. The family supplies the Section 1 defaults below when they are blank. Managed under <a href="/admin/product-families">Settings &rarr; Product Families</a>.
+                </small>
             </div>
             <div class="form-group full-width">
                 <label for="description">Description</label>
@@ -63,6 +70,20 @@ $selfId = $isEdit ? (int) $item['id'] : 0;
             </div>
         </div>
 
+        <!-- Substance / Mixture (SDS Section 3, audit #6) -->
+        <h3>SDS Composition Type</h3>
+        <p class="text-muted">Printed as the "Type:" line in SDS Section 3. <strong>Auto</strong> prints "Substance" only when the formula is a single raw material that is itself marked Substance; everything else prints "Mixture". Changing this changes the SDS, so the product is republished on the next bulk publish.</p>
+        <div class="form-grid-2col">
+            <div class="form-group">
+                <label for="substance_mixture">Substance / Mixture</label>
+                <select id="substance_mixture" name="substance_mixture">
+                    <?php foreach (['auto' => 'Auto (derive from formula)', 'substance' => 'Substance', 'mixture' => 'Mixture'] as $smVal => $smLabel): ?>
+                        <option value="<?= e($smVal) ?>" <?= (old('substance_mixture', $item['substance_mixture'] ?? 'auto') === $smVal) ? 'selected' : '' ?>><?= e($smLabel) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+        </div>
+
         <!-- Physical Properties (SDS Section 9) -->
         <h3>Physical Properties</h3>
         <p class="text-muted">These fields appear in SDS Section 9 — Physical and Chemical Properties.</p>
@@ -84,6 +105,16 @@ $selfId = $isEdit ? (int) $item['id'] : 0;
                         <option value="<?= e($co) ?>" <?= (old('color', $item['color'] ?? '') === $co) ? 'selected' : '' ?>><?= e($co) ?></option>
                     <?php endforeach; ?>
                 </select>
+            </div>
+            <div class="form-group">
+                <label for="transport_product_type">Transport Product Type (SDS Section 14)</label>
+                <select id="transport_product_type" name="transport_product_type">
+                    <option value="">— Automatic (keywords in description / family) —</option>
+                    <?php foreach (\SDS\Services\TransportClassifier::PRODUCT_TYPE_LABELS as $tptVal => $tptLabel): ?>
+                        <option value="<?= e($tptVal) ?>" <?= (old('transport_product_type', $item['transport_product_type'] ?? '') === $tptVal) ? 'selected' : '' ?>><?= e($tptLabel) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <p class="text-muted">Chooses the DOT entry when the product is a flammable liquid. Automatic: COATING / VARNISH / OPV / LACQUER / PRIMER / PAINT / ENAMEL → Paint (UN1263); ADDITIVE / REDUCER / THINNER / EXTENDER / RETARDER / DILUENT / CATALYST / HARDENER → "related material"; WASH / CLEANER / FOUNTAIN / DEGREASER → n.o.s. (UN1993); otherwise Printing ink (UN1210). Changing it marks this product's SDS for republishing.</p>
             </div>
         </div>
 

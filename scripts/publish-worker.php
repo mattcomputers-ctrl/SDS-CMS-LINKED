@@ -152,6 +152,13 @@ foreach ($workItems as $i => $item) {
             $sdsData = $generator->generateFromBase($baseDataCache[$fgId], $lang);
         }
 
+        // Audit #27 — Section 14 "Not determined" is a publish block (same rule
+        // as SDSController::publish); the exception lands in errors[] below.
+        $transportError = \SDS\Services\SDSReadinessService::transportNotDeterminedError($sdsData);
+        if ($transportError !== null) {
+            throw new \RuntimeException($transportError);
+        }
+
         // For alias items, replace product code/description in section 1
         if ($aliasId !== null && $aliasCode !== null) {
             $sdsData = SDSGenerator::createAliasVariant($sdsData, $aliasCode, $aliasDescription ?? '');

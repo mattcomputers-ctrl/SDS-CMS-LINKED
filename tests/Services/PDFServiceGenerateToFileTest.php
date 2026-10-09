@@ -163,10 +163,8 @@ $sdsData = [
             'flash_point'     => '> 200°F (93°C)',
             'specific_gravity' => '1.08',
             'voc_lb_per_gal'  => '0.45',
-            'voc_less_water_exempt' => '0.42',
             'voc_wt_pct'      => '5.2',
             'solids_wt_pct'   => '40.1',
-            'solids_vol_pct'  => '38.5',
         ],
         10 => [
             'title'            => 'Stability and Reactivity',

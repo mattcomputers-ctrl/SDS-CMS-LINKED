@@ -98,6 +98,11 @@ sudo -u www-data php /var/www/sds-system/scripts/resave-prop65-raw-materials.php
 
 # Smoke test for SDS-bump suppression (mutates one RM, restores cleanly)
 sudo -u www-data php /var/www/sds-system/scripts/smoke-test-sds-bump.php [<rm_id>]
+
+# Delete per-product SDS text overrides that merely repeat the automatic text (audit #36, one-off)
+sudo -u www-data php /var/www/sds-system/scripts/cleanup-default-overrides.php            # dry-run, prints counts
+sudo -u www-data php /var/www/sds-system/scripts/cleanup-default-overrides.php --apply    # delete them
+sudo -u www-data php /var/www/sds-system/scripts/cleanup-default-overrides.php --fg=123 --verbose   # one product, row by row
 ```
 
 ---
@@ -198,6 +203,26 @@ sudo ls -l /proc/12345/fd/                # open file descriptors / sockets
 
 ---
 
+## Per-product SDS text overrides (audit #36)
+
+- `text_overrides` (finished_good_id + language + section + field_key,
+  `sds_version_id IS NULL`) holds **operator-typed text only**. The editor at
+  `/sds/{fg}/edit?lang=xx` shows the automatic text as the grey placeholder /
+  "Automatic:" hint; a blank field, or text identical to the automatic value,
+  is never stored and deletes any stored row ("Reset to automatic").
+- Overrides are per language: an EN override does not reach ES/FR/DE.
+- Rows written before #36 may just repeat the generated default and freeze it.
+  Run `scripts/cleanup-default-overrides.php` (dry-run, then `--apply`) once
+  after deploying #36; it regenerates each product/language with overrides off
+  and deletes only rows equal to the automatic text, so no SDS output changes
+  and nothing needs republishing. Rows with custom text, unknown field keys,
+  or products that fail to generate are reported and kept.
+- Resale raw-material SDSs (`/sds/resale/{rm}/preview`) have no override path:
+  the table is keyed by finished_good_id and the resale generator runs with a
+  null FG id. Adding one needs a `raw_material_id` column (follow-up).
+
+---
+
 ## SDS content policy
 
 Fixed in code, not in admin settings (audit item #8). The constants and the
@@ -234,7 +259,46 @@ policy comment live in `src/Services/SDSGenerator.php` next to
   plus each listed chemical with its OEHHA listing type; NSRL/MADL/listing
   dates are never printed. VOC calculation assumptions (SG = 1.0, VOC = 0
   defaults) are applied silently and never printed (audit #42).
+- **Section 9 physical state and solubility (audit #18).** Physical state
+  is the finished good's own value, else the physical state of the
+  highest-wt% raw material in the expanded composition, else Liquid; the
+  same resolved state drives Section 6 containment and Section 8
+  engineering controls. Solubility is the formula's soluble-fraction band
+  (soluble raws count fully, partially soluble half; raws without a value
+  are ignored): >= 90 % Soluble, 5–90 % Partially soluble, 1–5 %
+  Negligible solubility, < 1 % Not soluble in water, otherwise Not
+  determined. VOC less water & exempts and solids vol% are not printed;
+  missing SG (1.0) and VOC (0) defaults stay silent (audit #18/#42).
+  Migration 054 one-time reset every "Soluble"/"Partially soluble" raw
+  material to "Negligible solubility in water" and bumped its
+  `updated_at`; the affected count is in `settings`
+  (`sds.migration.054.solubility_reset_count`).
 - SDS snapshots generated before Section 8/11/12 banding carry no band; a
   re-render from such a snapshot (send queue, private-label re-brand)
   shows an empty Conc% cell / no concentration after the CAS, never the
   exact value. Republish to refresh.
+- **Substance vs mixture (audit #6).** Section 3 "Type:" defaults to Mixture.
+  "Substance" prints only when the finished good is set to Substance, or is
+  Auto with a single-line formula whose raw material is set to Substance, or
+  (resale) the raw material is set to Substance. Set on the finished good /
+  raw material edit pages; changing it republishes affected products on the
+  next bulk publish.
+- **Product families (audit #3).** Settings → Product Families holds each
+  family's UV/LED flag, membership rules (code prefix / description
+  contains / exact code; aliases are matched too) and per-language Section 1
+  Recommended Use / Restrictions on Use defaults. Every raw material and
+  product resolves to one family: manual pick on the item form > direct rule
+  match > (products only) the family with the largest wt% share of the
+  expanded formula; unresolved items print the translation-file text.
+  Section 1 prints: per-FG text override > the product's own Recommended
+  Use / Restrictions columns > family default for the SDS language (blank →
+  en) > translation file (`section1.*_resale` for resale raw-material
+  SDSs). Resolution reruns on CMS import, on every product / formula /
+  raw-material save, and from "Recompute now" (preview, then Apply). A
+  reassigned raw material is bumped (`updated_at`); a reassigned product
+  with a published SDS gets one raw material of its formula bumped plus an
+  SDS Updates entry; editing a family's default text does the same for
+  every item resolved to it. The UV acrylate rule pack gates on the
+  resolved family's UV flag (name heuristic only for items with no family).
+  Migration 053 seeded the families from the old `sds.product_families`
+  list and linked legacy `finished_goods.family` names as manual picks.

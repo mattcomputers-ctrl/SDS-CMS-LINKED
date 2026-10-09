@@ -80,6 +80,10 @@ class FinishedGoodController
 
         $data = $_POST;
         $data['created_by'] = current_user_id();
+        // Audit #3: family picker — a chosen family is a manual override, blank = Auto.
+        // The legacy name column is maintained by FamilyResolver, never posted.
+        unset($data['family']);
+        $data['family_id'] = (int) ($data['family_id'] ?? 0) > 0 ? (int) $data['family_id'] : null;
 
         try {
             // Pre-validate formula lines before creating the finished good
@@ -100,7 +104,8 @@ class FinishedGoodController
                 $this->saveFormulaLines($id, $formulaLines);
             }
 
-            $_SESSION['_flash']['success'] = 'Finished good created successfully.';
+            $_SESSION['_flash']['success'] = 'Finished good created successfully.'
+                . $this->recomputeFamilies([$id], 'Finished good ' . $data['product_code'] . ' created');
             redirect('/finished-goods');
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = $e->getMessage();
@@ -158,16 +163,39 @@ class FinishedGoodController
                 }
             }
 
-            $diff = AuditService::diff($item, $_POST);
-            FinishedGood::update((int) $id, $_POST);
+            // Audit #3: family picker — a chosen family is a manual override, blank = Auto
+            // (FamilyResolver then re-resolves rule / content). Legacy name column not posted.
+            // Auto on an item that was NOT manual leaves the columns alone (recomputeFamilies()
+            // re-resolves them) so a no-op save never looks like a reassignment / republish flag.
+            $post = $_POST;
+            unset($post['family']);
+            $pickedFamily = (int) ($post['family_id'] ?? 0) > 0 ? (int) $post['family_id'] : null;
+            if ($pickedFamily !== null) {
+                $post['family_id']     = $pickedFamily;
+                $post['family_source'] = 'manual';
+            } elseif (($item['family_source'] ?? null) === 'manual') {
+                $post['family_id']     = null;   // manual -> Auto: release the override
+                $post['family_source'] = null;
+            } else {
+                unset($post['family_id'], $post['family_source']);
+            }
+
+            $diff = AuditService::diff($item, $post);
+            FinishedGood::update((int) $id, $post);
             AuditService::log('finished_good', $id, 'update', $diff);
+
+            // Audit #27: the transport product type is SDS content (Section 14).
+            if (strtolower(trim((string) ($item['transport_product_type'] ?? ''))) !== strtolower(trim((string) ($post['transport_product_type'] ?? '')))) {
+                $this->bumpSdsStalenessForTransportChange((int) $id, current_user_id());
+            }
 
             // Save formula (already validated above)
             if (!empty($formulaLines)) {
                 $this->saveFormulaLines((int) $id, $formulaLines);
             }
 
-            $_SESSION['_flash']['success'] = 'Finished good updated.';
+            $_SESSION['_flash']['success'] = 'Finished good updated.'
+                . $this->recomputeFamilies([(int) $id], 'Finished good ' . $item['product_code'] . ' saved');
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = $e->getMessage();
         }
@@ -415,19 +443,38 @@ class FinishedGoodController
     }
 
     /**
-     * Load product families from admin settings, falling back to distinct DB values.
+     * Product families for the form picker (audit #3): product_families rows
+     * (id, name, is_uv, is_active, ...) ordered by sort_order. ALL rows, like
+     * the raw-material form: the view hides inactive families unless one is
+     * the item's current manual pick, so an unrelated save cannot post Auto
+     * and silently release a manual override on a family that was set
+     * inactive later. Managed on Settings > Product Families; the old
+     * sds.product_families setting is dead.
      *
-     * @return string[]
+     * @return array<int,array>
      */
     private function loadProductFamilies(): array
     {
-        $db  = \SDS\Core\Database::getInstance();
-        $row = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'sds.product_families'");
-        if ($row && !empty($row['value'])) {
-            return array_filter(array_map('trim', explode("\n", $row['value'])));
+        return \SDS\Models\ProductFamily::all(false);
+    }
+
+    /**
+     * Audit #3: after a product save, re-resolve the family of this product and
+     * of every product whose formula tree contains it (rule match + content
+     * inheritance), applying the result and flagging reassigned items for
+     * republish. Returns a flash tail (' Product families: ...') or ''.
+     * Must never break the save.
+     *
+     * @param int[] $fgIds
+     */
+    private function recomputeFamilies(array $fgIds, string $reason): string
+    {
+        try {
+            $r = \SDS\Services\FamilyResolver::recompute(true, current_user_id(), $reason, ['finished_good_ids' => $fgIds, 'raw_material_ids' => []]);
+            return ($r['counts']['rm_changed'] + $r['counts']['fg_changed']) > 0 ? \SDS\Services\FamilyResolver::summaryLine($r) : '';
+        } catch (\Throwable $e) {
+            return ' Product family recompute failed: ' . $e->getMessage();
         }
-        // Fallback to distinct families already in use
-        return FinishedGood::getFamilies();
     }
 
     /**
@@ -458,5 +505,39 @@ class FinishedGoodController
             return array_filter(array_map('trim', explode("\n", $row['value'])));
         }
         return ['Black', 'White', 'Yellow', 'Cyan', 'Magenta', 'Transparent', 'Various'];
+    }
+
+    /**
+     * Audit #27 — a transport_product_type change must republish the product.
+     * Bulk publish's staleness check only reads raw_materials.updated_at (see
+     * RegulatoryListBumper), so bump the RMs on this FG's current formula
+     * (sibling products sharing those RMs are re-rendered too — accepted) and
+     * queue an explicit update row so the SDS Updates page lists this FG.
+     */
+    private function bumpSdsStalenessForTransportChange(int $fgId, ?int $userId): void
+    {
+        $db = \SDS\Core\Database::getInstance();
+        $db->query(
+            "UPDATE raw_materials rm
+             JOIN formula_lines fl ON fl.raw_material_id = rm.id
+             JOIN formulas f ON f.id = fl.formula_id AND f.is_current = 1
+             SET rm.updated_at = UTC_TIMESTAMP()
+             WHERE f.finished_good_id = ?",
+            [$fgId]
+        );
+        $hasPublished = $db->fetch(
+            "SELECT 1 FROM sds_versions WHERE finished_good_id = ? AND status = 'published' AND is_deleted = 0 AND alias_id IS NULL LIMIT 1",
+            [$fgId]
+        );
+        $pending = $db->fetch("SELECT id FROM sds_update_queue WHERE finished_good_id = ? AND status = 'pending'", [$fgId]);
+        if ($hasPublished && !$pending) {
+            $db->insert('sds_update_queue', [
+                'finished_good_id' => $fgId,
+                'reason'           => 'Transport product type changed (SDS Section 14)',
+                'source_type'      => 'finished_good',
+                'source_id'        => $fgId,
+                'queued_by'        => $userId,
+            ]);
+        }
     }
 }

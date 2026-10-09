@@ -38,6 +38,11 @@
                 <td><span class="badge badge-muted"><?= number_format((int) ($results['rm_refreshed'] ?? 0)) ?></span></td>
             </tr>
             <tr>
+                <td><strong>Product families changed (raw materials + finished goods)</strong></td>
+                <td><span class="badge badge-muted"><?= number_format((int) ($results['families_changed'] ?? 0)) ?></span>
+                    <?php if (!empty($results['families_bumped_rms'])): ?><small class="text-muted"> &middot; <?= (int) $results['families_bumped_rms'] ?> raw material(s) flagged for re-publish</small><?php endif; ?></td>
+            </tr>
+            <tr>
                 <td><strong>Aliases created</strong></td>
                 <td><span class="badge badge-success"><?= (int) ($results['aliases_created'] ?? 0) ?></span></td>
             </tr>

@@ -14,12 +14,16 @@ use SDS\Core\Database;
  * come from federal CAS data + GHS mixture rules only. This pack:
  *
  *  1. Detects acrylate/monomer CAS numbers via synonym matching
- *  2. Appends conservative safe-handling language to SDS Sections 4–8 and 11
+ *  2. Supplies translated safe-handling language for SDS Sections 4, 5, 6,
+ *     7 and 11 (printed under labels.uv_acrylate_note) and PPE sentences
+ *     folded into the Section 8 PPE fields (audit #35)
  *  3. Adds tooltip-style warnings for formulators
- *  4. Can be toggled per product family via admin settings
+ *  4. Can be toggled globally in Admin Settings
  *
- * Toggle: enabled globally via setting `uv_acrylate_rule_pack` = 'enabled'
- * and per product family (applies to families containing "UV" by default).
+ * Toggle: setting `uv_acrylate_rule_pack` = 'enabled' (a missing row counts
+ * as enabled). Scope: products whose RESOLVED product family is flagged
+ * UV/LED (decision #3) — the FG / RM row carries `family_is_uv` = 1 after
+ * SDSGenerator::attachFamily().
  */
 class UVAcrylateRulePack
 {
@@ -54,22 +58,46 @@ class UVAcrylateRulePack
     ];
 
     /**
-     * Check if the rule pack should be applied for a given product family.
+     * Global on/off switch (Admin Settings): settings.uv_acrylate_rule_pack.
+     * A missing row counts as enabled (seeds/seed.php writes 'enabled');
+     * only an explicit value other than 'enabled' turns the pack off.
      */
-    public static function isApplicable(?string $family): bool
+    public static function isEnabled(): bool
     {
-        // Check global setting
         $db = Database::getInstance();
         $setting = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'uv_acrylate_rule_pack'");
-        if ($setting && $setting['value'] !== 'enabled') {
-            return false;
-        }
+        return !($setting && $setting['value'] !== 'enabled');
+    }
 
-        // Apply to UV product families by default
-        if ($family === null) {
-            return false;
-        }
-        return stripos($family, 'UV') !== false || stripos($family, 'LED') !== false;
+    /**
+     * UV product test (audit #35 / decision #3): the product's RESOLVED
+     * family is flagged UV/LED. The finished-good row (or the synthesised
+     * resale row) carries `family_is_uv` (bool|null from
+     * SDSGenerator::attachFamily(), or 0/1) from the product-family resolver.
+     * The old "family name contains UV/LED" check is gone: an item with no
+     * resolved family is not a UV product. DB-free.
+     */
+    public static function familyIsUv(array $fg): bool
+    {
+        return (int) ($fg['family_is_uv'] ?? 0) === 1;
+    }
+
+    /**
+     * The pack applies when it is enabled AND the product is a UV product.
+     * $fg is a finished_goods row (or the resale row synthesised by
+     * SDSGenerator) after SDSGenerator::attachFamily().
+     */
+    public static function isApplicable(array $fg): bool
+    {
+        return self::isEnabled() && self::familyIsUv($fg);
+    }
+
+    /**
+     * Alias of isApplicable() kept for the audit #3 call sites.
+     */
+    public static function isApplicableForItem(array $fg): bool
+    {
+        return self::isApplicable($fg);
     }
 
     /**
@@ -86,16 +114,24 @@ class UVAcrylateRulePack
             $cas  = $component['cas_number'] ?? '';
             $name = strtolower($component['chemical_name'] ?? '');
 
+            // A trade-secret constituent keeps its real chemical_name in the
+            // composition (only Section 3 masks it): never print that identity —
+            // or its CAS — in the Section 4 note (29 CFR 1910.1200(i)). Detection
+            // itself is unchanged so the generic sentences still fire.
+            $display = !empty($component['is_trade_secret'])
+                ? (trim((string) ($component['trade_secret_description'] ?? '')) ?: 'Trade Secret')
+                : null;
+
             // Match by known CAS
             if (isset(self::ACRYLATE_CAS_LIST[$cas])) {
-                $found[$cas] = $component['chemical_name'] ?? self::ACRYLATE_CAS_LIST[$cas];
+                $found[$cas] = $display ?? ($component['chemical_name'] ?? self::ACRYLATE_CAS_LIST[$cas]);
                 continue;
             }
 
             // Match by name pattern
             foreach (self::ACRYLATE_NAME_PATTERNS as $pattern) {
                 if (str_contains($name, $pattern)) {
-                    $found[$cas] = $component['chemical_name'] ?? $cas;
+                    $found[$cas] = $display ?? ($component['chemical_name'] ?? $cas);
                     break;
                 }
             }
@@ -105,48 +141,58 @@ class UVAcrylateRulePack
     }
 
     /**
-     * Return conservative safe-handling language to append to SDS sections.
+     * Translated safe-handling language printed under labels.uv_acrylate_note
+     * in Sections 4, 5, 6, 7 and 11 (audit #35). Section 8 is NOT in this
+     * map: its advice is folded into the PPE fields via getPpeSupplement().
+     * The Section 10 "protect from UV light" condition is appended by
+     * SDSGenerator::section10() for every UV product, pack or not.
      *
-     * These do NOT override federal hazard data. They supplement Sections
-     * 4–8 and 11 with UV-specific handling advice recognized in the
-     * coatings industry.
+     * These do NOT override federal hazard data.
      *
-     * @param  array $acrylates  CAS => name pairs from detectAcrylates()
-     * @return array  Keyed by section number, each value is text to append.
+     * The Section 4 / 11 sentences that assert a skin sensitizer ("known skin
+     * sensitizers", "may cause skin sensitization") print only when the mixture
+     * itself carries H317 ($isSkinSens, from the engine result): below the Skin
+     * Sens. 1 cut-off, or for unclassified oligomers / acrylic polymers matched
+     * by name, the *_unclassified variants print instead so Sections 4 and 11
+     * cannot contradict Section 2 (and Section 11's own "criteria not met").
+     *
+     * @param  array              $acrylates   CAS => name pairs from detectAcrylates()
+     * @param  TranslationService $t           Sheet-language translator
+     * @param  bool               $isSkinSens  H317 present in the mixture classification
+     * @return array  Keyed by section number (4,5,6,7,11); [] when no acrylates.
      */
-    public static function getSafeHandlingLanguage(array $acrylates): array
+    public static function getSafeHandlingLanguage(array $acrylates, TranslationService $t, bool $isSkinSens = true): array
     {
         if (empty($acrylates)) {
             return [];
         }
 
-        $names = implode(', ', array_values($acrylates));
+        // array_unique: several trade-secret acrylates all display as one label.
+        $names = implode(', ', array_values(array_unique(array_values($acrylates))));
+        $sfx   = $isSkinSens ? '' : '_unclassified';
 
         return [
-            4 => "UV/EB curable product containing acrylate monomers/oligomers ({$names}). "
-               . "In case of skin contact, wash immediately with soap and water. "
-               . "Acrylates may cause sensitization; seek medical attention if skin reaction develops. "
-               . "If in eyes, rinse cautiously with water for several minutes; remove contact lenses if present.",
-
-            5 => "UV-curable formulations may generate acrid smoke if involved in a fire. "
-               . "Use self-contained breathing apparatus (SCBA) and full protective gear.",
-
-            6 => "Avoid release to drains. Uncured acrylate monomers should not enter waterways. "
-               . "Absorb spills with inert material and dispose of in accordance with local regulations.",
-
-            7 => "Store away from UV light sources, direct sunlight, and heat to prevent premature polymerization. "
-               . "Keep containers tightly closed. Use in well-ventilated areas. "
-               . "Avoid prolonged or repeated skin contact with uncured product.",
-
-            8 => "Wear chemical-resistant gloves (nitrile recommended, minimum 0.4 mm thickness). "
-               . "Safety goggles or face shield required. "
-               . "Use local exhaust ventilation or respiratory protection if mist/vapor is generated. "
-               . "Barrier cream recommended for exposed skin areas.",
-
-            11 => "Contains acrylate monomers that are known skin sensitizers. "
-                . "Repeated exposure may cause allergic contact dermatitis. "
-                . "Based on component data; no additional toxicological testing on the mixture has been performed.",
+            4  => $t->get('section4.uv_acrylate_note' . $sfx, ['names' => $names]),
+            5  => $t->get('section5.uv_acrylate_note'),
+            6  => $t->get('section6.uv_acrylate_note'),
+            7  => $t->get('section7.uv_acrylate_note'),
+            11 => $t->get('section11.uv_acrylate_note' . $sfx),
         ];
+    }
+
+    /**
+     * UV acrylate PPE sentences, one per HazardEngine::PPE_FIELDS entry, that
+     * SDSGenerator::section8() appends to the resolved PPE text (audit #35).
+     *
+     * @return array<string,string>  field => translated sentence
+     */
+    public static function getPpeSupplement(TranslationService $t): array
+    {
+        $out = [];
+        foreach (HazardEngine::PPE_FIELDS as $field) {
+            $out[$field] = $t->get('section8.uv_' . $field);
+        }
+        return $out;
     }
 
     /**
@@ -161,7 +207,7 @@ class UVAcrylateRulePack
         return [
             'This product contains UV-curable acrylate monomers/oligomers which are known skin sensitizers.',
             'Ensure adequate ventilation and PPE during handling of uncured product.',
-            'Acrylate content detected: ' . implode(', ', array_values($acrylates)) . '.',
+            'Acrylate content detected: ' . implode(', ', array_values(array_unique(array_values($acrylates)))) . '.',
         ];
     }
 }

@@ -42,6 +42,8 @@ class PermissionService
         'exempt_vocs'        => 'Exempt VOC Library',
         'prop65_list'        => 'California Prop 65 List',
         'hap_list'           => 'EPA HAP List (CAA §112(b))',
+        'tsca_list'          => 'TSCA Inventory',
+        'rcra_list'          => 'EPA RCRA Waste Codes (40 CFR 261)',   // audit #26 (T3)
         'sara313'            => 'SARA 313 List',
         'snur_list'          => 'SNUR List',
         'pictograms'         => 'Pictograms',

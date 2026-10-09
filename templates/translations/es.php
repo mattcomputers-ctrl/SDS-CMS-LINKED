@@ -7,6 +7,8 @@ return [
         'title'           => 'Identificación',
         'recommended_use' => 'Tinta de impresión para aplicaciones comerciales e industriales.',
         'restrictions'    => 'Solo para uso profesional/industrial. No para uso doméstico.',
+        'recommended_use_resale' => 'Materia prima para formulación industrial.',
+        'restrictions_resale'    => 'Solo para uso profesional/industrial. No para uso doméstico.',
     ],
     'section2' => [
         'title'          => 'Identificación de Peligros',
@@ -47,6 +49,10 @@ return [
         'notes_aspiration'           => 'No provocar el vómito; riesgo de aspiración a los pulmones.',
         'notes_corrosive'            => 'No intentar neutralizar; tratar las quemaduras por corrosión como quemaduras térmicas.',
         'notes_inhalation_delayed'   => 'Mantener bajo observación médica durante al menos 48 horas; posible edema pulmonar retardado.',
+        // Audit #35 — UV acrylate rule pack (UVAcrylateRulePack); :names = detected acrylate names
+        'uv_acrylate_note' => 'Producto curable por UV/EB que contiene monómeros/oligómeros de acrilato (:names). En caso de contacto con la piel, lavar inmediatamente con agua y jabón. Los acrilatos pueden provocar sensibilización cutánea; consultar a un médico si aparece una reacción cutánea. En caso de contacto con los ojos, enjuagar cuidadosamente con agua durante varios minutos; quitar las lentes de contacto si las lleva y resulta fácil, y seguir enjuagando.',
+        // Se imprime en su lugar cuando la mezcla no lleva H317 (sin afirmación de sensibilizante; véase la Sección 2).
+        'uv_acrylate_note_unclassified' => 'Producto curable por UV/EB que contiene monómeros/oligómeros de acrilato (:names). En caso de contacto con la piel, lavar inmediatamente con agua y jabón. En caso de contacto con los ojos, enjuagar cuidadosamente con agua durante varios minutos; quitar las lentes de contacto si las lleva y resulta fácil, y seguir enjuagando.',
     ],
     'section5' => [
         'title'            => 'Medidas de Lucha contra Incendios',
@@ -73,6 +79,8 @@ return [
         'specific_hazards_water_reactive_h260' => 'Reacciona con el agua, la humedad y los agentes extintores a base de agua liberando gases inflamables que pueden inflamarse espontáneamente.',
         'firefighter_advice_flammable'      => 'Usar equipo de respiración autónomo (ERA) y equipo de protección completo. Eliminar todas las fuentes de ignición y aproximarse desde barlovento. Usar agua pulverizada para enfriar los recipientes expuestos al fuego y dispersar los vapores; retirar los recipientes de la zona del incendio si puede hacerse sin riesgo.',
         'firefighter_advice_water_reactive' => 'Usar equipo de respiración autónomo (ERA) y equipo de protección completo. No aplicar agua ni espuma sobre el producto ni sobre sus recipientes. Sofocar con un agente extintor seco; dejar que los incendios pequeños se consuman si es seguro hacerlo.',
+        // Audit #35 — UV acrylate rule pack (UVAcrylateRulePack)
+        'uv_acrylate_note' => 'Las formulaciones curables por UV pueden generar humo acre en caso de incendio. Los bomberos deben usar equipo de respiración autónomo (ERA) y equipo de protección completo.',
     ],
     'section6' => [
         'title'                => 'Medidas en Caso de Derrame Accidental',
@@ -93,6 +101,8 @@ return [
         'environmental_aquatic_harmful'   => 'Nocivo para los organismos acuáticos.',
         'environmental_notify'            => 'Notificar a las autoridades si el producto entra en desagües o vías fluviales.',
         'containment_paste'               => 'Detener la fuga si es seguro hacerlo. Raspar o recoger con pala el material y depositarlo en recipientes adecuados para su eliminación. Limpiar la zona afectada con un agente de limpieza apropiado.',
+        // Audit #35 — UV acrylate rule pack (UVAcrylateRulePack)
+        'uv_acrylate_note' => 'Evitar el vertido a los desagües. Los monómeros de acrilato sin curar no deben llegar a los cursos de agua. Absorber los derrames con material inerte y eliminar conforme a la normativa local.',
     ],
     'section7' => [
         'title'    => 'Manipulación y Almacenamiento',
@@ -134,6 +144,8 @@ return [
         'storage_corrosive_metals' => 'Almacenar en un recipiente resistente a la corrosión con revestimiento interior resistente.',
         'storage_locked'           => 'Guardar bajo llave.',
         'storage_incompatible'     => 'Almacenar lejos de materiales incompatibles (véase la Sección 10): :list.',
+        // Audit #35 — UV acrylate rule pack (UVAcrylateRulePack)
+        'uv_acrylate_note' => 'Almacenar lejos de fuentes de luz UV, de la luz solar directa y del calor para evitar la polimerización prematura. Mantener los recipientes bien cerrados. Usar en zonas bien ventiladas. Evitar el contacto prolongado o repetido de la piel con el producto sin curar.',
     ],
     'section8' => [
         'title'           => 'Controles de Exposición / Protección Personal',
@@ -141,6 +153,11 @@ return [
         'engineering_dust'      => 'Minimizar la generación y acumulación de polvo. Usar ventilación local por extracción en los puntos de generación y transferencia de polvo, con equipos de captación de polvo diseñados y mantenidos para evitar su liberación. Confinar el proceso cuando sea posible.',
         'engineering_flammable' => 'Usar ventilación a prueba de explosión y equipos eléctricos adecuados para la zona peligrosa (clasificada) (NFPA 70; 29 CFR 1910.307). Conectar a tierra y unir eléctricamente los recipientes y los equipos receptores durante la transferencia para evitar descargas electrostáticas (NFPA 77). La ventilación debe mantener las concentraciones de vapor por debajo del límite inferior de explosividad (LEL).',
         'engineering_corrosive' => 'Debe haber estaciones lavaojos y duchas de seguridad en el área de trabajo inmediata para uso en emergencias (29 CFR 1910.151(c); ANSI/ISEA Z358.1).',
+        // Audit #35 — UV acrylate rule pack (UVAcrylateRulePack)
+        'uv_respiratory' => 'Usar extracción localizada al manipular el producto sin curar; si se generan nieblas o vapores, usar un respirador purificador de aire aprobado por NIOSH con cartuchos para vapores orgánicos (29 CFR 1910.134).',
+        'uv_hand_protection' => 'Para el producto de acrilato sin curar, usar guantes resistentes a productos químicos (se recomienda nitrilo de al menos 0,4 mm de espesor) y sustituirlos al primer signo de contaminación.',
+        'uv_eye_protection' => 'Se requieren gafas de protección contra salpicaduras químicas o pantalla facial al manipular el producto de acrilato sin curar.',
+        'uv_skin_protection' => 'Evitar el contacto prolongado o repetido de la piel con el producto sin curar. Se recomienda una crema de barrera para la piel expuesta.',
         'ppe' => [
             'respiratory' => [
                 'scba'       => 'Cuando los controles de ingeniería no puedan mantener las concentraciones en el aire por debajo de los límites de exposición aplicables, usar un respirador con suministro de aire o un equipo de respiración autónomo (SCBA) aprobado por NIOSH, dentro de un programa de protección respiratoria conforme a 29 CFR 1910.134. Los respiradores purificadores de aire con cartucho no son adecuados para este material.',
@@ -171,17 +188,20 @@ return [
             ],
         ],
     ],
-    'section9'  => ['title' => 'Propiedades Físicas y Químicas'],
+    'section9'  => [
+        'title' => 'Propiedades Físicas y Químicas',
+        // #18(d) formula-level solubility bands
+        'solubility_soluble'           => 'Soluble en agua',
+        'solubility_partially_soluble' => 'Parcialmente soluble en agua',
+        'solubility_negligible'        => 'Solubilidad insignificante en agua',
+        'solubility_not_soluble'       => 'Insoluble en agua',
+    ],
     'section10' => [
         'title'            => 'Estabilidad y Reactividad',
         'reactivity'       => 'Sin reacción peligrosa conocida bajo condiciones normales de uso.',
         'stability'        => 'Estable bajo las condiciones de almacenamiento recomendadas.',
-        'conditions_avoid' => 'Calor excesivo, chispas, llamas abiertas, oxidantes fuertes.',
         'incompatible'     => 'Agentes oxidantes fuertes, ácidos fuertes, bases fuertes.',
         'decomposition'    => 'Monóxido de carbono, dióxido de carbono y otros gases tóxicos.',
-        'conditions_avoid_water_reactive' => 'Agua, humedad, calor excesivo, chispas, llamas abiertas.',
-        'conditions_avoid_pyrophoric'     => 'Aire, humedad, calor excesivo.',
-        'conditions_avoid_self_reactive'  => 'Calor, fricción, impacto, contaminación. Evitar temperaturas por encima de los límites de almacenamiento recomendados.',
         'incompatible_oxidizer'           => 'Materiales combustibles, agentes reductores, materiales orgánicos, polvos metálicos.',
         'incompatible_water_reactive'     => 'Agua, humedad, ácidos fuertes, bases fuertes.',
         'incompatible_flammable'          => 'Agentes oxidantes fuertes, ácidos fuertes, bases fuertes, halógenos.',
@@ -189,6 +209,29 @@ return [
         'decomposition_nitrogen'          => 'Monóxido de carbono, dióxido de carbono, óxidos de nitrógeno y otros gases tóxicos.',
         'decomposition_sulfur'            => 'Monóxido de carbono, dióxido de carbono, óxidos de azufre y otros gases tóxicos.',
         'decomposition_halogen'           => 'Monóxido de carbono, dióxido de carbono, haluros de hidrógeno y otros gases tóxicos.',
+        // Audit #19 — reactivity / stability branches
+        'reactivity_self_reactive'      => 'Autorreactivo: puede sufrir una descomposición exotérmica por calentamiento, fricción, impacto o contaminación.',
+        'reactivity_pyrophoric'         => 'Pirofórico: se inflama espontáneamente en contacto con el aire.',
+        'reactivity_water_reactive'     => 'Reacciona con el agua o la humedad desprendiendo gases inflamables que pueden inflamarse espontáneamente.',
+        'stability_unstable'            => 'Inestable en las siguientes condiciones: :conditions.',
+        'stability_cond_self_reactive'  => 'calentamiento, fricción, impacto o contaminación (autorreactivo; puede descomponerse exotérmicamente)',
+        'stability_cond_pyrophoric'     => 'exposición al aire (pirofórico; puede inflamarse espontáneamente)',
+        'stability_cond_water_reactive' => 'contacto con agua o humedad (desprende gases inflamables)',
+        // Audit #19 — conditions-to-avoid items
+        'cond_heat'         => 'calor excesivo',
+        'cond_storage_temp' => 'temperaturas superiores al límite de almacenamiento recomendado',
+        'cond_ignition'     => 'chispas, llamas abiertas y otras fuentes de ignición',
+        'cond_air'          => 'exposición al aire',
+        'cond_water'        => 'agua y humedad',
+        'cond_shock'        => 'fricción, impacto y contaminación',
+        'cond_oxidizers'    => 'contacto con agentes oxidantes fuertes',
+        'cond_combustibles' => 'contacto con materiales combustibles o reductores',
+        'cond_uv'           => 'exposición a la luz UV y a la luz solar directa (riesgo de polimerización prematura; proteger de la luz)',
+        // Audit #19 — decomposition products (2+ elements)
+        'decomposition_multi' => 'Monóxido de carbono, dióxido de carbono, :products y otros gases tóxicos.',
+        'decomp_nitrogen'     => 'óxidos de nitrógeno',
+        'decomp_sulfur'       => 'óxidos de azufre',
+        'decomp_halogen'      => 'haluros de hidrógeno',
         // Audit #13/#19 — incompatible-material items (natural case; composed by SDSGenerator)
         'incompat_water'           => 'agua y humedad',
         'incompat_air'             => 'aire',
@@ -241,6 +284,10 @@ return [
         'chronic_repeated_skin' => 'El contacto repetido o prolongado con la piel puede provocar irritación, sequedad o dermatitis.',
         'chronic_repeated_eye'  => 'El contacto repetido con los ojos puede provocar irritación.',
         'chronic_none'          => 'Ninguno conocido. Según los datos disponibles sobre la mezcla y sus componentes, no se cumplen los criterios de clasificación para efectos crónicos sobre la salud (sensibilización, mutagenicidad en células germinales, carcinogenicidad, toxicidad para la reproducción, toxicidad específica en determinados órganos por exposiciones repetidas).',
+        // Audit #35 — UV acrylate rule pack (UVAcrylateRulePack)
+        'uv_acrylate_note' => 'Contiene monómeros de acrilato que son sensibilizantes cutáneos conocidos. La exposición repetida puede causar dermatitis alérgica de contacto. La información toxicológica se basa en los datos de los componentes; la mezcla en sí no ha sido ensayada.',
+        // Se imprime en su lugar cuando la mezcla no lleva H317 (sin afirmación de sensibilizante; véase la Sección 2).
+        'uv_acrylate_note_unclassified' => 'Producto curable por UV/EB que contiene monómeros/oligómeros de acrilato; evitar el contacto prolongado o repetido de la piel con el producto sin curar. La información toxicológica se basa en los datos de los componentes; la mezcla en sí no ha sido ensayada.',
     ],
     'section12' => [
         'title'       => 'Información Ecológica',
@@ -263,22 +310,66 @@ return [
     ],
     'section13' => [
         'title'   => 'Consideraciones de Eliminación',
-        'methods' => 'Eliminar de acuerdo con todas las regulaciones aplicables.',
-        'methods_ignitable'   => 'Eliminar de acuerdo con todas las regulaciones aplicables. Este producto puede clasificarse como residuo peligroso inflamable (EPA D001) debido a su punto de inflamación. No verter en alcantarillas, desagües o vías fluviales.',
-        'methods_corrosive'   => 'Eliminar de acuerdo con todas las regulaciones aplicables. Este producto puede clasificarse como residuo peligroso corrosivo (EPA D002). No verter en alcantarillas, desagües o vías fluviales.',
-        'methods_toxic'       => 'Eliminar de acuerdo con todas las regulaciones aplicables. Este producto puede contener componentes tóxicos sujetos a regulaciones de residuos peligrosos. No verter en alcantarillas, desagües o vías fluviales.',
-        'methods_reactive'    => 'Eliminar de acuerdo con todas las regulaciones aplicables. Este producto puede clasificarse como residuo peligroso reactivo (EPA D003). No verter en alcantarillas, desagües o vías fluviales.',
-        'methods_aquatic'     => 'Eliminar de acuerdo con todas las regulaciones aplicables. No permitir que el producto llegue a vías fluviales — tóxico para la vida acuática. No verter en alcantarillas, desagües o vías fluviales.',
+        'methods' => 'Eliminar de acuerdo con todas las regulaciones federales, estatales y locales aplicables. No verter en alcantarillas, desagües o vías fluviales.',
+        // Línea de clasificación de residuo peligroso RCRA (auditoría #26) — calculada, nunca sobrescrita.
+        'rcra_intro'     => 'Si se desecha tal como se vende, este producto puede estar regulado como residuo peligroso según la RCRA de la EPA de EE. UU. (40 CFR 261):',
+        'rcra_none'      => 'No se ha identificado ninguna característica de residuo peligroso RCRA (40 CFR 261, Subparte C) para este producto tal como se vende, y ningún componente es un constituyente de la característica de toxicidad ni un residuo peligroso listado.',
+        'rcra_none_characteristic' => 'No se ha identificado ninguna característica de residuo peligroso RCRA (40 CFR 261, Subparte C) para este producto tal como se vende.',
+        'rcra_listed_intro' => 'Códigos de residuos listados de los componentes, a título informativo (no se aplican a este producto tal como se vende):',
+        'rcra_generator' => 'El generador del residuo es responsable de la determinación final de residuo peligroso en el momento de la eliminación; el uso, la contaminación o la mezcla pueden cambiar la clasificación.',
+        'rcra_d001'      => 'inflamable (D001) — :reasons',
+        'rcra_d002'      => 'corrosivo (D002) — según su clasificación de corrosión cutánea (H314), pH no determinado',
+        'rcra_d003'      => 'reactivo (D003) — :reasons',
+        'rcra_reason_flash_point'     => 'punto de inflamación inferior a 60 °C (140 °F)',
+        'rcra_reason_flash_point_gt'  => 'punto de inflamación no determinado como igual o superior a 60 °C (140 °F)',
+        'rcra_reason_oxidizer'        => 'comburente',
+        'rcra_reason_ignitable_solid' => 'material pirofórico o que experimenta calentamiento espontáneo',
+        'rcra_reason_water_reactive'  => 'reacciona con el agua',
+        'rcra_reason_explosive'       => 'explosivo',
+        'rcra_reason_unstable'        => 'sustancia autorreactiva o peróxido orgánico',
+        'rcra_component'      => 'contiene :name (:list)',
+        'rcra_code_d'         => ':code si se supera el nivel regulatorio de la característica de toxicidad de :limit mg/L (TCLP)',
+        'rcra_code_d_nolimit' => ':code si se supera el nivel regulatorio de la característica de toxicidad',
+        'rcra_code_f'         => ':code se aplica al disolvente usado que lo contenga',
+        'rcra_code_k'         => ':code se aplica únicamente al residuo de proceso listado',
+        'rcra_code_p'         => ':code (agudamente peligroso) se aplica únicamente al producto químico sin usar en sí o a una formulación en la que sea el único ingrediente activo',
+        'rcra_code_u'         => ':code se aplica únicamente al producto químico sin usar en sí o a una formulación en la que sea el único ingrediente activo',
     ],
     'section14' => [
         'title' => 'Información de Transporte',
         'note'  => 'La clasificación para el transporte debe verificarse con el transportista y conforme a los requisitos vigentes de 49 CFR (DOT), IATA e IMDG antes del envío.',
+        // Audit #27 — derived transport classification (ADR/IMDG Spanish names).
+        'psn_printing_ink'                        => 'Tintas de imprenta, inflamables',
+        'psn_printing_ink_related'                => 'Materias relacionadas con tintas de imprenta, inflamables',
+        'psn_paint'                               => 'Pinturas (incluidas lacas, esmaltes y barnices)',
+        'psn_paint_related'                       => 'Materias relacionadas con pinturas',
+        'psn_flammable_liquid_nos'                => 'Líquidos inflamables, n.e.p.',
+        'psn_flammable_liquid_corrosive_nos'      => 'Líquidos inflamables, corrosivos, n.e.p.',
+        'psn_flammable_liquid_toxic_nos'          => 'Líquidos inflamables, tóxicos, n.e.p.',
+        'psn_flammable_liquid_toxic_corrosive_nos' => 'Líquidos inflamables, tóxicos, corrosivos, n.e.p.',
+        'psn_corrosive_liquid_nos'                => 'Líquidos corrosivos, n.e.p.',
+        'psn_corrosive_liquid_toxic_nos'          => 'Líquidos corrosivos, tóxicos, n.e.p.',
+        'psn_corrosive_solid_nos'                 => 'Sólidos corrosivos, n.e.p.',
+        'psn_corrosive_solid_toxic_nos'           => 'Sólidos corrosivos, tóxicos, n.e.p.',
+        'psn_toxic_liquid_organic_nos'            => 'Líquidos tóxicos, orgánicos, n.e.p.',
+        'psn_toxic_solid_organic_nos'             => 'Sólidos tóxicos, orgánicos, n.e.p.',
+        'psn_env_hazardous_liquid_nos'            => 'Sustancia peligrosa para el medio ambiente, líquida, n.e.p.',
+        'psn_env_hazardous_solid_nos'             => 'Sustancia peligrosa para el medio ambiente, sólida, n.e.p.',
+        'psn_corrosive_liquid_flammable_nos'      => 'Líquidos corrosivos, inflamables, n.e.p.',
+        'psn_toxic_liquid_flammable_organic_nos'  => 'Líquidos tóxicos, inflamables, orgánicos, n.e.p.',
+        'psn_toxic_liquid_corrosive_organic_nos'  => 'Líquidos tóxicos, corrosivos, orgánicos, n.e.p.',
+        'psn_toxic_solid_corrosive_organic_nos'   => 'Sólidos tóxicos, corrosivos, orgánicos, n.e.p.',
+        'marine_pollutant_yes'                    => 'Contaminante marino: Sí',
+        'marine_pollutant_no'                     => 'Contaminante marino: No',
+        'note_combustible'                        => 'Líquido combustible; regulado únicamente en embalajes a granel (≥ 450 L).',
+        'note_viscous'                            => 'Si es viscoso, puede asignarse al Grupo de Embalaje III conforme a 49 CFR 173.121(b)(1) cuando se cumplen los criterios de separación de disolvente y de viscosidad (embalajes ≤ 450 L; ≤ 30 L en aeronaves de pasajeros, ≤ 100 L en aeronaves de carga).',
     ],
     'section15' => [
         'title'       => 'Información Reglamentaria',
         'osha_status' => 'Este producto está clasificado como peligroso bajo OSHA HazCom 2024 (29 CFR 1910.1200).',
         'osha_status_not_classified' => 'Este producto no está clasificado como peligroso bajo OSHA HazCom 2024 (29 CFR 1910.1200).',
-        'tsca_status' => 'Todos los componentes están listados o exentos del inventario TSCA.',
+        'tsca_status' => 'Todos los componentes de este producto están listados o exentos del inventario TSCA.',
+        'tsca_status_not_verified' => 'El estado en el inventario TSCA no se ha verificado para todos los componentes.',
         // Prop 65 listing lines (audit #42): name + OEHHA listing type(s); no NSRL / MADL / dates
         'prop65_listed_line'               => ':name (CAS :cas) — :types',
         'prop65_listed_line_no_cas'        => ':name — :types',
@@ -303,6 +394,7 @@ return [
             'CFR'    => 'Code of Federal Regulations (Código de Regulaciones Federales de EE. UU.)',
             'COV'    => 'Compuesto Orgánico Volátil (EPA Method 24)',
             'DOT'    => 'Departamento de Transporte de los Estados Unidos (U.S. Department of Transportation)',
+            'EB'     => 'Haz de electrones (curado por energía)', // audit #35: Section 4 UV note prints "UV/EB"
             'EPA'    => 'Agencia de Protección Ambiental de los Estados Unidos (U.S. Environmental Protection Agency)',
             'EPP'    => 'Equipo de Protección Personal',
             'ERA'    => 'Equipo de Respiración Autónomo',
@@ -328,12 +420,14 @@ return [
             'pc'     => 'Peso corporal (mg/kg pc)',
             'PEL'    => 'Límite de Exposición Permisible (Permissible Exposure Limit, OSHA, 29 CFR 1910.1000)',
             'Pxxx'   => 'Código de consejo de prudencia del GHS',
+            'RCRA'   => 'Ley de Conservación y Recuperación de Recursos (Resource Conservation and Recovery Act, regulación de residuos peligrosos de la EPA de EE. UU.)',
             'REL'    => 'Límite de Exposición Recomendado (Recommended Exposure Limit, NIOSH)',
             'SARA'   => 'Superfund Amendments and Reauthorization Act de 1986 (Título III, Sección 313)',
             'SCBA'   => 'Equipo de respiración autónomo (Self-Contained Breathing Apparatus)',
             'SNUR'   => 'Regla de Nuevo Uso Significativo (Significant New Use Rule, TSCA Sección 5)',
             'STEL'   => 'Límite de Exposición de Corta Duración (Short-Term Exposure Limit, 15 minutos)',
             'STOT'   => 'Toxicidad específica en determinados órganos (Specific Target Organ Toxicity)',
+            'TCLP'   => 'Procedimiento de Lixiviación para la Característica de Toxicidad (Toxicity Characteristic Leaching Procedure, EPA SW-846 Método 1311)',
             'TLV'    => 'Valor Límite Umbral (Threshold Limit Value, ACGIH)',
             'TRI'    => 'Inventario de Emisiones Tóxicas (Toxics Release Inventory, EPCRA Sección 313)',
             'TSCA'   => 'Toxic Substances Control Act (Ley de Control de Sustancias Tóxicas)',
@@ -376,7 +470,6 @@ return [
         'physical_hazards'      => 'Peligros Físicos',
         'health_hazards'        => 'Peligros para la Salud',
         'environmental_hazards' => 'Peligros Ambientales',
-        'hazard_statements'     => 'Indicaciones de Peligro',
         'precautionary_statements' => 'Consejos de Prudencia',
         'ppe_recommendations'   => 'Equipo de Protección Personal (EPP) Recomendado',
         'other_hazards'         => 'Otros Peligros',
@@ -393,6 +486,7 @@ return [
         'hazardous_only_note'   => 'Se enumeran los ingredientes peligrosos y los ingredientes con un límite de exposición ocupacional. Los ingredientes no enumerados no son peligrosos o están presentes por debajo de los umbrales de divulgación.',
         'no_hazardous_note'     => 'No hay ingredientes peligrosos por encima de los umbrales de divulgación.',
         'mixture'               => 'Mezcla',
+        'substance'             => 'Sustancia',
 
         // Section 4 (First-Aid)
         'inhalation'            => 'Inhalación',
@@ -438,15 +532,13 @@ return [
         'color'                 => 'Color',
         'appearance'            => 'Apariencia',
         'odor'                  => 'Olor',
-        'boiling_point'         => 'Punto de Ebullición',
+        'boiling_point'         => 'Punto Inicial de Ebullición e Intervalo de Ebullición',
         'flash_point'           => 'Punto de Inflamación',
         'solubility'            => 'Solubilidad',
         'specific_gravity'      => 'Gravedad Específica',
         'voc_lb_gal'            => 'COV (lb/gal) (EPA Method 24)',
-        'voc_less_we'           => 'COV menos A&E (lb/gal)',
         'voc_wt_pct'            => 'COV (% en peso)',
         'solids_wt_pct'         => 'Sólidos (% en peso)',
-        'solids_vol_pct'        => 'Sólidos (% en vol)',
 
         // Section 10 (Stability and Reactivity)
         'reactivity'            => 'Reactividad',
@@ -460,7 +552,6 @@ return [
         'chronic_effects'       => 'Efectos Crónicos',
         'carcinogenicity'       => 'Carcinogenicidad',
         'component_tox_data'    => 'Datos Toxicológicos por Componente',
-        'health_hazard'         => 'Peligro para la Salud',
 
         // Section 12 (Ecological Information)
         'ecotoxicity'           => 'Ecotoxicidad',
@@ -474,6 +565,7 @@ return [
 
         // Section 13 (Disposal)
         'disposal_methods'      => 'Métodos de Eliminación',
+        'rcra_classification'   => 'Clasificación de Residuo Peligroso RCRA',
 
         // Section 14 (Transport)
         'un_number'             => 'Número ONU',
@@ -513,7 +605,6 @@ return [
         'not_regulated'         => 'No regulado',
         'not_applicable'        => 'No aplica',
         'note'                  => 'Nota',
-        'revision_note'         => 'Nota de Revisión',
         'uv_acrylate_note'      => 'Información de Acrilato UV',
     ],
 ];

@@ -232,6 +232,7 @@ class RawMaterial
             'solids_vol'            => $numOrNull('solids_vol'),
             'flash_point_c'         => $numOrNull('flash_point_c'),
             'flash_point_greater_than' => !empty($data['flash_point_greater_than']) ? 1 : 0,
+            'boiling_point_c'       => $numOrNull('boiling_point_c'),
             'physical_state'        => $strOrNull('physical_state'),
             'solubility'            => $strOrNull('solubility'),
             'appearance'            => $strOrNull('appearance'),
@@ -246,6 +247,10 @@ class RawMaterial
             'snur_description'      => $strOrNull('snur_description'),
             'hazardous_no_cas'      => !empty($data['hazardous_no_cas']) ? 1 : 0,
             'manual_hazard_json'    => $data['manual_hazard_json'] ?? null,
+            'family_id'             => (int) ($data['family_id'] ?? 0) > 0 ? (int) $data['family_id'] : null,   // audit #3 manual override
+            'family_source'         => (int) ($data['family_id'] ?? 0) > 0 ? 'manual' : null,
+            // Audit #6: resale SDS / single-line formulas print Substance only when this says so.
+            'substance_mixture'     => self::validatedSubstanceMixture($data['substance_mixture'] ?? null),
             'created_by'            => $data['created_by'] ?? null,
         ];
 
@@ -311,22 +316,32 @@ class RawMaterial
             }
         }
 
+        // Audit #6: a changed substance_mixture is sheet content. It rides the
+        // normal Database::update() (no `updated_at = updated_at`), so MySQL's
+        // ON UPDATE CURRENT_TIMESTAMP bumps raw_materials.updated_at only when
+        // the stored value really changes — exactly the bulk-publish signal
+        // for every FG using this RM and for its own resale SDS.
+        if (array_key_exists('substance_mixture', $data)) {
+            $data['substance_mixture'] = self::validatedSubstanceMixture($data['substance_mixture']);
+        }
         $allowed = [
             'internal_code', 'supplier', 'supplier_product_name', 'supplier_product_code', 'supplier_sds_path',
             'voc_wt', 'voc_less_than_one', 'exempt_voc_wt', 'water_wt',
             'specific_gravity', 'density', 'density_units', 'temp_ref_c',
-            'solids_wt', 'solids_vol', 'flash_point_c', 'flash_point_greater_than',
+            'solids_wt', 'solids_vol', 'flash_point_c', 'flash_point_greater_than', 'boiling_point_c',
             'physical_state', 'solubility', 'appearance', 'odor', 'notes',
             'is_prop65', 'prop65_chemical_name', 'prop65_toxicity_types', 'prop65_data', 'haps_data',
             'is_snur', 'snur_description',
             'hazardous_no_cas', 'manual_hazard_json',
             'sds_last_confirmed_at',
+            'substance_mixture',
+            'family_id', 'family_source',
         ];
 
         // Numeric columns that must be null instead of empty string
         $numericCols = [
             'voc_wt', 'exempt_voc_wt', 'water_wt', 'specific_gravity', 'density',
-            'temp_ref_c', 'solids_wt', 'solids_vol', 'flash_point_c',
+            'temp_ref_c', 'solids_wt', 'solids_vol', 'flash_point_c', 'boiling_point_c',
         ];
 
         $updateData = [];
@@ -380,7 +395,10 @@ class RawMaterial
     {
         $db = Database::getInstance();
         return $db->fetchAll(
-            "SELECT rmc.*, cm.preferred_name AS cas_preferred_name
+            "SELECT rmc.*, cm.preferred_name AS cas_preferred_name,
+                    COALESCE(cm.has_nitrogen, 0) AS has_nitrogen,
+                    COALESCE(cm.has_sulfur, 0)   AS has_sulfur,
+                    COALESCE(cm.has_halogen, 0)  AS has_halogen
              FROM raw_material_constituents rmc
              LEFT JOIN cas_master cm ON cm.cas_number = rmc.cas_number
              WHERE rmc.raw_material_id = ?
@@ -444,9 +462,15 @@ class RawMaterial
                     try {
                         $existing = $db->fetch("SELECT cas_number, preferred_name FROM cas_master WHERE cas_number = ?", [$cas]);
                         if (!$existing) {
+                            // Audit #19: first sight of a CAS — seed its element flags from the name
+                            $flags = \SDS\Services\CasElementFlagger::fromNames([$name]);
                             $db->insert('cas_master', [
-                                'cas_number'     => $cas,
-                                'preferred_name' => $name,
+                                'cas_number'           => $cas,
+                                'preferred_name'       => $name,
+                                'has_nitrogen'         => (int) $flags['has_nitrogen'],
+                                'has_sulfur'           => (int) $flags['has_sulfur'],
+                                'has_halogen'          => (int) $flags['has_halogen'],
+                                'element_flags_source' => 'seed',
                             ]);
                         } elseif (empty($existing['preferred_name'])) {
                             $db->update('cas_master', ['preferred_name' => $name], 'cas_number = ?', [$cas]);
@@ -487,6 +511,20 @@ class RawMaterial
             [$cas]
         );
         return $master['preferred_name'] ?? null;
+    }
+
+    /**
+     * Audit #6: validate a posted Substance / Mixture value for the ENUM
+     * column. Blank or missing = 'auto'; other unknown values are rejected.
+     *
+     * @throws \InvalidArgumentException
+     */
+    private static function validatedSubstanceMixture($value): string
+    {
+        if (!\SDS\Services\SubstanceMixtureResolver::isValid($value)) {
+            throw new \InvalidArgumentException('Substance / Mixture must be Auto, Substance or Mixture.');
+        }
+        return \SDS\Services\SubstanceMixtureResolver::normalize($value);
     }
 
     /* ------------------------------------------------------------------

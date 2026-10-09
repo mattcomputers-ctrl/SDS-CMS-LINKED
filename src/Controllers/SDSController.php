@@ -10,6 +10,7 @@ use SDS\Models\FinishedGood;
 use SDS\Services\SDSGenerator;
 use SDS\Services\PDFService;
 use SDS\Services\AuditService;
+use SDS\Services\TextOverrideService;
 
 class SDSController
 {
@@ -78,6 +79,12 @@ class SDSController
             $phoneError = \SDS\Services\SDSReadinessService::companyEmergencyPhoneErrorFromDb(Database::getInstance());
             if ($phoneError !== null) {
                 $sdsData['warnings'][] = $phoneError;
+            }
+
+            // Audit #27 — a "Not determined" Section 14 blocks publishing; show it here.
+            $transportError = \SDS\Services\SDSReadinessService::transportNotDeterminedError($sdsData);
+            if ($transportError !== null) {
+                $sdsData['warnings'][] = $transportError;
             }
 
             if ($mode === \SDS\Services\SDSPreviewResponse::MODE_PDF) {
@@ -187,25 +194,17 @@ class SDSController
             redirect('/finished-goods');
         }
 
-        $language = $_GET['lang'] ?? 'en';
+        $language = $this->editorLanguage($_GET['lang'] ?? 'en');
 
         try {
+            // Audit #36: the form pre-fills from STORED overrides only and shows
+            // the automatic text as a hint, so generate with overrides switched
+            // off — $sds['sections'][n][key] is then the computed default of
+            // every field (including Section 2 PPE / signal word display).
             $generator = new SDSGenerator();
-            $sdsData   = $generator->generate((int) $finished_good_id, $language);
+            $sdsData   = $generator->ignoreOverrides()->generate((int) $finished_good_id, $language);
 
-            // Load existing overrides for the form
-            $db = Database::getInstance();
-            $overrideRows = $db->fetchAll(
-                "SELECT section_number, field_key, override_text
-                 FROM text_overrides
-                 WHERE finished_good_id = ? AND language = ? AND sds_version_id IS NULL
-                 ORDER BY section_number, field_key",
-                [(int) $finished_good_id, $language]
-            );
-            $overrides = [];
-            foreach ($overrideRows as $row) {
-                $overrides[(int) $row['section_number']][$row['field_key']] = $row['override_text'];
-            }
+            $overrides = $this->loadStoredOverrides((int) $finished_good_id, $language);
 
             view('sds/edit', [
                 'pageTitle'    => 'Edit SDS: ' . $fg['product_code'],
@@ -218,6 +217,35 @@ class SDSController
             $_SESSION['_flash']['error'] = 'SDS generation failed: ' . $e->getMessage();
             redirect('/sds/' . $finished_good_id);
         }
+    }
+
+    /**
+     * Audit #36: stored per-product overrides for one language, shaped
+     * [section => [field_key => override_text]]. Shared by edit() and
+     * saveEdits(); same query SDSGenerator::getOverrides() runs.
+     */
+    private function loadStoredOverrides(int $fgId, string $language): array
+    {
+        $rows = Database::getInstance()->fetchAll(
+            "SELECT section_number, field_key, override_text
+             FROM text_overrides
+             WHERE finished_good_id = ? AND language = ? AND sds_version_id IS NULL
+             ORDER BY section_number, field_key",
+            [$fgId, $language]
+        );
+        $overrides = [];
+        foreach ($rows as $row) {
+            $overrides[(int) $row['section_number']][$row['field_key']] = $row['override_text'];
+        }
+        return $overrides;
+    }
+
+    /** Audit #36: the editor only works in a supported SDS language (default en). */
+    private function editorLanguage(mixed $raw): string
+    {
+        $supported = \SDS\Core\App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
+        $lang = is_string($raw) ? strtolower(trim($raw)) : 'en';
+        return in_array($lang, $supported, true) ? $lang : 'en';
     }
 
     public function saveEdits(string $finished_good_id): void
@@ -235,62 +263,63 @@ class SDSController
             redirect('/finished-goods');
         }
 
-        $language  = $_POST['language'] ?? 'en';
-        $overrides = $_POST['override'] ?? [];
-        $db = Database::getInstance();
-        $savedCount = 0;
+        $fgId     = (int) $finished_good_id;
+        $language = $this->editorLanguage($_POST['language'] ?? 'en');
+        $posted   = $_POST['override'] ?? [];
+        if (!is_array($posted)) {
+            $posted = [];
+        }
 
-        foreach ($overrides as $sectionNum => $fields) {
-            $sectionNum = (int) $sectionNum;
-            if ($sectionNum < 1 || $sectionNum > 16 || !is_array($fields)) {
-                continue;
-            }
+        // Audit #36: only operator-typed text is stored. A blank field, or text
+        // equal to the automatically generated value, means "automatic" and
+        // removes any stored row. The automatic values come from a generation
+        // run with overrides switched off; if that fails nothing is saved.
+        try {
+            $sections = (new SDSGenerator())->ignoreOverrides()->generate($fgId, $language)['sections'];
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error'] = 'SDS generation failed, nothing was saved: ' . $e->getMessage();
+            redirect('/sds/' . $finished_good_id . '/edit?lang=' . urlencode($language));
+        }
 
-            foreach ($fields as $fieldKey => $value) {
-                $fieldKey = preg_replace('/[^a-zA-Z0-9_]/', '', $fieldKey);
-                $value    = trim((string) $value);
+        $stored = $this->loadStoredOverrides($fgId, $language);
+        $plan   = TextOverrideService::plan($posted, $sections, $stored);
 
-                // Check for existing override
-                $existing = $db->fetch(
-                    "SELECT id FROM text_overrides
-                     WHERE finished_good_id = ? AND section_number = ? AND field_key = ? AND language = ? AND sds_version_id IS NULL",
-                    [(int) $finished_good_id, $sectionNum, $fieldKey, $language]
-                );
+        $db    = Database::getInstance();
+        $where = 'finished_good_id = ? AND section_number = ? AND field_key = ? AND language = ? AND sds_version_id IS NULL';
 
-                if ($value === '') {
-                    // If empty and override exists, remove it to fall back to defaults
-                    if ($existing) {
-                        $db->query(
-                            "DELETE FROM text_overrides WHERE id = ?",
-                            [$existing['id']]
-                        );
-                    }
-                    continue;
-                }
-
-                if ($existing) {
-                    $db->update('text_overrides', [
-                        'override_text' => $value,
-                    ], 'id = ?', [$existing['id']]);
-                } else {
-                    $db->insert('text_overrides', [
-                        'finished_good_id' => (int) $finished_good_id,
-                        'section_number'   => $sectionNum,
-                        'field_key'        => $fieldKey,
-                        'language'         => $language,
-                        'override_text'    => $value,
-                    ]);
-                }
-                $savedCount++;
+        foreach ($plan['delete'] as $d) {
+            $db->delete('text_overrides', $where, [$fgId, $d['section'], $d['key'], $language]);
+        }
+        foreach ($plan['upsert'] as $u) {
+            if (array_key_exists($u['key'], $stored[$u['section']] ?? [])) {
+                $db->update('text_overrides', ['override_text' => $u['text']], $where, [$fgId, $u['section'], $u['key'], $language]);
+            } else {
+                $db->insert('text_overrides', [
+                    'finished_good_id' => $fgId,
+                    'section_number'   => $u['section'],
+                    'field_key'        => $u['key'],
+                    'language'         => $language,
+                    'override_text'    => $u['text'],
+                ]);
             }
         }
 
-        AuditService::log('text_overrides', (string) $finished_good_id, 'bulk_edit', [
-            'language'    => $language,
-            'fields_saved' => $savedCount,
+        $c = $plan['counts'];
+        AuditService::log('text_overrides', (string) $fgId, 'bulk_edit', [
+            'language' => $language,
+            'stored'   => array_map(static fn (array $u) => $u['section'] . '.' . $u['key'], $plan['upsert']),
+            'removed'  => array_map(static fn (array $d) => $d['section'] . '.' . $d['key'], $plan['delete']),
+            'counts'   => $c,
         ]);
 
-        $_SESSION['_flash']['success'] = "SDS edits saved ({$savedCount} fields). Preview your changes or publish when ready.";
+        $_SESSION['_flash']['success'] = sprintf(
+            'SDS edits saved (%s): %d override(s) stored, %d reset to automatic, %d unchanged. '
+            . 'Fields left blank or matching the automatic text stay automatic. Preview your changes or publish when ready.',
+            strtoupper($language),
+            $c['stored'],
+            $c['removed'],
+            $c['unchanged']
+        );
         redirect('/sds/' . $finished_good_id);
     }
 
@@ -335,7 +364,8 @@ class SDSController
 
                 // Enforce missing-data threshold once (hazard data is language-independent)
                 if ($lang === $languages[0]) {
-                    $blockError = $this->checkMissingHazardData($sdsData, $db);
+                    $blockError = $this->checkMissingHazardData($sdsData, $db)
+                        ?? \SDS\Services\SDSReadinessService::transportNotDeterminedError($sdsData);
                     if ($blockError !== null) {
                         $_SESSION['_flash']['error'] = $blockError;
                         redirect('/sds/' . $finished_good_id);
@@ -345,6 +375,10 @@ class SDSController
 
                 $langData[$lang] = $sdsData;
             }
+
+            // Audit #29 — TSCA inventory not verified for every constituent:
+            // warn in the flash, never block. Language-independent.
+            $tscaWarning = \SDS\Services\SDSReadinessService::tscaWarning($langData[$languages[0]] ?? []);
 
             // One version number across all languages, computed BEFORE the
             // render and stamped on meta so PDFService::generate() names each
@@ -467,6 +501,10 @@ class SDSController
                 $_SESSION['_flash']['warning'] = 'Private label SDS not regenerated: ' . $plEx->getMessage();
             }
 
+            if ($tscaWarning !== null) {
+                // Append: the private-label cascade above may already have set a warning.
+                $_SESSION['_flash']['warning'] = trim((string) ($_SESSION['_flash']['warning'] ?? '') . ' ' . $tscaWarning);
+            }
             $_SESSION['_flash']['success'] = $msg;
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = 'Publish failed: ' . $e->getMessage();
@@ -713,7 +751,8 @@ class SDSController
                 // Enforce missing-data threshold once; hazard data is
                 // language-independent so the first language is sufficient.
                 if ($lang === $languages[0]) {
-                    $blockError = $this->checkMissingHazardData($sdsData, $db);
+                    $blockError = $this->checkMissingHazardData($sdsData, $db)
+                        ?? \SDS\Services\SDSReadinessService::transportNotDeterminedError($sdsData);
                     if ($blockError !== null) {
                         $_SESSION['_flash']['error'] = $blockError;
                         redirect('/sds-review?rm_id=' . $rmId);
@@ -723,6 +762,10 @@ class SDSController
 
                 $langData[$lang] = $sdsData;
             }
+
+            // Audit #29 — TSCA inventory not verified for every constituent:
+            // warn in the flash, never block. Language-independent.
+            $tscaWarning = \SDS\Services\SDSReadinessService::tscaWarning($langData[$languages[0]] ?? []);
 
             // Version number first (one per publish, all languages) so the
             // render can name the files {code}_v{n}[_{lang}].pdf via
@@ -809,6 +852,10 @@ class SDSController
             $msg = 'Resale SDS v' . $nextVersion . ' published: ' . implode(', ', $publishedVersions);
             if ($aliasCount > 0) {
                 $msg .= ' (+ ' . $aliasCount . ' alias SDS' . ($aliasCount > 1 ? 'es' : '') . ')';
+            }
+            if ($tscaWarning !== null) {
+                // Append: an earlier step may already have set a warning.
+                $_SESSION['_flash']['warning'] = trim((string) ($_SESSION['_flash']['warning'] ?? '') . ' ' . $tscaWarning);
             }
             $_SESSION['_flash']['success'] = $msg;
         } catch (\Throwable $e) {

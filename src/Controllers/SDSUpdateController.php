@@ -319,6 +319,13 @@ class SDSUpdateController
                 $langData = [];
                 foreach ($languages as $lang) {
                     $langData[$lang] = $generator->generateFromBase($baseData, $lang);
+                    // Audit #27 — same gate as SDSController::publish; lands in $errors[] via the catch below.
+                    if ($lang === $languages[0]) {
+                        $transportError = \SDS\Services\SDSReadinessService::transportNotDeterminedError($langData[$lang]);
+                        if ($transportError !== null) {
+                            throw new \RuntimeException($transportError);
+                        }
+                    }
                     $langData[$lang] = SDSGenerator::stampPublishedVersion($langData[$lang], $nextVersion, $effectiveDate);
                 }
 

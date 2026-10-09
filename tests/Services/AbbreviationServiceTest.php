@@ -118,7 +118,7 @@ foreach ([
     'CAS = Chemical Abstracts Service registry number',
     'GHS = ', 'OSHA = ', 'PEL = ', 'TWA = ', 'NIOSH = ', 'P100 = ', 'OV = ',
     'Hxxx = ', 'Pxxx = ', 'IARC = ', 'NTP = ', 'HAP = ', 'HazCom = ', 'CFR = ',
-    'EPA = ', 'VOC = ', 'W&E = ', 'wt% = ', 'UN = ', 'UV = ', 'TSCA = ', 'PPE = ',
+    'EPA = ', 'VOC = ', 'wt% = ', 'UN = ', 'UV = ', 'TSCA = ', 'PPE = ',
     // SARA block prints heading + "none" sentence whenever reportable is an array (audit #30)
     'SARA = ', 'TRI = ',
 ] as $needle) {
@@ -127,7 +127,8 @@ foreach ([
 
 // ──────────────────────────────────────────────────────────────────────
 echo "[2] EN fixture — terms that are not printed are not defined.\n";
-foreach (['STEL =', 'IDLH =', 'REL =', 'TLV =', 'SNUR =', 'STOT =', 'SCBA =', 'LED =', 'n.o.s. =', 'ACGIH =', 'DOT ='] as $needle) {
+// #18(c): the "VOC less W&E" and "Solids (vol%)" lines are no longer printed, so W&E / vol% are not defined either.
+foreach (['STEL =', 'IDLH =', 'REL =', 'TLV =', 'SNUR =', 'STOT =', 'SCBA =', 'LED =', 'n.o.s. =', 'ACGIH =', 'DOT =', 'W&E =', 'vol% ='] as $needle) {
     assertNotContains("line omits '{$needle}'", $needle, $line);
 }
 
@@ -224,11 +225,26 @@ assertContains('component tox agency scanned (ACGIH)', 'ACGIH = ', $l);
 assertContains('component tox limit type scanned (TLV)', 'TLV = ', $l);
 assertContains('component tox limit type scanned (STEL)', 'STEL = ', $l);
 
-// uv_acrylate_note is skipped by both renderers.
+// Section 8 never prints uv_acrylate_note (PPE advice is folded into the fields, audit #35).
 $uv = $fixture;
 $uv['sections'][8]['uv_acrylate_note'] = 'Use SCBA when curing.';
 $l = AbbreviationService::build($uv, $en);
-assertNotContains('uv_acrylate_note ignored', 'SCBA =', $l);
+assertNotContains('section 8 uv_acrylate_note ignored', 'SCBA =', $l);
+
+// Sections 4-7 and 11 DO print uv_acrylate_note (audit #35): terms inside it count.
+$uv5 = $fixture;
+$uv5['sections'][5]['uv_acrylate_note'] = 'Fire-fighters must wear SCBA.';
+$l = AbbreviationService::build($uv5, $en);
+assertContains('section 5 uv_acrylate_note scanned (SCBA)', 'SCBA =', $l);
+$uv11 = $fixture;
+$uv11['sections'][11]['uv_acrylate_note'] = 'UV/EB acrylate sensitizer note.';
+$l = AbbreviationService::build($uv11, $en);
+assertContains('section 11 uv_acrylate_note scanned (EB)', 'EB =', $l);
+$uv4 = $fixture;
+$uv4['sections'][4]['uv_acrylate_note'] = 'UV/EB curable product (TMPTA).';
+$l = AbbreviationService::build($uv4, $en);
+assertContains('section 4 uv_acrylate_note scanned (EB)', 'EB =', $l);
+assertNotContains('EB not defined when no note prints', 'EB =', AbbreviationService::build($fixture, $en));
 
 // Exposure-limit labels (el_*) gated on exposure_limits.
 $noEl = $fixture;
@@ -317,12 +333,13 @@ $frFixture['meta']['language'] = 'fr';
 $frFixture['meta']['labels']   = $frT->all()['labels'];
 $frFixture['sections'][11]['carcinogenicity'] = $frT->get('section11.carcinogenicity', ['threshold' => '0.1']);
 $frLine = AbbreviationService::build($frFixture, $frT);
-foreach (['SGH = ', 'COV = ', 'CIRC = ', 'ONU = ', 'PEL = ', 'TWA = ', 'EPI = ', 'E&E = '] as $needle) {
+foreach (['SGH = ', 'COV = ', 'CIRC = ', 'ONU = ', 'PEL = ', 'TWA = ', 'EPI = '] as $needle) {
     assertContains("fr line contains '{$needle}'", $needle, $frLine);
 }
 assertNotContains('fr line omits GHS (labels print SGH)', 'GHS = ', $frLine);
 assertNotContains('fr line omits IARC (default text prints CIRC)', 'IARC = ', $frLine);
-assertNotContains('fr line omits W&E (labels print E&E)', 'W&E = ', $frLine);
+assertNotContains('fr line omits W&E (FR term is E&E; line dropped anyway)', 'W&E = ', $frLine);
+assertNotContains('fr line omits E&E (VOC less W&E line no longer printed, audit #18)', 'E&E = ', $frLine);
 
 // ──────────────────────────────────────────────────────────────────────
 echo "[10] Fallback and empty input.\n";

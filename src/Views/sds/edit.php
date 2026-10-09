@@ -4,13 +4,57 @@
 
 <h2>Edit SDS: <?= e($finishedGood['product_code']) ?></h2>
 <p class="text-muted">
-    Edit any section below before publishing. Auto-generated values are pre-filled.
-    Changes are saved as text overrides for this product.
+    Every field below is <strong>automatic</strong> unless you type into it. The grey text is what the generated SDS
+    prints right now from formula, hazard and regulatory data; leave a field blank to keep following that data.
+    Type only when this product needs different wording &mdash; it is stored as a per-product override for
+    <strong><?= e(strtoupper($language)) ?></strong> only (each language has its own overrides).
+    Text identical to the automatic value is not stored. &ldquo;Reset to automatic&rdquo; blanks a field; the
+    stored override is removed when you save.
 </p>
 
 <form method="POST" action="/sds/<?= (int) $finishedGood['id'] ?>/save-edits" id="sds-edit-form">
     <?= csrf_field() ?>
     <input type="hidden" name="language" value="<?= e($language) ?>">
+
+    <?php
+    /**
+     * Audit #36 — one override field. The control holds ONLY the stored
+     * override ($overrides). $sds was generated with overrides switched off
+     * (SDSController::edit), so $sds['sections'][$n][$key] is the automatic
+     * text: shown as the placeholder and, while an override is present, as
+     * the read-only "Automatic:" hint under the control. Blank = automatic.
+     * Text equal to the automatic value is not stored (SDSController::saveEdits).
+     */
+    $field = function (int $n, string $key, string $label, string $kind = 'textarea', int $rows = 2, string $help = '') use ($sds, $overrides): string {
+        $auto   = $sds['sections'][$n][$key] ?? '';
+        $auto   = is_scalar($auto) && !is_bool($auto) ? (string) $auto : '';
+        $stored = $overrides[$n][$key] ?? null;
+        $isOver = $stored !== null && trim((string) $stored) !== '';
+        $value  = $isOver ? (string) $stored : '';
+        $name   = "override[{$n}][{$key}]";
+        $id     = "ov-{$n}-{$key}";
+
+        $h  = '<div class="form-group ov-field' . ($isOver ? ' is-overridden' : '') . '" data-ov-field>';
+        $h .= '<label for="' . e($id) . '">' . e($label)
+            . ' <span class="ov-badge ov-badge-over">Overridden</span>'
+            . '<span class="ov-badge ov-badge-auto">Automatic</span></label>';
+        if ($kind === 'input') {
+            $h .= '<input type="text" id="' . e($id) . '" name="' . e($name) . '" class="form-control"'
+                . ' value="' . e($value) . '" placeholder="' . e($auto) . '">';
+        } else {
+            $h .= '<textarea id="' . e($id) . '" name="' . e($name) . '" class="form-control" rows="' . $rows . '"'
+                . ' placeholder="' . e($auto) . '">' . e($value) . '</textarea>';
+        }
+        $h .= '<div class="ov-hint"><span class="ov-hint-label">Automatic:</span> '
+            . ($auto !== '' ? e($auto) : '<em>(nothing printed)</em>')
+            . ' <button type="button" class="btn btn-outline ov-reset" data-ov-reset>Reset to automatic</button></div>';
+        if ($help !== '') {
+            $h .= '<small class="text-muted">' . e($help) . '</small>';
+        }
+        $h .= '</div>';
+        return $h;
+    };
+    ?>
 
     <?php foreach ($sds['sections'] as $num => $section): ?>
     <div class="card" style="margin-bottom: 1rem; border: 1px solid #ddd; padding: 1rem;">
@@ -20,17 +64,11 @@
 
         <?php if ($num === 1): ?>
             <p class="text-muted">Section 1 is auto-populated from product and company settings.</p>
-            <div class="form-group">
-                <label>Recommended Use</label>
-                <textarea name="override[1][recommended_use]" class="form-control" rows="2"><?= e($section['recommended_use'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Restrictions on Use</label>
-                <textarea name="override[1][restrictions]" class="form-control" rows="2"><?= e($section['restrictions'] ?? '') ?></textarea>
-            </div>
+            <?= $field(1, 'recommended_use', 'Recommended Use') ?>
+            <?= $field(1, 'restrictions', 'Restrictions on Use') ?>
 
         <?php elseif ($num === 2): ?>
-            <p class="text-muted">Hazard data is auto-generated from formula composition and federal data. You can override the "Other Hazards" field.</p>
+            <p class="text-muted">Hazard data is auto-generated from formula composition and federal data. Signal word, pictograms and PPE below are the automatic values; only "Other Hazards" can be overridden here (PPE sentences are overridden in Section 8).</p>
 
             <?php if (!empty($section['signal_word'])): ?>
                 <p><strong>Signal Word:</strong>
@@ -78,10 +116,7 @@
                 </div>
             <?php endif; ?>
 
-            <div class="form-group">
-                <label>Other Hazards</label>
-                <textarea name="override[2][other_hazards]" class="form-control" rows="2"><?= e($section['other_hazards'] ?? '') ?></textarea>
-            </div>
+            <?= $field(2, 'other_hazards', 'Other Hazards', 'textarea', 2, 'Automatic: "None known." unless the hazard data adds a statement.') ?>
 
         <?php elseif ($num === 3): ?>
             <p class="text-muted">Composition is auto-calculated from the formula. Components shown for reference only.</p>
@@ -101,212 +136,79 @@
             <?php endif; ?>
 
         <?php elseif ($num === 4): ?>
-            <div class="form-group">
-                <label>Inhalation</label>
-                <textarea name="override[4][inhalation]" class="form-control" rows="2"><?= e($section['inhalation'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Skin Contact</label>
-                <textarea name="override[4][skin]" class="form-control" rows="2"><?= e($section['skin'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Eye Contact</label>
-                <textarea name="override[4][eyes]" class="form-control" rows="2"><?= e($section['eyes'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Ingestion</label>
-                <textarea name="override[4][ingestion]" class="form-control" rows="2"><?= e($section['ingestion'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Most Important Symptoms/Effects, Acute and Delayed</label>
-                <textarea name="override[4][symptoms]" class="form-control" rows="2"><?= e($section['symptoms'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Notes to Physician</label>
-                <textarea name="override[4][notes]" class="form-control" rows="2"><?= e($section['notes'] ?? '') ?></textarea>
-            </div>
+            <?= $field(4, 'inhalation', 'Inhalation') ?>
+            <?= $field(4, 'skin', 'Skin Contact') ?>
+            <?= $field(4, 'eyes', 'Eye Contact') ?>
+            <?= $field(4, 'ingestion', 'Ingestion') ?>
+            <?= $field(4, 'symptoms', 'Most Important Symptoms/Effects, Acute and Delayed') ?>
+            <?= $field(4, 'notes', 'Notes to Physician') ?>
 
         <?php elseif ($num === 5): ?>
-            <div class="form-group">
-                <label>Suitable Extinguishing Media</label>
-                <textarea name="override[5][suitable_media]" class="form-control" rows="2"><?= e($section['suitable_media'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Unsuitable Extinguishing Media</label>
-                <textarea name="override[5][unsuitable_media]" class="form-control" rows="2"><?= e($section['unsuitable_media'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Specific Hazards</label>
-                <textarea name="override[5][specific_hazards]" class="form-control" rows="2"><?= e($section['specific_hazards'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Firefighter Advice</label>
-                <textarea name="override[5][firefighter_advice]" class="form-control" rows="2"><?= e($section['firefighter_advice'] ?? '') ?></textarea>
-            </div>
+            <?= $field(5, 'suitable_media', 'Suitable Extinguishing Media') ?>
+            <?= $field(5, 'unsuitable_media', 'Unsuitable Extinguishing Media') ?>
+            <?= $field(5, 'specific_hazards', 'Specific Hazards') ?>
+            <?= $field(5, 'firefighter_advice', 'Firefighter Advice') ?>
 
         <?php elseif ($num === 6): ?>
-            <div class="form-group">
-                <label>Personal Precautions</label>
-                <textarea name="override[6][personal_precautions]" class="form-control" rows="2"><?= e($section['personal_precautions'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Environmental Precautions</label>
-                <textarea name="override[6][environmental]" class="form-control" rows="2"><?= e($section['environmental'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Containment / Cleanup</label>
-                <textarea name="override[6][containment]" class="form-control" rows="2"><?= e($section['containment'] ?? '') ?></textarea>
-            </div>
+            <?= $field(6, 'personal_precautions', 'Personal Precautions') ?>
+            <?= $field(6, 'environmental', 'Environmental Precautions') ?>
+            <?= $field(6, 'containment', 'Containment / Cleanup') ?>
 
         <?php elseif ($num === 7): ?>
-            <div class="form-group">
-                <label>Handling</label>
-                <textarea name="override[7][handling]" class="form-control" rows="2"><?= e($section['handling'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Storage</label>
-                <textarea name="override[7][storage]" class="form-control" rows="2"><?= e($section['storage'] ?? '') ?></textarea>
-            </div>
+            <?= $field(7, 'handling', 'Handling') ?>
+            <?= $field(7, 'storage', 'Storage') ?>
 
         <?php elseif ($num === 8): ?>
             <p class="text-muted">Exposure limits are auto-populated from federal data.</p>
-            <div class="form-group">
-                <label>Engineering Controls</label>
-                <textarea name="override[8][engineering]" class="form-control" rows="2"><?= e($section['engineering'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Respiratory Protection</label>
-                <textarea name="override[8][respiratory]" class="form-control" rows="2"><?= e($section['respiratory'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Hand Protection</label>
-                <textarea name="override[8][hand_protection]" class="form-control" rows="2"><?= e($section['hand_protection'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Eye Protection</label>
-                <textarea name="override[8][eye_protection]" class="form-control" rows="2"><?= e($section['eye_protection'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Skin Protection</label>
-                <textarea name="override[8][skin_protection]" class="form-control" rows="2"><?= e($section['skin_protection'] ?? '') ?></textarea>
-            </div>
+            <?= $field(8, 'engineering', 'Engineering Controls') ?>
+            <?= $field(8, 'respiratory', 'Respiratory Protection', 'textarea', 2, 'Also used for the Section 2 PPE line when the hazard data drives it.') ?>
+            <?= $field(8, 'hand_protection', 'Hand Protection') ?>
+            <?= $field(8, 'eye_protection', 'Eye Protection') ?>
+            <?= $field(8, 'skin_protection', 'Skin Protection') ?>
 
         <?php elseif ($num === 9): ?>
-            <div class="form-group">
-                <label>Appearance</label>
-                <input type="text" name="override[9][appearance]" class="form-control" value="<?= e($section['appearance'] ?? '') ?>">
-            </div>
-            <div class="form-group">
-                <label>Odor</label>
-                <input type="text" name="override[9][odor]" class="form-control"
-                       value="<?= e($overrides[9]['odor'] ?? '') ?>"
-                       placeholder="<?= e($section['odor'] ?? '') ?>">
-                <p class="text-muted">Leave blank to use the dominant raw material's odor (shown as placeholder). "Not determined" prints when no raw material carries an odor.</p>
-            </div>
-            <div class="form-group">
-                <label>Boiling Point</label>
-                <input type="text" name="override[9][boiling_point]" class="form-control" value="<?= e($section['boiling_point'] ?? '') ?>">
-            </div>
-            <div class="form-group">
-                <label>Flash Point</label>
-                <input type="text" name="override[9][flash_point]" class="form-control" value="<?= e($section['flash_point'] ?? '') ?>">
-            </div>
+            <?= $field(9, 'appearance', 'Appearance', 'input', 1, 'Automatic: finished-good colour + physical state, otherwise the dominant raw material\'s appearance.') ?>
+            <?= $field(9, 'odor', 'Odor', 'input', 1, 'Automatic: the dominant (highest wt%) raw material\'s odor; "Not determined" prints when no raw material carries one.') ?>
+            <?= $field(9, 'boiling_point', 'Initial Boiling Point', 'input', 1, 'Automatic: the lowest raw material boiling point in the formula; "Not determined" prints when no raw material carries one.') ?>
+            <?= $field(9, 'flash_point', 'Flash Point', 'input', 1, 'Automatic: derived from the formula; Section 5 prints the same value.') ?>
+            <?= $field(9, 'solubility', 'Solubility', 'input', 1, 'Automatic: derived from the formula\'s raw materials.') ?>
             <p class="text-muted">VOC, specific gravity, and solids are auto-calculated from formula.</p>
 
         <?php elseif ($num === 10): ?>
-            <div class="form-group">
-                <label>Reactivity</label>
-                <textarea name="override[10][reactivity]" class="form-control" rows="2"><?= e($section['reactivity'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Stability</label>
-                <textarea name="override[10][stability]" class="form-control" rows="2"><?= e($section['stability'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Conditions to Avoid</label>
-                <textarea name="override[10][conditions_avoid]" class="form-control" rows="2"><?= e($section['conditions_avoid'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Incompatible Materials</label>
-                <textarea name="override[10][incompatible]" class="form-control" rows="2"><?= e($section['incompatible'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Hazardous Decomposition Products</label>
-                <textarea name="override[10][decomposition]" class="form-control" rows="2"><?= e($section['decomposition'] ?? '') ?></textarea>
-            </div>
+            <?= $field(10, 'reactivity', 'Reactivity') ?>
+            <?= $field(10, 'stability', 'Stability') ?>
+            <?= $field(10, 'conditions_avoid', 'Conditions to Avoid') ?>
+            <?= $field(10, 'incompatible', 'Incompatible Materials', 'textarea', 2, 'Section 7 Storage repeats this list.') ?>
+            <?= $field(10, 'decomposition', 'Hazardous Decomposition Products') ?>
 
         <?php elseif ($num === 11): ?>
             <p class="text-muted">Carcinogen data (IARC/NTP/OSHA) and exposure limits are auto-populated.</p>
-            <div class="form-group">
-                <label>Acute Toxicity</label>
-                <textarea name="override[11][acute_toxicity]" class="form-control" rows="2"><?= e($section['acute_toxicity'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Chronic Effects</label>
-                <textarea name="override[11][chronic_effects]" class="form-control" rows="2"><?= e($section['chronic_effects'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Carcinogenicity (leave blank to use auto-generated data)</label>
-                <textarea name="override[11][carcinogenicity]" class="form-control" rows="3"><?= e($overrides[11]['carcinogenicity'] ?? '') ?></textarea>
-            </div>
+            <?= $field(11, 'acute_toxicity', 'Acute Toxicity') ?>
+            <?= $field(11, 'chronic_effects', 'Chronic Effects') ?>
+            <?= $field(11, 'carcinogenicity', 'Carcinogenicity', 'textarea', 3, 'Automatic: built from the IARC / NTP / OSHA carcinogen registry for the listed components.') ?>
 
         <?php elseif ($num === 12): ?>
-            <div class="form-group">
-                <label>Ecotoxicity</label>
-                <textarea name="override[12][ecotoxicity]" class="form-control" rows="2"><?= e($section['ecotoxicity'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Persistence / Degradability</label>
-                <textarea name="override[12][persistence]" class="form-control" rows="2"><?= e($section['persistence'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Bioaccumulation Potential</label>
-                <textarea name="override[12][bioaccumulation]" class="form-control" rows="2"><?= e($section['bioaccumulation'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Mobility in Soil</label>
-                <textarea name="override[12][mobility]" class="form-control" rows="2"><?= e($section['mobility'] ?? '') ?></textarea>
-            </div>
+            <?= $field(12, 'ecotoxicity', 'Ecotoxicity') ?>
+            <?= $field(12, 'persistence', 'Persistence / Degradability') ?>
+            <?= $field(12, 'bioaccumulation', 'Bioaccumulation Potential', 'textarea', 2, 'When PBT components are listed and you override Persistence, the automatic Bioaccumulation line repeats the PBT component list instead of "see Persistence".') ?>
+            <?= $field(12, 'mobility', 'Mobility in Soil') ?>
 
         <?php elseif ($num === 13): ?>
-            <div class="form-group">
-                <label>Disposal Methods</label>
-                <textarea name="override[13][methods]" class="form-control" rows="2"><?= e($section['methods'] ?? '') ?></textarea>
-            </div>
+            <?= $field(13, 'methods', 'Disposal Methods') ?>
 
         <?php elseif ($num === 14): ?>
-            <div class="form-group">
-                <label>UN Number</label>
-                <input type="text" name="override[14][un_number]" class="form-control" value="<?= e($section['un_number'] ?? '') ?>">
-            </div>
-            <div class="form-group">
-                <label>Proper Shipping Name</label>
-                <input type="text" name="override[14][proper_shipping_name]" class="form-control" value="<?= e($section['proper_shipping_name'] ?? '') ?>">
-            </div>
-            <div class="form-group">
-                <label>Hazard Class</label>
-                <input type="text" name="override[14][hazard_class]" class="form-control" value="<?= e($section['hazard_class'] ?? '') ?>">
-            </div>
-            <div class="form-group">
-                <label>Packing Group</label>
-                <input type="text" name="override[14][packing_group]" class="form-control" value="<?= e($section['packing_group'] ?? '') ?>">
-            </div>
+            <p class="text-muted">Transport data is derived from the flash point, boiling point and hazard classification (audit #27). Leave a field blank to use the derived value shown as its placeholder; anything typed here wins.</p>
+            <?= $field(14, 'un_number', 'UN Number', 'input', 1) ?>
+            <?= $field(14, 'proper_shipping_name', 'Proper Shipping Name', 'input', 1) ?>
+            <?= $field(14, 'hazard_class', 'Hazard Class', 'input', 1) ?>
+            <?= $field(14, 'packing_group', 'Packing Group', 'input', 1) ?>
+            <?= $field(14, 'environmental_hazards', 'Environmental Hazards', 'input', 1) ?>
 
         <?php elseif ($num === 15): ?>
             <p class="text-muted">SARA 313, Prop 65, and SNUR data are auto-populated from regulatory databases and raw material flags.</p>
-            <div class="form-group">
-                <label>OSHA Status</label>
-                <textarea name="override[15][osha_status]" class="form-control" rows="2"><?= e($section['osha_status'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>TSCA Status</label>
-                <textarea name="override[15][tsca_status]" class="form-control" rows="2"><?= e($section['tsca_status'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label>Additional State Regulations</label>
-                <textarea name="override[15][state_regs]" class="form-control" rows="2"><?= e($overrides[15]['state_regs'] ?? '') ?></textarea>
-                <small class="text-muted">Printed verbatim as the "State Regulations" line at the end of Section 15 (after the Prop 65 block), in every language this override is saved for. Typical content: state right-to-know listings, e.g. "New Jersey Right-to-Know Hazardous Substance List: Toluene (CAS 108-88-3)". Leave blank to omit the line.</small>
-            </div>
+            <?= $field(15, 'osha_status', 'OSHA Status') ?>
+            <?= $field(15, 'tsca_status', 'TSCA Status') ?>
+            <?= $field(15, 'state_regs', 'Additional State Regulations', 'textarea', 2, 'Printed verbatim as the "State Regulations" line at the end of Section 15 (after the Prop 65 block), in every language this override is saved for. Typical content: state right-to-know listings, e.g. "New Jersey Right-to-Know Hazardous Substance List: Toluene (CAS 108-88-3)". Leave blank to omit the line.') ?>
 
         <?php endif; ?>
     </div>
@@ -324,6 +226,33 @@
 .form-group label { display: block; font-weight: bold; margin-bottom: 0.25rem; font-size: 0.9rem; }
 .form-group textarea, .form-group input[type="text"] { width: 100%; padding: 0.4rem; border: 1px solid #ccc; border-radius: 3px; font-size: 0.9rem; }
 .form-group textarea:focus, .form-group input:focus { border-color: #003366; outline: none; }
+.ov-field .ov-badge { font-size: 0.7rem; font-weight: normal; padding: 0.05rem 0.4rem; border-radius: 3px; margin-left: 0.4rem; vertical-align: middle; }
+.ov-field .ov-badge-over { display: none; background: #f39c12; color: #fff; }
+.ov-field .ov-badge-auto { display: inline-block; background: #e5e9ef; color: #555; }
+.ov-field.is-overridden .ov-badge-over { display: inline-block; }
+.ov-field.is-overridden .ov-badge-auto { display: none; }
+.ov-field.is-overridden textarea, .ov-field.is-overridden input[type="text"] { border-left: 4px solid #f39c12; background: #fffaf0; }
+.ov-field textarea::placeholder, .ov-field input::placeholder { color: #8a94a0; opacity: 1; }
+.ov-hint { display: none; margin-top: 0.25rem; font-size: 0.85rem; color: #555; background: #f4f6f8; padding: 0.35rem 0.5rem; border-radius: 3px; white-space: pre-wrap; }
+.ov-hint-label { font-weight: bold; }
+.ov-field.is-overridden .ov-hint { display: block; }
+.ov-reset { margin-left: 0.5rem; font-size: 0.8rem; padding: 0.1rem 0.5rem; }
 </style>
+
+<script>
+// Audit #36: flag a field as overridden while it holds text, and let
+// "Reset to automatic" blank it (the stored row is deleted on Save).
+document.querySelectorAll('[data-ov-field]').forEach(function (wrap) {
+    var ctl = wrap.querySelector('textarea, input[type="text"]');
+    if (!ctl) { return; }
+    var sync = function () { wrap.classList.toggle('is-overridden', ctl.value.trim() !== ''); };
+    ctl.addEventListener('input', sync);
+    var reset = wrap.querySelector('[data-ov-reset]');
+    if (reset) {
+        reset.addEventListener('click', function () { ctl.value = ''; sync(); ctl.focus(); });
+    }
+    sync();
+});
+</script>
 
 <?php include dirname(__DIR__) . '/layouts/footer.php'; ?>

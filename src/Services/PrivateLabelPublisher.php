@@ -204,7 +204,8 @@ final class PrivateLabelPublisher
                         $sdsData = $generator->generateFromBase($base, $lang);
 
                         if ($lang === $languages[0]) {
-                            $blockError = SDSReadinessService::missingHazardDataError($sdsData, $db);
+                            $blockError = SDSReadinessService::missingHazardDataError($sdsData, $db)
+                                ?? SDSReadinessService::transportNotDeterminedError($sdsData);
                             if ($blockError !== null) {
                                 $skipReason = $blockError;
                                 break;

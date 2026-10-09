@@ -79,6 +79,7 @@ class BackupService
                 'carcinogen_list',
                 'sara313_list',
                 'hap_list',
+                'rcra_waste_codes',   // audit #26
                 'snur_list',
                 'hazard_source_records',
                 'hazard_classifications',

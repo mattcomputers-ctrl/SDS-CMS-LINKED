@@ -94,7 +94,7 @@
                     <?php endif; ?>
 
                     <!-- Regulatory Data — chemistry & compliance reference tables -->
-                    <?php if (can_read('cas_determinations') || can_read('exempt_vocs') || can_read('prop65_list') || can_read('hap_list') || can_read('sara313') || can_read('snur_list') || can_read('pictograms') || can_read('federal_data')): ?>
+                    <?php if (can_read('cas_determinations') || can_read('exempt_vocs') || can_read('prop65_list') || can_read('hap_list') || can_read('tsca_list') || can_read('rcra_list') || can_read('sara313') || can_read('snur_list') || can_read('pictograms') || can_read('federal_data')): ?>
                     <li class="sidebar-section-label">Regulatory Data</li>
                     <?php endif; ?>
                     <?php if (can_read('cas_determinations')): ?>
@@ -108,6 +108,12 @@
                     <?php endif; ?>
                     <?php if (can_read('hap_list')): ?>
                     <li><a href="/haps" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/haps') ? 'active' : '' ?>"><span class="menu-icon">&#127981;</span> HAP List</a></li>
+                    <?php endif; ?>
+                    <?php if (can_read('tsca_list')): ?>
+                    <li><a href="/tsca" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/tsca') ? 'active' : '' ?>"><span class="menu-icon">&#128218;</span> TSCA Inventory</a></li>
+                    <?php endif; ?>
+                    <?php if (can_read('rcra_list')): // audit #26 (T3) ?>
+                    <li><a href="/rcra" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/rcra') ? 'active' : '' ?>"><span class="menu-icon">&#128465;</span> RCRA Waste Codes</a></li>
                     <?php endif; ?>
                     <?php if (can_read('sara313')): ?>
                     <li><a href="/admin/sara313" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/admin/sara313') ? 'active' : '' ?>"><span class="menu-icon">&#128220;</span> SARA 313 List</a></li>
@@ -135,6 +141,7 @@
                     <li><a href="/admin/users" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/users' ? 'active' : '' ?>"><span class="menu-icon">&#128101;</span> Users</a></li>
                     <li><a href="/admin/groups" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/admin/groups') ? 'active' : '' ?>"><span class="menu-icon">&#128274;</span> Permission Groups</a></li>
                     <li><a href="/admin/settings" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/settings' ? 'active' : '' ?>"><span class="menu-icon">&#9881;</span> Settings</a></li>
+                    <li><a href="/admin/product-families" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/admin/product-families') ? 'active' : '' ?>"><span class="menu-icon">&#127991;</span> Product Families</a></li>
                     <li><a href="/admin/network-settings" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/network-settings' ? 'active' : '' ?>"><span class="menu-icon">&#127760;</span> Network Settings</a></li>
                     <li><a href="/admin/audit-log" class="<?= ($_SERVER['REQUEST_URI'] ?? '') === '/admin/audit-log' ? 'active' : '' ?>"><span class="menu-icon">&#128203;</span> Audit Log</a></li>
                     <li><a href="/admin/sds-versions" class="<?= str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/admin/sds-versions') ? 'active' : '' ?>"><span class="menu-icon">&#128195;</span> SDS Versions</a></li>

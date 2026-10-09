@@ -86,7 +86,7 @@ class SDSTcpdf extends \TCPDF
         $headerHeight = 16; // mm — enough for a ~2" wide logo at typical aspect ratios
 
         // Document title — right-aligned, vertically centered in header band
-        $docTitle = $this->documentStrings['title'] ?? 'SAFETY DATA SHEET';
+        $docTitle = SDSDocumentStrings::resolve($this->documentStrings, 'title');
         $this->SetFont('helvetica', 'B', 14);
         $titleCellH = 6; // approximate text height at 14pt
         $titleY = $topY + ($headerHeight - $titleCellH) / 2;
@@ -146,9 +146,9 @@ class SDSTcpdf extends \TCPDF
         $this->Cell($cellWidth, 5, $this->footerProductCode, 0, 0, 'L');
 
         // Page number — center (translated)
-        $pageTxt = ($this->documentStrings['page'] ?? 'Page') . ' '
+        $pageTxt = SDSDocumentStrings::resolve($this->documentStrings, 'page') . ' '
                  . $this->getAliasNumPage() . ' '
-                 . ($this->documentStrings['page_of'] ?? 'of') . ' '
+                 . SDSDocumentStrings::resolve($this->documentStrings, 'page_of') . ' '
                  . $this->getAliasNbPages();
         $this->Cell($cellWidth, 5, $pageTxt, 0, 0, 'C');
 

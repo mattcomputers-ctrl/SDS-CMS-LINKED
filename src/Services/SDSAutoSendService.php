@@ -282,30 +282,22 @@ class SDSAutoSendService
             }
         }
 
-        // Check for pending CAS determinations that block publishing
-        // Use the same logic as SDSController::checkMissingHazardData
+        // Missing-hazard-data gate: the SAME check the interactive publish
+        // paths use (SDSReadinessService::missingHazardDataError), so the
+        // auto-send path honours the DB settings (sds.block_publish_missing
+        // and the missing-data threshold) instead of config.php (audit #40).
         try {
             $generator = new SDSGenerator();
             $baseData = $generator->computeBase($fgId);
             $sdsData = $generator->generateFromBase($baseData, 'en');
 
-            // Check for CAS numbers with no hazard data and no determination
-            foreach ($sdsData['hazard_result']['trace'] ?? [] as $step) {
-                if (($step['step'] ?? '') === 'no_data') {
-                    $cas = $step['data']['cas'] ?? null;
-                    $conc = (float) ($step['data']['concentration_pct'] ?? 0);
-                    $threshold = (float) App::config('sds.missing_threshold_pct', 1.0);
+            // Audit #27 — never auto-publish a "Not determined" transport section.
+            if (\SDS\Services\SDSReadinessService::transportNotDeterminedError($sdsData) !== null) {
+                return false;
+            }
 
-                    if ($cas !== null && $conc >= $threshold) {
-                        $cpd = $this->db->fetch(
-                            "SELECT id FROM competent_person_determinations WHERE cas_number = ? AND is_active = 1 LIMIT 1",
-                            [$cas]
-                        );
-                        if (!$cpd) {
-                            return false; // Missing data, no determination
-                        }
-                    }
-                }
+            if (\SDS\Services\SDSReadinessService::missingHazardDataError($sdsData, $this->db) !== null) {
+                return false; // missing data at/above threshold, no determination
             }
         } catch (\Throwable $e) {
             return false;

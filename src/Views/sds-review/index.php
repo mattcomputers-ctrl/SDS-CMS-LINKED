@@ -62,6 +62,14 @@
             </div>
         <?php endif; ?>
 
+        <?php if (!empty($review['tsca_warning'])): ?>
+            <div class="alert alert-info">
+                <strong>TSCA inventory not verified (warning only).</strong>
+                <?= e($review['tsca_warning']) ?>
+                <a href="/determinations?tab=tsca">Open TSCA Review &rarr;</a>
+            </div>
+        <?php endif; ?>
+
         <?php if (!$review['has_formula']): ?>
             <div class="alert alert-warning">
                 <strong>No formula entered.</strong>

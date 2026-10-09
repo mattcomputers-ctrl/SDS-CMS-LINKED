@@ -47,6 +47,7 @@ class RawMaterialController
             'constituents'           => [],
             'sdsHistory'             => [],
             'tradeSecretDescriptions' => $this->loadTradeSecretDescriptions(),
+            'families'               => \SDS\Models\ProductFamily::all(false),   // audit #3 picker
         ]);
     }
 
@@ -68,6 +69,10 @@ class RawMaterialController
 
         $data = $_POST;
         $data['created_by'] = current_user_id();
+
+        // Audit #3: family picker — a chosen family is a manual override; blank = Auto (rule match).
+        $data['family_id']     = (int) ($data['family_id'] ?? 0) > 0 ? (int) $data['family_id'] : null;
+        $data['family_source'] = $data['family_id'] !== null ? 'manual' : null;
 
         // Process checkbox fields (unchecked = not in POST)
         $data['voc_less_than_one'] = !empty($data['voc_less_than_one']) ? 1 : 0;
@@ -139,7 +144,8 @@ class RawMaterialController
                 $this->saveConstituentsFromPost($id);
             }
 
-            $_SESSION['_flash']['success'] = 'Raw material created successfully.';
+            $_SESSION['_flash']['success'] = 'Raw material created successfully.'
+                . $this->recomputeFamilies($id, 'Raw material ' . trim((string) $data['internal_code']) . ' created');
             redirect('/raw-materials');
         } catch (\Throwable $e) {
             // Everything the user typed comes back via _old_input (scalars
@@ -159,6 +165,22 @@ class RawMaterialController
     {
         return isset($_FILES['supplier_sds'])
             && (int) ($_FILES['supplier_sds']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+    }
+
+    /**
+     * Audit #3: after a raw-material save, re-resolve this RM's family (manual
+     * or rule) and the content-inherited family of every product whose
+     * formula tree contains it; reassigned items are flagged for republish.
+     * Returns a flash tail or ''. Must never break the save.
+     */
+    private function recomputeFamilies(int $rmId, string $reason): string
+    {
+        try {
+            $r = \SDS\Services\FamilyResolver::recompute(true, current_user_id(), $reason, ['raw_material_ids' => [$rmId], 'finished_good_ids' => []]);
+            return ($r['counts']['rm_changed'] + $r['counts']['fg_changed']) > 0 ? \SDS\Services\FamilyResolver::summaryLine($r) : '';
+        } catch (\Throwable $e) {
+            return ' Product family recompute failed: ' . $e->getMessage();
+        }
     }
 
     /**
@@ -192,6 +214,7 @@ class RawMaterialController
             'constituents'           => $item['constituents'] ?? [],
             'sdsHistory'             => $sdsHistory,
             'tradeSecretDescriptions' => $this->loadTradeSecretDescriptions(),
+            'families'               => \SDS\Models\ProductFamily::all(false),   // audit #3 picker
         ]);
     }
 
@@ -219,6 +242,21 @@ class RawMaterialController
 
         $data = $_POST;
         $data['expected_updated_at'] = $data['updated_at'] ?? null;
+
+        // Audit #3: family picker — a chosen family is a manual override; blank = Auto (rule match).
+        // A changed family_id bumps updated_at (ON UPDATE): that is the intended content-change signal.
+        // Auto on an item that was NOT manual leaves the columns alone (recomputeFamilies()
+        // re-resolves them) so a no-op save never looks like a reassignment / staleness bump.
+        $pickedFamily = (int) ($data['family_id'] ?? 0) > 0 ? (int) $data['family_id'] : null;
+        if ($pickedFamily !== null) {
+            $data['family_id']     = $pickedFamily;
+            $data['family_source'] = 'manual';
+        } elseif (($item['family_source'] ?? null) === 'manual') {
+            $data['family_id']     = null;   // manual -> Auto: release the override
+            $data['family_source'] = null;
+        } else {
+            unset($data['family_id'], $data['family_source']);
+        }
 
         // Process checkbox fields (unchecked = not in POST)
         $data['voc_less_than_one'] = !empty($data['voc_less_than_one']) ? 1 : 0;
@@ -310,7 +348,8 @@ class RawMaterialController
                 $this->saveConstituentsFromPost((int) $id);
             }
 
-            $_SESSION['_flash']['success'] = 'Raw material updated.';
+            $_SESSION['_flash']['success'] = 'Raw material updated.'
+                . $this->recomputeFamilies((int) $id, 'Raw material ' . $item['internal_code'] . ' saved');
         } catch (\Throwable $e) {
             // Preserve the user's in-flight form input so they can fix the
             // error without re-entering anything. Scalars come back via

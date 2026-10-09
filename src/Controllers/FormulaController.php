@@ -121,7 +121,18 @@ class FormulaController
                 'line_count'       => count($lines),
             ]);
 
-            $_SESSION['_flash']['success'] = 'Formula saved (new version created).';
+            // Audit #3: content-inherited family of this product and its parents.
+            $familyTail = '';
+            try {
+                $r = \SDS\Services\FamilyResolver::recompute(true, current_user_id(), 'Formula saved for finished good #' . (int) $finished_good_id, ['finished_good_ids' => [(int) $finished_good_id], 'raw_material_ids' => []]);
+                if (($r['counts']['rm_changed'] + $r['counts']['fg_changed']) > 0) {
+                    $familyTail = \SDS\Services\FamilyResolver::summaryLine($r);
+                }
+            } catch (\Throwable $e) {
+                $familyTail = ' Product family recompute failed: ' . $e->getMessage();
+            }
+
+            $_SESSION['_flash']['success'] = 'Formula saved (new version created).' . $familyTail;
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = $e->getMessage();
         }

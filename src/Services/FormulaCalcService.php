@@ -19,6 +19,24 @@ class FormulaCalcService
 {
     /** @var array<string, string>|null Cached exempt VOC list (shared across instances). */
     private static ?array $exemptVocCache = null;
+
+    /**
+     * #18(d) Soluble-fraction weight per raw material solubility value.
+     * Keys are the exact option strings from src/Views/raw-materials/form.php.
+     * Any other non-blank value counts in the denominator with weight 0.
+     */
+    public const SOLUBILITY_WEIGHTS = [
+        'Soluble in water'               => 1.0,
+        'Partially soluble in water'     => 0.5,
+        'Negligible solubility in water' => 0.0,
+        'Insoluble in water'             => 0.0,
+    ];
+
+    /** #18(d) Soluble-fraction thresholds (percent of the raws that have a value). */
+    public const SOLUBLE_PCT    = 90.0;
+    public const PARTIAL_PCT    = 5.0;
+    public const NEGLIGIBLE_PCT = 1.0;
+
     /**
      * Run the full calculation pipeline for a finished good's current formula.
      *
@@ -227,6 +245,10 @@ class FormulaCalcService
                     'is_trade_secret'          => (int) ($c['is_trade_secret'] ?? 0) === 1,
                     'is_non_hazardous'         => (int) ($c['is_non_hazardous'] ?? 0) === 1,
                     'trade_secret_description' => $c['trade_secret_description'] ?? null,
+                    // Audit #19: cas_master element flags for Section 10 decomposition products
+                    'has_nitrogen'             => (int) ($c['has_nitrogen'] ?? 0) === 1,
+                    'has_sulfur'               => (int) ($c['has_sulfur'] ?? 0) === 1,
+                    'has_halogen'              => (int) ($c['has_halogen'] ?? 0) === 1,
                     'contributing_materials'   => [],
                 ];
             }
@@ -391,6 +413,7 @@ class FormulaCalcService
                 'solids_vol'               => $rm['solids_vol'],
                 'flash_point_c'            => $rm['flash_point_c'],
                 'flash_point_greater_than' => (int) ($rm['flash_point_greater_than'] ?? 0),
+                'boiling_point_c'          => $rm['boiling_point_c'] ?? null,
                 'physical_state'           => $rm['physical_state'] ?? null,
                 'solubility'               => $rm['solubility'] ?? null,
                 'appearance'               => $rm['appearance'] ?? null,
@@ -413,8 +436,13 @@ class FormulaCalcService
      *  - all_voc_less_than_one: true if every RM has the <1% VOC flag
      *  - flash_point_c: lowest flash point across all RMs (null if none set)
      *  - flash_point_greater_than: true only if the lowest-FP RM has the ">" flag
-     *  - solubility: formula-level solubility string
-     *  - has_non_powder_material: true if any RM is not Powder physical state
+     *  - boiling_point_c: lowest boiling point across all RMs that carry one, weight-independent (null if none) (#16)
+     *  - solubility_key: 'soluble' | 'partially_soluble' | 'negligible' | 'not_soluble' | null
+     *    (#18(d): F = (soluble wt% + 0.5 x partially-soluble wt%) / (wt% of raws with any
+     *    solubility value); >=90 soluble, 5-90 partially, 1-5 negligible, <1 not soluble;
+     *    null when no raw carries a value)
+     *  - soluble_fraction_pct: F as a percentage (null when no raw carries a value)
+     *  - physical_state: physical_state of the dominant raw material ('' if blank) (#18(b))
      *  - odor: odor of the dominant (highest summed wt%) raw material ('' if blank)
      *  - appearance: appearance of the dominant raw material ('' if blank)
      *  - dominant_raw_material_id / dominant_raw_material_pct: which RM was used (null if no lines)
@@ -424,8 +452,10 @@ class FormulaCalcService
         $allVocLessThanOne = true;
         $lowestFp          = null;
         $lowestFpGt        = false;
-        $solubilities      = [];
-        $byRm              = []; // raw_material_id => ['pct', 'odor', 'appearance'] (#17)
+        $lowestBp          = null; // #16 initial boiling point
+        $solWithValuePct   = 0.0; // #18(d) wt% of raws that carry any solubility value
+        $solWeightedPct    = 0.0; // #18(d) soluble wt% + 0.5 x partially-soluble wt%
+        $byRm              = []; // raw_material_id => ['pct', 'odor', 'appearance', 'physical_state'] (#17/#18)
 
         foreach ($enrichedLines as $line) {
             // VOC <1% logic: all lines must have the flag set
@@ -443,10 +473,26 @@ class FormulaCalcService
                 }
             }
 
-            // Solubility: collect all non-empty values
-            $sol = $line['solubility'] ?? null;
-            if ($sol !== null && $sol !== '') {
-                $solubilities[] = $sol;
+            // Initial boiling point (#16): the lowest across all RMs that
+            // carry one. Lines are already flattened through sub-FGs, so
+            // this is recursive; wt% is ignored (weight-independent) and
+            // RMs with no value are skipped. No weighted average.
+            $bp = $line['boiling_point_c'] ?? null;
+            if ($bp !== null && $bp !== '') {
+                $bpVal = (float) $bp;
+                if ($lowestBp === null || $bpVal < $lowestBp) {
+                    $lowestBp = $bpVal;
+                }
+            }
+
+            // #18(d) Solubility: soluble fraction over the raws that have a value.
+            // Lines are already scaled through sub-FGs, so pct is the share of
+            // the finished good. Negligible / Insoluble / unknown strings weigh 0.
+            $sol = trim((string) ($line['solubility'] ?? ''));
+            if ($sol !== '') {
+                $linePct          = (float) ($line['pct'] ?? 0);
+                $solWithValuePct += $linePct;
+                $solWeightedPct  += $linePct * (self::SOLUBILITY_WEIGHTS[$sol] ?? 0.0);
             }
 
             // Dominant RM (#17): lines are already scaled through sub-FGs and
@@ -455,23 +501,21 @@ class FormulaCalcService
             $rmId = (int) ($line['raw_material_id'] ?? 0);
             if (!isset($byRm[$rmId])) {
                 $byRm[$rmId] = [
-                    'pct'        => 0.0,
-                    'odor'       => trim((string) ($line['odor'] ?? '')),
-                    'appearance' => trim((string) ($line['appearance'] ?? '')),
+                    'pct'            => 0.0,
+                    'odor'           => trim((string) ($line['odor'] ?? '')),
+                    'appearance'     => trim((string) ($line['appearance'] ?? '')),
+                    'physical_state' => trim((string) ($line['physical_state'] ?? '')), // #18(b)
                 ];
             }
             $byRm[$rmId]['pct'] += (float) ($line['pct'] ?? 0);
         }
 
-        // Determine formula-level solubility
-        $solubility = '';
-        if (!empty($solubilities)) {
-            $unique = array_unique($solubilities);
-            if (count($unique) === 1) {
-                $solubility = $unique[0]; // All same
-            } else {
-                $solubility = 'Partially soluble in water'; // Mixed
-            }
+        // #18(d) Formula-level solubility band from the soluble fraction.
+        $solubleFractionPct = null;
+        $solubilityKey      = null;
+        if ($solWithValuePct > 0) {
+            $solubleFractionPct = 100.0 * $solWeightedPct / $solWithValuePct;
+            $solubilityKey      = self::solubilityKeyForFraction($solubleFractionPct);
         }
 
         // Dominant (highest summed wt%) raw material. Strict ">" keeps the
@@ -486,19 +530,40 @@ class FormulaCalcService
         }
         $dominant = $dominantId !== null
             ? $byRm[$dominantId]
-            : ['pct' => 0.0, 'odor' => '', 'appearance' => ''];
+            : ['pct' => 0.0, 'odor' => '', 'appearance' => '', 'physical_state' => ''];
 
         return [
             'all_voc_less_than_one'     => $allVocLessThanOne,
             'flash_point_c'             => $lowestFp,
             'flash_point_greater_than'  => $lowestFpGt,
-            'solubility'                => $solubility,
+            'boiling_point_c'           => $lowestBp,
+            'solubility_key'            => $solubilityKey,
+            'soluble_fraction_pct'      => $solubleFractionPct !== null ? round($solubleFractionPct, 4) : null,
+            'physical_state'            => $dominant['physical_state'],
             'odor'                      => $dominant['odor'],
             'appearance'                => $dominant['appearance'],
             'dominant_raw_material_id'  => $dominantId,
             'dominant_raw_material_pct' => $dominantId !== null ? round($dominantPct, 4) : null,
             'enriched_lines'            => $enrichedLines,
         ];
+    }
+
+    /**
+     * #18(d) Band for a soluble fraction (percent). Pure, so the thresholds
+     * are unit-testable without a DB.
+     */
+    public static function solubilityKeyForFraction(float $fractionPct): string
+    {
+        if ($fractionPct >= self::SOLUBLE_PCT) {
+            return 'soluble';
+        }
+        if ($fractionPct >= self::PARTIAL_PCT) {
+            return 'partially_soluble';
+        }
+        if ($fractionPct >= self::NEGLIGIBLE_PCT) {
+            return 'negligible';
+        }
+        return 'not_soluble';
     }
 
     /**

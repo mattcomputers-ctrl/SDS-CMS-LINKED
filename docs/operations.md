@@ -225,8 +225,15 @@ policy comment live in `src/Services/SDSGenerator.php` next to
   1910.1200(i)(1) withholding statement (`section3.trade_secret_note`)
   prints on every SDS that lists components, not only when a raw material
   is flagged as a trade secret.
-- Section 15 SARA 313 and HAP weight percentages are exact on purpose
-  (40 CFR 372.45(b)(2) supplier notification requires percent by weight).
+- Section 15 SARA 313 reportable components and HAP components print the
+  same prescribed-range band as Section 3 for that CAS, with the SARA de
+  minimis threshold; the band's upper end is the upper-bound concentration
+  40 CFR 372.45(f) requires when the specific percent is withheld, and the
+  sheet says so under the SARA list. Total HAP content stays an exact
+  figure (a mixture property, like VOC). Prop 65 prints the warning text
+  plus each listed chemical with its OEHHA listing type; NSRL/MADL/listing
+  dates are never printed. VOC calculation assumptions (SG = 1.0, VOC = 0
+  defaults) are applied silently and never printed (audit #42).
 - SDS snapshots generated before Section 8/11/12 banding carry no band; a
   re-render from such a snapshot (send queue, private-label re-brand)
   shows an empty Conc% cell / no concentration after the CAS, never the

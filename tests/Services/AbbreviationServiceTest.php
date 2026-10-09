@@ -180,14 +180,35 @@ $l = AbbreviationService::build($p65, $en);
 assertContains('prop65 warning text scanned when required', 'IDLH = ', $l);
 assertNotContains('prop65 warning not required → text hidden', 'IDLH = ', $line);
 
-// state_regs prints only when no Prop 65 warning.
+// Prop 65 listed-chemical lines (audit #42) print only under the warning.
+$p65l = $fixture;
+$p65l['sections'][15]['prop65'] = ['requires_warning' => true, 'warning_text' => 'WARNING', 'listed_lines' => ['Lead (CAS 7439-92-1) — cancer; see STEL-bogus']];
+assertContains('prop65 listed lines scanned when required', 'STEL = ', AbbreviationService::build($p65l, $en));
+$p65h = $fixture;
+$p65h['sections'][15]['prop65'] = ['requires_warning' => false, 'warning_text' => '', 'listed_lines' => ['STEL-bogus hidden']];
+assertNotContains('prop65 listed lines hidden when no warning', 'STEL = ', AbbreviationService::build($p65h, $en));
+// SARA range note (audit #42) prints only under a non-empty reportable list.
+$sr2 = $fixture;
+$sr2['sections'][15]['sara_313']['reportable'] = [['chemical_name' => 'Toluene', 'cas_number' => '108-88-3', 'concentration_range' => '1 - 5%', 'threshold_pct' => 1.0]];
+assertContains('SARA range note label scanned when listed', 'CFR = ', AbbreviationService::build($sr2, $en));
+
+// state_regs prints whenever present, with or without a Prop 65 warning (audit #31).
 $sr = $fixture;
 $sr['sections'][15]['state_regs'] = 'Subject to STEL reporting in NJ.';
 $l = AbbreviationService::build($sr, $en);
 assertContains('state_regs scanned without Prop 65 warning', 'STEL = ', $l);
 $sr['sections'][15]['prop65'] = ['requires_warning' => true, 'warning_text' => 'WARNING'];
 $l = AbbreviationService::build($sr, $en);
-assertNotContains('state_regs hidden when Prop 65 warning prints', 'STEL = ', $l);
+assertContains('state_regs still scanned when Prop 65 warning prints (#31)', 'STEL = ', $l);
+// Pre-#31 snapshots hold the Prop 65 warning in state_regs: not scanned twice, label gate off.
+$sr['sections'][15]['prop65'] = ['requires_warning' => true, 'warning_text' => 'WARNING STEL-dup'];
+$sr['sections'][15]['state_regs'] = 'WARNING STEL-dup';
+$l = AbbreviationService::build($sr, $en);
+assertContains('legacy duplicate still defines STEL once via the Prop 65 text', 'STEL = ', $l);
+$sr['sections'][15]['prop65'] = ['requires_warning' => false, 'warning_text' => ''];
+$sr['sections'][15]['state_regs'] = '   ';
+$l = AbbreviationService::build($sr, $en);
+assertNotContains('blank state_regs not scanned', 'STEL = ', $l);
 
 // Section 11 hidden payloads never count (fixture carries STOT / SCBA there).
 assertNotContains('section 11 hazard_classes ignored', 'STOT =', $line);
@@ -243,6 +264,15 @@ assertEquals('wt% matches', ['wt%' => 'w'], AbbreviationService::filter(['wt%' =
 assertEquals('W&E matches', ['W&E' => 'w'], AbbreviationService::filter(['W&E' => 'w'], 'VOC less W&E (lb/gal)'));
 assertEquals('Gew.-% matches', ['Gew.-%' => 'g'], AbbreviationService::filter(['Gew.-%' => 'g'], 'VOC (Gew.-%)'));
 assertEquals('empty definition skipped', [], AbbreviationService::filter(['CAS' => ''], 'CAS'));
+
+// Audit #20: Section 11 ATEmix / ETAmezcla / ETAmél and the body-weight units.
+assertEquals('ATEmix matches ATE', ['ATE' => 'a'], AbbreviationService::filter(['ATE' => 'a'], 'ATEmix = 1250 mg/kg bw.'));
+assertEquals('bare ATE matches', ['ATE' => 'a'], AbbreviationService::filter(['ATE' => 'a'], 'ATE'));
+assertEquals('CREATE does not match ATE', [], AbbreviationService::filter(['ATE' => 'a'], 'CREATE'));
+assertEquals('ETAmezcla matches ETA', ['ETA' => 'e'], AbbreviationService::filter(['ETA' => 'e'], 'ETAmezcla = 1250 mg/kg pc.'));
+assertEquals('ETAmél matches ETA', ['ETA' => 'e'], AbbreviationService::filter(['ETA' => 'e'], 'ETAmél = 1250 mg/kg pc.'));
+assertEquals('kg does not match KG', [], AbbreviationService::filter(['KG' => 'k'], 'mg/kg'));
+assertEquals('mg/kg KG matches KG', ['KG' => 'k'], AbbreviationService::filter(['KG' => 'k'], 'mg/kg KG'));
 
 // ──────────────────────────────────────────────────────────────────────
 echo "[8] Per-language master tables.\n";

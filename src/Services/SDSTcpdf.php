@@ -8,7 +8,10 @@ namespace SDS\Services;
  * SDSTcpdf — Thin TCPDF subclass for SDS PDF rendering.
  *
  * - Header with logo + translated document title on the first page only
+ *   (pages 2+ have no header; PDFService::buildPdf() lowers the top margin
+ *   after page 1 so later pages start at the normal margin — audit #41)
  * - Footer with product code, page number, and revision date on every page
+ * - No "Powered by TCPDF" meta link on the last page (audit #41)
  */
 class SDSTcpdf extends \TCPDF
 {
@@ -23,6 +26,18 @@ class SDSTcpdf extends \TCPDF
 
     /** @var array Translated document-level strings. */
     protected array $documentStrings = [];
+
+    /**
+     * Same signature as TCPDF::__construct(). TCPDF re-enables its
+     * "Powered by TCPDF (www.tcpdf.org)" last-page link INSIDE its
+     * constructor, so a property default cannot switch it off — it has to
+     * be cleared after the parent has run (audit #41).
+     */
+    public function __construct($orientation = 'P', $unit = 'mm', $format = 'A4', $unicode = true, $encoding = 'UTF-8', $diskcache = false, $pdfa = false)
+    {
+        parent::__construct($orientation, $unit, $format, $unicode, $encoding, $diskcache, $pdfa);
+        $this->tcpdflink = false;
+    }
 
     public function setAbsoluteLogoPath(string $path): void
     {
@@ -42,6 +57,12 @@ class SDSTcpdf extends \TCPDF
 
     /**
      * Header — first page only: logo (left) + document title (right).
+     *
+     * Pages 2+ draw nothing here. Their top margin is NOT adjusted from this
+     * method: TCPDF records tMargin in pagedim[] before Header() runs and
+     * setPage() restores it from there, so a switch made here is one page
+     * late on a MultiCell page break. PDFService::buildPdf() sets the
+     * continuation margin once, right after the first AddPage() (audit #41).
      */
     public function Header(): void // @phpcs:ignore
     {

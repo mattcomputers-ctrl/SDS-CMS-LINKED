@@ -64,6 +64,11 @@ class SDSController
         }
 
         $language = $_GET['lang'] ?? 'en';
+        // Audit #38 — the preview is the real PDF. SDSPreviewResponse::mode():
+        //   page (default)  layout chrome + <iframe> of this URL with pdf=1
+        //   ?pdf=1          the PDF itself (PDFService::generateString), inline
+        //   ?html=1         legacy HTML rendering, debugging only
+        $mode = \SDS\Services\SDSPreviewResponse::mode($_GET);
 
         try {
             $generator = new SDSGenerator();
@@ -75,7 +80,14 @@ class SDSController
                 $sdsData['warnings'][] = $phoneError;
             }
 
-            view('sds/preview', [
+            if ($mode === \SDS\Services\SDSPreviewResponse::MODE_PDF) {
+                \SDS\Services\SDSPreviewResponse::send(
+                    (new PDFService())->generateString($sdsData),
+                    \SDS\Services\SDSPreviewResponse::filename($sdsData)
+                );
+            }
+
+            view($mode === \SDS\Services\SDSPreviewResponse::MODE_HTML ? 'sds/preview' : 'sds/preview-pdf', [
                 'pageTitle'    => 'SDS Preview: ' . $fg['product_code'],
                 'finishedGood' => $fg,
                 'sds'          => $sdsData,
@@ -106,6 +118,7 @@ class SDSController
 
         $language = $_GET['lang'] ?? 'en';
         $aliasId  = isset($_GET['alias_id']) ? (int) $_GET['alias_id'] : 0;
+        $mode     = \SDS\Services\SDSPreviewResponse::mode($_GET); // audit #38, see preview()
 
         try {
             $generator = new SDSGenerator();
@@ -139,12 +152,21 @@ class SDSController
                 'family'       => null,
             ];
 
-            view('sds/preview', [
+            if ($mode === \SDS\Services\SDSPreviewResponse::MODE_PDF) {
+                \SDS\Services\SDSPreviewResponse::send(
+                    (new PDFService())->generateString($sdsData),
+                    \SDS\Services\SDSPreviewResponse::filename($sdsData)
+                );
+            }
+
+            view($mode === \SDS\Services\SDSPreviewResponse::MODE_HTML ? 'sds/preview' : 'sds/preview-pdf', [
                 'pageTitle'    => 'SDS Preview: ' . ($fakeFg['product_code'] ?? ''),
                 'finishedGood' => $fakeFg,
                 'sds'          => $sdsData,
                 'language'     => $language,
                 'isResale'     => true,
+                'backUrl'      => '/sds-review',
+                'backLabel'    => 'Back to SDS Creation Readiness Check',
             ]);
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = 'SDS generation failed: ' . $e->getMessage();

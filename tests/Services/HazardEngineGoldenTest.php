@@ -753,7 +753,7 @@ try {
     // Same two Cat 1 Oral CASes, but with EXPLICIT ATE values on the
     // hazard_classifications rows. Explicit ATE 10 mg/kg (not the 0.5
     // default). Reciprocal = 0.05/10 + 0.05/10 = 0.01. ATE_mix = 10,000.
-    // Above Cat 5's 5000 upper → NOT classified → trace logs
+    // Above Cat 4's 2000 upper → NOT classified → trace logs
     // ate_mixture_not_classified.
     // (We have to seed fresh rows because the previous Cat 1 seeds have
     // no explicit ATE; explicit-ATE path is tested with new CASes.)

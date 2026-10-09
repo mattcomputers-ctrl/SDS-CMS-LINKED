@@ -32,6 +32,10 @@ final class AbbreviationService
         'Hxxx'   => '/(?<![\p{L}\p{N}])H\d{3}(?![\p{N}])/u',
         'Pxxx'   => '/(?<![\p{L}\p{N}])P(?!100(?![\p{N}]))\d{3}(?![\p{N}])/u',
         'n.o.s.' => '/(?<![\p{L}\p{N}])n\.o\.s\.?(?![\p{L}\p{N}])/iu',
+        // Section 11 ATEmix / ETAmezcla / ETAmél (audit #20): the "mix"
+        // suffix is glued to the term, so the whole-token default would miss it.
+        'ATE'    => '/(?<![\p{L}\p{N}])ATE(?:mix)?(?![\p{L}\p{N}])/u',
+        'ETA'    => '/(?<![\p{L}\p{N}])ETA(?:mezcla|mél)?(?![\p{L}\p{N}])/u',
     ];
 
     /**
@@ -172,9 +176,13 @@ final class AbbreviationService
                     // Prop 65 warning text prints only when required.
                     if (!empty($prop65['requires_warning'])) {
                         $parts[] = (string) ($prop65['warning_text'] ?? '');
-                    } elseif (!empty($section['state_regs'])) {
-                        // State regs line prints only when no Prop 65 warning.
-                        $parts[] = (string) $section['state_regs'];
+                        self::walk($prop65['listed_lines'] ?? [], $parts); // audit #42 listing lines
+                    }
+                    // State regs line (audit #31) prints whenever present, except
+                    // the pre-#31 snapshot case where it equals the Prop 65 warning.
+                    $stateRegs = trim((string) ($section['state_regs'] ?? ''));
+                    if ($stateRegs !== '' && $stateRegs !== trim((string) ($prop65['warning_text'] ?? ''))) {
+                        $parts[] = $stateRegs;
                     }
                     // SARA: only reportable entries are listed (with "(CAS n)").
                     if (!empty($sara['reportable'])) {
@@ -256,6 +264,7 @@ final class AbbreviationService
             'sara_313_statement'   => $saraList,
             'sara_313_threshold'   => $saraList,
             'sara_313_pbt'         => $saraList,
+            'sara_313_range_note'  => $saraList,
             'sara_313_none'        => $saraBlock && !$saraList,
             'hap_title'            => array_key_exists('has_haps', $hap),
             'hap_triggering'       => !empty($hap['has_haps']),
@@ -264,7 +273,9 @@ final class AbbreviationService
             'hap_none'             => array_key_exists('has_haps', $hap) && empty($hap['has_haps']),
             'snur_title'           => !empty($snur['has_snur']),
             'prop65_none'          => empty($prop65['requires_warning']),
-            'state_regulations'    => !empty($s15['state_regs']) && empty($prop65['requires_warning']),
+            'prop65_listed'        => !empty($prop65['requires_warning']) && !empty($prop65['listed_lines']),
+            'state_regulations'    => trim((string) ($s15['state_regs'] ?? '')) !== ''
+                                      && trim((string) ($s15['state_regs'] ?? '')) !== trim((string) ($prop65['warning_text'] ?? '')),
             'revision_note'        => !empty($s16['revision_note']),
             'uv_acrylate_note'     => false,
         ];

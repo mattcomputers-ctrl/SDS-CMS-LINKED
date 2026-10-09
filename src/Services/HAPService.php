@@ -68,8 +68,9 @@ class HAPService
      *   hap_chemicals:  array[] — matched chemicals with details,
      *   total_hap_pct:  float   — sum of all HAP concentrations,
      *   has_haps:       bool,
-     *   summary_text:   string  — human-readable summary for SDS,
      * }
+     * Entries carry cas_number / chemical_name / hap_name / concentration_pct
+     * only (audit #42: category, source and summary_text were never rendered).
      */
     /**
      * @param  array $composition    Expanded CAS-level composition from FormulaCalcService
@@ -106,7 +107,6 @@ class HAPService
                 'chemical_name'     => $name ?: $row['chemical_name'],
                 'hap_name'          => $row['chemical_name'],
                 'concentration_pct' => $conc,
-                'category'          => $row['category'] ?? '',
             ];
 
             $totalHapPct += $conc;
@@ -128,8 +128,6 @@ class HAPService
                 'chemical_name'     => $chemName,
                 'hap_name'          => $chemName,
                 'concentration_pct' => $conc,
-                'category'          => 'Manual entry',
-                'source'            => 'manual',
             ];
 
             $totalHapPct += $conc;
@@ -143,40 +141,10 @@ class HAPService
         $totalHapPct = round($totalHapPct, 4);
         $hasHaps     = !empty($hapChemicals);
 
-        $summaryText = self::buildSummaryText($hapChemicals, $totalHapPct);
-
         return [
             'hap_chemicals' => $hapChemicals,
             'total_hap_pct' => $totalHapPct,
             'has_haps'      => $hasHaps,
-            'summary_text'  => $summaryText,
         ];
-    }
-
-    /**
-     * Build a human-readable summary for SDS Section 15.
-     */
-    private static function buildSummaryText(array $hapChemicals, float $totalHapPct): string
-    {
-        if (empty($hapChemicals)) {
-            return 'This product does not contain any EPA Hazardous Air Pollutants (HAPs) listed under Clean Air Act Section 112(b).';
-        }
-
-        $count = count($hapChemicals);
-        $lines = [];
-        $lines[] = "This product contains {$count} Hazardous Air Pollutant(s) listed under the Clean Air Act Section 112(b):";
-
-        foreach ($hapChemicals as $chem) {
-            $lines[] = sprintf(
-                '  %s (CAS %s): %.2f%%',
-                $chem['chemical_name'],
-                $chem['cas_number'],
-                $chem['concentration_pct']
-            );
-        }
-
-        $lines[] = sprintf('Total HAP Content: %.2f%% by weight', $totalHapPct);
-
-        return implode("\n", $lines);
     }
 }

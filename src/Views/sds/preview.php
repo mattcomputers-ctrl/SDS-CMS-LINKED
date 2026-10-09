@@ -243,7 +243,7 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                     <tr>
                         <td><?= e($c['cas_number']) ?></td>
                         <td><?= e($c['chemical_name']) ?></td>
-                        <td><?= e($c['concentration_range'] ?? number_format((float) $c['concentration_pct'], 2) . '%') ?></td>
+                        <td><?= e((string) ($c['concentration_range'] ?? '')) ?><?php /* band only, never the exact % */ ?></td>
                         <td><?= !empty($c['h_codes']) && is_array($c['h_codes']) ? e(implode(', ', $c['h_codes'])) : '' ?></td>
                     </tr>
                 <?php endforeach; ?>
@@ -330,7 +330,7 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
             <?php endforeach; ?>
 
         <?php elseif ($num === 11): // ── Toxicological Information ── ?>
-            <p><strong><?= e($l('acute_toxicity')) ?>:</strong> <?= e($section['acute_toxicity'] ?? '') ?></p>
+            <p style="white-space: pre-line;"><strong><?= e($l('acute_toxicity')) ?>:</strong> <?= e($section['acute_toxicity'] ?? '') ?></p>
             <p><strong><?= e($l('chronic_effects')) ?>:</strong> <?= e($section['chronic_effects'] ?? '') ?></p>
 
             <p><strong><?= e($l('carcinogenicity')) ?>:</strong></p>
@@ -411,6 +411,7 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
 
             <p><strong><?= e($l('persistence')) ?>:</strong> <?= e($section['persistence'] ?? '') ?></p>
             <p><strong><?= e($l('bioaccumulation')) ?>:</strong> <?= e($section['bioaccumulation'] ?? '') ?></p>
+            <p><strong><?= e($l('mobility', 'Mobility in Soil')) ?>:</strong> <?= e($section['mobility'] ?? '') ?></p><?php /* item #24 */ ?>
             <?php /* ghs_note (item #25) is printed by the shared footnote after this if/elseif chain. */ ?>
 
         <?php elseif ($num === 14): // ── Transport Information ── ?>
@@ -443,10 +444,11 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                         $saraThreshold = rtrim(rtrim(number_format((float) ($chem['threshold_pct'] ?? 1.0), 4), '0'), '.');
                     ?>
                     <li><?= e($saraName) ?> (CAS <?= e($chem['cas_number'] ?? '') ?>) &mdash;
-                        <?= number_format((float) ($chem['concentration_pct'] ?? 0), 2) ?>%
+                        <?= e((string) ($chem['concentration_range'] ?? '')) ?><?php /* band only, never the exact % */ ?>
                         (<?= e($l('sara_313_threshold', 'de minimis threshold')) ?>: <?= e($saraThreshold) ?>%<?= !empty($chem['is_pbt']) ? '; ' . e($l('sara_313_pbt', 'PBT chemical')) : '' ?>)</li>
                 <?php endforeach; ?>
                 </ul>
+                <p class="text-muted" style="font-size: 0.75rem; font-style: italic;"><?= e($l('sara_313_range_note', 'Concentrations are stated as the prescribed concentration ranges of 29 CFR 1910.1200(i)(1); the upper end of each range is the maximum percent by weight present (40 CFR 372.45(f)).')) ?></p>
                 <?php else: ?>
                 <p><?= e($l('sara_313_none', 'This product does not contain any toxic chemicals subject to the reporting requirements of SARA Title III Section 313 (40 CFR Part 372) at or above the applicable de minimis concentration.')) ?></p>
                 <?php endif; ?>
@@ -463,7 +465,7 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                     <?php foreach ($hap['hap_chemicals'] as $chem): ?>
                         <tr>
                             <td><?= e($chem['hap_name'] ?? $chem['chemical_name']) ?></td>
-                            <td style="text-align: right;"><?= number_format((float) $chem['concentration_pct'], 2) ?>%</td>
+                            <td style="text-align: right;"><?= e((string) ($chem['concentration_range'] ?? '')) ?><?php /* band only, never the exact % */ ?></td>
                         </tr>
                     <?php endforeach; ?>
                     </tbody>
@@ -512,13 +514,26 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                         <?= e($l('prop65_title')) ?>
                     </h4>
                     <p style="margin: 0;"><?= e($prop65['warning_text'] ?? '') ?></p>
+                    <?php if (!empty($prop65['listed_lines']) && is_array($prop65['listed_lines'])): ?>
+                    <p style="margin: 0.5rem 0 0 0;"><strong><?= e($l('prop65_listed', 'Listed chemicals')) ?>:</strong></p>
+                    <ul style="margin: 0;">
+                    <?php foreach ($prop65['listed_lines'] as $p65Line): ?>
+                        <li><?= e((string) $p65Line) ?></li>
+                    <?php endforeach; ?>
+                    </ul>
+                    <?php endif; ?>
                 </div>
             <?php else: ?>
                 <p><strong><?= e($l('prop65_title')) ?>:</strong> <?= e($l('prop65_none')) ?></p>
             <?php endif; ?>
 
-            <?php if (!empty($section['state_regs']) && empty($prop65['requires_warning'])): ?>
-                <p><strong><?= e($l('state_regulations')) ?>:</strong> <?= e($section['state_regs']) ?></p>
+            <?php
+                // Audit #31: operator's note prints whenever present; skip the
+                // pre-#31 snapshot case where state_regs holds the Prop 65 warning.
+                $stateRegs = trim((string) ($section['state_regs'] ?? ''));
+                if ($stateRegs !== '' && $stateRegs !== trim((string) ($prop65['warning_text'] ?? ''))):
+            ?>
+                <p><strong><?= e($l('state_regulations')) ?>:</strong> <?= e($stateRegs) ?></p>
             <?php endif; ?>
 
             <?php if (!empty($section['note'])): ?>
@@ -563,7 +578,7 @@ $sectionPrefix = strtoupper($doc['section_prefix'] ?? 'SECTION');
                 ];
             ?>
             <?php foreach ($section as $key => $val): ?>
-                <?php if ($key === 'title' || $key === 'hazard_classes' || $key === 'component_toxicology' || $key === 'carcinogen_result' || $key === 'prop65' || $key === 'sara_313' || $key === 'hap' || $key === 'has_other_hazards' || $key === 'uv_acrylate_note' || $key === 'ghs_note') continue; ?>
+                <?php if ($key === 'title' || $key === 'hazard_classes' || $key === 'component_toxicology' || $key === 'carcinogen_result' || $key === 'prop65' || $key === 'sara_313' || $key === 'hap' || $key === 'has_other_hazards' || $key === 'uv_acrylate_note' || $key === 'ghs_note' || $key === 'flash_point_c') continue; ?>
                 <?php if (is_string($val) && $val !== ''): ?>
                     <?php $fieldLabel = isset($genericLabelMap[$key]) ? $l($genericLabelMap[$key], ucwords(str_replace('_', ' ', $key))) : ucwords(str_replace('_', ' ', $key)); ?>
                     <p><strong><?= e($fieldLabel) ?>:</strong> <?= e($val) ?></p>

@@ -227,7 +227,10 @@ class HazardEngine
      *   ATE_mix ≤ upper → category whose upper is smallest satisfying bound.
      *
      * Iterate in order (Cat 1 first) and pick the first category where
-     * ATE_mix ≤ upper.
+     * ATE_mix ≤ upper. Categories 1-4 only: 29 CFR 1910.1200 App. A.1 does
+     * not adopt GHS Category 5, so an ATE_mix above the Cat 4 bound is not
+     * classified (the CATEGORY_DEFAULT_ATES 'Cat 5' point estimate is kept
+     * so a vendor-declared Cat 5 contributor still feeds the summation).
      */
     private const ATE_CATEGORY_RANGES = [
         'oral' => [
@@ -235,14 +238,12 @@ class HazardEngine
             ['category' => 'Cat 2', 'upper' => 50.0],
             ['category' => 'Cat 3', 'upper' => 300.0],
             ['category' => 'Cat 4', 'upper' => 2000.0],
-            ['category' => 'Cat 5', 'upper' => 5000.0],
         ],
         'dermal' => [
             ['category' => 'Cat 1', 'upper' => 50.0],
             ['category' => 'Cat 2', 'upper' => 200.0],
             ['category' => 'Cat 3', 'upper' => 1000.0],
             ['category' => 'Cat 4', 'upper' => 2000.0],
-            ['category' => 'Cat 5', 'upper' => 5000.0],
         ],
         'inhalation_vapor' => [
             ['category' => 'Cat 1', 'upper' => 0.5],
@@ -345,6 +346,18 @@ class HazardEngine
         'dermal'           => 'ate_dermal_mg_kg',
         'inhalation_vapor' => 'ate_inhalation_vapor_mg_l_4h',
         'inhalation_dust'  => 'ate_inhalation_dust_mg_l_4h',
+    ];
+
+    /**
+     * Language-neutral unit per ATE route (GHS Rev. 7 Table 3.1.1), carried
+     * on ate_results for trace / debugging; the SDS prints the translated
+     * section11.acute_unit_* key instead.
+     */
+    private const ATE_ROUTE_UNIT = [
+        'oral'             => 'mg/kg',
+        'dermal'           => 'mg/kg',
+        'inhalation_vapor' => 'mg/L/4h',
+        'inhalation_dust'  => 'mg/L/4h',
     ];
 
     /**
@@ -487,6 +500,22 @@ class HazardEngine
     private array $ateBuffer = [];
 
     /**
+     * Per-classify() acute-toxicity mixture RESULTS (audit #20), one entry
+     * per ATE route applyATECalculation() evaluated:
+     *
+     *   [route => ['route' => ..., 'canonical' => ..., 'ate_mix' => float,
+     *              'category' => 'Cat 1'..'Cat 4'|null, 'unit' => string,
+     *              'outcome' => 'classified'|'already_classified'|'dominated'|'not_classified',
+     *              'contributor_count' => int]]
+     *
+     * Exposed as $result['ate_results'] so SDS Section 11 can print ATEmix
+     * even when the route's class entry came from a per-component trigger
+     * (the ATE entry is then skipped as a duplicate and the value would
+     * otherwise survive only in the trace).
+     */
+    private array $ateResults = [];
+
+    /**
      * Per-classify() aquatic-hazard accumulator.
      *
      * Structure:
@@ -517,6 +546,7 @@ class HazardEngine
      *   hazardous_cas: string[],
      *   ppe_recommendations: array,
      *   aquatic_components: array,   // per-CAS aquatic category + M-factor (Phase 4 buffer), for SDS Section 12
+     *   ate_results: array,          // per-route ATE summation results (audit #20), see $ateResults
      *   trace: array,
      * }
      */
@@ -543,6 +573,7 @@ class HazardEngine
         $this->trace = [];
         $this->summationBuffer = [];
         $this->ateBuffer = [];
+        $this->ateResults = [];
         $this->aquaticBuffer = [];
         $db = Database::getInstance();
 
@@ -1004,6 +1035,8 @@ class HazardEngine
             // classification is still decided solely by
             // applyAquaticSummation() above.
             'aquatic_components'  => $this->buildAquaticComponentSummary(),
+            // Per-route ATE summation results (audit #20) — see $ateResults.
+            'ate_results'         => $this->ateResults,
             'trace'               => $this->trace,
         ];
     }
@@ -1963,6 +1996,21 @@ class HazardEngine
                     break;
                 }
             }
+
+            // Audit #20: carry the summation result into the hazard result
+            // regardless of whether an ate_mixture class entry is stamped
+            // below, so Section 11 can print ATEmix next to a route that a
+            // per-component trigger already classified at the same category.
+            $this->ateResults[$route] = [
+                'route'             => $route,
+                'canonical'         => $canonical,
+                'ate_mix'           => $ateMix,
+                'category'          => $mixCategory,
+                'unit'              => self::ATE_ROUTE_UNIT[$route] ?? '',
+                'outcome'           => $mixCategory === null ? 'not_classified' : 'classified',
+                'contributor_count' => count($usedContributors),
+            ];
+
             if ($mixCategory === null) {
                 // ATE_mix above the highest category's upper bound — not
                 // classified as acute-toxic by this route. Log the result
@@ -1975,7 +2023,9 @@ class HazardEngine
 
             if ($this->alreadyClassified($allHClasses, $canonical, $mixCategory)) {
                 // Per-component or earlier summation already classified
-                // at this (route, category) — don't duplicate.
+                // at this (route, category) — don't duplicate. The ATEmix
+                // value still reaches Section 11 via ate_results.
+                $this->ateResults[$route]['outcome'] = 'already_classified';
                 continue;
             }
 
@@ -1990,6 +2040,7 @@ class HazardEngine
                 $this->traceStep('ate_mixture_dominated', "ATE mix for {$route} at {$mixCategory} dominated by existing more-severe classification", [
                     'route' => $route, 'ate_mix' => $ateMix, 'would_be_category' => $mixCategory,
                 ]);
+                $this->ateResults[$route]['outcome'] = 'dominated';
                 continue;
             }
 

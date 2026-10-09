@@ -10,7 +10,7 @@
  *     (H332/H334/H335/H336, H312/H315/H317, contact-lens sentence, H302);
  *   - the 4(b) symptoms line is built from H3xx statements only, split
  *     into acute / delayed;
- *   - the 4(c) notes fragments are appended for H304/H305, H314, H330/H331;
+ *   - the 4(c) notes fragments (H304/H305, H314/H318, H330/H331) are placed BEFORE the default sentence (audit #9);
  *   - a per-FG override replaces the whole field;
  *   - every new translation key exists in all four language files.
  *
@@ -116,8 +116,8 @@ check($s['skin'] === $tr('skin_corrosive'), 'skin corrosive exactly', $s['skin']
 check($s['eyes'] === $tr('eyes_corrosive') . ' ' . $tr('eyes_contact_lenses'), 'eyes corrosive + contact lenses', $s['eyes']);
 check($s['ingestion'] === $tr('ingestion_aspiration'), 'ingestion aspiration exactly', $s['ingestion']);
 check(
-    $s['notes'] === $tr('notes') . ' ' . $tr('notes_aspiration') . ' ' . $tr('notes_corrosive') . ' ' . $tr('notes_inhalation_delayed'),
-    'notes base + aspiration + corrosive + inhalation_delayed',
+    $s['notes'] === $tr('notes_aspiration') . ' ' . $tr('notes_corrosive') . ' ' . $tr('notes_inhalation_delayed') . ' ' . $tr('notes'),
+    'notes aspiration + corrosive + inhalation_delayed, then base (#9: fragments lead)',
     $s['notes']
 );
 check(
@@ -135,7 +135,7 @@ check($s['inhalation'] === $tr('inhalation_fatal'), 'combined -> inhalation_fata
 check($s['skin'] === $tr('skin_toxic'), 'combined -> skin_toxic', $s['skin']);
 check($s['ingestion'] === $tr('ingestion_toxic'), 'combined -> ingestion_toxic', $s['ingestion']);
 check($s['symptoms'] === 'Acute: Fatal if swallowed, in contact with skin or if inhaled.', 'combined symptoms', $s['symptoms']);
-check($s['notes'] === $tr('notes') . ' ' . $tr('notes_inhalation_delayed'), 'combined notes + inhalation_delayed', $s['notes']);
+check($s['notes'] === $tr('notes_inhalation_delayed') . ' ' . $tr('notes'), 'combined notes: inhalation_delayed, then base', $s['notes']);
 
 // ---------------------------------------------------------------------
 echo "f. Overrides win whole-field\n";
@@ -143,6 +143,65 @@ $s = $m->invoke($gen, $hz(['H314']), [4 => ['skin' => 'Custom skin', 'symptoms' 
 check($s['skin'] === 'Custom skin', 'skin override', $s['skin']);
 check($s['symptoms'] === 'Custom symptoms', 'symptoms override', $s['symptoms']);
 check($s['eyes'] === $tr('eyes_corrosive') . ' ' . $tr('eyes_contact_lenses'), 'eyes still derived', $s['eyes']);
+
+// ---------------------------------------------------------------------
+echo "h. Notes to physician (audit #9): fragments lead, default closes, exact EN wording\n";
+// Exact decision wording (US spelling per the sheet's house style).
+check($tr('notes_aspiration') === 'Do not induce vomiting; risk of aspiration into the lungs.', 'EN notes_aspiration wording', $tr('notes_aspiration'));
+check($tr('notes_corrosive') === 'Do not attempt to neutralize; treat corrosive burns as thermal burns.', 'EN notes_corrosive wording', $tr('notes_corrosive'));
+check($tr('notes_inhalation_delayed') === 'Keep under medical observation for at least 48 hours; delayed pulmonary edema possible.', 'EN notes_inhalation_delayed wording', $tr('notes_inhalation_delayed'));
+check($tr('notes') === 'Treat symptomatically. Show this SDS to medical personnel.', 'EN default notes unchanged', $tr('notes'));
+
+// Flammable solvent ink: H225 + H304 + H319 + H336 + H412 -> aspiration fragment only.
+$s = $m->invoke($gen, $hz(['H225', 'H304', 'H319', 'H336', 'H412']), []);
+check($s['notes'] === $tr('notes_aspiration') . ' ' . $tr('notes'), 'solvent ink: aspiration then base', $s['notes']);
+check($s['notes'] === 'Do not induce vomiting; risk of aspiration into the lungs. Treat symptomatically. Show this SDS to medical personnel.', 'solvent ink: literal EN line', $s['notes']);
+
+// Water-based unclassified ink: no H-codes -> default only (covered in a., re-asserted literally here).
+$s = $m->invoke($gen, $hz([]), []);
+check($s['notes'] === 'Treat symptomatically. Show this SDS to medical personnel.', 'unclassified ink: default only', $s['notes']);
+
+// UV ink with a skin sensitiser: H315 + H317 + H319 + H411 -> no 4(c) fragment (H317 advice lives in the skin paragraph).
+$s = $m->invoke($gen, $hz(['H315', 'H317', 'H319', 'H411']), []);
+check($s['notes'] === $tr('notes'), 'UV sensitiser ink: default only', $s['notes']);
+check(str_contains($s['skin'], $tr('skin_sensitizer')), 'UV sensitiser ink: H317 advice still in skin paragraph', $s['skin']);
+
+// H318 alone triggers the corrosive-burns fragment; H319 alone does not.
+$s = $m->invoke($gen, $hz(['H318']), []);
+check($s['notes'] === $tr('notes_corrosive') . ' ' . $tr('notes'), 'H318 -> corrosive then base', $s['notes']);
+$s = $m->invoke($gen, $hz(['H319']), []);
+check($s['notes'] === $tr('notes'), 'H319 -> default only', $s['notes']);
+
+// H314 + H318 together -> corrosive fragment printed once.
+$s = $m->invoke($gen, $hz(['H314', 'H318']), []);
+check($s['notes'] === $tr('notes_corrosive') . ' ' . $tr('notes'), 'H314+H318 -> single corrosive fragment', $s['notes']);
+check(substr_count($s['notes'], $tr('notes_corrosive')) === 1, 'corrosive fragment not duplicated', $s['notes']);
+
+// H330 alone and H331 alone -> delayed-effects fragment then base.
+foreach (['H330', 'H331'] as $c) {
+    $s = $m->invoke($gen, $hz([$c]), []);
+    check($s['notes'] === $tr('notes_inhalation_delayed') . ' ' . $tr('notes'), "{$c} -> inhalation_delayed then base", $s['notes']);
+}
+
+// The default sentence always closes the field when no override is set.
+foreach ([[], ['H304'], ['H314'], ['H318'], ['H330'], ['H304', 'H314', 'H331']] as $codes) {
+    $s = $m->invoke($gen, $hz($codes), []);
+    check(str_ends_with($s['notes'], $tr('notes')), 'default closes: ' . implode('+', $codes), $s['notes']);
+}
+
+// Per-FG override replaces the whole field, fragments included.
+$s = $m->invoke($gen, $hz(['H304', 'H314']), [4 => ['notes' => 'Custom notes']]);
+check($s['notes'] === 'Custom notes', 'notes override wins over fragments', $s['notes']);
+
+// Each language: the fragments are non-empty, differ from the default and do not embed it.
+foreach (['en', 'es', 'fr', 'de'] as $lang) {
+    $trFile = require $basePath . '/templates/translations/' . $lang . '.php';
+    $def = $trFile['section4']['notes'] ?? '';
+    foreach (['notes_aspiration', 'notes_corrosive', 'notes_inhalation_delayed'] as $k) {
+        $v = $trFile['section4'][$k] ?? '';
+        check(is_string($v) && $v !== '' && $v !== $def && !str_contains($v, $def), "{$lang} section4.{$k} is a standalone fragment", $v);
+    }
+}
 
 // ---------------------------------------------------------------------
 echo "g. Translation completeness (en/es/fr/de)\n";

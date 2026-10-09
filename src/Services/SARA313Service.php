@@ -23,11 +23,15 @@ class SARA313Service
      * Analyse a composition for SARA 313 reportable chemicals.
      *
      * @param  array $composition  Output from Formula::getExpandedComposition()
+     * Only listed components are returned (audit #42: the not-listed detail
+     * and the English summary sentence were never rendered and are not
+     * computed). 'below_threshold' is kept because SDSGenerator::section12()
+     * names PBT-flagged listed components from it (audit #24).
+     *
      * @return array {
-     *   reportable: array[],    // Chemicals above threshold
-     *   below_threshold: array[], // Listed chemicals below threshold
-     *   not_listed: array[],    // Chemicals not on SARA 313 list
-     *   summary: string,
+     *   reportable: array[],      // cas_number, chemical_name, concentration_pct,
+     *                             // threshold_pct, is_pbt, category_code, sara_name, status
+     *   below_threshold: array[], // Listed chemicals below threshold (same shape)
      * }
      */
     public static function analyse(array $composition): array
@@ -36,7 +40,6 @@ class SARA313Service
 
         $reportable     = [];
         $belowThreshold = [];
-        $notListed      = [];
 
         foreach ($composition as $component) {
             $cas  = $component['cas_number'];
@@ -50,11 +53,6 @@ class SARA313Service
             );
 
             if ($saraEntry === null) {
-                $notListed[] = [
-                    'cas_number'        => $cas,
-                    'chemical_name'     => $name,
-                    'concentration_pct' => $conc,
-                ];
                 continue;
             }
 
@@ -83,16 +81,9 @@ class SARA313Service
             }
         }
 
-        // Build summary
-        $summary = count($reportable) === 0
-            ? 'No SARA 313 reportable chemicals above de minimis thresholds.'
-            : count($reportable) . ' chemical(s) exceed SARA 313 de minimis thresholds and must be reported.';
-
         return [
             'reportable'      => $reportable,
             'below_threshold' => $belowThreshold,
-            'not_listed'      => $notListed,
-            'summary'         => $summary,
         ];
     }
 

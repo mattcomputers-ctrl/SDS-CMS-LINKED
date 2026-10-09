@@ -263,6 +263,10 @@
                 <label>Bioaccumulation Potential</label>
                 <textarea name="override[12][bioaccumulation]" class="form-control" rows="2"><?= e($section['bioaccumulation'] ?? '') ?></textarea>
             </div>
+            <div class="form-group">
+                <label>Mobility in Soil</label>
+                <textarea name="override[12][mobility]" class="form-control" rows="2"><?= e($section['mobility'] ?? '') ?></textarea>
+            </div>
 
         <?php elseif ($num === 13): ?>
             <div class="form-group">
@@ -301,6 +305,7 @@
             <div class="form-group">
                 <label>Additional State Regulations</label>
                 <textarea name="override[15][state_regs]" class="form-control" rows="2"><?= e($overrides[15]['state_regs'] ?? '') ?></textarea>
+                <small class="text-muted">Printed verbatim as the "State Regulations" line at the end of Section 15 (after the Prop 65 block), in every language this override is saved for. Typical content: state right-to-know listings, e.g. "New Jersey Right-to-Know Hazardous Substance List: Toluene (CAS 108-88-3)". Leave blank to omit the line.</small>
             </div>
 
         <?php endif; ?>

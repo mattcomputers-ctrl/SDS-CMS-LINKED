@@ -39,7 +39,6 @@ $sdsData = [
         'family'           => 'UV Offset',
         'language'         => 'en',
         'generated_at'     => gmdate('Y-m-d\TH:i:s\Z'),
-        'formula_version'  => 1,
         'company_logo_path' => '',
     ],
     'sections' => [
@@ -114,7 +113,6 @@ $sdsData = [
             'unsuitable_media' => 'Do not use direct water stream.',
             'specific_hazards' => 'Combustion may produce CO and CO2.',
             'firefighter_advice' => 'Wear SCBA and full protective gear.',
-            'flash_point_c'    => 93.0,
         ],
         6 => [
             'title' => 'Accidental Release Measures',
@@ -162,7 +160,7 @@ $sdsData = [
         ],
         11 => [
             'title'           => 'Toxicological Information',
-            'acute_toxicity'  => 'Based on available data, classification criteria not met.',
+            'acute_toxicity'  => "Acute toxicity (oral): Not classified based on available data.\nAcute toxicity (dermal): Not classified based on available data.\nAcute toxicity (inhalation): Not classified based on available data.",
             'chronic_effects' => 'Prolonged exposure may cause skin drying.',
             'carcinogenicity' => 'No listed carcinogens.',
             'hazard_classes'  => [
@@ -190,6 +188,7 @@ $sdsData = [
             ],
             'persistence'     => 'No data available.',
             'bioaccumulation' => 'No data available.',
+            'mobility'        => 'No data available.',
         ],
         13 => [
             'title'   => 'Disposal Considerations',
@@ -210,24 +209,26 @@ $sdsData = [
             'sara_313'    => [
                 'reportable' => [
                     [
-                        'cas_number'        => '108-88-3',
-                        'chemical_name'     => 'Toluene',
-                        'concentration_pct' => 4.5,
-                        'threshold_pct'     => 1.0,
-                        'is_pbt'            => false,
-                        'category_code'     => null,
-                        'sara_name'         => 'Toluene',
-                        'status'            => 'reportable',
+                        'cas_number'          => '108-88-3',
+                        'chemical_name'       => 'Toluene',
+                        'concentration_range' => '1 - 5%',
+                        'threshold_pct'       => 1.0,
+                        'is_pbt'              => false,
+                        'category_code'       => null,
+                        'sara_name'           => 'Toluene',
+                        'status'              => 'reportable',
                     ],
                 ],
-                'below_threshold' => [],
-                'not_listed'      => [],
-                'summary'         => '1 chemical(s) exceed SARA 313 de minimis thresholds and must be reported.',
             ],
             'prop65' => [
-                'requires_warning' => false,
-                'warning_text'     => '',
-                'listed_chemicals' => [],
+                'requires_warning' => true,
+                'warning_text'     => 'WARNING: This product can expose you to chemicals including Toluene, which is/are known to the State of California to cause birth defects or other reproductive harm. For more information go to www.P65Warnings.ca.gov.',
+                'listed_lines'     => ['Toluene (CAS 108-88-3) — developmental toxicity'],
+            ],
+            'hap' => [
+                'has_haps'      => true,
+                'hap_chemicals' => [['cas_number' => '108-88-3', 'chemical_name' => 'Toluene', 'hap_name' => 'Toluene', 'concentration_range' => '1 - 5%']],
+                'total_hap_pct' => 4.5,
             ],
             'state_regs' => '',
             'ghs_note'   => 'Sections 12-15 are included as required by 29 CFR 1910.1200(g)(2); content not enforced by OSHA.',
@@ -238,7 +239,6 @@ $sdsData = [
             'effective_date' => '',
             'revision_note' => '',
             'abbreviations' => 'CAS = Chemical Abstracts Service; GHS = Globally Harmonized System.',
-            'voc_assumptions' => [],
         ],
     ],
     'hazard_result' => [
@@ -246,7 +246,7 @@ $sdsData = [
         'trace'       => [],
     ],
     'voc_result' => [],
-    'sara_result' => ['reportable' => [], 'below_threshold' => [], 'not_listed' => [], 'summary' => 'No SARA 313 reportable chemicals above de minimis thresholds.'],
+    'sara_result' => ['reportable' => []],
     'prop65_result' => ['requires_warning' => false],
     'carcinogen_result' => ['has_carcinogens' => false],
     'warnings' => [],
@@ -295,6 +295,30 @@ try {
             echo "[7] String output valid PDF header: YES\n";
         } else {
             echo "[7] FAIL: Invalid string output header\n";
+            $failed = true;
+        }
+
+        // Text operators of every content stream (TCPDF gzcompresses them when
+        // zlib is present; image streams fail to inflate and are kept raw).
+        $pdfText = static function (string $pdf): string {
+            $out = '';
+            if (preg_match_all('/stream\r?\n(.*?)\r?\nendstream/s', $pdf, $m)) {
+                foreach ($m[1] as $raw) {
+                    $inflated = @gzuncompress($raw);
+                    $out .= ($inflated === false ? $raw : $inflated) . "\n";
+                }
+            }
+            return $out;
+        };
+
+        // Audit #38 — the preview streams generateString() bytes, so the draft
+        // text must be in the PDF itself: Section 16 "Version:" line plus the
+        // right footer cell on every page (TCPDF escapes the parentheses).
+        $draftHits = substr_count($pdfText($pdfString), 'Draft \(not yet published\)');
+        if ($draftHits >= 2) {
+            echo "[7b] Draft text in Section 16 + footer: PASS ({$draftHits} occurrences)\n";
+        } else {
+            echo "[7b] FAIL: expected 'Draft (not yet published)' in Section 16 and the footer, found {$draftHits}\n";
             $failed = true;
         }
 
@@ -392,6 +416,18 @@ try {
             echo "[10a] FAIL: stampPublishedVersion: " . json_encode($vData['sections'][16]) . "\n";
             $failed = true;
         }
+        // Audit #38 — stamped data must print the version and no draft text
+        // anywhere (Section 16 and footer), since the preview renders the
+        // same bytes publishers get.
+        $stampedText = $pdfText($pdfService->generateString($vData));
+        if (substr_count($stampedText, 'Draft \(not yet published\)') === 0
+            && str_contains($stampedText, '(Rev. 3 ')
+            && str_contains($stampedText, '10/08/2026')) {
+            echo "[10c] Stamped render prints Rev. 3 / 10/08/2026 and no draft text: PASS\n";
+        } else {
+            echo "[10c] FAIL: stamped render still shows draft text or lacks Rev. 3 — 10/08/2026\n";
+            $failed = true;
+        }
         $vPath = $pdfService->generate($vData, $outputDir);
         $created[] = $vPath;
         if (basename($vPath) === 'TEST_v3.pdf' && file_exists($vPath) && filesize($vPath) > 1024) {
@@ -485,6 +521,48 @@ try {
             echo "[16] SARA 313 reportable vs none render distinct valid PDFs: PASS\n";
         } else {
             echo "[16] FAIL: SARA 313 none-branch output invalid or identical to reportable-branch output\n";
+            $failed = true;
+        }
+
+        // [17] PDF furniture (audit #41): no "Powered by TCPDF" link. TCPDF
+        // draws it in Close() and it surfaces as an uncompressed /URI
+        // annotation, so the rendered bytes are what to check.
+        if (!str_contains($pdfString, '/URI (http://www.tcpdf.org)')) {
+            echo "[17] No 'Powered by TCPDF' link: PASS\n";
+        } else {
+            echo "[17] FAIL: TCPDF meta link present in the rendered PDF\n";
+            $failed = true;
+        }
+
+        // [18] Pages 2+ carry no header, so their body must start in the
+        // normal 15 mm top margin, not under the 30 mm first-page band. The
+        // first text baseline per page is read from the raw page buffer
+        // ("BT x y Td", y in points from the bottom edge) BEFORE Output(),
+        // which destroys the buffers. Expected ~18-20 mm; the old layout
+        // gave ~33-35 mm. The check is never vacuous: the fixture must be
+        // at least two pages.
+        $build = new \ReflectionMethod($pdfService, 'buildPdf');
+        $build->setAccessible(true);
+        $doc = $build->invoke($pdfService, $sdsData);
+        $getBuf = new \ReflectionMethod(\TCPDF::class, 'getPageBuffer');
+        $getBuf->setAccessible(true);
+        $pageCount = $doc->getNumPages();
+        $tops = [];
+        for ($p = 2; $p <= $pageCount; $p++) {
+            preg_match_all('/BT -?[\d.]+ (-?[\d.]+) Td \[\(/', (string) $getBuf->invoke($doc, $p), $mm);
+            $ys = array_map('floatval', $mm[1]);
+            $tops[$p] = $ys ? round($doc->getPageHeight() - max($ys) / $doc->getScaleFactor(), 2) : null;
+        }
+        $bandOk = $pageCount >= 2;
+        foreach ($tops as $t) {
+            if ($t === null || $t < 15 || $t > 25) {
+                $bandOk = false;
+            }
+        }
+        if ($bandOk) {
+            echo "[18] Pages 2+ start in the 15 mm top margin: PASS (" . json_encode($tops) . ")\n";
+        } else {
+            echo "[18] FAIL: pages 2+ first text (mm from top): " . json_encode($tops) . " pages={$pageCount}\n";
             $failed = true;
         }
 

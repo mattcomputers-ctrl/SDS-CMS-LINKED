@@ -56,7 +56,6 @@ $sdsData = [
         'family'           => 'UV Offset',
         'language'         => 'en',
         'generated_at'     => gmdate('Y-m-d\TH:i:s\Z'),
-        'formula_version'  => 1,
         'company_logo_path' => '',
     ],
     'sections' => [
@@ -132,7 +131,6 @@ $sdsData = [
             'unsuitable_media' => 'Do not use direct water stream.',
             'specific_hazards' => 'Combustion may produce CO and CO2.',
             'firefighter_advice' => 'Wear SCBA and full protective gear.',
-            'flash_point_c'    => 93.0,
         ],
         6 => [
             'title' => 'Accidental Release Measures',
@@ -180,7 +178,7 @@ $sdsData = [
         ],
         11 => [
             'title'           => 'Toxicological Information',
-            'acute_toxicity'  => 'Based on available data, classification criteria not met.',
+            'acute_toxicity'  => "Acute toxicity (oral): Not classified based on available data.\nAcute toxicity (dermal): Not classified based on available data.\nAcute toxicity (inhalation): Not classified based on available data.",
             'chronic_effects' => 'Prolonged exposure may cause skin drying.',
             'carcinogenicity' => 'No listed carcinogens.',
             'hazard_classes'  => [
@@ -208,6 +206,7 @@ $sdsData = [
             ],
             'persistence'     => 'No data available.',
             'bioaccumulation' => 'No data available.',
+            'mobility'        => 'No data available.',
         ],
         13 => [
             'title'   => 'Disposal Considerations',
@@ -226,10 +225,7 @@ $sdsData = [
             'osha_status' => 'Classified as hazardous under OSHA HazCom.',
             'tsca_status' => 'All components listed on TSCA.',
             'sara_313'    => [
-                'reportable'      => [],
-                'below_threshold' => [],
-                'not_listed'      => [],
-                'summary'         => 'No SARA 313 reportable chemicals above de minimis thresholds.',
+                'reportable' => [],
             ],
             'prop65' => [
                 'requires_warning' => false,
@@ -245,7 +241,6 @@ $sdsData = [
             'effective_date' => '',
             'revision_note' => '',
             'abbreviations' => 'CAS = Chemical Abstracts Service; GHS = Globally Harmonized System.',
-            'voc_assumptions' => [],
         ],
     ],
     'hazard_result' => [
@@ -253,7 +248,7 @@ $sdsData = [
         'trace'       => [],
     ],
     'voc_result' => [],
-    'sara_result' => ['reportable' => [], 'below_threshold' => [], 'not_listed' => [], 'summary' => 'No SARA 313 reportable chemicals above de minimis thresholds.'],
+    'sara_result' => ['reportable' => []],
     'prop65_result' => ['requires_warning' => false],
     'carcinogen_result' => ['has_carcinogens' => false],
     'warnings' => [],
@@ -325,6 +320,9 @@ try {
         $utf16 = "\xFE\xFF" . implode('', array_map(static fn (string $c): string => "\0" . $c, str_split('Test Co')));
         if (!str_contains($bytes, '/Author (' . $utf16 . ')')) {
             $failures[] = 'PDF /Author must name the Section 1 supplier (Test Co), not config.php';
+        }
+        if (str_contains($bytes, '/URI (http://www.tcpdf.org)')) {
+            $failures[] = 'PDF must not carry the "Powered by TCPDF" link (SDSTcpdf sets $tcpdflink = false, audit #41)';
         }
     }
 

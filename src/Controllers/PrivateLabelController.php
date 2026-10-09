@@ -283,7 +283,19 @@ class PrivateLabelController
             redirect($backUrl);
         }
 
-        view('sds/preview', [
+        // Audit #38 — the preview is the real PDF (see SDSPreviewResponse).
+        $mode = \SDS\Services\SDSPreviewResponse::mode($_GET);
+        if ($mode === \SDS\Services\SDSPreviewResponse::MODE_PDF) {
+            try {
+                $bytes = (new \SDS\Services\PDFService())->generateString($sdsData);
+            } catch (\Throwable $e) {
+                $_SESSION['_flash']['error'] = 'Private label preview failed: ' . $e->getMessage();
+                redirect($backUrl);
+            }
+            \SDS\Services\SDSPreviewResponse::send($bytes, \SDS\Services\SDSPreviewResponse::filename($sdsData));
+        }
+
+        view($mode === \SDS\Services\SDSPreviewResponse::MODE_HTML ? 'sds/preview' : 'sds/preview-pdf', [
             'pageTitle'      => 'Private Label SDS Live Preview (' . strtoupper($lang) . '): '
                                 . $identity['code'] . ' / ' . $manufacturer['name'],
             'finishedGood'   => ['product_code' => $identity['code']],
@@ -966,13 +978,31 @@ class PrivateLabelController
             }
         }
 
+        // Audit #38 — the preview is the real PDF, rendered from the stored
+        // snapshot (or the regenerated data above when none was stored).
+        $mode = \SDS\Services\SDSPreviewResponse::mode($_GET);
+        if ($mode === \SDS\Services\SDSPreviewResponse::MODE_PDF) {
+            try {
+                $bytes = (new \SDS\Services\PDFService())->generateString($sdsData);
+            } catch (\Throwable $e) {
+                $_SESSION['_flash']['error'] = 'SDS preview failed: ' . $e->getMessage();
+                redirect($backUrl);
+            }
+            \SDS\Services\SDSPreviewResponse::send($bytes, \SDS\Services\SDSPreviewResponse::filename($sdsData));
+        }
+
+        $storedPdfUrl = null;
+        if (!empty($version['pdf_path']) && file_exists(App::basePath() . '/' . (string) $version['pdf_path'])) {
+            $storedPdfUrl = '/private-label/' . (int) $version['id'] . '/download';
+        }
+
         $livePreviewUrl = null;
         if ($version['item_id'] !== null) {
             $livePreviewUrl = '/private-label/live-preview?item_id=' . (int) $version['item_id']
                             . '&lang=' . rawurlencode($language);
         }
 
-        view('sds/preview', [
+        view($mode === \SDS\Services\SDSPreviewResponse::MODE_HTML ? 'sds/preview' : 'sds/preview-pdf', [
             'pageTitle'      => 'Private Label SDS v' . (int) $version['version'] . ' (' . strtoupper($language) . ') — '
                                 . $code . ' / ' . $version['manufacturer_name']
                                 . ($isSnapshot ? ' — published snapshot' : ' — regenerated (no snapshot stored)'),
@@ -983,6 +1013,7 @@ class PrivateLabelController
             'backUrl'        => $backUrl,
             'backLabel'      => 'Back to ' . $version['manufacturer_name'],
             'livePreviewUrl' => $livePreviewUrl,
+            'storedPdfUrl'   => $storedPdfUrl,
         ]);
     }
 

@@ -118,7 +118,9 @@ class Prop65Service
      * @param  array $composition    Expanded CAS-level composition
      * @param  array $manualEntries  Optional manual Prop 65 entries from raw materials
      * @return array {
-     *   listed_chemicals: array of matched chemicals with details,
+     *   listed_chemicals: array of matched chemicals (cas_number, chemical_name,
+     *                     concentration_pct, toxicity_type[; is_trace, is_override,
+     *                     source on manual entries] — no NSRL/MADL/date, audit #42),
      *   cancer_chemicals: string[] names of cancer-listed chemicals,
      *   repro_chemicals: string[] names of repro-listed chemicals,
      *   requires_warning: bool,
@@ -171,9 +173,6 @@ class Prop65Service
                 'chemical_name' => $displayName,
                 'concentration_pct' => $conc,
                 'toxicity_type' => $types,
-                'nsrl_ug'       => $row['nsrl_ug'],
-                'madl_ug'       => $row['madl_ug'],
-                'date_listed'   => $row['date_listed'],
             ];
 
             $listedChemicals[] = $entry;
@@ -249,9 +248,6 @@ class Prop65Service
                 'chemical_name'     => $chemName,
                 'concentration_pct' => (float) ($manual['concentration_pct'] ?? 0),
                 'toxicity_type'     => $types,
-                'nsrl_ug'           => null,
-                'madl_ug'           => null,
-                'date_listed'       => null,
                 'is_trace'          => $isTrace,
                 'is_override'       => $isOverride,
                 'source'            => 'manual',

@@ -16,7 +16,9 @@ class PDFService
 {
     /** Standard page margins in mm. */
     private const MARGIN_LEFT   = 15;
-    private const MARGIN_TOP    = 30;  // accommodates first-page header with ~2" logo
+    private const MARGIN_TOP    = 30;  // page 1 only: accommodates the header band (~2" logo + title + rule)
+    /** Pages 2+: no header (the product code is in the footer), so the body starts at the normal margin (audit #41). */
+    private const MARGIN_TOP_CONTINUATION = 15;
     private const MARGIN_RIGHT  = 15;
     private const MARGIN_BOTTOM = 20;
 
@@ -281,6 +283,14 @@ class PDFService
 
         // Add first page
         $pdf->AddPage();
+        // The header is page-1 only, so from here on every page break
+        // (auto or explicit AddPage() in the section renderers) starts the
+        // body at the normal top margin instead of under a blank 30 mm band.
+        // Must be set BEFORE any content: TCPDF snapshots tMargin per page in
+        // _beginpage()/setPage(), so a later switch (e.g. from Header()) is
+        // one page late. Page 1's cursor is already at MARGIN_TOP and is not
+        // moved (audit #41).
+        $pdf->SetTopMargin(self::MARGIN_TOP_CONTINUATION);
 
         // Render each section
         foreach ($sections as $num => $section) {
@@ -965,6 +975,10 @@ class PDFService
 
         $this->labelValue($pdf, $this->label('persistence'), (string) ($s['persistence'] ?? ''));
         $this->labelValue($pdf, $this->label('bioaccumulation'), (string) ($s['bioaccumulation'] ?? ''));
+        // Mobility in soil (item #24; 29 CFR 1910.1200 App. D, Section 12(d)).
+        // English default keeps pre-existing snapshots (meta.labels without the key) readable;
+        // labelValue() skips the line entirely when an old snapshot has no 'mobility' value.
+        $this->labelValue($pdf, $this->label('mobility', 'Mobility in Soil'), (string) ($s['mobility'] ?? ''));
     }
 
     private function renderSection14(\TCPDF $pdf, array $s): void
@@ -983,8 +997,9 @@ class PDFService
         $this->labelValue($pdf, $this->label('tsca_status'), $s['tsca_status'] ?? '');
 
         // SARA 313 / TRI supplier notification (40 CFR 372.45). SARA313Service::analyse()
-        // emits 'reportable' (>= applicable de minimis), 'below_threshold' and 'not_listed'
-        // with 'threshold_pct' / 'is_pbt' / 'sara_name' per entry. Heading + sentence always
+        // emits 'reportable' (>= applicable de minimis) and 'below_threshold' (Section 12 PBT input)
+        // with 'threshold_pct' / 'is_pbt' / 'sara_name' / 'concentration_range' (Section 3 band,
+        // audit #42) per entry. Heading + sentence always
         // print (like HAP / Prop 65); only reportable entries are listed.
         // English defaults keep pre-existing snapshots (meta.labels without these keys) readable.
         $sara = $s['sara_313'] ?? [];
@@ -997,13 +1012,19 @@ class PDFService
                 foreach ($sara['reportable'] as $chem) {
                     $name      = (string) ((($chem['sara_name'] ?? '') !== '') ? $chem['sara_name'] : ($chem['chemical_name'] ?? ''));
                     $threshold = rtrim(rtrim(number_format((float) ($chem['threshold_pct'] ?? 1.0), 4), '0'), '.');
+                    // Band only (audit #8/#42): exact percentages are never printed,
+                    // so a legacy snapshot without a band shows nothing here.
+                    $conc = (string) ($chem['concentration_range'] ?? '');
                     $text = $name . ' (CAS ' . ($chem['cas_number'] ?? '') . ') — '
-                          . number_format((float) ($chem['concentration_pct'] ?? 0), 2) . '% ('
+                          . $conc . ' ('
                           . $this->label('sara_313_threshold', 'de minimis threshold') . ': ' . $threshold . '%'
                           . (!empty($chem['is_pbt']) ? '; ' . $this->label('sara_313_pbt', 'PBT chemical') : '')
                           . ')';
                     $pdf->MultiCell(0, 4, "\xE2\x80\xA2 " . $text, 0, 'L');
                 }
+                $pdf->SetFont('helvetica', 'I', 7);
+                $pdf->MultiCell(0, 3, $this->label('sara_313_range_note', 'Concentrations are stated as the prescribed concentration ranges of 29 CFR 1910.1200(i)(1); the upper end of each range is the maximum percent by weight present (40 CFR 372.45(f)).'), 0, 'L');
+                $pdf->SetFont('helvetica', '', 8);
             } else {
                 $pdf->MultiCell(0, 4, $this->label('sara_313_none', 'This product does not contain any toxic chemicals subject to the reporting requirements of SARA Title III Section 313 (40 CFR Part 372) at or above the applicable de minimis concentration.'), 0, 'L');
             }
@@ -1027,9 +1048,10 @@ class PDFService
 
             foreach ($hap['hap_chemicals'] as $chem) {
                 $hapName = $chem['hap_name'] ?? $chem['chemical_name'] ?? '';
-                $concPct = number_format((float) ($chem['concentration_pct'] ?? 0), 2);
+                // Band only (audit #8/#42): exact percentages are never printed.
+                $concPct = (string) ($chem['concentration_range'] ?? '');
                 $pdf->Cell($wHap[0], 5, substr($hapName, 0, 65), 1, 0, 'L');
-                $pdf->Cell($wHap[1], 5, $concPct . '%', 1, 1, 'C');
+                $pdf->Cell($wHap[1], 5, $concPct, 1, 1, 'C');
             }
 
             $pdf->SetFont('helvetica', 'B', 8);
@@ -1095,6 +1117,16 @@ class PDFService
             if ($pdf->GetY() < $minY) {
                 $pdf->SetY($minY);
             }
+            // Listed chemicals with their OEHHA listing type(s) (audit #42).
+            // No NSRL / MADL / listing dates.
+            if (!empty($prop65['listed_lines']) && is_array($prop65['listed_lines'])) {
+                $pdf->SetFont('helvetica', 'B', 8);
+                $pdf->Cell(0, 4, $this->label('prop65_listed', 'Listed chemicals') . ':', 0, 1);
+                $pdf->SetFont('helvetica', '', 8);
+                foreach ($prop65['listed_lines'] as $line) {
+                    $pdf->MultiCell(0, 4, "\xE2\x80\xA2 " . (string) $line, 0, 'L');
+                }
+            }
             $pdf->Ln(1);
         } else {
             $pdf->SetFont('helvetica', 'B', 9);
@@ -1104,9 +1136,13 @@ class PDFService
             $pdf->Ln(1);
         }
 
-        // State regulations override text
-        if (!empty($s['state_regs']) && empty($prop65['requires_warning'])) {
-            $this->labelValue($pdf, $this->label('state_regulations'), $s['state_regs']);
+        // State regulations (audit #31): the operator's per-product note prints
+        // whenever present, with or without the Prop 65 block above. Snapshots
+        // published before #31 carry the Prop 65 warning text in state_regs
+        // (old generator fallback); never print that a second time.
+        $stateRegs = trim((string) ($s['state_regs'] ?? ''));
+        if ($stateRegs !== '' && $stateRegs !== trim((string) ($prop65['warning_text'] ?? ''))) {
+            $this->labelValue($pdf, $this->label('state_regulations'), $stateRegs);
         }
 
         // Note

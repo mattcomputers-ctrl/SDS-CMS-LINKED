@@ -118,6 +118,21 @@ try {
     check($p['uniqueCas'] === 2 && $p['rows'] === 2, '2 rows / 2 CAS');
 
     // -----------------------------------------------------------------
+    echo "b2. parse — real EPA 2025 download header (ChemName, casregno, UID, EXP, DEF)\n";
+    $epa2025 = $fixture('TSCAINV_real_2025.csv',
+        "ID,CASRN,casregno,UID,EXP,ChemName,DEF,UVCB,FLAG,ACTIVITY\n"
+        . "1,108-88-3,108883,,,\"Benzene, methyl-\",,N,,ACTIVE\n"
+        . "2,50-00-0,50000,,,Formaldehyde,,N,S,INACTIVE\n"
+    );
+    $p = $importer->parse($epa2025);
+    check($p['ok'] === true && $p['headerError'] === null, 'real EPA header accepted', $p['headerError']);
+    check($p['columns']['cas'] === 'CASRN' && $p['columns']['name'] === 'ChemName'
+        && $p['columns']['activity'] === 'ACTIVITY' && $p['columns']['flag'] === 'FLAG' && $p['columns']['uvcb'] === 'UVCB',
+        'CASRN (not casregno) + ChemName + ACTIVITY/FLAG/UVCB detected', $p['columns']);
+    check($p['parsed']['108-88-3'] === ['name' => 'Benzene, methyl-', 'active' => 1, 'flags' => null], 'row mapped from the real layout', $p['parsed']['108-88-3'] ?? null);
+    check($p['parsed']['50-00-0']['active'] === 0 && $p['parsed']['50-00-0']['flags'] === 'S', 'INACTIVE + flag from the real layout', $p['parsed']['50-00-0'] ?? null);
+
+    // -----------------------------------------------------------------
     echo "c. parse — header problems\n";
     $noCas = $fixture('nocas.csv', "ID,Substance,Status\n1,Toluene,ACTIVE\n");
     $p = $importer->parse($noCas);

@@ -66,7 +66,9 @@ use SDS\Core\Database;
 final class TSCAInventoryImporter
 {
     public const CAS_HEADER_RE      = '/^cas\s*(rn|#|no\.?|number)?$/i';
-    public const NAME_HEADER_RE     = '/index\s*name|chemical\s*name|substance\s*name|^name$/i';
+    // EPA's current download uses "ChemName" (no space); older/other exports use
+    // "CA Index Name", "Chemical Name" or "Substance Name".
+    public const NAME_HEADER_RE     = '/index[\s_]*name|chem(ical)?[\s_]*name|substance[\s_]*name|^name$/i';
     public const ACTIVITY_HEADER_RE = '/^activity$/i';
     public const FLAG_HEADER_RE     = '/^flags?$/i';
     public const UVCB_HEADER_RE     = '/^uvcb$/i';

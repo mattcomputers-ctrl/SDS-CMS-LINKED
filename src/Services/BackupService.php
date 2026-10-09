@@ -193,8 +193,13 @@ class BackupService
             file_put_contents($tmpDir . '/manifest.json', json_encode($manifest, JSON_PRETTY_PRINT));
 
             // ── 4. Create tar.gz ─────────────────────────────────
+            // The archive is mostly JSON text (SDS snapshots, hazard traces),
+            // so compression dominates the run time. Use pigz (parallel gzip,
+            // same .gz format, restores with the normal tar -xzf) when the
+            // server has it; otherwise tar's single-threaded gzip.
             $archivePath = $dir . '/' . $filename;
-            $tarCmd = 'tar -czf ' . escapeshellarg($archivePath)
+            $pigz   = trim((string) @shell_exec('command -v pigz 2>/dev/null'));
+            $tarCmd = ($pigz !== '' ? 'tar -I pigz -cf ' : 'tar -czf ') . escapeshellarg($archivePath)
                     . ' -C ' . escapeshellarg($tmpDir) . ' .';
             exec($tarCmd, $tarOut, $tarRc);
             if ($tarRc !== 0) {

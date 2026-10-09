@@ -22,8 +22,29 @@ foreach ($pdo->query($argv[1], PDO::FETCH_ASSOC) as $r) { echo implode("\t", $r)
 ' -- "$1"; }
 ```
 
+## 0. Fast path back to publishing
+
+The shortest route from "update installed" to "SDSs publishing again". Each
+step is expanded in sections 1–4 below; the section number is in brackets.
+
+1. **Install pigz** so the pre-update backup is not single-threaded: `sudo apt install pigz` [1].
+2. **Pause automatic bulk publish** (Settings → CMS Sync Schedule) and record the solubility pre-flight count [1].
+3. **Deploy**: fetch, reset, `update.sh`, answer **Y** to the backup; confirm migrations 052–055 applied [2].
+4. **Emergency phone numbers** — publishing is blocked without them: Settings → Company, and every private-label manufacturer (Manufacturers → Edit) [4.A].
+5. **Solubility re-check** — set the genuinely water-soluble raws (water, glycols, lower alcohols, amines) back to "Soluble in water" [3.1].
+6. **Flash points** — a product with no flash point and no classification prints Section 14 "Not determined" and will not publish: enter the flash point on the raw material(s) or set the product's Section 14 override; the bulk publish job and the SDS Creation Readiness page show which products are blocked [4.C].
+7. **Product families** — review the seeded families and UV/LED flags, fill the per-language default text, add the rules (e.g. prefix `VEC47` → UV), Recompute and Apply [3.5].
+8. **Element flags** for Section 10: seed script dry run, then `--confirm` [3.2].
+9. **TSCA inventory** — download the EPA CSV, import dry run, then `--confirm`; without it every sheet prints "TSCA status has not been verified" (a warning, not a block) [3.3].
+10. **Override cleanup** — dry run, then `--apply`; clear the stock pre-update overrides it reports as "Custom text (kept)" [3.4].
+11. **Private label** — retire or freeze unwanted backfilled items; run `check-pl-duplicates.php` [3.6, 3.7].
+12. **Live-DB test suites** on the server [3.8].
+13. **Spot-check three sheets** (solvent ink, water-based, UV with acrylates) in EN and ES against the Section checklist [4.B].
+14. **Resume**: tick "Auto bulk publish" again and run one bulk publish; work through the failures it reports (each one is a publish gate from step 4 or 6) [3.9].
+
 ## 1. Pre-flight (before deploying)
 
+- [ ] `pigz` installed for a multi-core pre-update backup: `sudo apt install pigz` (`update.sh` falls back to gzip and warns if it is missing; the admin Backups page uses it too).
 - [ ] No bulk publish is running: `pgrep -af 'publish-worker\.php' | wc -l` prints `0` (a running worker keeps executing the old code).
 - [ ] Settings → CMS Sync Schedule: "Auto bulk publish" unticked and saved, so the hourly CMS sync (HH:07) cannot start a bulk publish halfway through section 3. It is turned back on in step 3.9.
 - [ ] Count recorded of the raw materials migration 054 will reset (#18), and their list saved for step 3.1:

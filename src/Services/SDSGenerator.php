@@ -819,7 +819,8 @@ class SDSGenerator
         return [
             'title' => $this->t->get('section1.title', []),
             'product_identifier'    => $fg['product_code'] . ' — ' . $fg['description'],
-            'product_family'        => $fg['family'] ?? '',
+            // The product family is internal (Section 1 default text, UV logic);
+            // it is never printed on the sheet (Matt, 2026-10-09).
             'recommended_use'       => $this->resolveUseText($fg, $overrides, 'recommended_use'),
             'restrictions'          => $this->resolveUseText($fg, $overrides, 'restrictions'),
             'manufacturer_name'     => $block['manufacturer_name'],

@@ -367,7 +367,7 @@ class PDFService
     private function renderSection1(\TCPDF $pdf, array $s): void
     {
         $this->labelValue($pdf, $this->label('product_identifier'), $s['product_identifier'] ?? '');
-        $this->labelValue($pdf, $this->label('product_family'), $s['product_family'] ?? '');
+        // product_family is deliberately not printed (internal classification only).
         $this->labelValue($pdf, $this->label('recommended_use'), $s['recommended_use'] ?? '');
         $this->labelValue($pdf, $this->label('restrictions'), $s['restrictions'] ?? '');
         $pdf->Ln(2);

@@ -47,7 +47,7 @@ $sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, '
             <?php
                 $s1Product = [
                     'product_identifier' => $l('product_identifier'),
-                    'product_family'     => $l('product_family'),
+                    // product_family is internal only — never printed (matches PDFService::renderSection1)
                     'recommended_use'    => $l('recommended_use'),
                     'restrictions'       => $l('restrictions'),
                 ];

@@ -80,7 +80,7 @@ echo "1. en: family defaults used when no override and no column\n";
 $s = $section1('en', $baseFg);
 check($s['recommended_use'] === 'Fam EN', 'recommended_use = family en text', $s['recommended_use']);
 check($s['restrictions'] === 'Res EN', 'restrictions = family en text', $s['restrictions']);
-check($s['product_family'] === 'UV Offset', 'product_family prints the family name', $s['product_family']);
+check(!array_key_exists('product_family', $s), 'product_family is never emitted (family stays internal)', json_encode(array_keys($s)));
 
 // ---------------------------------------------------------------------
 echo "2. es: language text, restrictions fall back to en\n";

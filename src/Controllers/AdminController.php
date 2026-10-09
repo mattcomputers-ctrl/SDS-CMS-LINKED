@@ -13,6 +13,7 @@ use SDS\Services\BackupService;
 use SDS\Services\NetworkService;
 use SDS\Services\PermissionService;
 use SDS\Services\SARA313Service;
+use SDS\Services\TSCAInventoryImporter;
 use SDS\Services\TSCAService;
 use SDS\Services\TrainingDataService;
 use SDS\Services\FederalData\Connectors\PubChemConnector;
@@ -1821,6 +1822,316 @@ class AdminController
             'is_active_inventory' => isset($_POST['is_active_inventory']) ? 1 : 0,
             'flags'               => $flags !== '' ? $flags : null,
         ];
+    }
+
+    /* ------------------------------------------------------------------
+     *  TSCA Inventory — EPA CSV / ZIP upload (two-step, shares
+     *  TSCAInventoryImporter with scripts/import-tsca-inventory.php)
+     *
+     *  POST /tsca/import          upload → storage/temp/tsca-import-<token>.csv
+     *                             + .json sidecar (options), parse + plan,
+     *                             render the dry-run preview.
+     *  POST /tsca/import/apply    token → apply, audit, delete temp, flash.
+     *  POST /tsca/import/discard  token → delete temp.
+     *
+     *  The client only ever sees the 32-hex token; the CSV path comes from
+     *  the sidecar, never from the request. Uploads older than 2 h are
+     *  refused and swept.
+     * ----------------------------------------------------------------*/
+
+    private const TSCA_IMPORT_TTL = 7200;
+
+    /** Upper bound on the CSV extracted from an uploaded ZIP (the real EPA CSV is tens of MB). */
+    private const TSCA_IMPORT_MAX_CSV = 1024 * 1024 * 1024;
+
+    private static function tscaImportDir(): string
+    {
+        $dir = App::basePath() . '/storage/temp';
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+        return $dir;
+    }
+
+    /** Validate a client token and resolve its sidecar; null when unknown / expired. */
+    private static function tscaImportMeta(string $token): ?array
+    {
+        if (!preg_match('/^[0-9a-f]{32}$/', $token)) {
+            return null;
+        }
+        $metaPath = self::tscaImportDir() . '/tsca-import-' . $token . '.json';
+        if (!is_file($metaPath)) {
+            return null;
+        }
+        $meta = json_decode((string) file_get_contents($metaPath), true);
+        if (!is_array($meta) || ($meta['token'] ?? null) !== $token) {
+            return null;
+        }
+        $meta['csv_path']  = self::tscaImportDir() . '/tsca-import-' . $token . '.csv';
+        $meta['meta_path'] = $metaPath;
+        if (!is_file($meta['csv_path'])) {
+            return null;
+        }
+        if (time() - (int) ($meta['created_at'] ?? 0) > self::TSCA_IMPORT_TTL) {
+            self::tscaImportCleanup($token);
+            return null;
+        }
+        return $meta;
+    }
+
+    private static function tscaImportCleanup(string $token): void
+    {
+        if (!preg_match('/^[0-9a-f]{32}$/', $token)) {
+            return;
+        }
+        $dir = self::tscaImportDir();
+        @unlink($dir . '/tsca-import-' . $token . '.csv');
+        @unlink($dir . '/tsca-import-' . $token . '.json');
+    }
+
+    /** Drop abandoned uploads (older than the TTL) so storage/temp does not fill up. */
+    private static function tscaImportSweep(): void
+    {
+        foreach (glob(self::tscaImportDir() . '/tsca-import-*.json') ?: [] as $metaPath) {
+            if (time() - (int) @filemtime($metaPath) > self::TSCA_IMPORT_TTL
+                && preg_match('/tsca-import-([0-9a-f]{32})\.json$/', $metaPath, $m)) {
+                self::tscaImportCleanup($m[1]);
+            }
+        }
+    }
+
+    public function importTsca(): void
+    {
+        $this->requirePageAccess('tsca_list', 'full');
+        // A body larger than post_max_size makes PHP drop $_POST and $_FILES
+        // entirely, so the CSRF token would be "missing". Nothing is written
+        // on this branch, so flash the real cause before validating CSRF.
+        if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && $_POST === [] && $_FILES === []
+            && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
+            $_SESSION['_flash']['error'] = 'The file is larger than the server upload limit (post_max_size = '
+                . ini_get('post_max_size') . ', upload_max_filesize = ' . ini_get('upload_max_filesize') . ').';
+            redirect('/tsca');
+        }
+        CSRF::validateRequest();
+        self::tscaImportSweep();
+
+        $file = $_FILES['tsca_file'] ?? null;
+        if (!is_array($file) || (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            $code = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
+            $_SESSION['_flash']['error'] = match ($code) {
+                UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'The file is larger than the server upload limit.',
+                UPLOAD_ERR_NO_FILE                        => 'Choose the EPA TSCA inventory CSV (or the ZIP that contains it) first.',
+                default                                   => 'Upload failed (error code ' . $code . ').',
+            };
+            redirect('/tsca');
+        }
+        $tmp = (string) ($file['tmp_name'] ?? '');
+        if ($tmp === '' || !is_uploaded_file($tmp) || (int) ($file['size'] ?? 0) <= 0) {
+            $_SESSION['_flash']['error'] = 'The uploaded file is empty.';
+            redirect('/tsca');
+        }
+        $origName = basename((string) ($file['name'] ?? 'upload'));
+        $ext      = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
+        if (!in_array($ext, ['csv', 'zip'], true)) {
+            $_SESSION['_flash']['error'] = "Only .csv or .zip files are accepted (got .{$ext}).";
+            redirect('/tsca');
+        }
+
+        $token    = bin2hex(random_bytes(16));
+        $dir      = self::tscaImportDir();
+        $csvPath  = $dir . '/tsca-import-' . $token . '.csv';
+        $metaPath = $dir . '/tsca-import-' . $token . '.json';
+        $csvName  = $origName;
+
+        if ($ext === 'zip') {
+            if (!class_exists(\ZipArchive::class)) {
+                $_SESSION['_flash']['error'] = 'ZIP uploads need the PHP zip extension on this server — unzip the file and upload the CSV instead.';
+                redirect('/tsca');
+            }
+            $zip = new \ZipArchive();
+            if ($zip->open($tmp) !== true) {
+                $_SESSION['_flash']['error'] = 'The ZIP file could not be opened.';
+                redirect('/tsca');
+            }
+            // Exactly one real entry, and it must be a CSV. Directory entries
+            // and macOS resource forks are ignored.
+            $entries = [];
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $name = (string) $zip->getNameIndex($i);
+                if ($name === '' || str_ends_with($name, '/') || str_starts_with($name, '__MACOSX/') || basename($name) === '.DS_Store') {
+                    continue;
+                }
+                $entries[] = $name;
+            }
+            if (count($entries) !== 1) {
+                $zip->close();
+                $_SESSION['_flash']['error'] = count($entries) === 0
+                    ? 'The ZIP file is empty.'
+                    : 'The ZIP must contain exactly one CSV file (found ' . count($entries) . ' files: ' . implode(', ', array_slice($entries, 0, 5)) . ').';
+                redirect('/tsca');
+            }
+            $entry = $entries[0];
+            if (strtolower(pathinfo($entry, PATHINFO_EXTENSION)) !== 'csv') {
+                $zip->close();
+                $_SESSION['_flash']['error'] = 'The ZIP must contain a .csv file (found ' . basename($entry) . ').';
+                redirect('/tsca');
+            }
+            // The declared uncompressed size bounds the extraction (the CSV
+            // branch is bounded by upload_max_filesize; this one is not) and
+            // lets a short / corrupt extraction be rejected instead of being
+            // previewed as a plausible smaller inventory.
+            $st  = $zip->statName($entry);
+            $max = self::TSCA_IMPORT_MAX_CSV;
+            if ($st === false || (int) ($st['size'] ?? 0) <= 0 || (int) $st['size'] > $max) {
+                $zip->close();
+                $_SESSION['_flash']['error'] = 'The CSV inside the ZIP is empty or implausibly large (over '
+                    . (int) ($max / 1048576) . ' MB).';
+                redirect('/tsca');
+            }
+            $declared = (int) $st['size'];
+            $in  = $zip->getStream($entry);
+            $out = $in !== false ? fopen($csvPath, 'wb') : false;
+            if ($in === false || $out === false) {
+                if ($in !== false) {
+                    fclose($in);
+                }
+                $zip->close();
+                self::tscaImportCleanup($token);
+                $_SESSION['_flash']['error'] = 'Could not extract the CSV from the ZIP.';
+                redirect('/tsca');
+            }
+            // The declared size can be forged, so the cap is enforced while copying too.
+            $copied = stream_copy_to_stream($in, $out, $max + 1);
+            fclose($in);
+            $closed = fclose($out);
+            $zip->close();
+            if ($copied === false || !$closed || $copied > $max || $copied !== $declared
+                || (int) @filesize($csvPath) !== $declared) {
+                self::tscaImportCleanup($token);
+                $_SESSION['_flash']['error'] = 'Could not extract the CSV from the ZIP (corrupt archive or incomplete write). '
+                    . 'Re-download the EPA file and try again.';
+                redirect('/tsca');
+            }
+            $csvName = basename($entry);
+        } elseif (!move_uploaded_file($tmp, $csvPath)) {
+            $_SESSION['_flash']['error'] = 'Could not save the uploaded file. Check filesystem permissions on storage/temp.';
+            redirect('/tsca');
+        }
+
+        $version = TSCAInventoryImporter::normaliseVersion((string) ($_POST['version'] ?? ''), $csvName);
+        $prune   = isset($_POST['prune']);
+
+        $importer = new TSCAInventoryImporter(Database::getInstance());
+        $parsed   = $importer->parse($csvPath);
+        if ($parsed['headerError'] !== null || !$parsed['ok']) {
+            self::tscaImportCleanup($token);
+            $msg = $parsed['headerError'] ?? 'No valid CAS rows parsed — nothing to do.';
+            if ($parsed['headerFound'] !== []) {
+                $msg .= ' Headers found: ' . implode(' | ', array_slice($parsed['headerFound'], 0, 12));
+            }
+            $_SESSION['_flash']['error'] = 'Import aborted: ' . $msg;
+            redirect('/tsca');
+        }
+
+        $plan = $importer->plan($parsed['parsed'], $importer->fetchExisting($version), $importer->fetchInUseCas(), $version, $prune);
+
+        $meta = [
+            'token'         => $token,
+            'original_name' => $origName,
+            'csv_name'      => $csvName,
+            'version'       => $version,
+            'prune'         => $prune,
+            'created_at'    => time(),
+            'user_id'       => current_user_id(),
+        ];
+        if (file_put_contents($metaPath, json_encode($meta, JSON_UNESCAPED_UNICODE)) === false) {
+            self::tscaImportCleanup($token);
+            $_SESSION['_flash']['error'] = 'Could not store the upload. Check filesystem permissions on storage/temp.';
+            redirect('/tsca');
+        }
+
+        unset($parsed['parsed']);
+        unset($plan['toUpsert'], $plan['toRestamp']);
+        view('admin/tsca-import-preview', [
+            'pageTitle' => 'TSCA Inventory Import — Preview',
+            'token'     => $token,
+            'meta'      => $meta,
+            'parsed'    => $parsed,
+            'plan'      => $plan,
+            'fileSize'  => (int) @filesize($csvPath),
+        ]);
+    }
+
+    public function applyTscaImport(): void
+    {
+        $this->requirePageAccess('tsca_list', 'full');
+        CSRF::validateRequest();
+
+        $token = (string) ($_POST['token'] ?? '');
+        $meta  = self::tscaImportMeta($token);
+        if ($meta === null) {
+            $_SESSION['_flash']['error'] = 'That upload is no longer available (uploads expire after 2 hours). Please upload the file again.';
+            redirect('/tsca');
+        }
+
+        // The label is fixed at upload time: the previewed prune set depends
+        // on it, so the applied plan must use the same one that was shown.
+        $version = TSCAInventoryImporter::normaliseVersion((string) ($meta['version'] ?? ''), (string) $meta['csv_name']);
+        $prune   = isset($_POST['prune']);
+
+        set_time_limit(0);
+        ignore_user_abort(true);
+
+        $importer = new TSCAInventoryImporter(Database::getInstance());
+        $parsed   = $importer->parse($meta['csv_path']);
+        if ($parsed['headerError'] !== null || !$parsed['ok']) {
+            self::tscaImportCleanup($token);
+            $_SESSION['_flash']['error'] = 'Import aborted: ' . ($parsed['headerError'] ?? 'No valid CAS rows parsed.');
+            redirect('/tsca');
+        }
+
+        try {
+            $r = $importer->apply($parsed['parsed'], [
+                'version' => $version,
+                'prune'   => $prune,
+                'queue'   => true,
+                'userId'  => current_user_id(),
+            ]);
+        } catch (\RuntimeException $e) {
+            self::tscaImportCleanup($token);
+            $_SESSION['_flash']['error'] = $e->getMessage();
+            redirect('/tsca');
+        }
+
+        AuditService::log('tsca_inventory', $version, 'import', TSCAInventoryImporter::summary($r) + [
+            'file'         => $meta['original_name'],
+            'rows'         => $parsed['rows'],
+            'unique_cas'   => $parsed['uniqueCas'],
+            'skipped_no_cas' => $parsed['skippedNoCas'],
+            'duplicates'   => $parsed['dupes'],
+            'prune'        => $prune,
+        ]);
+        self::tscaImportCleanup($token);
+
+        $_SESSION['_flash']['success'] = sprintf(
+            'EPA TSCA inventory %s imported: %d inserted, %d updated, %d unchanged, %d manual preserved, %d pruned. '
+            . '%d CAS in use changed status; %d raw material%s bumped, %d SDS%s queued for update.',
+            $version,
+            $r['inserted'], $r['updated'], $r['unchanged'], $r['skippedManual'], $r['pruned'],
+            $r['affectedCount'],
+            $r['rmsBumped'], $r['rmsBumped'] === 1 ? '' : 's',
+            $r['sdsQueued'], $r['sdsQueued'] === 1 ? '' : 's'
+        );
+        redirect('/tsca');
+    }
+
+    public function discardTscaImport(): void
+    {
+        $this->requirePageAccess('tsca_list', 'full');
+        CSRF::validateRequest();
+        self::tscaImportCleanup((string) ($_POST['token'] ?? ''));
+        $_SESSION['_flash']['info'] = 'Upload discarded — nothing was imported.';
+        redirect('/tsca');
     }
 
     /* ------------------------------------------------------------------

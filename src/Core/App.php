@@ -268,6 +268,9 @@ class App
         $router->get('/tsca',                 'AdminController@tsca');
         $router->get('/tsca/create',          'AdminController@createTsca');
         $router->post('/tsca',                'AdminController@storeTsca');
+        $router->post('/tsca/import',         'AdminController@importTsca');        // literal routes before {cas}
+        $router->post('/tsca/import/apply',   'AdminController@applyTscaImport');
+        $router->post('/tsca/import/discard', 'AdminController@discardTscaImport');
         $router->get('/tsca/{cas}/edit',      'AdminController@editTsca');
         $router->post('/tsca/{cas}',          'AdminController@updateTsca');
         $router->post('/tsca/{cas}/delete',   'AdminController@deleteTsca');

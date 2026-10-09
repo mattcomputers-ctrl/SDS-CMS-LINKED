@@ -35,7 +35,7 @@ step is expanded in sections 1–4 below; the section number is in brackets.
 6. **Flash points** — a product with no flash point and no classification prints Section 14 "Not determined" and will not publish: enter the flash point on the raw material(s) or set the product's Section 14 override; the bulk publish job and the SDS Creation Readiness page show which products are blocked [4.C].
 7. **Product families** — review the seeded families and UV/LED flags, fill the per-language default text, add the rules (e.g. prefix `VEC47` → UV), Recompute and Apply [3.5].
 8. **Element flags** for Section 10: seed script dry run, then `--confirm` [3.2].
-9. **TSCA inventory** — download the EPA CSV, import dry run, then `--confirm`; without it every sheet prints "TSCA status has not been verified" (a warning, not a block) [3.3].
+9. **TSCA inventory** — download the EPA CSV or ZIP and upload it on Regulatory Data → TSCA Inventory → "Import EPA TSCA inventory" (preview, then Apply); without it every sheet prints "TSCA status has not been verified" (a warning, not a block) [3.3].
 10. **Override cleanup** — dry run, then `--apply`; clear the stock pre-update overrides it reports as "Custom text (kept)" [3.4].
 11. **Private label** — retire or freeze unwanted backfilled items; run `check-pl-duplicates.php` [3.6, 3.7].
 12. **Live-DB test suites** on the server [3.8].
@@ -107,6 +107,8 @@ sudo -u www-data php /var/www/sds-system/scripts/seed-cas-element-flags.php > ~/
 sudo -u www-data php /var/www/sds-system/scripts/seed-cas-element-flags.php --confirm                      # apply
 ```
 
+  The script itself writes no file: the `> ~/element-flags-dryrun.txt` redirect is done by your login shell (not www-data), so the file lands in the home directory of the account you SSH'd in as. In a dry run "RMs bumped" / "SDSs queued" are always 0; only "Changed" is meaningful.
+
 - [ ] `tail -12 ~/element-flags-dryrun.txt` shows the "=== Summary ===" block and "DRY-RUN: no DB writes". Rows in the file whose basis is a name keyword rather than a molecular formula have been reviewed for false positives.
 - [ ] The `--confirm` run reports the same "Changed" count, plus non-zero "RMs bumped" / "SDSs queued". Add `--no-queue` if the SDS Updates page would be flooded: the raw materials are still bumped, so bulk publish still picks the products up.
 - [ ] A second dry run reports "Changed: 0".
@@ -115,8 +117,18 @@ sudo -u www-data php /var/www/sds-system/scripts/seed-cas-element-flags.php --co
 ### 3.3 TSCA inventory import (#29)
 
 Download the non-confidential TSCA Inventory zip from
-<https://www.epa.gov/tsca-inventory/how-access-tsca-inventory>, extract the
-CSV (e.g. `TSCAINV_022025.csv`) and copy it to `/tmp` on the server.
+<https://www.epa.gov/tsca-inventory/how-access-tsca-inventory>.
+
+**Preferred: the upload page.** Regulatory Data → TSCA Inventory (`/tsca`) →
+"Import EPA TSCA inventory": choose the ZIP (or the extracted CSV), keep the
+version label it fills in from the filename, click Upload. The preview shows
+the detected columns, rows parsed, unique CAS, insert/update/prune counts and
+the CAS in use whose status would change; nothing is written until you click
+**Apply import**. Discard throws the upload away. The checks below apply to
+the preview and the success message exactly as they do to the CLI output.
+
+**Fallback: the command line.** Extract the CSV (e.g. `TSCAINV_022025.csv`)
+and copy it to `/tmp` on the server, then:
 
 ```bash
 sudo -u www-data php /var/www/sds-system/scripts/import-tsca-inventory.php /tmp/TSCAINV_022025.csv             # dry run

@@ -7,7 +7,7 @@
  * Reports three things:
  *
  *   1. Duplicate (item_id, language, version) groups in private_label_sds.
- *      Migration 052 wants to add UNIQUE (item_id, language, version); it
+ *      A later migration will add UNIQUE (item_id, language, version); it
  *      must not be applied while any of these exist.
  *   2. The number of private_label_sds rows with item_id IS NULL — legacy
  *      rows the 051 backfill could not map to a registry item (expected 0).
@@ -274,7 +274,7 @@ echo "=============================================================\n";
 if ($exitCode === 1) {
     echo "RESULT: duplicates exist — do NOT apply migration 052 yet.\n";
 } else {
-    echo "RESULT: no duplicates — migration 052 (UNIQUE item_id, language, version) can be applied.\n";
+    echo "RESULT: no duplicates — a later migration (UNIQUE item_id, language, version) can be applied.\n";
 }
 
 exit($exitCode);

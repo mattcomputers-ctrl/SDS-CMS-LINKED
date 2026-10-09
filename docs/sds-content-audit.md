@@ -1,5 +1,13 @@
 # SDS Content Audit — data-driven vs prefilled
-_Generated 2026-10-07 by a 58-agent audit workflow (19 section sweeps, 2 verification lenses per section, synthesis). Status: **review only — no code changed.** Decisions are pending a review session; nothing here is scheduled._
+**Status: all 42 items are implemented.** They landed in batches A–D, committed on main 2026-10-08/09:
+- A: `9d8de70`
+- B: `b3a51ed`
+- C: `7b7ba32`, which includes #39 alongside the #40 housekeeping
+- D: #37, localization, completed here
+
+Deploy and one-time steps: [post-update-checklist.md](post-update-checklist.md). The findings below describe the code as audited on 2026-10-07.
+
+_Generated 2026-10-07 by a 58-agent audit workflow (19 section sweeps, 2 verification lenses per section, synthesis). At generation the document was review-only (no code changed) and decisions were pending; they are recorded in the Decisions log below._
 Companion file: [sds-content-audit-field-inventory.md](sds-content-audit-field-inventory.md) — every rendered field with its source classification and code location.
 
 ## Decisions log

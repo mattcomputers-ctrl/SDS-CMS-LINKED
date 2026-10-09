@@ -243,6 +243,48 @@ $gl = $method('getLabels')->invoke($gen);
 check(is_array($gl) && !array_key_exists('voc_less_we', $gl), 'voc_less_we not in meta.labels', array_keys($gl));
 check(is_array($gl) && !array_key_exists('solids_vol_pct', $gl), 'solids_vol_pct not in meta.labels', array_keys($gl));
 check(is_array($gl) && array_key_exists('solids_wt_pct', $gl) && array_key_exists('voc_lb_gal', $gl), 'kept labels still present');
+check(($gl['uv_acrylate_note'] ?? null) === 'UV Acrylate Information', '#37 meta.labels carries uv_acrylate_note', $gl['uv_acrylate_note'] ?? null);
+
+// ---------------------------------------------------------------------
+echo "9. #37 Physical state / colour enums printed in the sheet language\n";
+$s9For = static function (string $lang) {
+    $g = new \SDS\Services\SDSGenerator(new \SDS\Services\TranslationService($lang));
+    $m = new ReflectionMethod($g, 'section9');
+    $m->setAccessible(true);
+    return static fn (array $fg, array $calcResult, array $ov = []) => $m->invoke($g, $fg, $calcResult, $ov);
+};
+$enS9 = $s9For('en');
+$r = $enS9(['physical_state' => 'Paste', 'color' => 'Black'], $calc());
+check($r['physical_state'] === 'Paste' && $r['color'] === 'Black' && $r['appearance'] === 'Black paste', 'EN unchanged: Paste / Black / "Black paste"', $r);
+$r = $enS9(['physical_state' => 'Semi-solid', 'color' => 'Dark Blue'], $calc());
+check($r['physical_state'] === 'Semi-solid' && $r['appearance'] === 'Dark Blue semi-solid', 'EN custom values pass through', $r);
+$expect = [
+    'es' => ['Pasta', 'Negro', 'Pasta, negro', 'Líquido', 'Líquido'],
+    'fr' => ['Pâte', 'Noir', 'Pâte ; couleur : noir', 'Liquide', 'Liquide'],   // colour as a noun, no gender agreement with the state
+    'de' => ['Pastös', 'Schwarz', 'Pastös, schwarz', 'Flüssig', 'Flüssig'],
+];
+foreach ($expect as $lang => [$state, $colour, $appearance, $liquid, $bareAppearance]) {
+    $f = $s9For($lang);
+    $r = $f(['physical_state' => 'Paste', 'color' => 'Black'], $calc());
+    check($r['physical_state'] === $state && $r['color'] === $colour && $r['appearance'] === $appearance, "{$lang}: Paste/Black -> {$state} / {$colour} / '{$appearance}'", $r);
+    $r = $f(['physical_state' => '', 'color' => ''], $calc());
+    check($r['physical_state'] === $liquid && $r['appearance'] === $bareAppearance, "{$lang}: default Liquid translated, bare appearance '{$bareAppearance}'", $r);
+    $r = $f(['physical_state' => 'Semi-solid', 'color' => 'Dark Blue'], $calc());
+    check($r['physical_state'] === 'Semi-solid' && $r['color'] === 'Dark Blue', "{$lang}: custom values print as entered", $r);
+    $tl = new \SDS\Services\TranslationService($lang);
+    foreach (['state_liquid', 'state_solid', 'state_powder', 'state_paste', 'state_gel', 'state_gas',
+              'color_black', 'color_white', 'color_yellow', 'color_cyan', 'color_magenta', 'color_transparent', 'color_various',
+              'appearance_color_state', 'appearance_state'] as $k) {
+        $raw = (require $basePath . '/templates/translations/' . $lang . '.php')['section9'][$k] ?? null;
+        check(is_string($raw) && $raw !== '', "{$lang}: section9.{$k} defined in the {$lang} file", $raw);
+    }
+}
+// Section 6 still branches on the stored English value on a non-EN sheet.
+$esGen = new \SDS\Services\SDSGenerator(new \SDS\Services\TranslationService('es'));
+$m6 = new ReflectionMethod($esGen, 'section6');
+$m6->setAccessible(true);
+$r6 = $m6->invoke($esGen, ['h_statements' => []], ['physical_state' => 'Powder', 'color' => ''], []);
+check($r6['containment'] === (new \SDS\Services\TranslationService('es'))->get('section6.containment_solid'), 'es: Section 6 still sees the English Powder value', $r6['containment']);
 
 restore_error_handler();
 

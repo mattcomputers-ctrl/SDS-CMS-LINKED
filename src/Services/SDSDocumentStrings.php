@@ -23,6 +23,9 @@ final class SDSDocumentStrings
         'page'            => 'Page',
         'page_of'         => 'of',
         'revision_prefix' => 'Rev.',
+        // #37 PDF document properties (TCPDF SetTitle / SetSubject); :code = product code
+        'pdf_title'       => 'SDS - :code',
+        'pdf_subject'     => 'Safety Data Sheet',
     ];
 
     /**
@@ -35,5 +38,27 @@ final class SDSDocumentStrings
             return $value;
         }
         return self::DEFAULTS[$key] ?? $key;
+    }
+
+    /** @var array<string,TranslationService> one translator per sheet language (translate()) */
+    private static array $translators = [];
+
+    /**
+     * Renderer fallback for a string the snapshot does not carry (audit #37):
+     * looks the dot-notation key up in the sheet language's translation file
+     * (TranslationService falls back to EN for a key missing there), so a
+     * snapshot generated before a label was added to meta.labels still prints
+     * in its own language instead of an English PHP literal.
+     *
+     * @param  string $language  meta.language of the sheet ('en', 'es', ...)
+     * @param  string $key       e.g. 'labels.uv_acrylate_note', 'section2.not_classified'
+     * @return string|null       null when no translation file defines the key
+     */
+    public static function translate(string $language, string $key, array $replacements = []): ?string
+    {
+        $language = $language !== '' ? $language : 'en';
+        $t = self::$translators[$language] ??= new TranslationService($language);
+        $text = $t->get($key, $replacements);
+        return $text === $key ? null : $text;
     }
 }

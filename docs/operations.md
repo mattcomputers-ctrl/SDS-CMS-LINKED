@@ -18,6 +18,20 @@ sudo -u www-data git -C /var/www/sds-system reset --hard origin/main && \
 sudo bash /var/www/sds-system/update.sh
 ```
 
+- `update.sh` applies every new `migrations/*.sql` through the `mysql`
+  client and records it in `schema_migrations`. Do not also run
+  `php migrations/migrate.php`. Answer **Y** to its backup prompt whenever
+  a migration rewrites data (054 did). A failed migration prints "Failed to
+  apply" and the script carries on, so read the output.
+- Opcache: `update.sh` restarts Apache, which empties opcache (mod_php). After
+  a code-only deploy, changed files are revalidated within
+  `opcache.revalidate_freq`. If pages still run old code,
+  `sudo systemctl restart apache2`. CLI scripts and cron jobs always load
+  fresh code, but a bulk publish that is already running keeps the old code
+  until it finishes, so deploy between runs.
+- The SDS content audit release (migrations 052–055, 2026-10) has its own
+  runbook with one-time steps: `docs/post-update-checklist.md`.
+
 ---
 
 ## Bulk publish — status & control
@@ -107,6 +121,87 @@ sudo -u www-data php /var/www/sds-system/scripts/cleanup-default-overrides.php -
 
 ---
 
+## SDS content data — scripts, admin pages, migrations (audit 2026-10)
+
+Every script is a dry run unless given `--confirm` (or `--apply` for the
+override cleanup above). Every applied change that alters sheet content
+bumps `raw_materials.updated_at` and queues SDS Updates rows, so run these
+before a bulk publish, not during one.
+
+```bash
+# Section 10 element flags (nitrogen / sulfur / halogen) on cas_master (audit #19)
+sudo -u www-data php /var/www/sds-system/scripts/seed-cas-element-flags.php              # dry-run: per-CAS flags + basis
+sudo -u www-data php /var/www/sds-system/scripts/seed-cas-element-flags.php --confirm    # --no-queue: bump RMs, no SDS Updates rows
+                                                                                         # --force: also rewrite rows set by hand ('manual')
+
+# EPA TSCA inventory (audit #29). The non-confidential CSV is inside the zip at
+# https://www.epa.gov/tsca-inventory/how-access-tsca-inventory
+sudo -u www-data php /var/www/sds-system/scripts/import-tsca-inventory.php /tmp/TSCAINV_022025.csv             # dry-run
+sudo -u www-data php /var/www/sds-system/scripts/import-tsca-inventory.php /tmp/TSCAINV_022025.csv --confirm
+# Refresh from a newer release and drop EPA rows no longer in the file (manual rows are never pruned)
+sudo -u www-data php /var/www/sds-system/scripts/import-tsca-inventory.php /tmp/TSCAINV_MMYYYY.csv --confirm --prune --version=TSCAINV_MMYYYY
+
+# Private-label registry check (read-only; exit 0 = no duplicate (item_id, language, version) groups)
+sudo -u www-data php /var/www/sds-system/scripts/check-pl-duplicates.php
+```
+
+Per-product override cleanup (audit #36): `cleanup-default-overrides.php`
+under "Wipe / regenerate" above.
+
+| Admin page | URL | Use |
+|---|---|---|
+| Product Families | `/admin/product-families` (Settings → Product Families) | Families, UV/LED flag, per-language Section 1 Recommended Use / Restrictions defaults, membership rules (code prefix / description contains / specific codes). "Recompute now" → preview → Apply (#3). |
+| TSCA Inventory | `/tsca` | EPA rows (refreshed by the import) and manual rows (survive imports). The header shows the row count and the latest import (#29). |
+| RCRA Waste Codes | `/rcra` | Per-CAS D004–D043 toxicity-characteristic and F/K/P/U listed-waste codes for Section 13. D001–D003 are derived, not rows (#26). |
+| CAS Determinations | `/determinations` | Tabs: Needs Determination, Determinations Made, CAS Descriptions (with the N / S / halogen checkboxes and "Flags" save, #19), TSCA Review (per-CAS override + required note, #29). `?tab=descriptions` / `?tab=tsca` open a tab directly. |
+| SDS text editor | `/sds/{fg}/edit?lang=xx` | Per-language overrides; the automatic text shows as a hint; "Reset to automatic" (#36). |
+| Settings | `/admin/settings` | Missing Hazard Data Gate + threshold, Sections 12–15 Footnote (#25), UV Acrylate Rule Pack (#35), per-language legal disclaimer (#34), emergency phone (#2). |
+
+| Migration | Adds / changes |
+|---|---|
+| `052_sds_audit_batch_a` | `manufacturers.disclaimer_json` and per-language `sds.legal_disclaimer.<lang>` settings (#34). |
+| `053_product_families` | `product_families` and `product_family_rules`; `family_id` / `family_source` on `finished_goods` and `raw_materials`. Families are seeded from the old `sds.product_families` setting and the legacy family names; the UV/LED flag is set once from the name. Also adds `cas_master` element flags (#3, #19). |
+| `054_physical_props_transport` | `substance_mixture` on finished goods and raw materials (#6); `raw_materials.boiling_point_c` (#16); `finished_goods.transport_product_type` (#27). Drops baked-in "Not determined" / "Not regulated" overrides. **One-time data change:** Soluble / Partially soluble raw materials → "Negligible solubility in water", bumped; the count is in `sds.migration.054.solubility_reset_count` (#18). |
+| `055_regulatory_lists_overrides` | `tsca_inventory` and `cas_master.tsca_*` override columns (#29); `rcra_waste_codes`, seeded (#26); settings housekeeping: dead keys removed, gate/toggle rows seeded (#40). |
+
+---
+
+## SDS translations (EN / ES / FR / DE)
+
+SDSs are issued in EN, ES, FR and DE.
+
+**Rule: every string that can reach a generated sheet (PDF or HTML preview)
+lives in `templates/translations/{en,es,fr,de}.php` and is read through
+`TranslationService`. Never use a PHP literal.** This covers labels,
+banners, footers, table headers, "None", enum values and PDF metadata.
+
+- Key families: `document.*` (title, banners, footer, PDF metadata), `labels.*`, `section1.*` … `section16.*`.
+- GHS H/P statement text and pictogram names live in `ghs_{es,fr,de}.php`.
+- Add new keys to all four files in the same change. Never rename an existing key: snapshots resolve labels by key.
+- Stays in English on every sheet: regulatory citations and acronyms (OSHA, HazCom, 29 CFR 1910.1200, 49 CFR, 40 CFR 261, TSCA, SARA 313, RCRA codes), H/P codes, CAS and UN numbers, and DOT proper shipping names (49 CFR). A translated gloss in parentheses is optional.
+- Chemical names and other data-entered text come from data and print as entered.
+- Stored enum values (physical state, colour, carcinogen classification) stay English in the database and are translated only when printed.
+
+After touching a translation file, a renderer or any service that produces
+sheet text, run these in Docker:
+
+```bash
+MSYS_NO_PATHCONV=1 docker run --rm -v "C:/Claude Sessions/SDS-System:/app" -w /app sds-php:8.1-gd php tests/Services/TranslationCompletenessTest.php
+MSYS_NO_PATHCONV=1 docker run --rm -v "C:/Claude Sessions/SDS-System:/app" -w /app sds-php:8.1-gd php tests/Services/TranslationLiteralSweepTest.php
+MSYS_NO_PATHCONV=1 docker run --rm -v "C:/Claude Sessions/SDS-System:/app" -w /app sds-php:8.1-gd php tests/Services/RendererTranslationParityTest.php
+```
+
+They check, respectively:
+
+- **`TranslationCompletenessTest`**: identical key sets, placeholders and actually-translated sentences across the four files (plus GHS coverage).
+- **`TranslationLiteralSweepTest`**: English display literals creeping back into the generator, services or views.
+- **`RendererTranslationParityTest`**: the renderers' fallbacks.
+
+On the server, the same suites run as
+`sudo -u www-data php /var/www/sds-system/tests/Services/<Suite>.php`.
+
+---
+
 ## Download files past Incapsula (OEHHA / similar)
 
 ```bash
@@ -133,6 +228,20 @@ $c = require "/var/www/sds-system/config/config.php"; $d=$c["db"];
 $pdo = new PDO("mysql:host=".$d["host"].";dbname=".$d["name"].";charset=utf8mb4",$d["user"],$d["password"]);
 foreach ($pdo->query("YOUR SQL HERE") as $r) { print_r($r); }
 '
+```
+
+Shortcut for a shell session. `sdsq '<SQL>'` prints one tab-separated
+line per row. Inside the single quotes use double quotes for SQL strings
+and backticks for `key` / `value`:
+
+```bash
+sdsq() { sudo -u www-data php -r '
+$c = require "/var/www/sds-system/config/config.php"; $d = $c["db"];
+$pdo = new PDO("mysql:host=".$d["host"].";dbname=".$d["name"].";charset=utf8mb4", $d["user"], $d["password"]);
+foreach ($pdo->query($argv[1], PDO::FETCH_ASSOC) as $r) { echo implode("\t", $r), "\n"; }
+' -- "$1"; }
+
+sdsq 'SELECT version, applied_at FROM schema_migrations ORDER BY version DESC LIMIT 5'
 ```
 
 ---
@@ -194,9 +303,12 @@ sudo ls -l /proc/12345/fd/                # open file descriptors / sockets
   `{code}_PL_{Manufacturer}_v{n}[_{lang}].pdf`; only unversioned previews
   keep the `{code}_SDS_{lang}_{Ymd_His}.pdf` timestamp form. An exact-name
   clash gets `_2`, `_3`, … rather than overwriting. No random suffixes.
-- Before adding the 052 unique index on `private_label_sds`, run
+- Before adding the planned unique index `uq_plsds_item_lang_ver`
+  (item_id, language, version) on `private_label_sds`, run
   `sudo -u www-data php /var/www/sds-system/scripts/check-pl-duplicates.php`
-  and confirm it reports no duplicate (item_id, language, version) rows.
+  and confirm it reports no duplicate rows. The index is drafted in the 051
+  footer; the number 052 went to the content audit, so the index will ship
+  in a later migration.
 - `private_label_items.updated_at` and `manufacturers.updated_at` are
   staleness inputs: any metadata-only write to those tables must use
   `updated_at = updated_at` or every item will show as stale.

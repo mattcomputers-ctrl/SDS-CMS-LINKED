@@ -256,7 +256,7 @@ $ses = $mes->invoke($ges, $hz(['H260']), []);
 check($ses['stability'] === 'Inestable en las siguientes condiciones: contacto con agua o humedad (desprende gases inflamables).', 'ES H260 stability', $ses['stability']);
 [$gfr, $mfr] = $mk('fr');
 $sfr = $mfr->invoke($gfr, $hz([]), [], false, $comp(['has_nitrogen' => 1, 'has_sulfur' => 1]));
-check($sfr['decomposition'] === 'Monoxyde de carbone, dioxyde de carbone, oxydes d\'azote, oxydes de soufre et autres gaz toxiques.', 'FR N+S decomposition', $sfr['decomposition']);
+check($sfr['decomposition'] === 'Monoxyde de carbone, dioxyde de carbone, oxydes d\'azote, oxydes de soufre et autres gaz toxiques pouvant se dégager lors de la décomposition thermique.', 'FR N+S decomposition', $sfr['decomposition']);
 $sfr2 = $mfr->invoke($gfr, $hz(['H242']), []);
 check(str_starts_with($sfr2['stability'], 'Instable dans les conditions suivantes : chauffage'), 'FR stability colon spacing', $sfr2['stability']);
 

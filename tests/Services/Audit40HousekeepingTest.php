@@ -60,7 +60,7 @@ use SDS\Services\SDSGenerator;
 use SDS\Services\TranslationService;
 
 $languages    = ['en', 'es', 'fr', 'de'];
-$expectedKeys = ['title', 'section_prefix', 'page', 'page_of', 'revision_prefix'];
+$expectedKeys = ['title', 'section_prefix', 'page', 'page_of', 'revision_prefix', 'pdf_title', 'pdf_subject']; // #37: + PDF metadata
 $deadLabels   = ['hazard_statements', 'health_hazard', 'revision_note'];
 
 // ---------------------------------------------------------------------------

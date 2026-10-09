@@ -208,6 +208,25 @@ return [
         'solubility_partially_soluble' => 'Partially soluble in water',
         'solubility_negligible'        => 'Negligible solubility in water',
         'solubility_not_soluble'       => 'Not soluble in water',
+        // #37 Physical State enum values (stored in English; translated at render time only)
+        'state_liquid' => 'Liquid',
+        'state_solid'  => 'Solid',
+        'state_powder' => 'Powder',
+        'state_paste'  => 'Paste',
+        'state_gel'    => 'Gel',
+        'state_gas'    => 'Gas',
+        // #37 Color enum values (default sds.color_options list; other values print as entered)
+        'color_black'       => 'Black',
+        'color_white'       => 'White',
+        'color_yellow'      => 'Yellow',
+        'color_cyan'        => 'Cyan',
+        'color_magenta'     => 'Magenta',
+        'color_transparent' => 'Transparent',
+        'color_various'     => 'Various',
+        // #37 Appearance = colour + state. :color / :state as printed on their own
+        // lines, :lc_color / :lc_state the same words lower-cased (word order per language).
+        'appearance_color_state' => ':color :lc_state',
+        'appearance_state'       => ':lc_state',
     ],
     'section10' => [
         'title'            => 'Stability and Reactivity',
@@ -282,6 +301,24 @@ return [
         // :range is the Section 3 prescribed-range band (e.g. "1 - 5%"), never the exact percentage
         'carcinogenicity_listed_line'  => ':name (CAS :cas, :range) — :listings',
         'carcinogenicity_listing'      => ':agency: :classification',
+        // #37 carcinogen_list.classification registry values (stored in English,
+        // translated at render time; CarcinogenService::CLASSIFICATION_KEYS). Agency acronyms stay English.
+        'carcinogen_class_iarc_group_1'  => 'Group 1',
+        'carcinogen_class_iarc_group_2a' => 'Group 2A',
+        'carcinogen_class_iarc_group_2b' => 'Group 2B',
+        'carcinogen_class_iarc_group_3'  => 'Group 3',
+        'carcinogen_class_ntp_known'     => 'Known',
+        'carcinogen_class_ntp_rahc'      => 'Reasonably anticipated to be a human carcinogen',
+        'carcinogen_class_osha_listed'   => 'Listed',
+        // #37 per-class gloss printed after the classification on non-EN sheets
+        // (EN sheets keep the registry's own description text)
+        'carcinogen_desc_iarc_group_1'   => 'Carcinogenic to humans.',
+        'carcinogen_desc_iarc_group_2a'  => 'Probably carcinogenic to humans.',
+        'carcinogen_desc_iarc_group_2b'  => 'Possibly carcinogenic to humans.',
+        'carcinogen_desc_iarc_group_3'   => 'Not classifiable as to its carcinogenicity to humans.',
+        'carcinogen_desc_ntp_known'      => 'Known to be a human carcinogen.',
+        'carcinogen_desc_ntp_rahc'       => 'Reasonably anticipated to be a human carcinogen.',
+        'carcinogen_desc_osha_listed'    => 'Regulated carcinogen (29 CFR 1910 Subpart Z).',
         // Chronic Effects smart-logic fragments (audit #21). Wording tracks GHS Rev. 7 / HazCom 2024 App. C.
         'chronic_resp_sens'     => 'Respiratory sensitizer: may cause allergy or asthma symptoms or breathing difficulties if inhaled (H334). Repeated inhalation exposure may lead to sensitization; sensitized individuals may react to very low concentrations.',
         'chronic_skin_sens'     => 'Skin sensitizer: may cause an allergic skin reaction (H317). Repeated or prolonged skin contact may lead to sensitization; once sensitized, individuals may react to very low concentrations.',
@@ -312,6 +349,8 @@ return [
         // #24: the only persistence/bioaccumulation data held is the EPA PBT designation (sara313_list.is_pbt); :components = "Name (CAS n-n-n); …"
         'pbt_components'   => 'Contains component(s) identified as persistent, bioaccumulative and toxic (PBT) under SARA 313 (40 CFR 372.28): :components.',
         'pbt_see_persistence' => 'See Persistence and Degradability above.',
+        // #37 one :components entry ("CAS" stays English per policy)
+        'pbt_component_item' => ':name (CAS :cas)',
         // Smart-logic fragments
         'ecotoxicity_acute'        => 'Toxic to aquatic life based on hazard classification.',
         'ecotoxicity_chronic'      => 'Toxic to aquatic life with long lasting effects based on hazard classification.',
@@ -385,7 +424,7 @@ return [
         'psn_toxic_solid_corrosive_organic_nos'   => 'Toxic solids, corrosive, organic, n.o.s.',
         'marine_pollutant_yes'                    => 'Marine pollutant: Yes',
         'marine_pollutant_no'                     => 'Marine pollutant: No',
-        'note_combustible'                        => 'Combustible liquid; regulated in bulk packaging (≥ 450 L) only.',
+        'note_combustible'                        => 'Combustible liquid; regulated in bulk packaging (> 450 L) only.',
         // Printed on Class 3 PG II sheets with no subsidiary hazard: 173.121(b)(1) lets a viscous PG II liquid be ASSIGNED PG III.
         'note_viscous'                            => 'If viscous, may be assigned to Packing Group III under 49 CFR 173.121(b)(1) when the solvent-separation and viscosity criteria are met (packagings ≤ 450 L; ≤ 30 L passenger aircraft, ≤ 100 L cargo aircraft).',
     ],
@@ -403,6 +442,13 @@ return [
         'prop65_type_female_reproductive'  => 'female reproductive toxicity',
         'prop65_type_male_reproductive'    => 'male reproductive toxicity',
         'prop65_type_reproductive'         => 'reproductive toxicity',
+        // #37 Prop 65 safe-harbor warnings (same text as Prop65Service::WARNING_*);
+        // :cancer / :repro = comma-separated chemical names. www.P65Warnings.ca.gov stays as is.
+        'prop65_warning_cancer'   => 'WARNING: This product can expose you to chemicals including :cancer, which is/are known to the State of California to cause cancer. For more information go to www.P65Warnings.ca.gov.',
+        'prop65_warning_repro'    => 'WARNING: This product can expose you to chemicals including :repro, which is/are known to the State of California to cause birth defects or other reproductive harm. For more information go to www.P65Warnings.ca.gov.',
+        'prop65_warning_combined' => 'WARNING: This product can expose you to chemicals including :repro, which is/are known to the State of California to cause birth defects or other reproductive harm and chemicals including :cancer, which is/are known to the State of California to cause cancer. For more information go to www.P65Warnings.ca.gov.',
+        // Chemical name whose every occurrence in the formula is at trace level
+        'prop65_trace_name'       => ':name (trace)',
     ],
     'section16' => [
         'title'         => 'Other Information',
@@ -469,6 +515,11 @@ return [
         'page'            => 'Page',
         'page_of'         => 'of',
         'revision_prefix' => 'Rev.',
+        // #37 PDF document properties (Title / Subject metadata); :code = product code
+        'pdf_title'       => 'SDS - :code',
+        'pdf_subject'     => 'Safety Data Sheet',
+        // #37 HTML preview banner (live render, not in meta.document); :lang = language code, :date = render time
+        'preview_banner'  => 'Preview — :lang — Generated :date',
         // Shared Sections 12-15 footnote (audit item #25); printed only when
         // admin setting sds.show_ghs_section_note is on (default on).
         'ghs_section_note' => 'Sections 12–15 are included as required by OSHA HazCom (29 CFR 1910.1200(g)(2)). Their content is regulated by other agencies (e.g., EPA, DOT) and is not enforced by OSHA; it is provided in accordance with the GHS.',
@@ -512,6 +563,7 @@ return [
         'no_hazardous_note'     => 'No hazardous ingredients above disclosure thresholds.',
         'mixture'               => 'Mixture',
         'substance'             => 'Substance',
+        'h_codes'               => 'H-Codes',   // #37 composition table header (H = GHS code letter)
 
         // Section 4 (First-Aid)
         'inhalation'            => 'Inhalation',
@@ -630,6 +682,13 @@ return [
         'not_regulated'         => 'Not regulated',
         'not_applicable'        => 'Not applicable',
         'note'                  => 'Note',
+        // #37 withheld identity (Sections 3, 12, 13): name column / CAS column
+        'trade_secret'          => 'Trade Secret',
+        'trade_secret_cas'      => 'TRADE SECRET',
         'uv_acrylate_note'      => 'UV Acrylate Information',
+        // #37 renderer strings (PDFService / sds/preview.php)
+        'none'                  => 'None',            // Section 2: empty Physical/Health/Environmental hazards group
+        'company_logo_alt'      => 'Company Logo',    // preview header logo alt text
+        'prop65_pictogram_alt'  => 'Warning',         // preview Section 15 Prop 65 pictogram alt text
     ],
 ];

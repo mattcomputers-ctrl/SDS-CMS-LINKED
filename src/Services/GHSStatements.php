@@ -160,6 +160,7 @@ class GHSStatements
         'P283' => 'Wear fire resistant or flame retardant clothing',
         'P284' => 'Wear respiratory protection',
         'P285' => 'In case of inadequate ventilation wear respiratory protection',
+        'P231+P232' => 'Handle and store contents under inert gas. Protect from moisture', // #37: assigned by GHSHazardData (water-reactive), was blank
 
         // Response (P300 series)
         'P301' => 'IF SWALLOWED:',
@@ -216,6 +217,7 @@ class GHSStatements
         'P301+P312' => 'IF SWALLOWED: Call a POISON CENTER/doctor if you feel unwell',
         'P301+P330+P331' => 'IF SWALLOWED: Rinse mouth. Do NOT induce vomiting',
         'P302+P334' => 'IF ON SKIN: Immerse in cool water or wrap in wet bandages',
+        'P302+P335+P334' => 'IF ON SKIN: Brush off loose particles from skin. Immerse in cool water or wrap in wet bandages', // #37: assigned by GHSHazardData (water-reactive), was blank
         'P302+P350' => 'IF ON SKIN: Gently wash with plenty of soap and water',
         'P302+P352' => 'IF ON SKIN: Wash with plenty of water',
         'P303+P361+P353' => 'IF ON SKIN (or hair): Take off immediately all contaminated clothing. Rinse skin with water/shower',
@@ -231,6 +233,7 @@ class GHSStatements
         'P335+P334' => 'Brush off loose particles from skin. Immerse in cool water or wrap in wet bandages',
         'P337+P313' => 'If eye irritation persists: Get medical advice/attention',
         'P342+P311' => 'If experiencing respiratory symptoms: Call a POISON CENTER/doctor',
+        'P362+P364' => 'Take off contaminated clothing and wash it before reuse', // #37: assigned by GHSHazardData (skin), was blank
         'P370+P376' => 'In case of fire: Stop leak if safe to do so',
         'P370+P378' => 'In case of fire: Use dry sand, dry chemical or alcohol-resistant foam to extinguish',
         'P370+P380' => 'In case of fire: Evacuate area',

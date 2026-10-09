@@ -40,6 +40,7 @@ return [
         'H229' => 'Récipient sous pression: peut éclater sous l\'effet de la chaleur',
         'H230' => 'Peut exploser même en l\'absence d\'air',
         'H231' => 'Peut exploser même en l\'absence d\'air à une pression et/ou température élevée(s)',
+        'H232' => 'Peut s\'enflammer spontanément au contact de l\'air',
         'H240' => 'Peut exploser en cas d\'échauffement',
         'H241' => 'Peut s\'enflammer ou exploser en cas d\'échauffement',
         'H242' => 'Peut s\'enflammer en cas d\'échauffement',
@@ -103,6 +104,7 @@ return [
         'H411' => 'Toxique pour les organismes aquatiques, entraîne des effets à long terme',
         'H412' => 'Nocif pour les organismes aquatiques, entraîne des effets à long terme',
         'H413' => 'Peut être nocif à long terme pour les organismes aquatiques',
+        'H420' => 'Nuit à la santé publique et à l\'environnement en détruisant l\'ozone dans la haute atmosphère',
 
         // --- Combined H-statements ---
         'H300+H310'      => 'Mortel en cas d\'ingestion ou par contact cutané',
@@ -168,6 +170,9 @@ return [
         'P284' => 'Porter un équipement de protection respiratoire.',
         'P285' => 'Lorsque la ventilation du local est insuffisante, porter un équipement de protection respiratoire.',
 
+        // --- Combined prevention P-statements ---
+        'P231+P232' => 'Manipuler et stocker le contenu sous gaz inerte. Protéger de l\'humidité.',
+
         // --- Response (P3xx) ---
         'P301' => 'EN CAS D\'INGESTION:',
         'P302' => 'EN CAS DE CONTACT AVEC LA PEAU:',
@@ -194,7 +199,9 @@ return [
         'P337' => 'Si l\'irritation oculaire persiste:',
         'P338' => 'Enlever les lentilles de contact si la victime en porte et si elles peuvent être facilement enlevées. Continuer à rincer.',
         'P340' => 'Transporter la personne à l\'extérieur et la maintenir dans une position où elle peut confortablement respirer.',
+        'P341' => 'S\'il y a difficulté à respirer, transporter la personne à l\'extérieur et la maintenir au repos dans une position où elle peut confortablement respirer.',
         'P342' => 'En cas de symptômes respiratoires:',
+        'P350' => 'Laver avec précaution et abondamment à l\'eau et au savon.',
         'P351' => 'Rincer avec précaution à l\'eau pendant plusieurs minutes.',
         'P352' => 'Laver abondamment à l\'eau.',
         'P353' => 'Rincer la peau à l\'eau ou se doucher.',
@@ -223,6 +230,7 @@ return [
         'P301+P330+P331' => 'EN CAS D\'INGESTION: rincer la bouche. NE PAS provoquer le vomissement.',
         'P302+P334' => 'EN CAS DE CONTACT AVEC LA PEAU: rincer à l\'eau fraîche ou poser une compresse humide.',
         'P302+P335+P334' => 'EN CAS DE CONTACT AVEC LA PEAU: enlever avec précaution les particules déposées sur la peau. Rincer à l\'eau fraîche ou poser une compresse humide.',
+        'P302+P350' => 'EN CAS DE CONTACT AVEC LA PEAU: laver avec précaution et abondamment à l\'eau et au savon.',
         'P302+P352' => 'EN CAS DE CONTACT AVEC LA PEAU: laver abondamment à l\'eau.',
         'P303+P361+P353' => 'EN CAS DE CONTACT AVEC LA PEAU (ou les cheveux): enlever immédiatement tous les vêtements contaminés. Rincer la peau à l\'eau ou se doucher.',
         'P304+P312' => 'EN CAS D\'INHALATION: appeler un CENTRE ANTIPOISON/un médecin en cas de malaise.',
@@ -237,6 +245,7 @@ return [
         'P335+P334' => 'Enlever avec précaution les particules déposées sur la peau. Rincer à l\'eau fraîche ou poser une compresse humide.',
         'P337+P313' => 'Si l\'irritation oculaire persiste: consulter un médecin.',
         'P342+P311' => 'En cas de symptômes respiratoires: appeler un CENTRE ANTIPOISON/un médecin.',
+        'P362+P364' => 'Enlever les vêtements contaminés et les laver avant réutilisation.',
         'P370+P376' => 'En cas d\'incendie: obturer la fuite si cela peut se faire sans danger.',
         'P370+P378' => 'En cas d\'incendie: utiliser ... pour l\'extinction.',
         'P370+P380' => 'En cas d\'incendie: évacuer la zone.',
@@ -256,6 +265,7 @@ return [
         'P412' => 'Ne pas exposer à une température supérieure à 50 °C/122 °F.',
         'P413' => 'Stocker les quantités en vrac de plus de ... kg/... lbs à une température ne dépassant pas ... °C/... °F.',
         'P420' => 'Stocker à l\'écart des autres matières.',
+        'P422' => 'Stocker le contenu sous gaz inerte.',
 
         // --- Combined storage P-statements ---
         'P402+P404' => 'Stocker dans un endroit sec. Stocker dans un récipient fermé.',

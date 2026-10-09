@@ -124,8 +124,9 @@ foreach ($h1['p_statements'] as $s) {
     ? pass('signal word Danger')
     : fail('signal word not Danger', 'got: ' . json_encode($h1['signal_word']));
 
-(($h1['hazard_classes'][0]['category'] ?? null) === 'Cat 1A')
-    ? pass('hazard class category Cat 1A')
+// #37: display form 'Category 1A' (translatable categoryName key); machine form kept as category_canonical
+(($h1['hazard_classes'][0]['category'] ?? null) === 'Category 1A' && ($h1['hazard_classes'][0]['category_canonical'] ?? null) === 'Cat 1A')
+    ? pass('hazard class category Category 1A (canonical Cat 1A)')
     : fail('hazard class category wrong', 'got: ' . json_encode($h1['hazard_classes']));
 
 // ── Case 2: second pass on mutated result → no duplicates ───────────
@@ -177,8 +178,8 @@ $codes4 === $expectedCodes
     ? pass('signal word Warning')
     : fail('signal word not Warning', 'got: ' . json_encode($h4['signal_word']));
 
-(($h4['hazard_classes'][0]['category'] ?? null) === 'Cat 2')
-    ? pass('hazard class category Cat 2')
+(($h4['hazard_classes'][0]['category'] ?? null) === 'Category 2' && ($h4['hazard_classes'][0]['category_canonical'] ?? null) === 'Cat 2')
+    ? pass('hazard class category Category 2 (canonical Cat 2)')
     : fail('hazard class category wrong', 'got: ' . json_encode($h4['hazard_classes']));
 
 // ── Case 5: IARC Group 2A → Cat 1B, H350, Danger ────────────────────
@@ -189,8 +190,8 @@ $codes5 = array_column($h5['p_statements'], 'code');
 $codes5 === $expectedCodes
     ? pass('p_statements codes are exactly P201, P202, P280, P308+P313, P405, P501')
     : fail('unexpected p_statements codes', 'got: ' . json_encode($codes5));
-(($h5['hazard_classes'][0]['category'] ?? null) === 'Cat 1B')
-    ? pass('hazard class category Cat 1B')
+(($h5['hazard_classes'][0]['category'] ?? null) === 'Category 1B' && ($h5['hazard_classes'][0]['category_canonical'] ?? null) === 'Cat 1B')
+    ? pass('hazard class category Category 1B (canonical Cat 1B)')
     : fail('hazard class category wrong', 'got: ' . json_encode($h5['hazard_classes']));
 
 // ── Summary ─────────────────────────────────────────────────────────

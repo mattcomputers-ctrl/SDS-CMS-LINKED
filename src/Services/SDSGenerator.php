@@ -1062,8 +1062,8 @@ class SDSGenerator
                 $desc = $c['trade_secret_description'] ?? '';
                 if (!isset($tradeSecretBuckets[$desc])) {
                     $tradeSecretBuckets[$desc] = [
-                        'cas_number'        => 'TRADE SECRET',
-                        'chemical_name'     => $desc ?: 'Trade Secret',
+                        'cas_number'        => $this->t->get('labels.trade_secret_cas'),
+                        'chemical_name'     => $this->tradeSecretName($desc),
                         'concentration_pct' => 0.0,
                         'concentration_min' => null,
                         'concentration_max' => null,
@@ -1091,7 +1091,7 @@ class SDSGenerator
         // Add merged trade secret lines
         foreach ($tradeSecretBuckets as $bucket) {
             $disclosed[] = [
-                'cas_number'          => 'TRADE SECRET',
+                'cas_number'          => $bucket['cas_number'],
                 'chemical_name'       => $bucket['chemical_name'],
                 'concentration_pct'   => round($bucket['concentration_pct'], 4),
                 'concentration_range' => $this->formatConcentration($bucket),
@@ -1976,6 +1976,52 @@ class SDSGenerator
         };
     }
 
+    /**
+     * #37 Print a Section 9 enum value (physical state or colour) in the
+     * sheet language. The stored value stays English — Sections 6/8/14
+     * compare it — and only the printed copy is mapped through
+     * section9.state_* / section9.color_*. Unknown (custom) values print as
+     * entered; EN prints the stored value unchanged.
+     *
+     * @param string $kind 'state' | 'color'
+     */
+    private function localizeSection9Enum(string $value, string $kind): string
+    {
+        static $keys = [
+            'state' => [
+                'liquid' => 'state_liquid', 'solid' => 'state_solid', 'powder' => 'state_powder',
+                'paste'  => 'state_paste',  'gel'   => 'state_gel',   'gas'    => 'state_gas',
+            ],
+            'color' => [
+                'black'   => 'color_black',   'white'       => 'color_white',       'yellow'  => 'color_yellow',
+                'cyan'    => 'color_cyan',    'magenta'     => 'color_magenta',     'transparent' => 'color_transparent',
+                'various' => 'color_various',
+            ],
+        ];
+        $key = $keys[$kind][mb_strtolower(trim($value))] ?? null;
+        if ($key === null || $this->t->getLanguage() === 'en') {
+            return $value;
+        }
+        return $this->t->get('section9.' . $key);
+    }
+
+    /**
+     * #37 Printed name of a withheld (trade-secret) constituent: the
+     * operator's trade_secret_description, else labels.trade_secret in the
+     * sheet language. The upstream composition (Formula /
+     * FormulaCalcService) stores the English placeholder 'Trade Secret' as
+     * the description of a synthetic trade-secret bucket; that sentinel is
+     * mapped to the translated label too.
+     */
+    private function tradeSecretName(?string $desc): string
+    {
+        $desc = trim((string) $desc);
+        if ($desc === '' || strcasecmp($desc, 'Trade Secret') === 0) {
+            return $this->t->get('labels.trade_secret');
+        }
+        return $desc;
+    }
+
     private function section9(array $fg, array $calcResult, array $overrides): array
     {
         $voc   = $calcResult['voc'];
@@ -1987,7 +2033,10 @@ class SDSGenerator
         // FG field -> dominant RM -> 'Liquid'); re-resolve here so a direct
         // call with an unresolved $fg (tests) prints the same thing.
         $physicalState = self::resolvePhysicalState($fg, $calcResult);
-        $color = $fg['color'] ?? '';
+        $color = (string) ($fg['color'] ?? '');
+        // #37 Printed copies in the sheet language (stored values stay English).
+        $stateText = $this->localizeSection9Enum($physicalState, 'state');
+        $colorText = $color !== '' ? $this->localizeSection9Enum($color, 'color') : '';
 
         // Flash point: override first, then auto-derived from the formula.
         // Shared resolver with Section 5 (#11) so both sections print one value.
@@ -2023,11 +2072,19 @@ class SDSGenerator
         // never print — a product with no colour would say just "liquid".)
         $appearance = trim((string) ($overrides[9]['appearance'] ?? ''));
         if ($appearance === '') {
+            // #37 Word order and casing per language (section9.appearance_*);
+            // mb_ so accented words (Líquido, Pâte, Weiß) lower-case correctly.
+            $appearanceParts = [
+                'lc_color' => mb_strtolower($colorText),
+                'lc_state' => mb_strtolower($stateText),
+                'color'    => $colorText,
+                'state'    => $stateText,
+            ];
             $appearance = $color !== ''
-                ? trim($color . ' ' . strtolower($physicalState))
+                ? trim($this->t->get('section9.appearance_color_state', $appearanceParts))
                 : trim((string) ($props['appearance'] ?? ''));
             if ($appearance === '') {
-                $appearance = strtolower($physicalState);
+                $appearance = trim($this->t->get('section9.appearance_state', $appearanceParts));
             }
         }
 
@@ -2049,8 +2106,8 @@ class SDSGenerator
         // "solids vol%" are no longer part of the sheet.
         return [
             'title'                => $this->t->get('section9.title'),
-            'physical_state'       => $physicalState,
-            'color'                => $color,
+            'physical_state'       => $stateText,
+            'color'                => $colorText,
             'appearance'           => $appearance,
             'odor'                 => $odor,
             'boiling_point'        => $boilingPoint,
@@ -2591,10 +2648,11 @@ class SDSGenerator
                 }
             }
 
-            // Attach carcinogen findings
+            // Attach carcinogen findings (#37: registry classification in the
+            // sheet language; the English registry description only on EN sheets)
             foreach ($carcinogenResult['findings'] as $f) {
                 if ($f['cas_number'] === $cas) {
-                    $entry['carcinogen_listings'] = $f['agencies'];
+                    $entry['carcinogen_listings'] = CarcinogenService::localiseListings($f['agencies'] ?? [], $this->t);
                 }
             }
 
@@ -2678,8 +2736,8 @@ class SDSGenerator
                 // here. A manual-JSON trade-secret row reaches the engine at a
                 // nominal 100 % (HazardEngine), which is not a printable value.
                 $range = $comp !== null ? $this->formatConcentration($comp) : '';
-                $cas   = 'TRADE SECRET';
-                $name  = (string) (($comp['trade_secret_description'] ?? '') ?: 'Trade Secret');
+                $cas   = $this->t->get('labels.trade_secret_cas');
+                $name  = $this->tradeSecretName($comp['trade_secret_description'] ?? '');
             } else {
                 $range = $this->formatConcentration($comp ?? ['concentration_pct' => (float) ($row['conc'] ?? 0)]);
             }
@@ -2744,14 +2802,14 @@ class SDSGenerator
             }
             $comp = $compByCas[$entryCas] ?? null;
             if ($entryCas === 'TRADE_SECRET' || !empty($comp['is_trade_secret'])) {
-                $pbtName = (string) (($comp['trade_secret_description'] ?? '') ?: 'Trade Secret');
-                $pbtCas  = 'TRADE SECRET';
+                $pbtName = $this->tradeSecretName($comp['trade_secret_description'] ?? '');
+                $pbtCas  = $this->t->get('labels.trade_secret_cas');
             } else {
                 $pbtName = (string) ((($entry['sara_name'] ?? '') !== '') ? $entry['sara_name'] : ($entry['chemical_name'] ?? ''));
                 $pbtName = trim((string) preg_replace('/[\s\x{2020}\x{2021}*]+$/u', '', $pbtName));
                 $pbtCas  = $entryCas;
             }
-            $pbtParts[$entryCas] = $pbtName . ' (CAS ' . $pbtCas . ')';
+            $pbtParts[$entryCas] = $this->t->get('section12.pbt_component_item', ['name' => $pbtName, 'cas' => $pbtCas]);
         }
         $pbtLine = $pbtParts !== []
             ? $this->t->get('section12.pbt_components', ['components' => implode('; ', $pbtParts)])
@@ -2894,7 +2952,7 @@ class SDSGenerator
                 continue;
             }
             if (!empty($comp['is_trade_secret'])) {
-                $name = (string) (($comp['trade_secret_description'] ?? '') ?: 'Trade Secret');
+                $name = $this->tradeSecretName($comp['trade_secret_description'] ?? '');
             } else {
                 $name = (string) ($comp['chemical_name'] ?? '');
             }
@@ -3119,6 +3177,15 @@ class SDSGenerator
         $hapResult['hap_chemicals']   = $this->bandRegulatoryEntries($hapResult['hap_chemicals'] ?? [], $compByCas);
         $prop65Result['listed_lines'] = $this->buildProp65ListedLines($prop65Result);
         unset($prop65Result['listed_chemicals']);
+        // #37 The printed warning follows the sheet language: the computed
+        // base (and Prop65Service::analyse) carries English text.
+        if (!empty($prop65Result['requires_warning'])
+            && (!empty($prop65Result['cancer_chemicals']) || !empty($prop65Result['repro_chemicals']))) {
+            $prop65Result['warning_text'] = $this->rebuildProp65Warning(
+                $prop65Result['cancer_chemicals'] ?? [],
+                $prop65Result['repro_chemicals'] ?? []
+            );
+        }
 
         // TSCA (audit #29): every constituent CAS is resolved against the EPA
         // inventory + the per-CAS override on cas_master (TSCAService). The
@@ -3401,6 +3468,9 @@ class SDSGenerator
             // Section 3
             'type', 'cas_number', 'chemical_name', 'concentration',
             'hazardous_only_note', 'no_hazardous_note', 'mixture', 'substance',
+            'h_codes',   // #37 composition table header
+            // Sections 4-7 and 11 UV acrylate rule-pack note heading (audit #35; #37: was never loaded)
+            'uv_acrylate_note',
             // Section 4
             'inhalation', 'skin_contact', 'eye_contact', 'ingestion', 'symptoms_effects', 'notes_to_physician',
             // Section 5
@@ -3440,6 +3510,8 @@ class SDSGenerator
             'version', 'effective_date', 'abbreviations', 'disclaimer',
             // Generic
             'not_determined', 'not_regulated', 'not_applicable', 'note',
+            'none', 'company_logo_alt', 'prop65_pictogram_alt',   // #37 renderer strings
+            'uv_acrylate_note', 'trade_secret', 'trade_secret_cas', // #37 uv_acrylate_note was never carried (renderers fell back to English)
             // PPE pictogram labels
             'ppe_wear_eye', 'ppe_wear_gloves', 'ppe_wear_respiratory', 'ppe_wear_skin',
         ];
@@ -3850,7 +3922,7 @@ class SDSGenerator
         $prop65Result['requires_warning'] = !empty($prop65Result['cancer_chemicals'])
                                           || !empty($prop65Result['repro_chemicals']);
         $prop65Result['warning_text'] = $prop65Result['requires_warning']
-            ? self::rebuildProp65Warning(
+            ? $this->rebuildProp65Warning(
                 $prop65Result['cancer_chemicals'],
                 $prop65Result['repro_chemicals']
             )
@@ -3893,24 +3965,41 @@ class SDSGenerator
     }
 
     /**
-     * Rebuild Prop 65 warning text after filtering chemicals.
+     * Build the Prop 65 safe-harbor warning in the sheet language (#37):
+     * section15.prop65_warning_cancer / _repro / _combined, the same text as
+     * Prop65Service::WARNING_* in EN. Called after inhalation-only filtering
+     * and again by section15() so the printed warning always follows
+     * $this->t (computeBase() is language-free, Prop65Service::analyse()
+     * builds English). A name carrying Prop65Service's ' (trace)' suffix is
+     * re-rendered through section15.prop65_trace_name.
      */
-    private static function rebuildProp65Warning(array $cancerChems, array $reproChems): string
+    private function rebuildProp65Warning(array $cancerChems, array $reproChems): string
     {
+        $localize = function (array $names): string {
+            $out = [];
+            foreach ($names as $name) {
+                $name = (string) $name;
+                if (str_ends_with($name, ' (trace)')) {
+                    $name = $this->t->get('section15.prop65_trace_name', ['name' => substr($name, 0, -strlen(' (trace)'))]);
+                }
+                $out[] = $name;
+            }
+            return implode(', ', $out);
+        };
+
         $hasCancer = !empty($cancerChems);
         $hasRepro  = !empty($reproChems);
 
         if ($hasCancer && $hasRepro) {
-            return sprintf(
-                Prop65Service::WARNING_COMBINED,
-                implode(', ', $reproChems),
-                implode(', ', $cancerChems)
-            );
+            return $this->t->get('section15.prop65_warning_combined', [
+                'repro'  => $localize($reproChems),
+                'cancer' => $localize($cancerChems),
+            ]);
         }
         if ($hasCancer) {
-            return sprintf(Prop65Service::WARNING_CANCER, implode(', ', $cancerChems));
+            return $this->t->get('section15.prop65_warning_cancer', ['cancer' => $localize($cancerChems)]);
         }
-        return sprintf(Prop65Service::WARNING_REPRO, implode(', ', $reproChems));
+        return $this->t->get('section15.prop65_warning_repro', ['repro' => $localize($reproChems)]);
     }
 
     /**
@@ -4042,7 +4131,11 @@ class SDSGenerator
             // Add hazard class
             $hazardResult['hazard_classes'][] = [
                 'class'             => 'Carcinogenicity',
-                'category'          => $category,
+                // #37 Display form 'Category 1A' (a GHSStatements::categoryName
+                // key, so ES/FR/DE translate it, and EN matches the engine);
+                // the short machine form is carried as category_canonical.
+                'category'          => str_replace('Cat ', 'Category ', $category),
+                'category_canonical' => $category,
                 'h_codes'           => [$hCode],
                 'cas'               => $cas,
                 'chemical'          => $name,

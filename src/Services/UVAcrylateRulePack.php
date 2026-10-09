@@ -58,6 +58,16 @@ class UVAcrylateRulePack
     ];
 
     /**
+     * #37: language-free placeholder detectAcrylates() returns for a
+     * trade-secret acrylate with no trade_secret_description (also the
+     * English placeholder the composition itself stores for synthetic
+     * trade-secret rows). It is never printed as is: getSafeHandlingLanguage()
+     * maps it to labels.trade_secret in the sheet language. The operator-only
+     * formulator warnings (English UI text) show it unchanged.
+     */
+    public const TRADE_SECRET_NAME = 'Trade Secret';
+
+    /**
      * Global on/off switch (Admin Settings): settings.uv_acrylate_rule_pack.
      * A missing row counts as enabled (seeds/seed.php writes 'enabled');
      * only an explicit value other than 'enabled' turns the pack off.
@@ -119,7 +129,7 @@ class UVAcrylateRulePack
             // or its CAS — in the Section 4 note (29 CFR 1910.1200(i)). Detection
             // itself is unchanged so the generic sentences still fire.
             $display = !empty($component['is_trade_secret'])
-                ? (trim((string) ($component['trade_secret_description'] ?? '')) ?: 'Trade Secret')
+                ? (trim((string) ($component['trade_secret_description'] ?? '')) ?: self::TRADE_SECRET_NAME)
                 : null;
 
             // Match by known CAS
@@ -167,8 +177,16 @@ class UVAcrylateRulePack
             return [];
         }
 
+        // #37: the trade-secret placeholder prints as labels.trade_secret in
+        // the sheet language (detectAcrylates() runs language-free).
+        $tradeSecret = $t->get('labels.trade_secret');
+        $display = array_map(
+            static fn($n): string => strcasecmp(trim((string) $n), self::TRADE_SECRET_NAME) === 0 ? $tradeSecret : (string) $n,
+            array_values($acrylates)
+        );
+
         // array_unique: several trade-secret acrylates all display as one label.
-        $names = implode(', ', array_values(array_unique(array_values($acrylates))));
+        $names = implode(', ', array_values(array_unique($display)));
         $sfx   = $isSkinSens ? '' : '_unclassified';
 
         return [

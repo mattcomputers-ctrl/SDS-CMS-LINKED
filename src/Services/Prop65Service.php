@@ -20,18 +20,30 @@ use SDS\Core\Database;
  */
 class Prop65Service
 {
+    /*
+     * #37: the SDS safe-harbor warning text now comes from
+     * templates/translations/{lang}.php — section15.prop65_warning_cancer /
+     * _repro / _combined (:cancer / :repro = chemical names) and
+     * section15.prop65_trace_name (':name (trace)'). The three WARNING_*
+     * constants below are the English reference wording only (EN keys carry
+     * the same text verbatim); no sheet text is built from them.
+     */
+
     /**
      * Standard Prop 65 cancer warning (short form, effective 8/30/2018).
+     * @deprecated #37 reference only — use section15.prop65_warning_cancer.
      */
     public const WARNING_CANCER = 'WARNING: This product can expose you to chemicals including %s, which is/are known to the State of California to cause cancer. For more information go to www.P65Warnings.ca.gov.';
 
     /**
      * Standard Prop 65 reproductive toxicity warning.
+     * @deprecated #37 reference only — use section15.prop65_warning_repro.
      */
     public const WARNING_REPRO = 'WARNING: This product can expose you to chemicals including %s, which is/are known to the State of California to cause birth defects or other reproductive harm. For more information go to www.P65Warnings.ca.gov.';
 
     /**
      * Standard Prop 65 combined warning (reproductive + cancer).
+     * @deprecated #37 reference only — use section15.prop65_warning_combined.
      */
     public const WARNING_COMBINED = 'WARNING: This product can expose you to chemicals including %s, which is/are known to the State of California to cause birth defects or other reproductive harm and chemicals including %s, which is/are known to the State of California to cause cancer. For more information go to www.P65Warnings.ca.gov.';
 
@@ -267,13 +279,19 @@ class Prop65Service
         $reproChemicals  = array_values(array_unique($reproChemicals));
         $requiresWarning = !empty($cancerChemicals) || !empty($reproChemicals);
 
+        // #37: analyse() is language-free (computeBase() reuses it for every
+        // sheet language), so names and warning are built in English from the
+        // EN translation keys; SDSGenerator::rebuildProp65Warning() re-renders
+        // the printed warning (trace marker included) in the sheet language.
+        $en = new TranslationService('en');
+
         // Apply trace suffix: only if ALL occurrences of a chemical are trace
-        $cancerChemicals = self::applyTraceSuffix($cancerChemicals, $traceStatus);
-        $reproChemicals  = self::applyTraceSuffix($reproChemicals, $traceStatus);
+        $cancerChemicals = self::applyTraceSuffix($cancerChemicals, $traceStatus, $en);
+        $reproChemicals  = self::applyTraceSuffix($reproChemicals, $traceStatus, $en);
 
         $warningText = '';
         if ($requiresWarning) {
-            $warningText = self::buildWarningText($cancerChemicals, $reproChemicals);
+            $warningText = self::buildWarningText($cancerChemicals, $reproChemicals, $en);
         }
 
         return [
@@ -302,13 +320,16 @@ class Prop65Service
     }
 
     /**
-     * Append " (trace)" to chemical names where all occurrences are trace.
+     * Mark chemical names where all occurrences are trace via
+     * section15.prop65_trace_name (#37; EN ':name (trace)' — the English form
+     * analyse() returns, which SDSGenerator::rebuildProp65Warning() and the
+     * label short-form warning read).
      */
-    private static function applyTraceSuffix(array $chemNames, array $traceStatus): array
+    private static function applyTraceSuffix(array $chemNames, array $traceStatus, TranslationService $t): array
     {
-        return array_map(function (string $name) use ($traceStatus) {
+        return array_map(function (string $name) use ($traceStatus, $t) {
             if (!empty($traceStatus[$name])) {
-                return $name . ' (trace)';
+                return $t->get('section15.prop65_trace_name', ['name' => $name]);
             }
             return $name;
         }, $chemNames);
@@ -343,25 +364,27 @@ class Prop65Service
     }
 
     /**
-     * Build the appropriate Prop 65 warning text.
+     * Build the appropriate Prop 65 safe-harbor warning text in $t's language
+     * (#37: section15.prop65_warning_cancer / _repro / _combined; the
+     * combined text lists the reproductive toxicants first, as before).
+     * Names are printed as given.
      */
-    private static function buildWarningText(array $cancerChems, array $reproChems): string
+    private static function buildWarningText(array $cancerChems, array $reproChems, TranslationService $t): string
     {
         $hasCancer = !empty($cancerChems);
         $hasRepro  = !empty($reproChems);
 
         if ($hasCancer && $hasRepro) {
-            return sprintf(
-                self::WARNING_COMBINED,
-                implode(', ', $reproChems),
-                implode(', ', $cancerChems)
-            );
+            return $t->get('section15.prop65_warning_combined', [
+                'repro'  => implode(', ', $reproChems),
+                'cancer' => implode(', ', $cancerChems),
+            ]);
         }
 
         if ($hasCancer) {
-            return sprintf(self::WARNING_CANCER, implode(', ', $cancerChems));
+            return $t->get('section15.prop65_warning_cancer', ['cancer' => implode(', ', $cancerChems)]);
         }
 
-        return sprintf(self::WARNING_REPRO, implode(', ', $reproChems));
+        return $t->get('section15.prop65_warning_repro', ['repro' => implode(', ', $reproChems)]);
     }
 }

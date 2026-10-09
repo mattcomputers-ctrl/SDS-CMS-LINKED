@@ -2,10 +2,19 @@
 include dirname(__DIR__) . '/layouts/main.php';
 $labels = $sds['meta']['labels'] ?? [];
 $doc = $sds['meta']['document'] ?? [];
-$l = function(string $key, string $fallback = '') use ($labels) {
-    return $labels[$key] ?? ($fallback ?: $key);
+$sheetLang = (string) ($sds['meta']['language'] ?? $language ?? 'en');
+// meta.labels first, then labels.<key> in the sheet language (snapshots generated
+// before the key was added to getLabels(), audit #37), then $fallback, then the key.
+$l = function(string $key, string $fallback = '') use ($labels, $sheetLang) {
+    return $labels[$key]
+        ?? \SDS\Services\SDSDocumentStrings::translate($sheetLang, 'labels.' . $key)
+        ?? ($fallback ?: $key);
 };
-$sectionPrefix = strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, 'section_prefix'));
+// Full dot-notation key in the sheet language (legacy-snapshot fallbacks).
+$tx = function(string $key, array $replacements = []) use ($sheetLang) {
+    return \SDS\Services\SDSDocumentStrings::translate($sheetLang, $key, $replacements) ?? $key;
+};
+$sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, 'section_prefix'), 'UTF-8');
 ?>
 
 <?php if (!empty($backUrl)): ?>
@@ -24,15 +33,15 @@ $sectionPrefix = strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, 'sec
 <div class="sds-preview">
     <div class="sds-header">
         <?php if (!empty($sds['meta']['company_logo_path'])): ?>
-            <img src="<?= e($sds['meta']['company_logo_path']) ?>" alt="Company Logo" style="max-height: 60px; max-width: 250px; margin-bottom: 0.5rem;">
+            <img src="<?= e($sds['meta']['company_logo_path']) ?>" alt="<?= e($l('company_logo_alt')) ?>" style="max-height: 60px; max-width: 250px; margin-bottom: 0.5rem;">
         <?php endif; ?>
         <h2><?= e(\SDS\Services\SDSDocumentStrings::resolve($doc, 'title')) ?></h2>
-        <p class="text-muted">Preview &mdash; <?= e(strtoupper($language)) ?> &mdash; Generated <?= date('m/d/Y H:i') ?></p>
+        <p class="text-muted"><?= e($tx('document.preview_banner', ['lang' => strtoupper((string) ($language ?? $sheetLang)), 'date' => date('m/d/Y H:i')])) ?></p>
     </div>
 
     <?php foreach ($sds['sections'] as $num => $section): ?>
     <div class="sds-section" id="section-<?= $num ?>">
-        <h3 class="sds-section-title"><?= e($sectionPrefix) ?> <?= $num ?>: <?= e(strtoupper($section['title'] ?? '')) ?></h3>
+        <h3 class="sds-section-title"><?= e($sectionPrefix) ?> <?= $num ?>: <?= e(mb_strtoupper($section['title'] ?? $tx("section{$num}.title"), 'UTF-8')) ?></h3>
 
         <?php if ($num === 1): // ── Identification — same field set/order as PDFService::renderSection1() ── ?>
             <?php
@@ -46,8 +55,8 @@ $sectionPrefix = strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, 'sec
                     'manufacturer_name'    => $l('company'),
                     'manufacturer_address' => $l('address'),
                     'manufacturer_phone'   => $l('phone'),
-                    'manufacturer_email'   => $l('email', 'Email'),       // English default for pre-existing snapshots
-                    'manufacturer_website' => $l('website', 'Website'),
+                    'manufacturer_email'   => $l('email'),       // pre-existing snapshots: $l() translation fallback
+                    'manufacturer_website' => $l('website'),
                     'emergency_phone'      => $l('emergency'),
                 ];
             ?>
@@ -61,11 +70,11 @@ $sectionPrefix = strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, 'sec
 
         <?php elseif ($num === 2): // ── Hazard Identification ── ?>
             <?php if (empty($section['is_classified'])): ?>
-                <p style="margin: 0.5rem 0;"><?= e($section['not_classified_text'] ?? 'Not a hazardous substance or mixture.') ?></p>
+                <p style="margin: 0.5rem 0;"><?= e($section['not_classified_text'] ?? $tx('section2.not_classified')) ?></p>
             <?php endif; ?>
             <?php if (!empty($section['signal_word'])): ?>
                 <p class="signal-word signal-<?= strtolower($section['signal_word_en'] ?? $section['signal_word']) ?>" style="font-size: 1.3rem; font-weight: bold; color: <?= ($section['signal_word_en'] ?? $section['signal_word']) === 'Danger' ? '#DC0000' : '#FF8C00' ?>;">
-                    <?= e(strtoupper($section['signal_word'])) ?>
+                    <?= e(mb_strtoupper($section['signal_word'], 'UTF-8')) ?>
                 </p>
             <?php endif; ?>
 
@@ -138,7 +147,7 @@ $sectionPrefix = strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, 'sec
                 <?php foreach ($groupLabels as $groupKey => $groupLabel): ?>
                     <p style="margin-bottom: 0.2rem;"><strong><?= e($groupLabel) ?>:</strong></p>
                     <?php if (empty($grouped[$groupKey])): ?>
-                        <p style="margin-left: 1rem;">None</p>
+                        <p style="margin-left: 1rem;"><?= e($l('none')) ?></p>
                     <?php else: ?>
                         <?php
                             $sorted = $grouped[$groupKey];
@@ -236,7 +245,7 @@ $sectionPrefix = strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, 'sec
                     <th><?= e($l('cas_number')) ?></th>
                     <th><?= e($l('chemical_name')) ?></th>
                     <th><?= e($l('concentration')) ?></th>
-                    <th>H-Codes</th>
+                    <th><?= e($l('h_codes')) ?></th>
                 </tr></thead>
                 <tbody>
                 <?php foreach ($section['components'] as $c): ?>
@@ -379,7 +388,7 @@ $sectionPrefix = strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, 'sec
             <?php endif; ?>
 
             <?php if (!empty($section['uv_acrylate_note'])): // UV acrylate rule-pack note (audit #35) — same position as PDFService::renderSection11() ?>
-                <p style="margin-top: 0.5rem;"><strong><?= e($l('uv_acrylate_note', 'UV Acrylate Information')) ?>:</strong> <?= e($section['uv_acrylate_note']) ?></p>
+                <p style="margin-top: 0.5rem;"><strong><?= e($l('uv_acrylate_note')) ?>:</strong> <?= e($section['uv_acrylate_note']) ?></p>
             <?php endif; ?>
 
             <?php /* Pictograms are intentionally NOT shown in Section 11; they appear in Section 2 only. */ ?>
@@ -413,7 +422,7 @@ $sectionPrefix = strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, 'sec
 
             <p><strong><?= e($l('persistence')) ?>:</strong> <?= e($section['persistence'] ?? '') ?></p>
             <p><strong><?= e($l('bioaccumulation')) ?>:</strong> <?= e($section['bioaccumulation'] ?? '') ?></p>
-            <p><strong><?= e($l('mobility', 'Mobility in Soil')) ?>:</strong> <?= e($section['mobility'] ?? '') ?></p><?php /* item #24 */ ?>
+            <p><strong><?= e($l('mobility')) ?>:</strong> <?= e($section['mobility'] ?? '') ?></p><?php /* item #24 */ ?>
             <?php /* ghs_note (item #25) is printed by the shared footnote after this if/elseif chain. */ ?>
 
         <?php elseif ($num === 14): // ── Transport Information ── ?>
@@ -422,7 +431,7 @@ $sectionPrefix = strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, 'sec
             <p><strong><?= e($l('transport_hazard_class')) ?>:</strong> <?= e($section['hazard_class'] ?? '') ?></p>
             <p><strong><?= e($l('packing_group')) ?>:</strong> <?= e($section['packing_group'] ?? '') ?></p>
             <?php if (($section['environmental_hazards'] ?? '') !== ''): // audit #27 ?>
-                <p><strong><?= e($l('environmental_hazards', 'Environmental Hazards')) ?>:</strong> <?= e($section['environmental_hazards']) ?></p>
+                <p><strong><?= e($l('environmental_hazards')) ?>:</strong> <?= e($section['environmental_hazards']) ?></p>
             <?php endif; ?>
             <?php if (!empty($section['note'])): ?>
                 <p><strong><?= e($l('note')) ?>:</strong> <?= e($section['note']) ?></p>
@@ -441,7 +450,7 @@ $sectionPrefix = strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, 'sec
             ?>
                 <h4><?= e($l('sara_313_title')) ?></h4>
                 <?php if (!empty($sara['reportable'])): ?>
-                <p><?= e($l('sara_313_statement', 'This product contains the following toxic chemical(s) subject to the reporting requirements of Section 313 of Title III of the Superfund Amendments and Reauthorization Act of 1986 (SARA) and 40 CFR Part 372 (supplier notification per 40 CFR 372.45):')) ?></p>
+                <p><?= e($l('sara_313_statement')) ?></p>
                 <ul>
                 <?php foreach ($sara['reportable'] as $chem): ?>
                     <?php
@@ -450,12 +459,12 @@ $sectionPrefix = strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, 'sec
                     ?>
                     <li><?= e($saraName) ?> (CAS <?= e($chem['cas_number'] ?? '') ?>) &mdash;
                         <?= e((string) ($chem['concentration_range'] ?? '')) ?><?php /* band only, never the exact % */ ?>
-                        (<?= e($l('sara_313_threshold', 'de minimis threshold')) ?>: <?= e($saraThreshold) ?>%<?= !empty($chem['is_pbt']) ? '; ' . e($l('sara_313_pbt', 'PBT chemical')) : '' ?>)</li>
+                        (<?= e($l('sara_313_threshold')) ?>: <?= e($saraThreshold) ?>%<?= !empty($chem['is_pbt']) ? '; ' . e($l('sara_313_pbt')) : '' ?>)</li>
                 <?php endforeach; ?>
                 </ul>
-                <p class="text-muted" style="font-size: 0.75rem; font-style: italic;"><?= e($l('sara_313_range_note', 'Concentrations are stated as the prescribed concentration ranges of 29 CFR 1910.1200(i)(1); the upper end of each range is the maximum percent by weight present (40 CFR 372.45(f)).')) ?></p>
+                <p class="text-muted" style="font-size: 0.75rem; font-style: italic;"><?= e($l('sara_313_range_note')) ?></p>
                 <?php else: ?>
-                <p><?= e($l('sara_313_none', 'This product does not contain any toxic chemicals subject to the reporting requirements of SARA Title III Section 313 (40 CFR Part 372) at or above the applicable de minimis concentration.')) ?></p>
+                <p><?= e($l('sara_313_none')) ?></p>
                 <?php endif; ?>
             <?php endif; ?>
 
@@ -514,13 +523,13 @@ $sectionPrefix = strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, 'sec
                     <h4 style="margin: 0 0 0.5rem 0;">
                         <?php $prop65Src = \SDS\Services\PictogramHelper::getWebPath('PROP65'); ?>
                         <?php if ($prop65Src): ?>
-                        <img src="<?= e($prop65Src) ?>" alt="Warning" style="width: 30px; height: 30px; vertical-align: middle; margin-right: 6px;">
+                        <img src="<?= e($prop65Src) ?>" alt="<?= e($l('prop65_pictogram_alt')) ?>" style="width: 30px; height: 30px; vertical-align: middle; margin-right: 6px;">
                         <?php endif; ?>
                         <?= e($l('prop65_title')) ?>
                     </h4>
                     <p style="margin: 0;"><?= e($prop65['warning_text'] ?? '') ?></p>
                     <?php if (!empty($prop65['listed_lines']) && is_array($prop65['listed_lines'])): ?>
-                    <p style="margin: 0.5rem 0 0 0;"><strong><?= e($l('prop65_listed', 'Listed chemicals')) ?>:</strong></p>
+                    <p style="margin: 0.5rem 0 0 0;"><strong><?= e($l('prop65_listed')) ?>:</strong></p>
                     <ul style="margin: 0;">
                     <?php foreach ($prop65['listed_lines'] as $p65Line): ?>
                         <li><?= e((string) $p65Line) ?></li>

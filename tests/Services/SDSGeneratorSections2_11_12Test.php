@@ -294,5 +294,35 @@ foreach (['en', 'es', 'fr', 'de'] as $lang) {
     }
 }
 
+// ---------------------------------------------------------------------
+echo "#37 Trade-secret placeholders in the sheet language (Sections 3 / 12)\n";
+$inh = new ReflectionProperty(\SDS\Services\SDSGenerator::class, 'inhalationOnlyCas');
+$inh->setAccessible(true);
+$inhSaved = $inh->getValue();
+$inh->setValue(null, ['1333-86-4' => 'Carbon Black']);   // keeps section3() DB-free
+$tsComp = [
+    ['cas_number' => '4-4-4', 'chemical_name' => 'Trade Secret', 'concentration_pct' => 4.0, 'is_trade_secret' => true, 'trade_secret_description' => 'Trade Secret'],
+    ['cas_number' => '5-5-5', 'chemical_name' => 'Hidden', 'concentration_pct' => 2.0, 'is_trade_secret' => true, 'trade_secret_description' => ''],
+    ['cas_number' => '6-6-6', 'chemical_name' => 'Hidden 2', 'concentration_pct' => 1.0, 'is_trade_secret' => true, 'trade_secret_description' => 'Proprietary resin'],
+];
+$tsHz = ['hazardous_cas' => ['4-4-4', '5-5-5', '6-6-6'], 'exposure_limits' => [], 'hazard_classes' => []];
+foreach (['en' => ['TRADE SECRET', 'Trade Secret'], 'es' => ['SECRETO COMERCIAL', 'Secreto comercial'], 'fr' => ['SECRET COMMERCIAL', 'Secret commercial'], 'de' => ['GESCHÄFTSGEHEIMNIS', 'Geschäftsgeheimnis']] as $lang => [$tsCas, $tsName]) {
+    $g = new \SDS\Services\SDSGenerator(new \SDS\Services\TranslationService($lang));
+    $m3 = new ReflectionMethod($g, 'section3'); $m3->setAccessible(true);
+    $rows = $m3->invoke($g, $tsComp, $tsHz, [])['components'] ?? [];
+    $byName = array_column($rows, 'cas_number', 'chemical_name');
+    check(count($rows) === 3 && array_unique(array_column($rows, 'cas_number')) === [$tsCas], "{$lang}: S3 trade-secret CAS cell = {$tsCas}", $rows);
+    check(isset($byName[$tsName]) && isset($byName['Proprietary resin']) && ($lang === 'en' || !isset($byName['Trade Secret'])), "{$lang}: S3 blank / 'Trade Secret' sentinel -> {$tsName}; operator description kept", array_keys($byName));
+    $m12 = new ReflectionMethod($g, 'section12'); $m12->setAccessible(true);
+    $r12 = $m12->invoke($g, $hz12, $aqComposition, [], $saraPbt);
+    check(($r12['component_aquatic'][1]['cas_number'] ?? null) === $tsCas, "{$lang}: S12 aquatic trade-secret CAS = {$tsCas}", $r12['component_aquatic'][1] ?? null);
+    check(str_contains($r12['persistence'], 'Proprietary dispersant (CAS ' . $tsCas . ')'), "{$lang}: S12 PBT line masks CAS as {$tsCas}", $r12['persistence']);
+}
+$inh->setValue(null, $inhSaved);
+foreach (['en', 'es', 'fr', 'de'] as $lang) {
+    $trFile = require $basePath . '/templates/translations/' . $lang . '.php';
+    check(($trFile['labels']['trade_secret'] ?? '') !== '' && ($trFile['labels']['trade_secret_cas'] ?? '') !== '' && ($trFile['section12']['pbt_component_item'] ?? '') !== '', "{$lang}: labels.trade_secret / trade_secret_cas / section12.pbt_component_item defined");
+}
+
 echo "\n{$checks} checks, {$failures} failures\n";
 exit($failures === 0 ? 0 : 1);

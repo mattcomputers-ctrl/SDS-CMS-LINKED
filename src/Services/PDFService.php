@@ -264,8 +264,8 @@ class PDFService
         // never config.php.
         $author = trim((string) ($sections[1]['manufacturer_name'] ?? ''));
         $pdf->SetAuthor($author !== '' ? $author : 'SDS System');
-        $pdf->SetTitle('SDS - ' . $meta['product_code']);
-        $pdf->SetSubject('Safety Data Sheet');
+        $pdf->SetTitle(str_replace(':code', (string) $meta['product_code'], SDSDocumentStrings::resolve($this->document, 'pdf_title')));
+        $pdf->SetSubject(SDSDocumentStrings::resolve($this->document, 'pdf_subject'));
 
         // Page settings
         $pdf->SetMargins(self::MARGIN_LEFT, self::MARGIN_TOP, self::MARGIN_RIGHT);
@@ -311,14 +311,15 @@ class PDFService
      */
     private function renderSection(\TCPDF $pdf, int $sectionNum, array $section): void
     {
-        $title = $section['title'] ?? "Section {$sectionNum}";
+        $title = $section['title'] ?? $this->text("section{$sectionNum}.title");
         $sectionPrefix = SDSDocumentStrings::resolve($this->document, 'section_prefix');
 
         // Section header
         $pdf->SetFont('helvetica', 'B', 11);
         $pdf->SetFillColor(0, 51, 102);
         $pdf->SetTextColor(255, 255, 255);
-        $pdf->Cell(0, 7, strtoupper($sectionPrefix) . " {$sectionNum}: " . strtoupper($title), 0, 1, 'L', true);
+        // mb_strtoupper: strtoupper() leaves accented letters lower-case ("IDENTIFICACIóN") (#37)
+        $pdf->Cell(0, 7, mb_strtoupper($sectionPrefix, 'UTF-8') . " {$sectionNum}: " . mb_strtoupper($title, 'UTF-8'), 0, 1, 'L', true);
         $pdf->SetTextColor(0, 0, 0);
         $pdf->Ln(2);
 
@@ -378,9 +379,9 @@ class PDFService
         $this->labelValue($pdf, $this->label('company'), $s['manufacturer_name'] ?? '');
         $this->labelValue($pdf, $this->label('address'), $s['manufacturer_address'] ?? '');
         $this->labelValue($pdf, $this->label('phone'), $s['manufacturer_phone'] ?? '');
-        // English defaults keep pre-existing snapshots (meta.labels without these keys) readable.
-        $this->labelValue($pdf, $this->label('email', 'Email'), $s['manufacturer_email'] ?? '');
-        $this->labelValue($pdf, $this->label('website', 'Website'), $s['manufacturer_website'] ?? '');
+        // Pre-existing snapshots (meta.labels without these keys) resolve through label()'s translation fallback.
+        $this->labelValue($pdf, $this->label('email'), $s['manufacturer_email'] ?? '');
+        $this->labelValue($pdf, $this->label('website'), $s['manufacturer_website'] ?? '');
         $this->labelValue($pdf, $this->label('emergency'), $s['emergency_phone'] ?? '');
     }
 
@@ -399,7 +400,7 @@ class PDFService
         // Not classified statement
         if (empty($s['is_classified'])) {
             $pdf->SetFont('helvetica', '', 9);
-            $pdf->MultiCell(0, 5, $s['not_classified_text'] ?? 'Not a hazardous substance or mixture.', 0, 'L');
+            $pdf->MultiCell(0, 5, $s['not_classified_text'] ?? $this->text('section2.not_classified'), 0, 'L');
         }
 
         // Signal word
@@ -407,7 +408,7 @@ class PDFService
             $pdf->SetFont('helvetica', 'B', 14);
             $color = ($s['signal_word_en'] ?? $s['signal_word']) === 'Danger' ? [220, 0, 0] : [255, 140, 0];
             $pdf->SetTextColor(...$color);
-            $pdf->Cell(0, 7, strtoupper($s['signal_word']), 0, 1);
+            $pdf->Cell(0, 7, mb_strtoupper($s['signal_word'], 'UTF-8'), 0, 1);
             $pdf->SetTextColor(0, 0, 0);
             $pdf->SetFont('helvetica', '', 9);
         }
@@ -489,7 +490,7 @@ class PDFService
                 $pdf->SetX($indentedMargin);
 
                 if (empty($grouped[$groupKey])) {
-                    $pdf->MultiCell(0, 4, 'None', 0, 'L');
+                    $pdf->MultiCell(0, 4, $this->label('none'), 0, 'L');
                 } else {
                     $sorted = $grouped[$groupKey];
                     usort($sorted, function ($a, $b) use ($firstHCodeNum) {
@@ -741,7 +742,7 @@ class PDFService
             $pdf->Cell($w[0], 5, $this->label('cas_number'), 1, 0, 'C', true);
             $pdf->Cell($w[1], 5, $this->label('chemical_name'), 1, 0, 'C', true);
             $pdf->Cell($w[2], 5, $this->label('concentration'), 1, 0, 'C', true);
-            $pdf->Cell($w[3], 5, 'H-Codes', 1, 1, 'C', true);
+            $pdf->Cell($w[3], 5, $this->label('h_codes'), 1, 1, 'C', true);
             $pdf->SetFont('helvetica', '', 8);
 
             foreach ($s['components'] as $comp) {
@@ -922,7 +923,7 @@ class PDFService
         $uvNote = (string) ($s['uv_acrylate_note'] ?? '');
         if ($uvNote !== '') {
             $pdf->Ln(1);
-            $this->labelValue($pdf, $this->label('uv_acrylate_note', 'UV Acrylate Information'), $uvNote);
+            $this->labelValue($pdf, $this->label('uv_acrylate_note'), $uvNote);
         }
 
         // Pictograms are intentionally NOT shown in Section 11;
@@ -987,7 +988,7 @@ class PDFService
         // Mobility in soil (item #24; 29 CFR 1910.1200 App. D, Section 12(d)).
         // English default keeps pre-existing snapshots (meta.labels without the key) readable;
         // labelValue() skips the line entirely when an old snapshot has no 'mobility' value.
-        $this->labelValue($pdf, $this->label('mobility', 'Mobility in Soil'), (string) ($s['mobility'] ?? ''));
+        $this->labelValue($pdf, $this->label('mobility'), (string) ($s['mobility'] ?? ''));
     }
 
     private function renderSection14(\TCPDF $pdf, array $s): void
@@ -997,7 +998,7 @@ class PDFService
         $this->labelValue($pdf, $this->label('transport_hazard_class'), $s['hazard_class'] ?? '');
         $this->labelValue($pdf, $this->label('packing_group'), $s['packing_group'] ?? '');
         // Audit #27: App. D 14(e) environmental hazards (marine pollutant). Old snapshots have no key → line skipped.
-        $this->labelValue($pdf, $this->label('environmental_hazards', 'Environmental Hazards'), (string) ($s['environmental_hazards'] ?? ''));
+        $this->labelValue($pdf, $this->label('environmental_hazards'), (string) ($s['environmental_hazards'] ?? ''));
         // Carrier-verification note (was preview-only before item #25)
         $this->labelValue($pdf, $this->label('note'), $s['note'] ?? '');
     }
@@ -1019,7 +1020,7 @@ class PDFService
             $pdf->Cell(0, 5, $this->label('sara_313_title') . ':', 0, 1);
             $pdf->SetFont('helvetica', '', 8);
             if (!empty($sara['reportable'])) {
-                $pdf->MultiCell(0, 4, $this->label('sara_313_statement', 'This product contains the following toxic chemical(s) subject to the reporting requirements of Section 313 of Title III of the Superfund Amendments and Reauthorization Act of 1986 (SARA) and 40 CFR Part 372 (supplier notification per 40 CFR 372.45):'), 0, 'L');
+                $pdf->MultiCell(0, 4, $this->label('sara_313_statement'), 0, 'L');
                 foreach ($sara['reportable'] as $chem) {
                     $name      = (string) ((($chem['sara_name'] ?? '') !== '') ? $chem['sara_name'] : ($chem['chemical_name'] ?? ''));
                     $threshold = rtrim(rtrim(number_format((float) ($chem['threshold_pct'] ?? 1.0), 4), '0'), '.');
@@ -1028,16 +1029,16 @@ class PDFService
                     $conc = (string) ($chem['concentration_range'] ?? '');
                     $text = $name . ' (CAS ' . ($chem['cas_number'] ?? '') . ') — '
                           . $conc . ' ('
-                          . $this->label('sara_313_threshold', 'de minimis threshold') . ': ' . $threshold . '%'
-                          . (!empty($chem['is_pbt']) ? '; ' . $this->label('sara_313_pbt', 'PBT chemical') : '')
+                          . $this->label('sara_313_threshold') . ': ' . $threshold . '%'
+                          . (!empty($chem['is_pbt']) ? '; ' . $this->label('sara_313_pbt') : '')
                           . ')';
                     $pdf->MultiCell(0, 4, "\xE2\x80\xA2 " . $text, 0, 'L');
                 }
                 $pdf->SetFont('helvetica', 'I', 7);
-                $pdf->MultiCell(0, 3, $this->label('sara_313_range_note', 'Concentrations are stated as the prescribed concentration ranges of 29 CFR 1910.1200(i)(1); the upper end of each range is the maximum percent by weight present (40 CFR 372.45(f)).'), 0, 'L');
+                $pdf->MultiCell(0, 3, $this->label('sara_313_range_note'), 0, 'L');
                 $pdf->SetFont('helvetica', '', 8);
             } else {
-                $pdf->MultiCell(0, 4, $this->label('sara_313_none', 'This product does not contain any toxic chemicals subject to the reporting requirements of SARA Title III Section 313 (40 CFR Part 372) at or above the applicable de minimis concentration.'), 0, 'L');
+                $pdf->MultiCell(0, 4, $this->label('sara_313_none'), 0, 'L');
             }
             $pdf->Ln(2);
         }
@@ -1061,7 +1062,7 @@ class PDFService
                 $hapName = $chem['hap_name'] ?? $chem['chemical_name'] ?? '';
                 // Band only (audit #8/#42): exact percentages are never printed.
                 $concPct = (string) ($chem['concentration_range'] ?? '');
-                $pdf->Cell($wHap[0], 5, substr($hapName, 0, 65), 1, 0, 'L');
+                $pdf->Cell($wHap[0], 5, mb_substr($hapName, 0, 65, 'UTF-8'), 1, 0, 'L');
                 $pdf->Cell($wHap[1], 5, $concPct, 1, 1, 'C');
             }
 
@@ -1132,7 +1133,7 @@ class PDFService
             // No NSRL / MADL / listing dates.
             if (!empty($prop65['listed_lines']) && is_array($prop65['listed_lines'])) {
                 $pdf->SetFont('helvetica', 'B', 8);
-                $pdf->Cell(0, 4, $this->label('prop65_listed', 'Listed chemicals') . ':', 0, 1);
+                $pdf->Cell(0, 4, $this->label('prop65_listed') . ':', 0, 1);
                 $pdf->SetFont('helvetica', '', 8);
                 foreach ($prop65['listed_lines'] as $line) {
                     $pdf->MultiCell(0, 4, "\xE2\x80\xA2 " . (string) $line, 0, 'L');
@@ -1226,15 +1227,30 @@ class PDFService
             return $prefix . ' ' . (string) $s16['revision_date'];
         }
 
-        return (string) ($s16['version'] ?? 'Draft (not yet published)');
+        return (string) ($s16['version'] ?? $this->text('section16.draft'));
     }
 
     /**
-     * Get a translated label, falling back to the key itself.
+     * Get a translated label: meta.labels first, then labels.<key> from the
+     * sheet language's translation file (snapshots generated before the key
+     * was added to SDSGenerator::getLabels(), audit #37), then $default, then
+     * the key itself.
      */
     private function label(string $key, string $default = ''): string
     {
-        return $this->labels[$key] ?? ($default ?: $key);
+        return $this->labels[$key]
+            ?? SDSDocumentStrings::translate($this->language, 'labels.' . $key)
+            ?? ($default ?: $key);
+    }
+
+    /**
+     * Translated text for a full dot-notation key in the sheet language
+     * (legacy-snapshot fallbacks such as section2.not_classified), falling
+     * back to the key itself.
+     */
+    private function text(string $key): string
+    {
+        return SDSDocumentStrings::translate($this->language, $key) ?? $key;
     }
 
     /**

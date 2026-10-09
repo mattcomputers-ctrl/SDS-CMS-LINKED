@@ -199,6 +199,7 @@ return [
         'P337' => 'Si persiste la irritación ocular:',
         'P338' => 'Quitar las lentes de contacto, si lleva y resulta fácil. Seguir aclarando',
         'P340' => 'Transportar a la persona al aire libre y mantenerla en una posición que le facilite la respiración',
+        'P341' => 'Si respira con dificultad, transportar a la persona al aire libre y mantenerla en una posición que le facilite la respiración',
         'P342' => 'En caso de síntomas respiratorios:',
         'P350' => 'Lavar suavemente con agua y jabón abundantes',
         'P351' => 'Aclarar cuidadosamente con agua durante varios minutos',
@@ -228,6 +229,7 @@ return [
         'P301+P312' => 'EN CASO DE INGESTIÓN: Llamar a un CENTRO DE TOXICOLOGÍA/médico en caso de malestar',
         'P301+P330+P331' => 'EN CASO DE INGESTIÓN: Enjuagar la boca. NO provocar el vómito',
         'P302+P334' => 'EN CASO DE CONTACTO CON LA PIEL: Sumergir en agua fría/aplicar compresas húmedas',
+        'P302+P335+P334' => 'EN CASO DE CONTACTO CON LA PIEL: Sacudir las partículas que se hayan depositado en la piel. Sumergir en agua fría/aplicar compresas húmedas',
         'P302+P350' => 'EN CASO DE CONTACTO CON LA PIEL: Lavar suavemente con agua y jabón abundantes',
         'P302+P352' => 'EN CASO DE CONTACTO CON LA PIEL: Lavar con abundante agua',
         'P303+P361+P353' => 'EN CASO DE CONTACTO CON LA PIEL (o el pelo): Quitar inmediatamente todas las prendas contaminadas. Aclarar la piel con agua [o ducharse]',
@@ -243,6 +245,7 @@ return [
         'P335+P334' => 'Sacudir las partículas que se hayan depositado en la piel. Sumergir en agua fría/aplicar compresas húmedas',
         'P337+P313' => 'Si persiste la irritación ocular: Consultar a un médico',
         'P342+P311' => 'En caso de síntomas respiratorios: Llamar a un CENTRO DE TOXICOLOGÍA/médico',
+        'P362+P364' => 'Quitar las prendas contaminadas y lavarlas antes de volver a usarlas',
         'P370+P376' => 'En caso de incendio: Detener la fuga, si no hay peligro en hacerlo',
         'P370+P378' => 'En caso de incendio: Utilizar… para apagarlo',
         'P370+P380' => 'En caso de incendio: Evacuar la zona',
@@ -262,6 +265,7 @@ return [
         'P412' => 'No exponer a temperaturas superiores a 50 °C/122 °F',
         'P413' => 'Almacenar a granel cantidades superiores a … kg/… lbs a temperaturas no superiores a … °C/… °F',
         'P420' => 'Almacenar lejos de otros materiales',
+        'P422' => 'Almacenar el contenido en atmósfera de gas inerte',
 
         // --- Combined storage statements ---
         'P402+P404' => 'Almacenar en un lugar seco. Almacenar en un recipiente cerrado',
@@ -269,6 +273,7 @@ return [
         'P403+P235' => 'Almacenar en un lugar bien ventilado. Mantener en lugar fresco',
         'P410+P403' => 'Proteger de la luz del sol. Almacenar en un lugar bien ventilado',
         'P410+P412' => 'Proteger de la luz del sol. No exponer a temperaturas superiores a 50 °C/122 °F',
+        'P411+P235' => 'Almacenar a temperaturas no superiores a … °C/… °F. Mantener en lugar fresco',
 
         // --- Disposal (P5xx) ---
         'P501' => 'Eliminar el contenido/el recipiente en…',

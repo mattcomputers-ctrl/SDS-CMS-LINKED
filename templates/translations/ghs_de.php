@@ -40,6 +40,7 @@ return [
         'H229' => 'Behälter steht unter Druck: kann bei Erwärmung bersten',
         'H230' => 'Kann auch in Abwesenheit von Luft explosionsartig reagieren',
         'H231' => 'Kann auch in Abwesenheit von Luft bei erhöhtem Druck und/oder erhöhter Temperatur explosionsartig reagieren',
+        'H232' => 'Kann sich bei Kontakt mit Luft spontan entzünden',
         'H240' => 'Erwärmung kann Explosion verursachen',
         'H241' => 'Erwärmung kann Brand oder Explosion verursachen',
         'H242' => 'Erwärmung kann Brand verursachen',
@@ -103,6 +104,7 @@ return [
         'H411' => 'Giftig für Wasserorganismen, mit langfristiger Wirkung',
         'H412' => 'Schädlich für Wasserorganismen, mit langfristiger Wirkung',
         'H413' => 'Kann für Wasserorganismen schädlich sein, mit langfristiger Wirkung',
+        'H420' => 'Schädigt die öffentliche Gesundheit und die Umwelt durch Ozonabbau in der äußeren Atmosphäre',
 
         // --- Combined H-statements ---
         'H300+H310'      => 'Lebensgefahr bei Verschlucken oder Hautkontakt',
@@ -168,6 +170,9 @@ return [
         'P284' => 'Atemschutz tragen.',
         'P285' => 'Bei unzureichender Belüftung Atemschutz tragen.',
 
+        // --- Combined prevention P-statements ---
+        'P231+P232' => 'Inhalt unter inertem Gas handhaben und aufbewahren. Vor Feuchtigkeit schützen.',
+
         // --- Response (P3xx) ---
         'P301' => 'BEI VERSCHLUCKEN:',
         'P302' => 'BEI BERÜHRUNG MIT DER HAUT:',
@@ -194,7 +199,9 @@ return [
         'P337' => 'Bei anhaltender Augenreizung:',
         'P338' => 'Eventuell vorhandene Kontaktlinsen nach Möglichkeit entfernen. Weiter ausspülen.',
         'P340' => 'Die Person an die frische Luft bringen und für ungehinderte Atmung sorgen.',
+        'P341' => 'Bei Atembeschwerden an die frische Luft bringen und in einer Position ruhigstellen, die das Atmen erleichtert.',
         'P342' => 'Bei Symptomen der Atemwege:',
+        'P350' => 'Behutsam mit viel Wasser und Seife waschen.',
         'P351' => 'Einige Minuten lang behutsam mit Wasser ausspülen.',
         'P352' => 'Mit viel Wasser waschen.',
         'P353' => 'Haut mit Wasser abwaschen oder duschen.',
@@ -223,6 +230,7 @@ return [
         'P301+P330+P331' => 'BEI VERSCHLUCKEN: Mund ausspülen. KEIN Erbrechen herbeiführen.',
         'P302+P334' => 'BEI BERÜHRUNG MIT DER HAUT: In kaltes Wasser tauchen oder nassen Verband anlegen.',
         'P302+P335+P334' => 'BEI BERÜHRUNG MIT DER HAUT: Lose Partikel von der Haut abbürsten. In kaltes Wasser tauchen oder nassen Verband anlegen.',
+        'P302+P350' => 'BEI BERÜHRUNG MIT DER HAUT: Behutsam mit viel Wasser und Seife waschen.',
         'P302+P352' => 'BEI BERÜHRUNG MIT DER HAUT: Mit viel Wasser waschen.',
         'P303+P361+P353' => 'BEI BERÜHRUNG MIT DER HAUT (oder dem Haar): Alle kontaminierten Kleidungsstücke sofort ausziehen. Haut mit Wasser abwaschen oder duschen.',
         'P304+P312' => 'BEI EINATMEN: Bei Unwohlsein GIFTINFORMATIONSZENTRUM/Arzt anrufen.',
@@ -237,6 +245,7 @@ return [
         'P335+P334' => 'Lose Partikel von der Haut abbürsten. In kaltes Wasser tauchen oder nassen Verband anlegen.',
         'P337+P313' => 'Bei anhaltender Augenreizung: Ärztlichen Rat einholen/ärztliche Hilfe hinzuziehen.',
         'P342+P311' => 'Bei Symptomen der Atemwege: GIFTINFORMATIONSZENTRUM/Arzt anrufen.',
+        'P362+P364' => 'Kontaminierte Kleidung ausziehen und vor erneutem Tragen waschen.',
         'P370+P376' => 'Bei Brand: Undichtigkeit beseitigen, wenn gefahrlos möglich.',
         'P370+P378' => 'Bei Brand: ... zum Löschen verwenden.',
         'P370+P380' => 'Bei Brand: Umgebung räumen.',
@@ -256,6 +265,7 @@ return [
         'P412' => 'Nicht Temperaturen über 50 °C/122 °F aussetzen.',
         'P413' => 'Schüttgut in Mengen von mehr als ... kg/... lbs bei Temperaturen von nicht mehr als ... °C/... °F aufbewahren.',
         'P420' => 'Von anderen Materialien entfernt aufbewahren.',
+        'P422' => 'Inhalt unter inertem Gas aufbewahren.',
 
         // --- Combined storage P-statements ---
         'P402+P404' => 'An einem trockenen Ort aufbewahren. In einem geschlossenen Behälter aufbewahren.',

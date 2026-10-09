@@ -37,6 +37,89 @@ class CarcinogenService
     public const LISTING_THRESHOLD_PCT = 0.1;
 
     /**
+     * #37: carcinogen_list.classification is an English registry value
+     * (agency + class). It is stored as is and translated at render time
+     * via section11.carcinogen_class_<suffix> (and, on non-EN sheets, the
+     * gloss section11.carcinogen_desc_<suffix>). Lookup keys are the
+     * upper-cased, whitespace-collapsed stored values. An unmapped value
+     * (e.g. ACGIH A3) prints as stored. Agency acronyms stay English.
+     */
+    private const CLASSIFICATION_KEYS = [
+        'IARC' => [
+            'GROUP 1'  => 'iarc_group_1',  '1'  => 'iarc_group_1',
+            'GROUP 2A' => 'iarc_group_2a', '2A' => 'iarc_group_2a',
+            'GROUP 2B' => 'iarc_group_2b', '2B' => 'iarc_group_2b',
+            'GROUP 3'  => 'iarc_group_3',  '3'  => 'iarc_group_3',
+        ],
+        'NTP' => [
+            'KNOWN'                  => 'ntp_known',
+            'RAHC'                   => 'ntp_rahc',
+            'REASONABLY ANTICIPATED' => 'ntp_rahc',
+        ],
+        'OSHA' => [
+            'LISTED' => 'osha_listed',
+        ],
+    ];
+
+    /**
+     * Translation-key suffix for a registry (agency, classification) pair,
+     * or null when the pair is not a known enum value.
+     */
+    private static function classificationKey(string $agency, string $classification): ?string
+    {
+        $a = strtoupper(trim($agency));
+        $c = strtoupper((string) preg_replace('/\s+/', ' ', trim($classification)));
+        return self::CLASSIFICATION_KEYS[$a][$c] ?? null;
+    }
+
+    /**
+     * Sheet-language text for a registry classification (#37), e.g.
+     * IARC "Group 2B" -> ES "Grupo 2B"; NTP "RAHC" -> "Reasonably anticipated
+     * to be a human carcinogen". Unknown values are returned as stored.
+     */
+    public static function classificationText(string $agency, string $classification, ?TranslationService $t = null): string
+    {
+        $suffix = self::classificationKey($agency, $classification);
+        if ($suffix === null) {
+            return $classification;
+        }
+        $t ??= new TranslationService('en');
+        return $t->get('section11.carcinogen_class_' . $suffix);
+    }
+
+    /**
+     * Section 11 component-block copy of a finding's agency rows (#37):
+     * classification translated into the sheet language. The registry's
+     * free-text description is English data, so it is kept on EN sheets
+     * only; ES/FR/DE sheets print the per-class gloss
+     * (section11.carcinogen_desc_<suffix>) or nothing for an unmapped class.
+     *
+     * @param  array<int,array{agency?:string,classification?:string,description?:string}> $agencies
+     * @return array<int,array>
+     */
+    public static function localiseListings(array $agencies, TranslationService $t): array
+    {
+        $isEn = $t->getLanguage() === 'en';
+        $out  = [];
+        foreach ($agencies as $a) {
+            $agency = (string) ($a['agency'] ?? '');
+            $class  = (string) ($a['classification'] ?? '');
+            $suffix = self::classificationKey($agency, $class);
+            $a['classification'] = $suffix !== null ? $t->get('section11.carcinogen_class_' . $suffix) : $class;
+            if (!$isEn) {
+                $gloss = $suffix !== null ? $t->get('section11.carcinogen_desc_' . $suffix) : '';
+                // A gloss that only repeats the classification (NTP RAHC) is dropped.
+                if (mb_strtolower(rtrim($gloss, '. ')) === mb_strtolower(rtrim($a['classification'], '. '))) {
+                    $gloss = '';
+                }
+                $a['description'] = $gloss;
+            }
+            $out[] = $a;
+        }
+        return $out;
+    }
+
+    /**
      * Check a composition against the carcinogen registry.
      *
      * @param  array $composition  Expanded CAS-level composition
@@ -142,7 +225,11 @@ class CarcinogenService
             foreach ($f['agencies'] ?? [] as $a) {
                 $parts[] = $t->get('section11.carcinogenicity_listing', [
                     'agency'         => (string) ($a['agency'] ?? ''),
-                    'classification' => (string) ($a['classification'] ?? ''),
+                    'classification' => self::classificationText(
+                        (string) ($a['agency'] ?? ''),
+                        (string) ($a['classification'] ?? ''),
+                        $t
+                    ),
                 ]);
             }
 

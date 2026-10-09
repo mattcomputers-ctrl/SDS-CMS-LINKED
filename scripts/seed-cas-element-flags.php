@@ -5,6 +5,11 @@
  * (has_nitrogen / has_sulfur / has_halogen) that drive the SDS Section 10
  * "Hazardous decomposition products" sentence (content audit #19).
  *
+ * Thin CLI wrapper over SDS\Services\CasElementFlagSeeder — the same
+ * plan() / apply() the "Seed element flags (preview)" page on
+ * /determinations/element-flags uses, so the dry-run here and the preview
+ * there show identical rows and counts.
+ *
  * For every cas_master row, CasElementFlagger::infer() decides the flags:
  *   1. a parseable Hill molecular_formula is authoritative (N / S / F,Cl,Br,I);
  *   2. otherwise a conservative keyword scan of the preferred name, the
@@ -37,9 +42,16 @@
  *
  * Idempotent: a second run changes nothing (no bumps, no queue rows).
  *
+ * The flag writes and the RM bumps are one transaction (a failure rolls
+ * both back and the script dies with the exception — re-run it). SDS-update
+ * queueing happens after the commit; if it fails the flags and bumps are
+ * already in, the error is printed and the exit code is 2.
+ *
  * Exit codes:
  *   0 = ok (dry-run or applied)
  *   1 = usage error
+ *   2 = flags and RM bumps committed, but SDS-update queueing failed
+ *       (run the SDS Updates scan to queue the affected products)
  */
 
 declare(strict_types=1);
@@ -49,8 +61,7 @@ require_once $basePath . '/vendor/autoload.php';
 new \SDS\Core\App();
 
 use SDS\Core\Database;
-use SDS\Services\CasElementFlagger;
-use SDS\Services\RegulatoryListBumper;
+use SDS\Services\CasElementFlagSeeder;
 
 // ─── args ────────────────────────────────────────────────────────────
 $dryRun  = true;
@@ -80,112 +91,40 @@ out("Mode: " . ($dryRun ? 'DRY-RUN (use --confirm to apply)' : 'APPLY')
     . ($noQueue ? ' + no-queue' : ''), $quiet);
 out('', $quiet);
 
-$db = Database::getInstance();
+$seeder = new CasElementFlagSeeder(Database::getInstance());
 
-// ─── load registry + every name we know for each CAS ────────────────
-$rows = $db->fetchAll(
-    "SELECT cas_number, preferred_name, synonyms_json, molecular_formula,
-            has_nitrogen, has_sulfur, has_halogen, element_flags_source
-     FROM cas_master
-     ORDER BY cas_number"
-);
+// ─── plan (dry-run) or apply ─────────────────────────────────────────
+$r = $dryRun
+    ? $seeder->plan($force)
+    : $seeder->apply(['force' => $force, 'queue' => !$noQueue, 'userId' => null]);
 
-$namesByCas = [];
-$nameSources = [
-    "SELECT DISTINCT cas_number, chemical_name FROM raw_material_constituents
-     WHERE cas_number <> '' AND chemical_name <> ''",
-    "SELECT cas_number, chemical_name FROM prop65_list WHERE chemical_name <> ''",
-    "SELECT cas_number, chemical_name FROM hap_list WHERE chemical_name <> ''",
-];
-foreach ($nameSources as $sql) {
-    foreach ($db->fetchAll($sql) as $r) {
-        $namesByCas[(string) $r['cas_number']][] = (string) $r['chemical_name'];
-    }
+foreach ($r['rows'] as $row) {
+    $p = $row['proposed'];
+    out(sprintf("%-14s N=%d S=%d X=%d  <- %s", $row['cas'], $p['has_nitrogen'], $p['has_sulfur'], $p['has_halogen'], $row['basis']), $quiet);
 }
 
-// ─── classify ────────────────────────────────────────────────────────
-$scanned = $changed = $unchanged = $skippedManual = 0;
-$bumpCases = [];
-
-foreach ($rows as $row) {
-    $scanned++;
-    $cas = (string) $row['cas_number'];
-
-    $names = [(string) ($row['preferred_name'] ?? '')];
-    $syn = $row['synonyms_json'] ?? null;
-    if (is_string($syn) && $syn !== '') {
-        $decoded = json_decode($syn, true);
-        if (is_array($decoded)) {
-            if (isset($decoded['synonyms']) && is_array($decoded['synonyms'])) {
-                $decoded = $decoded['synonyms'];
-            }
-            foreach ($decoded as $s) {
-                if (is_string($s)) {
-                    $names[] = $s;
-                }
-            }
-        }
-    }
-    foreach ($namesByCas[$cas] ?? [] as $n) {
-        $names[] = $n;
-    }
-
-    $formula   = $row['molecular_formula'] ?? null;
-    $inferred  = CasElementFlagger::infer(is_string($formula) ? $formula : null, $names);
-    $new = [
-        'has_nitrogen' => (int) $inferred['has_nitrogen'],
-        'has_sulfur'   => (int) $inferred['has_sulfur'],
-        'has_halogen'  => (int) $inferred['has_halogen'],
-    ];
-    $old = [
-        'has_nitrogen' => (int) ($row['has_nitrogen'] ?? 0),
-        'has_sulfur'   => (int) ($row['has_sulfur'] ?? 0),
-        'has_halogen'  => (int) ($row['has_halogen'] ?? 0),
-    ];
-
-    if ($old === $new) {
-        $unchanged++;
-        continue;
-    }
-    if (($row['element_flags_source'] ?? null) === 'manual' && !$force) {
-        $skippedManual++;
-        continue;
-    }
-
-    $changed++;
-    $bumpCases[] = $cas;
-
-    $basis = CasElementFlagger::fromFormula(is_string($formula) ? $formula : null) !== null
-        ? 'formula ' . $formula
-        : 'names: ' . json_encode(CasElementFlagger::matchedKeywords($names), JSON_UNESCAPED_UNICODE);
-    out(sprintf("%-14s N=%d S=%d X=%d  <- %s", $cas, $new['has_nitrogen'], $new['has_sulfur'], $new['has_halogen'], $basis), $quiet);
-
-    if (!$dryRun) {
-        $db->update('cas_master', $new + ['element_flags_source' => 'seed'], 'cas_number = ?', [$cas]);
-    }
-}
-
-// ─── propagate: bump RMs (staleness) + queue SDS updates ─────────────
-$bumpedRms = 0;
-$queued    = 0;
-if (!$dryRun && $bumpCases !== []) {
-    $bumpedRms = RegulatoryListBumper::bumpByCasMany($bumpCases);
-    if (!$noQueue) {
-        $queued = RegulatoryListBumper::queueSdsUpdatesByCas($bumpCases, null, 'Section 10 element flags seeded (audit #19)');
-    }
-}
+$bumpedRms = (int) ($r['rmsBumped'] ?? 0);
+$queued    = (int) ($r['sdsQueued'] ?? 0);
 
 out('', $quiet);
 out('=== Summary ===', $quiet);
-out("  Rows scanned:    {$scanned}", $quiet);
-out("  Changed:         {$changed}", $quiet);
-out("  Unchanged:       {$unchanged}", $quiet);
-out("  Skipped manual:  {$skippedManual}  (element_flags_source='manual'; use --force to rewrite)", $quiet);
+out("  Rows scanned:    {$r['scanned']}", $quiet);
+out("  Changed:         {$r['changed']}", $quiet);
+out("  Unchanged:       {$r['unchanged']}", $quiet);
+out("  Skipped manual:  {$r['skippedManual']}  (element_flags_source='manual'; use --force to rewrite)", $quiet);
 out("  RMs bumped:      {$bumpedRms}  (constituents containing a changed CAS)", $quiet);
 out("  SDSs queued:     {$queued}" . ($noQueue ? '  (--no-queue)' : ''), $quiet);
 if ($dryRun) {
     out('', $quiet);
     out('DRY-RUN: no DB writes. Re-run with --confirm to apply.', $quiet);
+}
+
+$postError = $r['postCommitError'] ?? null;
+if ($postError !== null) {
+    fwrite(STDERR, "\nERROR: {$postError}\n");
+    fwrite(STDERR, "The {$r['changed']} flag change(s) and {$bumpedRms} RM bump(s) ARE committed; a re-run will report Changed: 0.\n");
+    fwrite(STDERR, "Run the SDS Updates scan to queue the affected products.\n");
+    exit(2);
 }
 
 exit(0);

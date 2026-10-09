@@ -147,8 +147,9 @@
         nitrogen oxides, sulfur oxides or hydrogen halides as decomposition products for every product that contains them.
         Saving flags bumps the affected raw materials for republish.
     </p>
-    <div style="margin-bottom: 0.5rem;">
+    <div style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
         <input type="text" id="descFilter" placeholder="Filter by CAS or description..." style="max-width: 320px;">
+        <a href="/determinations/element-flags" class="btn btn-sm btn-outline" title="Dry run of the element-flag seed (formula / name keywords) for every CAS, with an Apply button">Seed element flags (preview)</a>
     </div>
     <table class="table" id="descTable">
         <thead>

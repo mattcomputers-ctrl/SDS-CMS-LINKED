@@ -236,6 +236,8 @@ class App
         $router->post('/determinations/descriptions', 'AdminController@saveCasDescription');
         // ── Audit #19: Section 10 element flags on cas_master (same page key; literal path must precede /determinations/{id}) ──
         $router->post('/determinations/element-flags', 'AdminController@saveCasElementFlags');
+        $router->get('/determinations/element-flags',        'AdminController@elementFlagsSeedPreview'); // seed dry run (CasElementFlagSeeder::plan)
+        $router->post('/determinations/element-flags/apply', 'AdminController@applyElementFlagsSeed');   // seed apply (CasElementFlagSeeder::apply)
         $router->post('/determinations/tsca',         'AdminController@saveTscaOverride'); // audit #29 per-CAS TSCA override
         $router->get('/determinations/{id}/edit',    'AdminController@editDetermination');
         $router->post('/determinations/{id}',        'AdminController@updateDetermination');

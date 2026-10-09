@@ -34,7 +34,7 @@ step is expanded in sections 1–4 below; the section number is in brackets.
 5. **Solubility re-check** — set the genuinely water-soluble raws (water, glycols, lower alcohols, amines) back to "Soluble in water" [3.1].
 6. **Flash points** — a product with no flash point and no classification prints Section 14 "Not determined" and will not publish: enter the flash point on the raw material(s) or set the product's Section 14 override; the bulk publish job and the SDS Creation Readiness page show which products are blocked [4.C].
 7. **Product families** — review the seeded families and UV/LED flags, fill the per-language default text, add the rules (e.g. prefix `VEC47` → UV), Recompute and Apply [3.5].
-8. **Element flags** for Section 10: seed script dry run, then `--confirm` [3.2].
+8. **Element flags** for Section 10: CAS Determinations → CAS Descriptions → "Seed element flags (preview)", review the table, then Apply (CLI fallback: seed script dry run, then `--confirm`) [3.2].
 9. **TSCA inventory** — download the EPA CSV or ZIP and upload it on Regulatory Data → TSCA Inventory → "Import EPA TSCA inventory" (preview, then Apply); without it every sheet prints "TSCA status has not been verified" (a warning, not a block) [3.3].
 10. **Override cleanup** — dry run, then `--apply`; clear the stock pre-update overrides it reports as "Custom text (kept)" [3.4].
 11. **Private label** — retire or freeze unwanted backfilled items; run `check-pl-duplicates.php` [3.6, 3.7].
@@ -102,6 +102,25 @@ water-based products print the wrong Section 9 solubility.
 
 ### 3.2 Element flags for Section 10 (#19)
 
+**Preferred: the preview page.** CAS Determinations (`/determinations`) →
+CAS Descriptions tab → **Seed element flags (preview)**
+(`/determinations/element-flags`). The page runs the seed as a dry run
+and lists every CAS whose flags would change: current → proposed N / S /
+Hal, the basis (`formula …` or `names: {…}` = the keyword stems that
+fired) and the number of raw materials carrying the CAS. Use the filter
+box to review the keyword-based rows for false positives. Nothing is
+written until you click **Apply seed**; the confirm dialog repeats the
+counts. Afterwards the page reloads and shows "Changed: 0".
+
+- Tick **Do not queue SDS-update rows** if the SDS Updates page would be
+  flooded: the raw materials are still bumped, so bulk publish still picks
+  the products up.
+- Manually set rows (`element_flags_source = manual`, saved with the
+  *Flags* button) are skipped and counted; "preview with them included"
+  shows what **Also overwrite manually set flags (`--force`)** would do.
+
+**Fallback: the command line** (same code, same rows and counts):
+
 ```bash
 sudo -u www-data php /var/www/sds-system/scripts/seed-cas-element-flags.php > ~/element-flags-dryrun.txt   # dry run
 sudo -u www-data php /var/www/sds-system/scripts/seed-cas-element-flags.php --confirm                      # apply
@@ -109,10 +128,10 @@ sudo -u www-data php /var/www/sds-system/scripts/seed-cas-element-flags.php --co
 
   The script itself writes no file: the `> ~/element-flags-dryrun.txt` redirect is done by your login shell (not www-data), so the file lands in the home directory of the account you SSH'd in as. In a dry run "RMs bumped" / "SDSs queued" are always 0; only "Changed" is meaningful.
 
-- [ ] `tail -12 ~/element-flags-dryrun.txt` shows the "=== Summary ===" block and "DRY-RUN: no DB writes". Rows in the file whose basis is a name keyword rather than a molecular formula have been reviewed for false positives.
-- [ ] The `--confirm` run reports the same "Changed" count, plus non-zero "RMs bumped" / "SDSs queued". Add `--no-queue` if the SDS Updates page would be flooded: the raw materials are still bumped, so bulk publish still picks the products up.
-- [ ] A second dry run reports "Changed: 0".
-- [ ] False positives corrected with the "Flags" button on CAS Determinations → CAS Descriptions. Those rows become `manual`, and later seed runs skip them unless `--force` is given.
+- [ ] The preview page (or `tail -12 ~/element-flags-dryrun.txt`, which shows the "=== Summary ===" block and "DRY-RUN: no DB writes") has been reviewed: rows whose basis is a name keyword rather than a molecular formula have been checked for false positives.
+- [ ] The Apply (or `--confirm`) run reports the same "Changed" count, plus non-zero "raw materials bumped" / "SDSs queued" (unless *Do not queue* / `--no-queue` was used).
+- [ ] Reloading the preview page (or a second dry run) reports "Changed: 0".
+- [ ] False positives corrected with the "Flags" button on CAS Determinations → CAS Descriptions. Those rows become `manual`, and later seed runs skip them unless *Also overwrite manually set flags* / `--force` is given.
 
 ### 3.3 TSCA inventory import (#29)
 

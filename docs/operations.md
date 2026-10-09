@@ -129,7 +129,9 @@ bumps `raw_materials.updated_at` and queues SDS Updates rows, so run these
 before a bulk publish, not during one.
 
 ```bash
-# Section 10 element flags (nitrogen / sulfur / halogen) on cas_master (audit #19)
+# Section 10 element flags (nitrogen / sulfur / halogen) on cas_master (audit #19).
+# Preferred: CAS Determinations -> CAS Descriptions -> "Seed element flags (preview)"
+# (/determinations/element-flags) shows the same dry run in the browser with an Apply button.
 sudo -u www-data php /var/www/sds-system/scripts/seed-cas-element-flags.php              # dry-run: per-CAS flags + basis
 sudo -u www-data php /var/www/sds-system/scripts/seed-cas-element-flags.php --confirm    # --no-queue: bump RMs, no SDS Updates rows
                                                                                          # --force: also rewrite rows set by hand ('manual')

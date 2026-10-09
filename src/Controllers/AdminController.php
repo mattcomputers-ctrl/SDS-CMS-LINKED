@@ -10,6 +10,7 @@ use SDS\Core\Database;
 use SDS\Models\User;
 use SDS\Services\AuditService;
 use SDS\Services\BackupService;
+use SDS\Services\CasElementFlagSeeder;
 use SDS\Services\NetworkService;
 use SDS\Services\PermissionService;
 use SDS\Services\SARA313Service;
@@ -2599,6 +2600,87 @@ class AdminController
         AuditService::log('tsca_override', $cas, 'update', ['status' => $status, 'note' => $note]);
         $_SESSION['_flash']['success'] = "TSCA status for CAS {$cas} set to '{$status}'." . self::bumpedTail($bumped) . self::queuedTail($queued);
         redirect('/determinations?tab=tsca');
+    }
+
+    /**
+     * GET /determinations/element-flags — audit #19. The element-flag seed
+     * dry run in the browser: CasElementFlagSeeder::plan() (the same numbers
+     * scripts/seed-cas-element-flags.php prints without --confirm), rendered
+     * as a table of every CAS whose flags would change, plus the Apply form.
+     * Nothing is written here. ?force=1 previews with manual rows included.
+     */
+    public function elementFlagsSeedPreview(): void
+    {
+        $this->requirePageAccess('cas_determinations', 'full');
+
+        $force  = isset($_GET['force']) && (string) $_GET['force'] !== '0';
+        $seeder = new CasElementFlagSeeder(Database::getInstance());
+        $plan   = $seeder->plan($force);
+
+        view('determinations/element-flags', [
+            'pageTitle' => 'Seed Element Flags — Preview',
+            'plan'      => $plan,
+            'force'     => $force,
+        ]);
+    }
+
+    /**
+     * POST /determinations/element-flags/apply — audit #19. Applies the seed
+     * previewed above through CasElementFlagSeeder::apply() (re-planned
+     * against the live table), bumps the raw materials carrying a changed
+     * CAS and, unless "no_queue" is ticked, queues SDS-update rows.
+     */
+    public function applyElementFlagsSeed(): void
+    {
+        $this->requirePageAccess('cas_determinations', 'full');
+        CSRF::validateRequest();
+
+        $force   = isset($_POST['force']);
+        $noQueue = isset($_POST['no_queue']);
+
+        set_time_limit(0);
+        ignore_user_abort(true);
+
+        $seeder = new CasElementFlagSeeder(Database::getInstance());
+        try {
+            $r = $seeder->apply([
+                'force'  => $force,
+                'queue'  => !$noQueue,
+                'userId' => current_user_id(),
+            ]);
+        } catch (\RuntimeException $e) {
+            // Transaction rolled back: nothing was written (flags or bumps).
+            $_SESSION['_flash']['error'] = $e->getMessage();
+            redirect('/determinations/element-flags');
+        }
+
+        // Flags and RM bumps are committed at this point — always record it,
+        // even if the post-commit SDS queueing failed.
+        AuditService::log('cas_master', 'element_flags', 'seed', CasElementFlagSeeder::summary($r) + [
+            'changed_cas'       => $r['changedCas'],
+            'post_commit_error' => $r['postCommitError'],
+        ]);
+
+        if ($r['postCommitError'] !== null) {
+            $_SESSION['_flash']['error'] = sprintf(
+                'Element flags were written (%d changed, %d raw material%s bumped) but %s '
+                . 'The affected CAS are listed in the audit log; run the SDS Updates scan to queue the affected products.',
+                $r['changed'],
+                $r['rmsBumped'], $r['rmsBumped'] === 1 ? '' : 's',
+                $r['postCommitError']
+            );
+            redirect('/determinations/element-flags');
+        }
+
+        $_SESSION['_flash']['success'] = sprintf(
+            'Element flags seeded: %d changed, %d manual skipped; %d raw material%s bumped, %d SDS%s queued%s.',
+            $r['changed'],
+            $r['skippedManual'],
+            $r['rmsBumped'], $r['rmsBumped'] === 1 ? '' : 's',
+            $r['sdsQueued'], $r['sdsQueued'] === 1 ? '' : 's',
+            $noQueue ? ' (SDS-update queue skipped)' : ''
+        );
+        redirect('/determinations/element-flags');
     }
 
     /**

@@ -118,6 +118,11 @@ class Manufacturer
         if (array_key_exists('emergency_phone', $updateData) && trim((string) $updateData['emergency_phone']) === '') {
             throw new \InvalidArgumentException('Manufacturer emergency phone is required (printed in Section 1 of every private label SDS).');
         }
+        // Audit #55 — the name prints as the Section 1 Company line of every
+        // private label SDS and names its PDF; it may not be blanked.
+        if (array_key_exists('name', $updateData) && trim((string) $updateData['name']) === '') {
+            throw new \InvalidArgumentException('Manufacturer name is required (printed as the Company line in Section 1 of every private label SDS).');
+        }
 
         if (empty($updateData)) {
             return 0;

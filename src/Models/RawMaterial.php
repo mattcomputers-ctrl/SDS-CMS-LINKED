@@ -447,7 +447,6 @@ class RawMaterial
                     'pct_max'                => $c['pct_max'] ?? null,
                     'pct_exact'              => $c['pct_exact'] ?? null,
                     'is_trade_secret'        => (int) ($c['is_trade_secret'] ?? 0),
-                    'is_non_hazardous'       => (int) ($c['is_non_hazardous'] ?? 0),
                     'trade_secret_description' => !empty($c['trade_secret_description']) ? trim($c['trade_secret_description']) : null,
                     'trade_secret_h_codes'   => !empty($c['trade_secret_h_codes']) ? trim($c['trade_secret_h_codes']) : null,
                     'sort_order'             => (int) ($c['sort_order'] ?? $i + 1),
@@ -471,6 +470,9 @@ class RawMaterial
                                 'has_sulfur'           => (int) $flags['has_sulfur'],
                                 'has_halogen'          => (int) $flags['has_halogen'],
                                 'element_flags_source' => 'seed',
+                                // Audit #12: RCRA TC metals from the name (migration 057)
+                                'tc_metals'            => implode(',', \SDS\Services\CasElementFlagger::tcMetalsFromNames([$name])),
+                                'tc_metals_source'     => 'seed',
                             ]);
                         } elseif (empty($existing['preferred_name'])) {
                             $db->update('cas_master', ['preferred_name' => $name], 'cas_number = ?', [$cas]);
@@ -838,7 +840,7 @@ class RawMaterial
         if ($db->fetch("SELECT 1 FROM sara313_list WHERE cas_number = ?", [$cas])) {
             $lists[] = 'SARA 313';
         }
-        if ($db->fetch("SELECT 1 FROM carcinogen_list WHERE cas_number = ? LIMIT 1", [$cas])) {
+        if ($db->fetch("SELECT 1 FROM carcinogen_list WHERE cas_number = ? AND NOT (UPPER(agency) = 'IARC' AND UPPER(TRIM(classification)) IN ('GROUP 3', '3')) LIMIT 1", [$cas])) { // #21
             $lists[] = 'Carcinogen';
         }
         if ($db->fetch("SELECT 1 FROM hap_list WHERE cas_number = ?", [$cas])) {

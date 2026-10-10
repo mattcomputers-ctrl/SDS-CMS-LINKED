@@ -5,9 +5,11 @@
  *
  *   (a) nothing "estimated"/"assumed" is printed even when the VOC result
  *       carries assumption / trace entries;
- *   (b) physical state = FG field -> dominant RM state -> 'Liquid'
- *       (SDSGenerator::resolvePhysicalState), and the same resolved value
- *       feeds Section 6 containment;
+ *   (b) physical state = FG field -> largest RM that has a state (#42) ->
+ *       'Liquid' (SDSGenerator::resolvePhysicalState), and the same resolved
+ *       value feeds Section 6 containment; appearance = FG colour + state, or
+ *       the state alone (#42(2): the dominant RM appearance is used only on
+ *       resale sheets);
  *   (c) voc_less_water_exempt / solids_vol_pct are no longer in the payload
  *       and their labels are gone from all four languages;
  *   (d) solubility prints the translated band for formula_props.solubility_key,
@@ -137,11 +139,18 @@ $r = $s9->invoke($gen, ['physical_state' => '', 'color' => 'Blue'], $calc(null, 
 check($r['appearance'] === 'Blue liquid', "FG colour 'Blue' + nothing -> 'Blue liquid'", $r['appearance']);
 $r = $s9->invoke($gen, ['physical_state' => '', 'color' => ''], $calc(null, ''), [9 => ['appearance' => 'Opaque white paste']]);
 check($r['appearance'] === 'Opaque white paste', 'appearance override wins', $r['appearance']);
-// #17: with a blank FG colour the dominant raw material's appearance wins over the bare resolved state.
+// #42(2): with a blank FG colour the finished-good sheet prints the resolved state;
+// the dominant raw material's appearance text is used only on resale sheets.
 $c = $calc(null, 'Liquid');
 $c['formula_props']['appearance'] = 'Clear viscous liquid';
 $r = $s9->invoke($gen, ['physical_state' => '', 'color' => ''], $c, []);
-check($r['appearance'] === 'Clear viscous liquid', 'blank FG colour -> dominant RM appearance (#17)', $r['appearance']);
+check($r['appearance'] === 'liquid', 'blank FG colour -> resolved state; RM appearance ignored (#42)', $r['appearance']);
+$r = $s9->invoke($gen, ['physical_state' => '', 'color' => '', 'is_resale' => true], $c, []);
+check($r['appearance'] === 'Clear viscous liquid', 'resale sheet keeps the raw material appearance (#42)', $r['appearance']);
+$c2 = $calc(null, '');
+$c2['formula_props']['appearance'] = 'Clear liquid';
+$r = $s9->invoke($gen, ['physical_state' => 'Paste', 'color' => ''], $c2, []);
+check($r['appearance'] === 'paste', 'Paste product never prints the RM "Clear liquid" (#42)', $r['appearance']);
 $r = $s9->invoke($gen, ['physical_state' => '', 'color' => 'Blue'], $c, []);
 check($r['appearance'] === 'Blue liquid', 'FG colour present -> colour + state, RM appearance ignored', $r['appearance']);
 $r = $s9->invoke($gen, ['physical_state' => '', 'color' => ''], $calc(null, ''), []);

@@ -96,7 +96,7 @@ class GHSHelper
 
         $allPCodes = array_keys($autoPCodes);
         foreach ($manualPCodes as $code) {
-            $code = trim((string) $code);
+            $code = GHSStatements::normalisePCode((string) $code); // #39: P281 -> P280
             if ($code !== '' && !in_array($code, $allPCodes, true)) {
                 $allPCodes[] = $code;
             }

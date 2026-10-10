@@ -66,30 +66,17 @@
                         <?= ((string) ($settings['sds.block_publish_missing'] ?? '1')) !== '0' ? 'checked' : '' ?>>
                     Block publishing when a constituent at or above the threshold has no federal hazard data and no Competent Person Determination
                 </label>
-                <small class="text-muted">Applies to manual publish, bulk publish and automatic sending. Default on.</small>
+                <small class="text-muted">Applies to every publish path: manual, resale, SDS Updates republish, private label and bulk publish (including the scheduled run). Automatic sending only emails SDSs that are already published. Default on.</small>
             </div>
             <div class="form-group">
                 <label>Missing Data Threshold (%)</label>
-                <input type="number" name="sds__missing_threshold_pct" step="0.1" value="<?= e($settings['sds.missing_threshold_pct'] ?? '1.0') ?>">
-                <small class="text-muted">Constituent concentration at or above which missing federal hazard data blocks publishing (when the gate above is on).</small>
+                <input type="number" name="sds__missing_threshold_pct" min="0.01" max="100" step="0.01" required value="<?= e($settings['sds.missing_threshold_pct'] ?? '1.0') ?>">
+                <small class="text-muted">Constituent concentration (0.01–100) at or above which missing federal hazard data blocks publishing (when the gate above is on).</small>
             </div>
             <div class="form-group">
                 <label>Publishing CPU Workers</label>
                 <input type="number" name="sds__publish_workers" min="0" step="1" value="<?= e($settings['sds.publish_workers'] ?? '0') ?>">
                 <small class="text-muted">0 = auto (minimum 8 workers). Set a specific number to override.</small>
-            </div>
-        </div>
-
-        <h2>Default Product Use</h2>
-        <p class="text-muted mb-1">Set default values for Recommended Use and Restrictions on Use. These will pre-fill when creating new finished goods but can be overridden per product.</p>
-        <div class="form-grid-2col">
-            <div class="form-group full-width">
-                <label>Default Recommended Use</label>
-                <input type="text" name="sds__default_recommended_use" value="<?= e($settings['sds.default_recommended_use'] ?? '') ?>" placeholder="e.g. Industrial ink for offset printing">
-            </div>
-            <div class="form-group full-width">
-                <label>Default Restrictions on Use</label>
-                <input type="text" name="sds__default_restrictions_on_use" value="<?= e($settings['sds.default_restrictions_on_use'] ?? '') ?>" placeholder="e.g. Not for food contact or consumer use">
             </div>
         </div>
 
@@ -146,7 +133,7 @@
         </div>
 
         <h2>UV Acrylate Rule Pack</h2>
-        <p class="text-muted mb-1">When enabled, products whose resolved product family is flagged UV/LED (Settings → Product Families) and whose formula contains acrylate monomers/oligomers receive supplementary safe-handling text in Sections 4, 5, 6, 7 and 11 and UV-specific PPE sentences in Section 8, in the language of the sheet. Hazard classifications are not affected, and the Section 10 "protect from UV light" condition is printed for every UV product regardless of this switch. Changing it affects newly generated documents only (previously published versions are not changed; republish affected products).</p>
+        <p class="text-muted mb-1">When enabled, products whose resolved product family is flagged UV/LED (Settings → Product Families) get UV-curable safe-handling sentences inside Sections 4 (skin contact; acrylates at 0.1&nbsp;% or more recognised by CAS or name are named), 5, 6 and 7 (handling), a separate note in Section 11, and UV PPE sentences in Section 8 on the PPE lines the hazard data drives (all four lines when the product is a skin sensitizer, H317), in the language of the sheet. A per-product override of a field replaces its UV sentence too. Hazard classifications are not affected. The Section 7 "store away from UV light" sentence and the Section 10 "protect from UV light" condition print for every UV/LED family product regardless of this switch. Changing it affects newly generated documents only (republish affected products).</p>
         <div class="form-group">
             <input type="hidden" name="uv_acrylate_rule_pack" value="disabled">
             <label style="font-weight: normal;">
@@ -337,10 +324,14 @@
         <h2>Airborne/Unbound Particles Override (Inhalation-Only Hazards)</h2>
         <p class="text-muted mb-1">
             CAS numbers listed here are treated as inhalation-only hazards. When the finished product
-            contains any non-solid/non-powder ingredient (liquid, paste, gel, etc.), the particulate is
-            bound and no longer airborne, so the following are <strong>suppressed</strong> for these CAS:
-            Prop 65 warnings (on SDSs, labels, and the Prop 65 report), carcinogen classifications (H351),
-            Section 8 exposure limits, and Section 11 findings. All-powder products keep everything.
+            contains any non-solid/non-powder ingredient (liquid, paste, gel, or a blank physical state),
+            the particulate is bound and no longer airborne, so these CAS are left out of the hazard
+            classification entirely (no H351, signal word, pictogram or P-statements from them) and their
+            Section 8 exposure limits and Prop 65 warnings (on SDSs, labels, and the Prop 65 report) are
+            <strong>suppressed</strong>. Section 11 still lists their IARC/NTP/OSHA carcinogen listing
+            with a note that it applies to inhalable dust only. All-powder/solid products keep everything
+            (Carcinogenicity Category 2, H351, at 0.1 % or more). List only substances whose hazards are
+            inhalation-only: every hazard of a listed CAS is ignored in a bound product.
             Enter one CAS number per line. Chemical names are resolved automatically from the Prop 65 list.
         </p>
         <div class="form-group">

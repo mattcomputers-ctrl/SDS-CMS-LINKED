@@ -55,7 +55,7 @@ $m->setAccessible(true);
 // (section10.cond_*); the UV condition is the trailing cond_uv item.
 $base  = 'Excessive heat, contact with strong oxidizing agents.';
 $uv    = $t->get('section10.cond_uv');
-$water = 'Excessive heat, ' . $t->get('section10.cond_water') . ', contact with strong oxidizing agents';
+$water = 'Excessive heat, ' . $t->get('section10.cond_ignition') . ', ' . $t->get('section10.cond_water') . ', contact with strong oxidizing agents'; // #34: water-reactive avoids ignition
 
 echo "a. Default (not a UV product)\n";
 $s = $m->invoke($gen, $hz(['H315', 'H319']), []);

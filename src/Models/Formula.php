@@ -274,6 +274,8 @@ class Formula
      * @param float $scaleFactor  Multiplier for recursive expansion (1.0 at top level).
      * @param array $ancestorFgIds  Finished good IDs in the current expansion chain (cycle guard).
      * @return array  Sorted by concentration_pct descending.
+     *               Every row carries numeric concentration_min / concentration_max
+     *               (#16): summed lower / upper bounds; max == concentration_pct.
      */
     public static function getExpandedComposition(int $formulaId, float $scaleFactor = 1.0, array $ancestorFgIds = []): array
     {
@@ -290,7 +292,7 @@ class Formula
                     rmc.cas_number,
                     COALESCE(NULLIF(p65.chemical_name, ''), NULLIF(cm.preferred_name, ''), rmc.chemical_name) AS chemical_name,
                     rmc.pct_exact, rmc.pct_min, rmc.pct_max,
-                    rmc.is_trade_secret, rmc.is_non_hazardous,
+                    rmc.is_trade_secret,
                     rmc.trade_secret_description, rmc.trade_secret_h_codes,
                     COALESCE(cm.has_nitrogen, 0) AS has_nitrogen,
                     COALESCE(cm.has_sulfur, 0)   AS has_sulfur,
@@ -324,10 +326,14 @@ class Formula
                 $lineScale = $scaleFactor * (float) $row['line_pct'] / 100.0;
                 $tsConstituentHazards[] = [
                     'h_codes'      => $row['trade_secret_h_codes'],
-                    'description'  => $row['trade_secret_description'] ?? ($row['chemical_name'] ?: 'Trade Secret'),
+                    // Q4: the trade-secret description only, never the
+                    // constituent's chemical name (blank -> the translated
+                    // "Trade Secret" via SDSGenerator::tradeSecretName()).
+                    'description'  => trim((string) ($row['trade_secret_description'] ?? '')),
                     'contribution' => $contribution,
-                    'contrib_min'  => ($row['pct_min'] !== null) ? $lineScale * (float) $row['pct_min'] : null,
-                    'contrib_max'  => ($row['pct_max'] !== null) ? $lineScale * (float) $row['pct_max'] : null,
+                    // #16: every row's bounds (an exact row adds the same value to both)
+                    'contrib_min'  => $lineScale * self::constituentBounds($row)[0],
+                    'contrib_max'  => $lineScale * self::constituentBounds($row)[1],
                     'raw_material_id' => (int) $row['raw_material_id'],
                     'internal_code'   => $row['internal_code'],
                     'pct_in_rm'       => $constituentPct,
@@ -347,7 +353,6 @@ class Formula
                     'concentration_min'        => null,
                     'concentration_max'        => null,
                     'is_trade_secret'          => false,
-                    'is_non_hazardous'         => true,
                     'trade_secret_description' => null,
                     // Audit #19: cas_master element flags for Section 10 decomposition products
                     'has_nitrogen'             => (int) ($row['has_nitrogen'] ?? 0) === 1,
@@ -359,16 +364,16 @@ class Formula
 
             $casBuckets[$cas]['concentration_pct'] += $contribution;
 
-            // Preserve original min/max range when available
+            // #16: every row adds its lower and upper bound (exact rows add the
+            // same value to both; one-sided rows per constituentBounds()), so
+            // an exact or one-sided contribution can no longer be left out of
+            // the printed band (it used to print '<0.1%' for a 25 % CAS).
             $lineScale = $scaleFactor * (float) $row['line_pct'] / 100.0;
-            if ($row['pct_min'] !== null && $row['pct_max'] !== null) {
-                $contribMin = $lineScale * (float) $row['pct_min'];
-                $contribMax = $lineScale * (float) $row['pct_max'];
-                $casBuckets[$cas]['concentration_min'] =
-                    ($casBuckets[$cas]['concentration_min'] ?? 0) + $contribMin;
-                $casBuckets[$cas]['concentration_max'] =
-                    ($casBuckets[$cas]['concentration_max'] ?? 0) + $contribMax;
-            }
+            [$boundLo, $boundHi] = self::constituentBounds($row);
+            $casBuckets[$cas]['concentration_min'] =
+                ($casBuckets[$cas]['concentration_min'] ?? 0.0) + $lineScale * $boundLo;
+            $casBuckets[$cas]['concentration_max'] =
+                ($casBuckets[$cas]['concentration_max'] ?? 0.0) + $lineScale * $boundHi;
 
             if ($isTs) {
                 $casBuckets[$cas]['is_trade_secret'] = true;
@@ -377,15 +382,14 @@ class Formula
                 }
             }
 
-            if ((int) ($row['is_non_hazardous'] ?? 0) === 0) {
-                $casBuckets[$cas]['is_non_hazardous'] = false;
-            }
-
             $casBuckets[$cas]['contributing_materials'][] = [
                 'raw_material_id' => (int) $row['raw_material_id'],
                 'internal_code'   => $row['internal_code'],
                 'pct_in_rm'       => $constituentPct,
                 'pct_in_formula'  => $contribution,
+                // Audit #36(1): per-material flag, so SDSGenerator can warn when one
+                // RM declares this CAS a trade secret and another discloses it.
+                'is_trade_secret' => $isTs,
             ];
         }
 
@@ -414,21 +418,30 @@ class Formula
                 'chemical_name'            => 'Trade Secret',
                 'concentration_pct'        => 0.0,
                 'is_trade_secret'          => true,
-                'is_non_hazardous'         => false,
                 'trade_secret_description' => 'Trade Secret',
                 'manual_hazard_json'       => [],
                 'contributing_materials'    => [],
             ];
 
+            // #16: the whole raw material is the trade-secret contribution (exact).
+            $casBuckets[$tsKey]['concentration_min'] = 0.0;
+            $casBuckets[$tsKey]['concentration_max'] = 0.0;
+
             foreach ($tsRmRows as $row) {
                 $contribution = $scaleFactor * (float) $row['line_pct'];
                 $casBuckets[$tsKey]['concentration_pct'] += $contribution;
+                $casBuckets[$tsKey]['concentration_min'] += $contribution;
+                $casBuckets[$tsKey]['concentration_max'] += $contribution;
 
                 if (!empty($row['manual_hazard_json'])) {
                     $decoded = is_string($row['manual_hazard_json'])
                         ? json_decode($row['manual_hazard_json'], true)
                         : $row['manual_hazard_json'];
                     if (is_array($decoded)) {
+                        if ($decoded !== []) {
+                            // #15: this RM's share of the product, for the ATE / aquatic summations
+                            $decoded['_contribution_pct'] = $contribution;
+                        }
                         $casBuckets[$tsKey]['manual_hazard_json'][] = $decoded;
                     }
                 }
@@ -455,7 +468,6 @@ class Formula
                     'concentration_min'        => null,
                     'concentration_max'        => null,
                     'is_trade_secret'          => true,
-                    'is_non_hazardous'         => false,
                     'trade_secret_description' => 'Trade Secret',
                     'manual_hazard_json'       => [],
                     'contributing_materials'    => [],
@@ -476,8 +488,9 @@ class Formula
 
                 $hCodes = array_filter(array_map('trim', explode(',', $tsLine['h_codes'])));
                 if (!empty($hCodes)) {
-                    $casBuckets[$tsKey]['manual_hazard_json'][] =
-                        self::buildHazardJsonFromHCodes($hCodes);
+                    $tsJson = self::buildHazardJsonFromHCodes($hCodes);
+                    $tsJson['_contribution_pct'] = $tsLine['contribution']; // #15
+                    $casBuckets[$tsKey]['manual_hazard_json'][] = $tsJson;
                 }
 
                 $casBuckets[$tsKey]['contributing_materials'][] = [
@@ -556,7 +569,6 @@ class Formula
                         'chemical_name'            => $subEntry['chemical_name'],
                         'concentration_pct'        => 0.0,
                         'is_trade_secret'          => false,
-                        'is_non_hazardous'         => true,
                         'trade_secret_description' => null,
                         // Audit #19: cas_master element flags for Section 10 decomposition products
                         'has_nitrogen'             => !empty($subEntry['has_nitrogen']),
@@ -566,17 +578,19 @@ class Formula
                     ];
                 }
 
+                // Audit #14: carry the declared trade-secret hazards (manual_hazard_json)
+                // and the supplier min/max range through the sub-FG merge; they were
+                // dropped here, so a TS raw material inside a component lost its
+                // Section 2/3 hazards.
+                $pctBefore = (float) $casBuckets[$cas]['concentration_pct'];
                 $casBuckets[$cas]['concentration_pct'] += $subEntry['concentration_pct'];
+                $casBuckets[$cas] = self::mergeSubEntryExtras($casBuckets[$cas], $subEntry, $pctBefore);
 
                 if ($subEntry['is_trade_secret']) {
                     $casBuckets[$cas]['is_trade_secret'] = true;
                     if (!empty($subEntry['trade_secret_description'])) {
                         $casBuckets[$cas]['trade_secret_description'] = $subEntry['trade_secret_description'];
                     }
-                }
-
-                if (!$subEntry['is_non_hazardous']) {
-                    $casBuckets[$cas]['is_non_hazardous'] = false;
                 }
 
                 // Audit #19: element flags are per-CAS constants; OR them through the merge.
@@ -597,12 +611,10 @@ class Formula
         // Round concentrations and sort by descending concentration
         foreach ($casBuckets as &$bucket) {
             $bucket['concentration_pct'] = round($bucket['concentration_pct'], 4);
-            if (isset($bucket['concentration_min'])) {
-                $bucket['concentration_min'] = round($bucket['concentration_min'], 4);
-            }
-            if (isset($bucket['concentration_max'])) {
-                $bucket['concentration_max'] = round($bucket['concentration_max'], 4);
-            }
+            // #16: every row carries numeric bounds; a bucket that somehow got
+            // none (hand-built sub row) counts as exact.
+            $bucket['concentration_min'] = round((float) ($bucket['concentration_min'] ?? $bucket['concentration_pct']), 4);
+            $bucket['concentration_max'] = round((float) ($bucket['concentration_max'] ?? $bucket['concentration_pct']), 4);
         }
         unset($bucket);
 
@@ -769,22 +781,89 @@ class Formula
     /**
      * Resolve the effective percentage of a constituent from its raw data.
      */
-    private static function resolveConstituentPct(array $row): float
+    public static function resolveConstituentPct(array $row): float
     {
-        if ($row['pct_exact'] !== null) {
+        if (($row['pct_exact'] ?? null) !== null) {
             return (float) $row['pct_exact'];
         }
         // Use the maximum of the range for conservative hazard assessment
-        if ($row['pct_min'] !== null && $row['pct_max'] !== null) {
+        if (($row['pct_min'] ?? null) !== null && ($row['pct_max'] ?? null) !== null) {
             return (float) $row['pct_max'];
         }
-        if ($row['pct_min'] !== null) {
+        if (($row['pct_min'] ?? null) !== null) {
             return (float) $row['pct_min'];
         }
-        if ($row['pct_max'] !== null) {
+        if (($row['pct_max'] ?? null) !== null) {
             return (float) $row['pct_max'];
         }
         return 0.0;
+    }
+
+    /**
+     * #16/#38 Lower and upper bound (percent of the raw material) of one
+     * constituent row: exact -> [exact, exact]; min + max -> [min, max];
+     * min only -> [min, min]; max only -> [0, max]; nothing -> [0, 0].
+     * The upper bound always equals resolveConstituentPct(), so the summed
+     * concentration_max equals concentration_pct and a band whose upper end
+     * is >= concentration_max never understates the amount present.
+     * Shared by getExpandedComposition() and
+     * FormulaCalcService::buildResaleComposition().
+     *
+     * @return array{0: float, 1: float}
+     */
+    public static function constituentBounds(array $row): array
+    {
+        $exact = $row['pct_exact'] ?? null;
+        $min   = $row['pct_min'] ?? null;
+        $max   = $row['pct_max'] ?? null;
+        if ($exact !== null) {
+            return [(float) $exact, (float) $exact];
+        }
+        if ($min !== null && $max !== null) {
+            return [(float) $min, (float) $max];
+        }
+        if ($min !== null) {
+            return [(float) $min, (float) $min];
+        }
+        if ($max !== null) {
+            return [0.0, (float) $max];
+        }
+        return [0.0, 0.0];
+    }
+
+    /**
+     * Audit #14: merge what the sub-FG merge used to drop from one
+     * sub-composition entry into the parent bucket:
+     *  - manual_hazard_json (the TRADE_SECRET bucket's declared GHS JSONs) is
+     *    appended, so HazardEngine applies the vendor-declared hazards
+     *    (Section 2) and Section 3 lists the trade-secret row;
+     *  - concentration_min/max: once either side carries a range, the bucket
+     *    range is the sum of each side's range, an exact side counting as
+     *    [pct, pct], so the printed band always contains the summed value.
+     * $pctBefore is the bucket's concentration_pct BEFORE this entry was added.
+     * Pure (no DB) so tests can call it via reflection.
+     */
+    private static function mergeSubEntryExtras(array $bucket, array $subEntry, float $pctBefore): array
+    {
+        if (!empty($subEntry['manual_hazard_json']) && is_array($subEntry['manual_hazard_json'])) {
+            foreach ($subEntry['manual_hazard_json'] as $det) {
+                if (is_array($det) && $det !== []) {
+                    $bucket['manual_hazard_json'][] = $det;
+                }
+            }
+        }
+
+        $hasRange    = isset($bucket['concentration_min'], $bucket['concentration_max']);
+        $subHasRange = isset($subEntry['concentration_min'], $subEntry['concentration_max']);
+        if ($hasRange || $subHasRange) {
+            $subPct = (float) ($subEntry['concentration_pct'] ?? 0);
+            $bucket['concentration_min'] = ($hasRange ? (float) $bucket['concentration_min'] : $pctBefore)
+                + ($subHasRange ? (float) $subEntry['concentration_min'] : $subPct);
+            $bucket['concentration_max'] = ($hasRange ? (float) $bucket['concentration_max'] : $pctBefore)
+                + ($subHasRange ? (float) $subEntry['concentration_max'] : $subPct);
+        }
+
+        return $bucket;
     }
 
     /**
@@ -792,6 +871,17 @@ class Formula
      * Reverse-looks up GHS hazard classifications to derive the full
      * set of P codes, pictograms, and signal word.
      */
+    /**
+     * Public entry to buildHazardJsonFromHCodes() for the resale composition
+     * (FormulaCalcService::buildResaleComposition), so a blank-CAS trade-secret
+     * constituent with declared H-codes classifies a resale sheet exactly as it
+     * classifies a finished good (audit #14 / #38 parity).
+     */
+    public static function tradeSecretHazardJson(array $hCodes): array
+    {
+        return self::buildHazardJsonFromHCodes($hCodes);
+    }
+
     private static function buildHazardJsonFromHCodes(array $hCodes): array
     {
         $ghsData = \SDS\Services\GHSHazardData::HAZARD_CLASSIFICATIONS;

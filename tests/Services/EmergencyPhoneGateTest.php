@@ -36,9 +36,9 @@ $check(str_contains($mfgMsg, '"Acme"') && str_contains($mfgMsg, '29 CFR 1910.120
 
 // Variant: manufacturer number replaces the company number; blank never falls back.
 $base = ['meta' => ['product_code' => 'X'], 'sections' => [1 => ['product_identifier' => 'X', 'emergency_phone' => 'CHEMTREC: (800) 424-9300']], 'warnings' => []];
-$v1 = SDSGenerator::createManufacturerVariant($base, ['name' => 'Acme', 'emergency_phone' => '(800) 555-0199']);
+$v1 = SDSGenerator::createManufacturerVariant($base, ['name' => 'Acme', 'emergency_phone' => '(800) 555-0199', 'phone' => '(555) 555-0100']);
 $check(($v1['sections'][1]['emergency_phone'] ?? '') === '(800) 555-0199' && empty($v1['warnings']), 'variant prints manufacturer number, no warning');
-$v2 = SDSGenerator::createManufacturerVariant($base, ['name' => 'Acme', 'emergency_phone' => '']);
+$v2 = SDSGenerator::createManufacturerVariant($base, ['name' => 'Acme', 'emergency_phone' => '', 'phone' => '(555) 555-0100']);
 $check(($v2['sections'][1]['emergency_phone'] ?? 'unset') === '' && count($v2['warnings'] ?? []) === 1, 'blank manufacturer number -> empty + one warning (no company fallback)');
 $check(($base['sections'][1]['emergency_phone'] ?? '') === 'CHEMTREC: (800) 424-9300', 'base data untouched');
 

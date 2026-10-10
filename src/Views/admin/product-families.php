@@ -11,7 +11,8 @@
 <p class="text-muted">
     A family supplies the Section 1 Recommended Use / Restrictions on Use defaults (per language) and the UV/LED flag.
     Items join a family by manual choice on the item form, by a rule (code prefix, description phrase, exact code — aliases are matched too),
-    or, for products, by the family carrying the largest weight share of their formula. Rule and family edits are applied by
+    or, for products, by the family carrying the largest weight share of their formula (UV/LED families count together).
+    Inactive families are ignored everywhere, manual picks included. Rule and family edits are applied by
     <strong>Recompute now</strong> (with a preview). Reassigned items are flagged for SDS republish.
 </p>
 
@@ -21,6 +22,17 @@
     <?php else: ?>
         <p class="text-muted">All items are up to date with the current rules.</p>
     <?php endif; ?>
+<?php endif; ?>
+
+<?php if (!empty($legacyManual)): ?>
+    <div class="alert alert-warning">
+        <strong><?= (int) $legacyManual ?></strong> product(s) still carry the manual family pick migration 053 copied from the old family name.
+        <form method="POST" action="/admin/product-families/reset-legacy-manual" style="display:inline;">
+            <?= csrf_field() ?>
+            <button type="submit" class="btn btn-sm"
+                    onclick="return confirm('Reset <?= (int) $legacyManual ?> legacy manual family pick(s) to Auto? Each product is re-resolved by rules / formula content; products whose family changes are flagged for SDS republish.');">Reset legacy manual picks to Auto</button>
+        </form>
+    </div>
 <?php endif; ?>
 
 <table class="table table-sm">

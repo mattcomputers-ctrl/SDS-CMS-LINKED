@@ -113,8 +113,20 @@ class HazardEngine
      *   no environmental hazard class listed because the CPD declared
      *   Acute Tox + Aquatic but only Acute Tox fired. P-codes are left
      *   alone (many are cross-cutting across classes).
+     *
+     * v1.8-flash-point-flammability (decision Q3, audit #9/#5/#10/#44):
+     *   the mixture Flammable Liquids category is derived from the product
+     *   flash point (formula_props, wt%-weighted) and initial boiling point
+     *   passed as classify()'s third argument; ingredient H224-H227 /
+     *   Flammable Liquids rows no longer classify the mixture (physical
+     *   hazards are not classified by ingredient cut-off). See
+     *   applyFlammableLiquidsFromFlashPoint().
+     *
+     * Must fit sds_generation_trace.engine_version (VARCHAR(30), migration
+     * 036): a longer value fails the trace INSERT under strict SQL mode
+     * after the sds_versions row is already written.
      */
-    public const ENGINE_VERSION = 'v1.7.0-osha-gcl';
+    public const ENGINE_VERSION = 'v1.8-flash-point-flammability';
 
     /**
      * GHS summation thresholds per canonical class + category.
@@ -206,11 +218,13 @@ class HazardEngine
             'Cat 3' => 300.0,
             'Cat 4' => 1100.0,
         ],
+        // #23: GHS Rev. 7 Table 3.1.2 converted point estimates (were 1.5 / 10,
+        // which pushed a 100 % Cat 4 vapour to ATEmix 10 = Cat 3 / H331).
         'inhalation_vapor' => [
             'Cat 1' => 0.05,
             'Cat 2' => 0.5,
-            'Cat 3' => 1.5,
-            'Cat 4' => 10.0,
+            'Cat 3' => 3.0,
+            'Cat 4' => 11.0,
         ],
         'inhalation_dust' => [
             'Cat 1' => 0.005,
@@ -445,6 +459,18 @@ class HazardEngine
         GHSHazardClass::ASPIRATION_HAZARD         => ['Cat 1' => 10.0],
     ];
 
+    /** Q3: the Flammable Liquids H-codes (Cat 1-4). Never taken from ingredients. */
+    public const FLAMMABLE_LIQUID_H_CODES = ['H224', 'H225', 'H226', 'H227'];
+
+    /** Q3: 'basis' values of the result's 'flammability' block. */
+    public const FLAMMABILITY_FLASH_POINT    = 'flash_point';
+    public const FLAMMABILITY_NO_FLASH_POINT = 'no_flash_point';
+    public const FLAMMABILITY_NOT_LIQUID     = 'not_liquid';
+    public const FLAMMABILITY_NOT_EVALUATED  = 'not_evaluated';
+
+    /** Q3: physical states that are never classified as flammable liquids (lower-case). */
+    private const NOT_LIQUID_STATES = ['solid', 'powder', 'paste'];
+
     /** Signal word hierarchy. */
     private const SIGNAL_HIERARCHY = ['Danger' => 2, 'Warning' => 1];
 
@@ -533,6 +559,69 @@ class HazardEngine
     private array $aquaticBuffer = [];
 
     /**
+     * Per-classify() record of where the aquatic H-codes came from (audit #25),
+     * exposed as $result['aquatic_basis'] via aquaticBasisResult():
+     *   summation_codes - codes applyAquaticSummation() fired (keys)
+     *   override_mode   - 'additive' | 'replace' | null (no FG override)
+     *   override_codes  - aquatic H-codes named by the FG override payload
+     *                     (h_statements, plus the defaults of any aquatic class)
+     */
+    private array $aquaticBasis = ['summation_codes' => [], 'override_mode' => null, 'override_codes' => []];
+
+    /**
+     * Audit #18: CAS numbers left out of classify() entirely (cas => name).
+     * SDSGenerator sets it to the Settings inhalation-only CAS (carbon black,
+     * TiO2, ...) present in a bound product (any raw-material line not
+     * Solid/Powder). Their hazard rows, CPDs, exposure limits and summation /
+     * ATE / aquatic contributions never enter classification, so the signal
+     * word, pictograms, P-codes and most-severe consolidation come from the
+     * remaining ingredients only. Kept across classify() calls on the same
+     * instance; pass [] to clear.
+     *
+     * @var array<string,string>
+     */
+    private array $inhalationOnlyExcluded = [];
+
+    /** Fluent: `(new HazardEngine())->excludeInhalationOnlyCas($casToName)->classify(...)`. */
+    public function excludeInhalationOnlyCas(array $casToName): self
+    {
+        $this->inhalationOnlyExcluded = [];
+        foreach ($casToName as $cas => $name) {
+            $cas = trim((string) $cas);
+            if ($cas !== '') {
+                $this->inhalationOnlyExcluded[$cas] = (string) $name;
+            }
+        }
+        return $this;
+    }
+
+    /**
+     * Per-classify() Q3 flammability block (flammabilityFromProps()), exposed
+     * as $result['flammability'] so Sections 13 and 14 classify from the SAME
+     * flash point / IBP / physical state the engine used.
+     */
+    private array $flammability = [];
+
+    /**
+     * Per-classify() CAS => concentration of disclosed ingredients whose own
+     * data carries a Flammable Liquids class (>= 1 %, the former physical
+     * cut-off). They no longer classify the mixture; they are credited as
+     * contributors of the flash-point-derived class (Section 3 attribution,
+     * Section 14 technical names, 49 CFR 172.203(k)).
+     */
+    private array $flammableIngredients = [];
+
+    /**
+     * Per-classify() disclosed CAS => most severe OWN Flammable Liquids
+     * category number (1-4) from the ingredient's data. Only used to credit
+     * the ingredient's own H224-H227 in the per-CAS map (Section 3 / Section
+     * 14 technical names); never classifies the mixture (Q3). The
+     * flash-point MIXTURE code is not credited to contributors, so Section 3
+     * never shows e.g. H227 against ethanol (own H225).
+     */
+    private array $flammableIngredientCats = [];
+
+    /**
      * Run hazard classification for a composition.
      *
      * @param  array $composition  From Formula::getExpandedComposition()
@@ -544,9 +633,12 @@ class HazardEngine
      *   signal_word: string|null,
      *   exposure_limits: array,
      *   hazardous_cas: string[],
+     *   cas_h_codes: array<string,string[]>,  // #37 per-CAS codes before consolidation
      *   ppe_recommendations: array,
      *   aquatic_components: array,   // per-CAS aquatic category + M-factor (Phase 4 buffer), for SDS Section 12
-     *   ate_results: array,          // per-route ATE summation results (audit #20), see $ateResults
+     *   aquatic_basis: array,        // summation_codes / override_mode / override_codes (audit #25), for SDS Section 12
+     *   ate_results: array,          // per-route ATE summation results (audit #20), see $ateResults; #66: cleared in FG replace mode
+     *   flammability: array,         // Q3: flash point / IBP / state / category 0-4 / basis / ibp_assumed the Flammable Liquids class was derived from
      *   trace: array,
      * }
      */
@@ -567,14 +659,28 @@ class HazardEngine
      *         'set_by'     => int|null,
      *         'set_at'     => 'YYYY-MM-DD HH:MM:SS'|null,
      *       ]
+     * @param array|null $flammabilityInputs Q3: ['flash_point_c' => ?float,
+     *     'flash_point_greater_than' => bool, 'boiling_point_c' => ?float,
+     *     'physical_state' => string] — the product flash point (formula_props),
+     *     initial boiling point and resolved physical state. Null = not
+     *     evaluated: no Flammable Liquids class at all (ingredient rows are
+     *     still ignored).
      */
-    public function classify(array $composition, ?array $finishedGoodOverride = null): array
+    public function classify(array $composition, ?array $finishedGoodOverride = null, ?array $flammabilityInputs = null): array
     {
         $this->trace = [];
         $this->summationBuffer = [];
         $this->ateBuffer = [];
         $this->ateResults = [];
         $this->aquaticBuffer = [];
+        $this->aquaticBasis = ['summation_codes' => [], 'override_mode' => null, 'override_codes' => []];
+        // #23: seeded from the inputs (not null) so the ATE inhalation route
+        // sees the product physical state during the main loop
+        // (productIsDustForm()); applyFlammableLiquidsFromFlashPoint()
+        // re-derives the same block from the same inputs later.
+        $this->flammability = self::flammabilityFromProps($flammabilityInputs);
+        $this->flammableIngredients = [];
+        $this->flammableIngredientCats = [];
         $db = Database::getInstance();
 
         $allHClasses   = [];
@@ -639,12 +745,23 @@ class HazardEngine
                 continue;
             }
 
+            // Audit #18: inhalation-only CAS bound in a non-powder product
+            // (see $inhalationOnlyExcluded) — no classes, codes or limits.
+            if (isset($this->inhalationOnlyExcluded[(string) $cas])) {
+                $this->traceStep('inhalation_only_excluded', "CAS {$cas} ({$name}) excluded: inhalation-only hazard, bound in a non-powder product", [
+                    'cas' => $cas, 'concentration_pct' => $conc,
+                ]);
+                continue;
+            }
+
             // --- Trade-secret row: no CAS, manual hazard JSON(s) attached ---
             // The composition row was synthesized by Formula::getExpandedComposition
             // for one or more raw materials flagged `hazardous_no_cas = 1`.
             // Merge each contributing RM's hazard JSON the same way a CPD would.
-            // Use 100% concentration to bypass cutoff checks — the vendor has
-            // explicitly declared these hazards apply regardless of dilution.
+            // 100% concentration bypasses the cut-off checks only — the vendor has
+            // explicitly declared these hazards apply regardless of dilution. The
+            // ATE and aquatic summations use the RM's real share of the product
+            // (#15; Formula stamps it on each JSON as _contribution_pct).
             if (!empty($component['manual_hazard_json']) && is_array($component['manual_hazard_json'])) {
                 $hasHazards = false;
                 foreach ($component['manual_hazard_json'] as $detJson) {
@@ -656,7 +773,8 @@ class HazardEngine
                         $cas,
                         $name,
                         100.0,
-                        'manual (trade secret)'
+                        'manual (trade secret)',
+                        self::tradeSecretContributionPct($detJson, $component)
                     );
 
                     if (empty($parsed['h_statements']) && empty($parsed['hazard_classes'])) {
@@ -787,6 +905,13 @@ class HazardEngine
                 continue;
             }
 
+            // #19/#20: per-class attribution of stored rows. Unreadable class
+            // rows (PubChem 'Unclassified', generic "Acute Toxicity") become one
+            // row per class their H-codes imply; a readable class with no usable
+            // category takes the category its H-codes imply. Rows stored before
+            // batch E are corrected here at run time.
+            $hazardData = HazardRowNormalizer::expandRows($hazardData);
+
             // Process each hazard classification
             foreach ($hazardData as $hc) {
                 $className = (string) ($hc['class_name'] ?? '');
@@ -810,6 +935,15 @@ class HazardEngine
                     ]);
                 }
 
+                // Q3 (audit #9): an ingredient's Flammable Liquids row never
+                // classifies the mixture — physical hazards are not classified
+                // by ingredient cut-off; the category comes from the product
+                // flash point (applyFlammableLiquidsFromFlashPoint()).
+                if ($canonical === GHSHazardClass::FLAMMABLE_LIQUIDS) {
+                    $this->recordFlammableIngredient($cas, $name, $conc, (string) ($categoryCanon ?? ''), 'hazard_classification');
+                    continue;
+                }
+
                 // Check against GHS concentration cutoffs
                 $cutoff = $this->getCutoff($canonical ?? '', $categoryCanon);
 
@@ -825,7 +959,7 @@ class HazardEngine
                 // Acute tox contributes to the mixture calc regardless of
                 // per-component trigger, using explicit vendor ATE when
                 // present or category-defaults at resolve time.
-                $ateRoute = $this->canonicalToAteRoute($canonical);
+                $ateRoute = $this->canonicalToAteRoute($canonical, $hc);
                 if ($ateRoute !== null && $categoryCanon !== null && $categoryCanon !== '') {
                     $explicitAte = $this->resolveExplicitAte($hc, $ateRoute);
                     $this->addToAteBuffer(
@@ -863,8 +997,12 @@ class HazardEngine
                     $hazardousCas[$cas] = true;
 
                     $allHClasses[] = [
-                        'class'              => $className,
-                        'category'           => $category,
+                        // #20: standard English display class / category so
+                        // consolidation, grouping, translation and Section 2
+                        // see one form whatever the source spelling
+                        // ('Flammable liquids' / '3').
+                        'class'              => $canonical !== null ? GHSHazardClass::displayName($canonical) : $className,
+                        'category'           => HazardRowNormalizer::categoryDisplay($canonical, (string) $categoryCanon, $category),
                         'canonical'          => $canonical,
                         'category_canonical' => $categoryCanon,
                         'cas'                => $cas,
@@ -873,8 +1011,12 @@ class HazardEngine
                         'cutoff_pct'         => $cutoff,
                     ];
 
-                    // Signal word
-                    $sw = $hc['signal_word'] ?? null;
+                    // #19: only this row's own class contributes — its
+                    // GHSHazardData defaults plus the row's codes that belong
+                    // to that class (PubChem stored the substance's whole
+                    // label on every class row).
+                    $contrib = HazardRowNormalizer::contributionForRow($hc, $canonical, (string) $categoryCanon);
+                    $sw = $contrib['signal_word'];
                     if ($sw !== null) {
                         $currentPriority = self::SIGNAL_HIERARCHY[$signalWord] ?? 0;
                         $newPriority     = self::SIGNAL_HIERARCHY[$sw] ?? 0;
@@ -882,37 +1024,20 @@ class HazardEngine
                             $signalWord = $sw;
                         }
                     }
-
-                    // H-statements
-                    $hStmts = json_decode($hc['h_statements_json'] ?? '[]', true);
-                    if (is_array($hStmts)) {
-                        foreach ($hStmts as $stmt) {
-                            if (is_string($stmt)) {
-                                $allHStmts[$stmt] = ['code' => $stmt, 'text' => ''];
-                            } elseif (is_array($stmt) && isset($stmt['code'])) {
-                                $allHStmts[$stmt['code']] = $stmt;
-                            }
-                        }
+                    foreach ($contrib['h'] as $code => $stmt) {
+                        $allHStmts[$code] = $stmt;
                     }
-
-                    // P-statements
-                    $pStmts = json_decode($hc['p_statements_json'] ?? '[]', true);
-                    if (is_array($pStmts)) {
-                        foreach ($pStmts as $stmt) {
-                            if (is_string($stmt)) {
-                                $allPStmts[$stmt] = ['code' => $stmt, 'text' => ''];
-                            } elseif (is_array($stmt) && isset($stmt['code'])) {
-                                $allPStmts[$stmt['code']] = $stmt;
-                            }
-                        }
+                    foreach ($contrib['p'] as $code => $stmt) {
+                        $allPStmts[$code] = $stmt;
                     }
-
-                    // Pictograms
-                    $pictos = json_decode($hc['pictograms_json'] ?? '[]', true);
-                    if (is_array($pictos)) {
-                        foreach ($pictos as $p) {
-                            $allPictograms[$p] = true;
-                        }
+                    foreach ($contrib['pictograms'] as $p) {
+                        $allPictograms[$p] = true;
+                    }
+                    if ($contrib['dropped'] !== []) {
+                        $this->traceStep('row_codes_filtered', "CAS {$cas} {$className}: codes of other classes dropped", [
+                            'cas' => $cas, 'canonical' => $canonical, 'category_canonical' => $categoryCanon,
+                            'dropped' => $contrib['dropped'],
+                        ]);
                     }
 
                     $this->traceStep('classified', "CAS {$cas} triggers {$className} {$category}", [
@@ -955,6 +1080,15 @@ class HazardEngine
             $allHClasses, $allHStmts, $allPStmts, $allPictograms, $signalWord, $hazardousCas
         );
 
+        // Q3 (audit #9): mixture Flammable Liquids category from the product
+        // flash point + initial boiling point, the one flammability source for
+        // Sections 2, 5, 7, 10, 13 and 14. Runs before the FG override so an
+        // operator's additive / replace override still wins.
+        $this->applyFlammableLiquidsFromFlashPoint(
+            $flammabilityInputs,
+            $allHClasses, $allHStmts, $allPStmts, $allPictograms, $signalWord, $hazardousCas
+        );
+
         // Phase 5: finished-good hazard override. Applied after every
         // composition-derived rule so additive mode layers on top and
         // replace mode can cleanly discard earlier contributions.
@@ -965,8 +1099,28 @@ class HazardEngine
             );
         }
 
+        // #66 / Q6: acute-toxicity Category 5 is not adopted by OSHA HazCom
+        // (29 CFR 1910.1200 App. A.1); drop it so Sections 2, 4 and 11 agree.
+        $this->dropUnadoptedAcuteCategories(
+            $allHClasses, $allHStmts, $allPStmts, $signalWord, $hazardousCas,
+            (string) ($finishedGoodOverride['mode'] ?? 'none') === 'replace'
+        );
+
+        // Audit #25: one aquatic H-code per route. consolidateHazardClasses()
+        // keeps one category per class; the H-statements must agree, so an
+        // additive override H410 over a summation H411 (or a CPD / trade-secret
+        // H411 next to a summation H410) prints only the more severe code.
+        $this->dropLessSevereAquaticCodes($allHStmts);
+        // Q3: likewise one Flammable Liquids H-code (H224 > H225 > H226 > H227).
+        $this->dropLessSevereFlammableCodes($allHStmts);
+
         // Apply pictogram precedence rules
         $finalPictograms = $this->applyPictogramPrecedence(array_keys($allPictograms));
+
+        // #37: per-CAS H-codes BEFORE consolidation. consolidateHazardClasses()
+        // keeps one entry per class, so a second CAS in the same class would
+        // lose its code in Section 3 and in the Section 14 technical names.
+        $casHCodes = $this->buildCasHCodeMap($allHClasses);
 
         // Consolidate hazard classes: keep only the most severe category per class,
         // then sort by GHS group order (physical > health > environmental) and severity
@@ -981,13 +1135,20 @@ class HazardEngine
             $hcCanonical = (string) ($hcRef['canonical'] ?? '');
             $hcCategory  = (string) ($hcRef['category_canonical'] ?? '');
             if ($hcCanonical !== '' && $hcCategory !== '') {
-                $defaults = $this->getDefaultsForClassCategory($hcCanonical, $hcCategory);
-                $hcRef['h_codes'] = $defaults['h_codes'] ?? [];
+                // #40: pick the entry by its display category too, so STOT SE
+                // 'Category 3 (Narcotic Effects)' shows H336, not RI's H335.
+                $entry = HazardRowNormalizer::entryFor($hcCanonical, $hcCategory, (string) ($hcRef['category'] ?? ''));
+                $hcRef['h_codes'] = $entry['h_codes'] ?? [];
             } else {
                 $hcRef['h_codes'] = [];
             }
         }
         unset($hcRef);
+
+        // #39: P281 was withdrawn in GHS Rev. 6 (merged into P280). PubChem
+        // lists, CPDs, trade-secret JSON and the FG override can still carry
+        // it; map it once here so no section ever prints P281.
+        $allPStmts = GHSStatements::replaceWithdrawnPCodes($allPStmts);
 
         // Sort H and P statements by code
         $hStatements = array_values($allHStmts);
@@ -1016,8 +1177,8 @@ class HazardEngine
             'p_statements'        => $pStatements,
             'pictograms'          => $finalPictograms,
             'signal_word'         => $signalWord,
-            // Dedupe exposure limits by (cas, limit_type, value, units,
-            // notes). If the regulatory seed gets re-run and leaves two
+            // Dedupe exposure limits by (cas, limit_type, value, units) —
+            // notes are not part of the key (#64). If the regulatory seed gets re-run and leaves two
             // hazard_source_records rows marked is_current = 1 for the
             // same CAS (one per OSHA/NIOSH/ACGIH source, each with an
             // identical copy of the same limits), the JOIN in the main
@@ -1028,6 +1189,9 @@ class HazardEngine
             // limit, regardless of the source data's cleanliness.
             'exposure_limits'     => self::dedupeExposureLimits($exposureLimits),
             'hazardous_cas'       => array_keys($hazardousCas),
+            // #37 per-CAS H-codes recorded before consolidation; read through
+            // TransportClassifier::casHCodeMap() (Section 3 cell, Section 14 names).
+            'cas_h_codes'         => $casHCodes,
             'ppe_recommendations' => $ppeRecommendations,
             // Per-component aquatic classification + M-factor, flattened
             // from the Phase 4 aquatic buffer so SDS Section 12 can print a
@@ -1035,34 +1199,51 @@ class HazardEngine
             // classification is still decided solely by
             // applyAquaticSummation() above.
             'aquatic_components'  => $this->buildAquaticComponentSummary(),
+            // Source of the aquatic H-codes (audit #25) so Section 12 can say
+            // whether the classification came from the summation or the
+            // finished-good override.
+            'aquatic_basis'       => $this->aquaticBasisResult(),
             // Per-route ATE summation results (audit #20) — see $ateResults.
             'ate_results'         => $this->ateResults,
+            'flammability'        => $this->flammability, // Q3: read by SDS Sections 13 / 14
+            // Q3: disclosed CAS (>= 1 %) whose own data carries a Flammable
+            // Liquids class (CAS => conc); read by the generator's
+            // missing-raw-material-flash-point warning. Never classifies.
+            'flammable_ingredients' => $this->flammableIngredients,
             'trace'               => $this->trace,
         ];
     }
 
     /**
      * Drop duplicate rows from the exposure_limits array, keyed by
-     * (cas_number, limit_type, value, units, notes). Keeps the first
-     * seen row so ordering is stable with respect to the collection
-     * order in classify().
+     * (cas_number, limit_type, value, units) — #64: notes are NOT part of the
+     * key, so the same limit imported with different notes prints once. The
+     * first row is kept (stable order); if its notes are blank it adopts the
+     * first non-blank notes of a duplicate.
      */
     private static function dedupeExposureLimits(array $limits): array
     {
         $seen   = [];
         $unique = [];
         foreach ($limits as $el) {
+            $value = trim((string) ($el['value'] ?? ''));
+            if (is_numeric($value)) {
+                $value = (string) (float) $value;
+            }
             $key = implode('|', [
                 (string) ($el['cas_number'] ?? ''),
-                (string) ($el['limit_type'] ?? ''),
-                (string) ($el['value']      ?? ''),
-                (string) ($el['units']      ?? ''),
-                trim((string) ($el['notes'] ?? '')),
+                strtoupper(trim((string) ($el['limit_type'] ?? ''))),
+                $value,
+                strtolower(trim((string) ($el['units'] ?? ''))),
             ]);
             if (isset($seen[$key])) {
+                $i = $seen[$key];
+                if (trim((string) ($unique[$i]['notes'] ?? '')) === '' && trim((string) ($el['notes'] ?? '')) !== '') {
+                    $unique[$i]['notes'] = $el['notes'];
+                }
                 continue;
             }
-            $seen[$key] = true;
+            $seen[$key] = count($unique);
             $unique[]   = $el;
         }
         return $unique;
@@ -1324,20 +1505,64 @@ class HazardEngine
 
     /**
      * Map a canonical acute-toxicity class code to its ATE route key.
-     * Returns null for non-acute-tox codes. The inhalation class defaults
-     * to the "vapor" route — ink & coatings catalogs are almost always
-     * liquid, so vapour is the correct scale; when dust/mist inhalation
-     * data is present on a row (via ate_inhalation_dust_mg_l_4h) we fall
-     * back to that route instead, route-aware below.
+     * Returns null for non-acute-tox codes. Inhalation (#23): the dust/mist
+     * route when the product is a Solid or Powder (the classify() Q3
+     * flammability inputs' physical_state) or when the row carries a
+     * dust/mist ATE but no vapour ATE; otherwise the vapour route.
+     *
+     * @param array $row hazard_classifications row, CPD determination JSON
+     *                   or trade-secret manual hazard JSON
      */
-    private function canonicalToAteRoute(?string $canonical): ?string
+    private function canonicalToAteRoute(?string $canonical, array $row = []): ?string
     {
         return match ($canonical) {
             GHSHazardClass::ACUTE_TOXICITY_ORAL       => 'oral',
             GHSHazardClass::ACUTE_TOXICITY_DERMAL     => 'dermal',
-            GHSHazardClass::ACUTE_TOXICITY_INHALATION => 'inhalation_vapor',
+            GHSHazardClass::ACUTE_TOXICITY_INHALATION => $this->inhalationAteRoute($row),
             default                                   => null,
         };
+    }
+
+    /** #23: inhalation ATE route for one contributor row. */
+    private function inhalationAteRoute(array $row): string
+    {
+        if ($this->productIsDustForm()) {
+            return 'inhalation_dust';
+        }
+        $has = static function (string $col) use ($row): bool {
+            return isset($row[$col]) && is_numeric($row[$col]) && (float) $row[$col] > 0;
+        };
+        if ($has('ate_inhalation_dust_mg_l_4h') && !$has('ate_inhalation_vapor_mg_l_4h')) {
+            return 'inhalation_dust';
+        }
+        return 'inhalation_vapor';
+    }
+
+    /**
+     * #23: Solid / Powder products are assessed on the dust/mist route.
+     * Reads the physical state classify() received in its Q3 flammability
+     * inputs ($this->flammability is seeded from them at the start of
+     * classify()); unknown / Liquid / Paste / Gel = vapour route.
+     */
+    private function productIsDustForm(): bool
+    {
+        $state = (string) ($this->flammability['physical_state'] ?? '');
+        return in_array(mb_strtolower(trim($state)), ['solid', 'powder'], true);
+    }
+
+    /**
+     * #15: a trade-secret declaration's real share of the product (%),
+     * stamped by Formula::getExpandedComposition as _contribution_pct.
+     * Falls back to the whole TRADE_SECRET bucket (never 100 %) when the
+     * JSON carries no stamp (resale sheets, older callers).
+     */
+    private static function tradeSecretContributionPct(array $detJson, array $component): float
+    {
+        $stamped = $detJson['_contribution_pct'] ?? null;
+        if (is_numeric($stamped) && (float) $stamped > 0) {
+            return (float) $stamped;
+        }
+        return (float) ($component['concentration_pct'] ?? 0);
     }
 
     /**
@@ -1681,6 +1906,7 @@ class HazardEngine
             'set_at'    => $override['set_at']    ?? null,
             'payload'   => $override['hazards']   ?? null,
         ]);
+        $this->aquaticBasis['override_mode'] = $mode;
 
         if ($mode === 'replace') {
             $allHClasses    = [];
@@ -1688,6 +1914,9 @@ class HazardEngine
             $allPStmts      = [];
             $allPictograms  = [];
             $signalWord     = null;
+            // #66: the composition ATEmix no longer stands behind any printed
+            // category, so Section 11 must not append it.
+            $this->ateResults = [];
         }
 
         $hazards = $override['hazards'] ?? [];
@@ -1718,9 +1947,67 @@ class HazardEngine
             }
         }
 
+        // Q3 (one flammability source): an override that brings a Flammable
+        // Liquids class or any of H224-H227 REPLACES the flash-point-derived
+        // category in additive mode too — otherwise Section 2 printed e.g.
+        // H225 next to the derived H227. The flash-point row and its default
+        // H-codes go; the override's own class / codes are merged below.
+        $ovHCodes = array_map('strtoupper', $this->parseOverrideCodeList($hazards['h_statements'] ?? []));
+        $ovFlamEntries = [];
+        foreach ($hazardClassEntries as $entry) {
+            if (HazardClassAliases::normalize($entry['class']) === GHSHazardClass::FLAMMABLE_LIQUIDS) {
+                $ovFlamEntries[] = $entry;
+            }
+        }
+        if ($ovFlamEntries !== [] || array_intersect($ovHCodes, self::FLAMMABLE_LIQUID_H_CODES) !== []) {
+            $droppedCodes = [];
+            $allHClasses = array_values(array_filter($allHClasses, static function (array $hc) use (&$droppedCodes): bool {
+                if (($hc['cas'] ?? '') === 'MIXTURE' && ($hc['source'] ?? '') === 'flash_point') {
+                    $droppedCodes = array_merge($droppedCodes, array_map('strval', (array) ($hc['h_codes'] ?? [])));
+                    return false;
+                }
+                return true;
+            }));
+            foreach ($droppedCodes as $code) {
+                unset($allHStmts[$code]);
+            }
+            if ($droppedCodes !== []) {
+                $this->traceStep('flash_point_flammability_replaced_by_override',
+                    'FG override sets the Flammable Liquids category; the flash-point-derived entry is dropped (Q3)',
+                    ['dropped_h_codes' => $droppedCodes]);
+            }
+            // An override Flammable Liquids class without its H-code would
+            // leave the class line with no statement: add the category's
+            // default H/P-codes, pictogram and signal-word floor.
+            foreach ($ovFlamEntries as $entry) {
+                $defaults = $this->getDefaultsForClassCategory(
+                    GHSHazardClass::FLAMMABLE_LIQUIDS,
+                    (string) HazardClassAliases::normalizeCategory($entry['category'])
+                );
+                foreach ($defaults['h_codes'] ?? [] as $hc) {
+                    $allHStmts[$hc] = $allHStmts[$hc] ?? ['code' => $hc, 'text' => ''];
+                }
+                foreach ($defaults['p_codes'] ?? [] as $pc) {
+                    $allPStmts[$pc] = $allPStmts[$pc] ?? ['code' => $pc, 'text' => ''];
+                }
+                foreach ($defaults['pictograms'] ?? [] as $pict) {
+                    $allPictograms[$pict] = true;
+                }
+                $dsw = $defaults['signal_word'] ?? null;
+                if ($dsw !== null && (self::SIGNAL_HIERARCHY[$dsw] ?? 0) > (self::SIGNAL_HIERARCHY[$signalWord ?? ''] ?? 0)) {
+                    $signalWord = $dsw;
+                }
+            }
+        }
+
         foreach ($hazardClassEntries as $entry) {
             $canonical     = HazardClassAliases::normalize($entry['class']);
             $categoryCanon = HazardClassAliases::normalizeCategory($entry['category']);
+            if ($canonical === GHSHazardClass::AQUATIC_ACUTE || $canonical === GHSHazardClass::AQUATIC_CHRONIC) {
+                foreach ($this->getDefaultsForClassCategory($canonical, $categoryCanon)['h_codes'] as $aqCode) {
+                    $this->aquaticBasis['override_codes'][strtoupper((string) $aqCode)] = true;
+                }
+            }
             if ($canonical !== null
                 && $this->alreadyClassified($allHClasses, $canonical, $categoryCanon)) {
                 continue;
@@ -1741,6 +2028,9 @@ class HazardEngine
         foreach ($this->parseOverrideCodeList($hazards['h_statements'] ?? []) as $code) {
             if (!isset($allHStmts[$code])) {
                 $allHStmts[$code] = ['code' => $code, 'text' => ''];
+            }
+            if (preg_match('/^H4(0[0-2]|1[0-3])$/', strtoupper($code))) {
+                $this->aquaticBasis['override_codes'][strtoupper($code)] = true;
             }
         }
         foreach ($this->parseOverrideCodeList($hazards['p_statements'] ?? []) as $code) {
@@ -1785,6 +2075,77 @@ class HazardEngine
             ));
         }
         return [];
+    }
+
+    /** Aquatic H-codes per route, most severe first (GHS Rev. 7 Table 4.1.0). */
+    private const AQUATIC_H_LADDER = [
+        'acute'   => ['H400', 'H401', 'H402'],
+        'chronic' => ['H410', 'H411', 'H412', 'H413'],
+    ];
+
+    /**
+     * Audit #25: keep only the most severe aquatic H-code per route
+     * (acute H400 > H401 > H402; chronic H410 > H411 > H412 > H413). The two
+     * routes are independent, so H400 + H412 both stay. Runs after the
+     * finished-good override, whatever its mode, and after every
+     * composition-derived rule (summation, CPD, trade-secret JSON).
+     */
+    /**
+     * Q3: one Flammable Liquids category per sheet. Keeps only the most
+     * severe of H224 > H225 > H226 > H227 (e.g. an additive override H226
+     * next to a stray H227), matching consolidateHazardClasses(), which keeps
+     * the most severe Flammable Liquids row.
+     */
+    private function dropLessSevereFlammableCodes(array &$allHStmts): void
+    {
+        $kept = null;
+        foreach (self::FLAMMABLE_LIQUID_H_CODES as $code) {
+            if (!isset($allHStmts[$code])) {
+                continue;
+            }
+            if ($kept === null) {
+                $kept = $code;
+                continue;
+            }
+            unset($allHStmts[$code]);
+            $this->traceStep('flammable_code_dropped', "{$code} dropped: {$kept} is the more severe Flammable Liquids code", [
+                'kept' => $kept, 'dropped' => $code,
+            ]);
+        }
+    }
+
+    private function dropLessSevereAquaticCodes(array &$allHStmts): void
+    {
+        foreach (self::AQUATIC_H_LADDER as $route => $ladder) {
+            $kept = null;
+            foreach ($ladder as $code) {
+                if (!isset($allHStmts[$code])) {
+                    continue;
+                }
+                if ($kept === null) {
+                    $kept = $code;
+                    continue;
+                }
+                unset($allHStmts[$code]);
+                $this->traceStep('aquatic_code_dropped', "{$code} dropped: {$kept} is the more severe {$route} aquatic code", [
+                    'route' => $route, 'kept' => $kept, 'dropped' => $code,
+                ]);
+            }
+        }
+    }
+
+    /**
+     * $result['aquatic_basis'] (audit #25): lists, not key maps.
+     *
+     * @return array{summation_codes: string[], override_mode: ?string, override_codes: string[]}
+     */
+    private function aquaticBasisResult(): array
+    {
+        return [
+            'summation_codes' => array_map('strval', array_keys($this->aquaticBasis['summation_codes'] ?? [])),
+            'override_mode'   => $this->aquaticBasis['override_mode'] ?? null,
+            'override_codes'  => array_map('strval', array_keys($this->aquaticBasis['override_codes'] ?? [])),
+        ];
     }
 
     /**
@@ -1870,6 +2231,9 @@ class HazardEngine
                 ]);
 
                 $defaults = $this->getDefaultsForClassCategory($canonical, $targetCategory);
+                foreach ($defaults['h_codes'] as $aqCode) {
+                    $this->aquaticBasis['summation_codes'][(string) $aqCode] = true;   // audit #25
+                }
 
                 $allHClasses[] = [
                     'class'              => GHSHazardClass::displayName($canonical),
@@ -2113,6 +2477,124 @@ class HazardEngine
     }
 
     /**
+     * #66 / Q6: 29 CFR 1910.1200 App. A.1 does not adopt GHS acute-toxicity
+     * Category 5, and Section 11 prints such a route as "Not classified".
+     * Drop Category 5 acute-toxicity entries and H303 / H313 / H333 (alone or
+     * combined only with each other) so Sections 2, 4 and 11 agree. The ATE
+     * buffer is untouched (a Category 5 ingredient still feeds the ATEmix).
+     * After a removal:
+     *   - a CAS that only carried the removed entries leaves hazardous_cas;
+     *   - nothing classified left (no class, no H-statement): P-statements
+     *     and the signal word are cleared;
+     *   - otherwise, when every remaining class has a canonical class and
+     *     category: P312 / P304+P312 (the Category 5 defaults) are removed
+     *     unless a remaining class carries them by default, and a 'Warning'
+     *     signal word is cleared when no remaining class has one by default
+     *     (not in replace mode, where the operator's signal word stands;
+     *     'Danger' is never touched).
+     */
+    private function dropUnadoptedAcuteCategories(
+        array &$allHClasses,
+        array &$allHStmts,
+        array &$allPStmts,
+        ?string &$signalWord,
+        array &$hazardousCas,
+        bool $replaceMode
+    ): void {
+        $acute = [
+            GHSHazardClass::ACUTE_TOXICITY_ORAL,
+            GHSHazardClass::ACUTE_TOXICITY_DERMAL,
+            GHSHazardClass::ACUTE_TOXICITY_INHALATION,
+        ];
+
+        $kept    = [];
+        $removed = [];
+        foreach ($allHClasses as $hc) {
+            $canonical = (string) ($hc['canonical'] ?? '');
+            if ($canonical === '') {
+                $canonical = (string) (HazardClassAliases::normalize((string) ($hc['class'] ?? '')) ?? '');
+            }
+            $category = (string) ($hc['category_canonical'] ?? '');
+            if ($category === '') {
+                $category = HazardClassAliases::normalizeCategory((string) ($hc['category'] ?? ''));
+            }
+            if ($category === 'Cat 5' && in_array($canonical, $acute, true)) {
+                $removed[] = $hc;
+                continue;
+            }
+            $kept[] = $hc;
+        }
+
+        $droppedCodes = [];
+        foreach (array_keys($allHStmts) as $code) {
+            $parts = array_filter(array_map('trim', explode('+', strtoupper((string) $code))));
+            if ($parts !== [] && array_diff($parts, ['H303', 'H313', 'H333']) === []) {
+                unset($allHStmts[$code]);
+                $droppedCodes[] = (string) $code;
+            }
+        }
+
+        if ($removed === [] && $droppedCodes === []) {
+            return;
+        }
+        $allHClasses = $kept;
+
+        $stillHazardous = [];
+        foreach ($kept as $hc) {
+            $stillHazardous[(string) ($hc['cas'] ?? '')] = true;
+            foreach ((array) ($hc['contributors'] ?? []) as $contrib) {
+                $stillHazardous[(string) (is_array($contrib) ? ($contrib['cas'] ?? '') : $contrib)] = true;
+            }
+        }
+        foreach ($removed as $hc) {
+            $rCas = (string) ($hc['cas'] ?? '');
+            if ($rCas !== '' && !isset($stillHazardous[$rCas])) {
+                unset($hazardousCas[$rCas]);
+            }
+        }
+
+        $this->traceStep('acute_cat5_dropped', 'Acute toxicity Category 5 is not adopted by 29 CFR 1910.1200 App. A.1; entries and H303/H313/H333 removed', [
+            'removed_classes' => array_map(fn($hc) => trim(($hc['class'] ?? '') . ' ' . ($hc['category'] ?? '') . ' [' . ($hc['cas'] ?? '') . ']'), $removed),
+            'removed_h'       => $droppedCodes,
+        ]);
+
+        if ($allHClasses === [] && $allHStmts === []) {
+            $allPStmts  = [];
+            $signalWord = null;
+            return;
+        }
+        if ($allHClasses === []) {
+            return; // H-statements without a class line (finding #40): leave P-codes / signal word
+        }
+
+        $neededP = [];
+        $bestSw  = null;
+        foreach ($allHClasses as $hc) {
+            $canonical = (string) ($hc['canonical'] ?? '');
+            $category  = (string) ($hc['category_canonical'] ?? '');
+            if ($canonical === '' || $category === '') {
+                return; // cannot re-derive defaults for this entry: leave P-codes and signal word
+            }
+            $defaults = $this->getDefaultsForClassCategory($canonical, $category);
+            foreach ($defaults['p_codes'] as $pc) {
+                $neededP[$pc] = true;
+            }
+            $sw = $defaults['signal_word'];
+            if ($sw !== null && (self::SIGNAL_HIERARCHY[$sw] ?? 0) > (self::SIGNAL_HIERARCHY[$bestSw ?? ''] ?? 0)) {
+                $bestSw = $sw;
+            }
+        }
+        foreach (['P312', 'P304+P312'] as $pc) {
+            if (isset($allPStmts[$pc]) && !isset($neededP[$pc])) {
+                unset($allPStmts[$pc]);
+            }
+        }
+        if (!$replaceMode && $signalWord === 'Warning' && $bestSw === null) {
+            $signalWord = null;
+        }
+    }
+
+    /**
      * Filter CPD-declared companion codes (H-codes or pictograms) to only
      * those whose GHS associations include at least one canonical class
      * that actually triggered in this CPD contribution.
@@ -2268,6 +2750,220 @@ class HazardEngine
     }
 
     /**
+     * Q3: GHS Flammable Liquids category (0 = not classified) for a product
+     * flash point / initial boiling point (GHS Rev. 7 Table 2.6.1; 29 CFR
+     * 1910.1200 App. B.6 adopts Cat 4):
+     *   Cat 1 FP < 23 °C and IBP <= 35 °C;  Cat 2 FP < 23 °C and IBP > 35 °C
+     *   (unknown IBP -> Cat 2);  Cat 3 23 <= FP <= 60 °C;  Cat 4 60 < FP <= 93 °C.
+     * A "> n" value (FP > n) is classified as if just above n, so the upper
+     * bounds become strict ("> 60" -> Cat 4, "> 93" -> 0). No flash point,
+     * or a Solid / Powder / Paste product -> 0. Pure (no DB).
+     */
+    public static function flammableLiquidCategory(?float $fpC, bool $gt, ?float $ibpC, ?string $physicalState): int
+    {
+        if ($fpC === null || in_array(mb_strtolower(trim((string) $physicalState)), self::NOT_LIQUID_STATES, true)) {
+            return 0;
+        }
+        if ($fpC < 23.0) {
+            return ($ibpC !== null && $ibpC <= 35.0) ? 1 : 2;
+        }
+        if ($gt ? $fpC < 60.0 : $fpC <= 60.0) {
+            return 3;
+        }
+        if ($gt ? $fpC < 93.0 : $fpC <= 93.0) {
+            return 4;
+        }
+        return 0;
+    }
+
+    /**
+     * Q3: the 'flammability' block for a set of classify() inputs (null = not
+     * evaluated). Numeric strings from the DB are accepted. Shared with
+     * SDSGenerator as the fallback for hazard results built without the block.
+     *
+     * @return array{flash_point_c: ?float, flash_point_greater_than: bool, boiling_point_c: ?float,
+     *               physical_state: string, category: int, basis: string, ibp_assumed: bool}
+     */
+    public static function flammabilityFromProps(?array $in): array
+    {
+        $num   = static fn($v): ?float => ($v === null || $v === '' || !is_numeric($v)) ? null : (float) $v;
+        $fp    = $num($in['flash_point_c'] ?? null);
+        $ibp   = $num($in['boiling_point_c'] ?? null);
+        $state = trim((string) ($in['physical_state'] ?? ''));
+        if ($in === null) {
+            $basis = self::FLAMMABILITY_NOT_EVALUATED;
+        } elseif (in_array(mb_strtolower($state), self::NOT_LIQUID_STATES, true)) {
+            $basis = self::FLAMMABILITY_NOT_LIQUID;
+        } elseif ($fp === null) {
+            $basis = self::FLAMMABILITY_NO_FLASH_POINT;
+        } else {
+            $basis = self::FLAMMABILITY_FLASH_POINT;
+        }
+        $gt  = $fp !== null && !empty($in['flash_point_greater_than']);
+        $cat = $basis === self::FLAMMABILITY_FLASH_POINT ? self::flammableLiquidCategory($fp, $gt, $ibp, $state) : 0;
+        return [
+            'flash_point_c'            => $fp,
+            'flash_point_greater_than' => $gt,
+            'boiling_point_c'          => $ibp,
+            'physical_state'           => $state,
+            'category'                 => $cat,
+            'basis'                    => $basis,
+            'ibp_assumed'              => $cat === 2 && $ibp === null,
+        ];
+    }
+
+    /**
+     * Q3: remember an ignored ingredient Flammable Liquids entry. Disclosed
+     * CAS at >= 1 % (the former physical cut-off) become contributors of the
+     * flash-point-derived class; trade-secret rows are never named.
+     */
+    private function recordFlammableIngredient(string $cas, string $name, float $conc, string $category, string $source): void
+    {
+        $this->traceStep('flammable_liquid_ingredient_not_classified',
+            "CAS {$cas} Flammable Liquids {$category} not used for the mixture — the product flash point decides (Q3)", [
+                'cas' => $cas, 'name' => $name, 'category' => $category, 'concentration' => $conc, 'source' => $source,
+            ]);
+        if ($cas === '' || $cas === 'TRADE_SECRET') {
+            return;
+        }
+        if (preg_match('/^Cat\s*([1-4])$/i', trim($category), $m) === 1) {
+            $n = (int) $m[1];
+            $this->flammableIngredientCats[$cas] = min($this->flammableIngredientCats[$cas] ?? 9, $n);
+        }
+        if ($conc < 1.0) {
+            return;
+        }
+        $this->flammableIngredients[$cas] = max($this->flammableIngredients[$cas] ?? 0.0, $conc);
+    }
+
+    /**
+     * Q3 (one flammability source, audit #9/#5/#10/#44(1)): derive the mixture
+     * Flammable Liquids class from the product flash point / IBP / physical
+     * state (flammableLiquidCategory()) and stamp it as a MIXTURE entry
+     * (source 'flash_point') with the default H/P-codes, pictogram and signal
+     * word. First strips H224-H227 / Flammable Liquids entries that reached the
+     * buffers another way (e.g. a whole PubChem code list on another class row)
+     * and drops GHS02 unless another remaining H-code needs it. Runs before the
+     * FG override.
+     */
+    private function applyFlammableLiquidsFromFlashPoint(
+        ?array $inputs,
+        array &$allHClasses,
+        array &$allHStmts,
+        array &$allPStmts,
+        array &$allPictograms,
+        ?string &$signalWord,
+        array &$hazardousCas
+    ): void {
+        $flam = self::flammabilityFromProps($inputs);
+        $this->flammability = $flam;
+
+        $strayH = array_values(array_intersect(array_map('strval', array_keys($allHStmts)), self::FLAMMABLE_LIQUID_H_CODES));
+        foreach ($strayH as $code) {
+            unset($allHStmts[$code]);
+        }
+        $allHClasses = array_values(array_filter($allHClasses, static function (array $hc): bool {
+            if (($hc['canonical'] ?? null) === GHSHazardClass::FLAMMABLE_LIQUIDS) {
+                return false;
+            }
+            // Unmapped vendor class names such as "Flam. Liq. 2" (canonical null).
+            return !(($hc['canonical'] ?? null) === null && preg_match('/flam(mable)?\.?\s*liq/i', (string) ($hc['class'] ?? '')));
+        }));
+        $droppedGhs02 = false;
+        if (isset($allPictograms['GHS02'])
+            && array_intersect(array_map('strval', array_keys($allHStmts)), self::otherFlameHCodes()) === []) {
+            unset($allPictograms['GHS02']);
+            $droppedGhs02 = true;
+        }
+        if ($strayH !== [] || $droppedGhs02) {
+            $this->traceStep('flammable_liquid_ingredient_codes_dropped',
+                'Ingredient Flammable Liquids H-codes / GHS02 removed — the product flash point decides (Q3)',
+                ['h_codes' => $strayH, 'ghs02_dropped' => $droppedGhs02]);
+        }
+
+        $byConc = $this->flammableIngredients;
+        arsort($byConc);
+        $contributors = array_map('strval', array_keys($byConc));
+
+        $this->traceStep('flammable_liquids_from_flash_point',
+            $flam['category'] > 0 ? "Flammable Liquids Cat {$flam['category']} from the product flash point" : 'Not a flammable liquid (product flash point)',
+            $flam + ['contributors' => $contributors]);
+
+        if ($flam['category'] === 0) {
+            return;
+        }
+        $category = 'Cat ' . $flam['category'];
+        $defaults = $this->getDefaultsForClassCategory(GHSHazardClass::FLAMMABLE_LIQUIDS, $category);
+        $allHClasses[] = [
+            'class'              => GHSHazardClass::displayName(GHSHazardClass::FLAMMABLE_LIQUIDS),
+            'category'           => $defaults['category_display'] ?? $category,
+            'canonical'          => GHSHazardClass::FLAMMABLE_LIQUIDS,
+            'category_canonical' => $category,
+            'cas'                => 'MIXTURE',
+            'chemical'           => 'Product flash point',
+            'concentration_pct'  => null,
+            'cutoff_pct'         => null,
+            'source'             => 'flash_point',
+            'h_codes'            => array_values($defaults['h_codes'] ?? []),
+            'contributors'       => $contributors,
+        ];
+        foreach ($defaults['h_codes'] as $hc) {
+            $allHStmts[$hc] = $allHStmts[$hc] ?? ['code' => $hc, 'text' => ''];
+        }
+        foreach ($defaults['p_codes'] as $pc) {
+            $allPStmts[$pc] = $allPStmts[$pc] ?? ['code' => $pc, 'text' => ''];
+        }
+        foreach ($defaults['pictograms'] as $pict) {
+            $allPictograms[$pict] = true;
+        }
+        if ($defaults['signal_word'] !== null
+            && (self::SIGNAL_HIERARCHY[$defaults['signal_word']] ?? 0) > (self::SIGNAL_HIERARCHY[$signalWord ?? ''] ?? 0)) {
+            $signalWord = $defaults['signal_word'];
+        }
+        foreach ($contributors as $casId) {
+            $hazardousCas[$casId] = true;
+        }
+    }
+
+    /** Q3: union of the Flammable Liquids P-codes in GHSHazardData. */
+    private static function flammableLiquidPCodes(): array
+    {
+        static $codes = null;
+        if ($codes === null) {
+            $set = [];
+            foreach (GHSHazardData::HAZARD_CLASSIFICATIONS as $entry) {
+                if (HazardClassAliases::normalize((string) ($entry['class'] ?? '')) === GHSHazardClass::FLAMMABLE_LIQUIDS) {
+                    foreach ($entry['p_codes'] ?? [] as $p) {
+                        $set[(string) $p] = true;
+                    }
+                }
+            }
+            $codes = array_keys($set);
+        }
+        return $codes;
+    }
+
+    /** Q3: H-codes of every non-Flammable-Liquids GHSHazardData entry that carries GHS02. */
+    private static function otherFlameHCodes(): array
+    {
+        static $codes = null;
+        if ($codes === null) {
+            $set = [];
+            foreach (GHSHazardData::HAZARD_CLASSIFICATIONS as $entry) {
+                if (!in_array('GHS02', $entry['pictograms'] ?? [], true)
+                    || HazardClassAliases::normalize((string) ($entry['class'] ?? '')) === GHSHazardClass::FLAMMABLE_LIQUIDS) {
+                    continue;
+                }
+                foreach ($entry['h_codes'] ?? [] as $h) {
+                    $set[(string) $h] = true;
+                }
+            }
+            $codes = array_keys($set);
+        }
+        return $codes;
+    }
+
+    /**
      * Apply GHS pictogram precedence rules.
      * GHS06 (skull) takes precedence over GHS07 (exclamation).
      * GHS05 (corrosion) takes precedence over GHS07 for skin/eye.
@@ -2331,9 +3027,10 @@ class HazardEngine
      * @param string $name   Chemical name (or 'Trade Secret')
      * @param float  $conc   Concentration percent in the composition
      * @param string $source Label for the `source` field on hazard_classes
+     * @param float|null $bufferConc #15: concentration for the ATE / aquatic buffers (trade secrets: the RM's real share while $conc = 100 bypasses the cut-offs); null = $conc
      * @return array  Same shape as applyCASDetermination() return value
      */
-    private function parseDeterminationStructure(array $det, string $cas, string $name, float $conc, string $source): array
+    private function parseDeterminationStructure(array $det, string $cas, string $name, float $conc, string $source, ?float $bufferConc = null): array
     {
         // Parse H-statements
         $hStmts = [];
@@ -2367,6 +3064,11 @@ class HazardEngine
         // the whole CPD contribution (H/P-codes, pictograms, signal word)
         // is suppressed — see below.
         $anyTriggered = false;
+        $bufferConc    = $bufferConc ?? $conc;
+        // #15: one determination feeds each ATE route once, at its most severe
+        // declared category (an H300-derived JSON selects Oral Cat 1 AND Cat 2).
+        $ateCandidates = [];
+        $flSkipped    = false; // Q3: a Flammable Liquids entry was ignored
 
         if (!empty($selectedHazards)) {
             foreach ($selectedHazards as $key) {
@@ -2375,6 +3077,13 @@ class HazardEngine
 
                 $canonical     = HazardClassAliases::normalize($entry['class']);
                 $categoryCanon = HazardClassAliases::normalizeCategory($entry['category']);
+                // Q3: a declared Flammable Liquids entry never triggers (the
+                // product flash point decides); remember the CAS as a contributor.
+                if ($canonical === GHSHazardClass::FLAMMABLE_LIQUIDS) {
+                    $this->recordFlammableIngredient($cas, $name, $conc, (string) ($categoryCanon ?? ''), $source);
+                    $flSkipped = true;
+                    continue;
+                }
                 $cutoff        = $this->getCutoff($canonical ?? '', $categoryCanon);
 
                 // Feed the summation buffer for every CPD-declared
@@ -2389,14 +3098,12 @@ class HazardEngine
                 // CPDs may carry explicit LD50/LC50 values via the ate_*
                 // fields on determination_json; otherwise we fall back to
                 // GHS Table 3.1.2 category-defaults at resolve time.
-                $ateRoute = $this->canonicalToAteRoute($canonical);
+                $ateRoute = $this->canonicalToAteRoute($canonical, $det);
                 if ($ateRoute !== null && $categoryCanon !== '') {
-                    $explicitAte = $this->resolveExplicitAte($det, $ateRoute, 'cpd');
-                    $this->addToAteBuffer(
-                        $ateRoute, $cas, $name, $conc, $categoryCanon,
-                        $explicitAte['value'], $explicitAte['source'],
-                        $source
-                    );
+                    $prevCat = $ateCandidates[$ateRoute] ?? null;
+                    if ($prevCat === null || $this->categoryToSeverity($categoryCanon) < $this->categoryToSeverity($prevCat)) {
+                        $ateCandidates[$ateRoute] = $categoryCanon;
+                    }
                 }
 
                 // Phase 4: feed the aquatic buffer for GHS09 routes. CPDs
@@ -2405,7 +3112,7 @@ class HazardEngine
                 if ($aquaticRoute !== null && $categoryCanon !== '') {
                     $mFactor = $this->resolveMFactor($det, $aquaticRoute, 'cpd');
                     $this->addToAquaticBuffer(
-                        $aquaticRoute, $cas, $name, $conc, $categoryCanon,
+                        $aquaticRoute, $cas, $name, $bufferConc, $categoryCanon,
                         $mFactor['value'], $mFactor['source'],
                         $source
                     );
@@ -2444,10 +3151,23 @@ class HazardEngine
                     'source'             => $source,
                 ];
             }
+            foreach ($ateCandidates as $ateRoute => $ateCategory) {
+                $explicitAte = $this->resolveExplicitAte($det, $ateRoute, 'cpd');
+                $this->addToAteBuffer(
+                    $ateRoute, $cas, $name, $bufferConc, $ateCategory,
+                    $explicitAte['value'], $explicitAte['source'],
+                    $source
+                );
+            }
         } else {
             $classRaw = array_filter(array_map('trim', explode(',', $det['hazard_classes'] ?? '')));
             foreach ($classRaw as $classStr) {
                 $canonical = HazardClassAliases::normalize($classStr);
+                if ($canonical === GHSHazardClass::FLAMMABLE_LIQUIDS) {   // Q3, as above
+                    $this->recordFlammableIngredient($cas, $name, $conc, '', $source);
+                    $flSkipped = true;
+                    continue;
+                }
                 $cutoff    = $this->getCutoff($canonical ?? '', null);
 
                 // Free-text entries have no category, so they don't land in
@@ -2523,6 +3243,61 @@ class HazardEngine
             }
             $hStmts     = $this->filterCpdCodesByTriggeredClasses($hStmts,     $triggeredCanonicals, 'h_codes',    $cas, $source);
             $pictograms = $this->filterCpdCodesByTriggeredClasses($pictograms, $triggeredCanonicals, 'pictograms', $cas, $source);
+            // Q3: flammability-only P-codes of an ignored Flammable Liquids
+            // entry (P210, P233, P240-P243, P403+P235 ...) must not ride along on
+            // another triggered class. Only the Flammable Liquids P-code set is
+            // filtered; every other P-code stays cross-cutting as before.
+            $flP    = array_intersect_key($pStmts, array_flip(self::flammableLiquidPCodes()));
+            $pStmts = array_diff_key($pStmts, $flP)
+                    + $this->filterCpdCodesByTriggeredClasses($flP, $triggeredCanonicals, 'p_codes', $cas, $source);
+            if ($flSkipped) {
+                // The declared signal word may come from the ignored Flam. Liq.
+                // entry (e.g. Danger for Cat 2): re-derive it from the triggered
+                // classes and never fall back to the declared word when every
+                // triggered class could be re-derived (e.g. Lactation-only →
+                // no signal word). A free-text class (no category) is derived
+                // from the H-codes that survived filtering; only when that
+                // finds nothing is the declared word kept (legacy data).
+                $sw = null;
+                $underivable = false;
+                $keptH = [];
+                foreach (array_keys($hStmts) as $kc) {
+                    foreach (explode('+', (string) $kc) as $part) {
+                        $keptH[strtoupper(trim($part))] = true;
+                    }
+                }
+                foreach ($hazardClasses as $hcT) {
+                    $canT = (string) ($hcT['canonical'] ?? '');
+                    $catT = (string) ($hcT['category_canonical'] ?? '');
+                    $cand = null;
+                    if ($canT !== '' && $catT !== '') {
+                        $cand = $this->getDefaultsForClassCategory($canT, $catT)['signal_word'] ?? null;
+                    } else {
+                        $found = false;
+                        foreach (GHSHazardData::HAZARD_CLASSIFICATIONS as $gEntry) {
+                            if ($canT === '' || HazardClassAliases::normalize((string) ($gEntry['class'] ?? '')) !== $canT) {
+                                continue;
+                            }
+                            if (array_intersect_key(array_flip(array_map('strval', $gEntry['h_codes'] ?? [])), $keptH) === []) {
+                                continue;
+                            }
+                            $found = true;
+                            $gsw = $gEntry['signal_word'] ?? null;
+                            if ($gsw !== null && (self::SIGNAL_HIERARCHY[$gsw] ?? 0) > (self::SIGNAL_HIERARCHY[$cand ?? ''] ?? 0)) {
+                                $cand = $gsw;
+                            }
+                        }
+                        if (!$found) {
+                            $underivable = true;
+                        }
+                    }
+                    if ($cand !== null
+                        && (self::SIGNAL_HIERARCHY[$cand] ?? 0) > (self::SIGNAL_HIERARCHY[$sw ?? ''] ?? 0)) {
+                        $sw = $cand;
+                    }
+                }
+                $signalWord = $underivable ? ($sw ?? $signalWord) : $sw;
+            }
         }
 
         // Exposure limits from determination
@@ -2599,6 +3374,80 @@ class HazardEngine
     ];
 
     /**
+     * #37 Per-CAS H-codes from the UNconsolidated hazard-class list. A
+     * per-component entry credits its own CAS; a mixture entry (cas 'MIXTURE':
+     * summation, ATE, aquatic, Q3 flash point) credits each contributor CAS.
+     * FG_OVERRIDE, TRADE_SECRET, MIXTURE and any other upper-case pseudo-key
+     * are never attributed. Codes are the class/category entry the h_codes
+     * stamping in classify() uses (HazardRowNormalizer::entryFor); a
+     * sub-category with no row of its own (Skin Corr. 'Cat 1B') falls back to
+     * its base category ('Cat 1'); an entry's own h_codes are the last resort.
+     *
+     * @return array<string,string[]>  CAS => sorted unique H-codes
+     */
+    private function buildCasHCodeMap(array $hazardClasses): array
+    {
+        $isPseudo = static fn(string $key): bool => $key === '' || preg_match('/^[A-Z_]+$/', $key) === 1;
+        $map = [];
+        foreach ($hazardClasses as $hc) {
+            $canonical = (string) ($hc['canonical'] ?? '');
+            $category  = (string) ($hc['category_canonical'] ?? '');
+            $ownCodes  = array_map('strval', (array) ($hc['h_codes'] ?? []));
+            $codes = [];
+            if ($canonical !== '' && $category !== '') {
+                $entry = HazardRowNormalizer::entryFor($canonical, $category, (string) ($hc['category'] ?? ''), $ownCodes);
+                if ($entry === null && preg_match('/^Cat (\d)[A-C]$/', $category, $m) === 1) {
+                    $entry = HazardRowNormalizer::entryFor($canonical, 'Cat ' . $m[1], '', $ownCodes);
+                }
+                $codes = (array) ($entry['h_codes'] ?? []);
+            }
+            if ($codes === []) {
+                $codes = $ownCodes;
+            }
+            $codes = array_values(array_filter(
+                array_map(static fn($c): string => (string) $c, $codes),
+                static fn(string $c): bool => $c !== ''
+            ));
+            if ($codes === []) {
+                continue;
+            }
+            $cas = (string) ($hc['cas'] ?? '');
+            // The Q3 flash-point entry is the MIXTURE's category: its code is
+            // never credited to the contributing solvents (they keep their own
+            // code, added below). Contributors stay for disclosure / trace.
+            if ($cas === 'MIXTURE' && ($hc['source'] ?? '') === 'flash_point') {
+                continue;
+            }
+            $targets = $cas === 'MIXTURE' ? (array) ($hc['contributors'] ?? []) : [$cas];
+            foreach ($targets as $target) {
+                $target = is_array($target) ? (string) ($target['cas'] ?? '') : (string) $target;
+                if ($isPseudo($target)) {
+                    continue;
+                }
+                foreach ($codes as $code) {
+                    $map[$target][$code] = true;
+                }
+            }
+        }
+        // Each flammable ingredient's OWN Flammable Liquids code (per-CAS map
+        // only; never $allHStmts / hazard_classes, so Section 2 still follows
+        // the product flash point alone).
+        $ownFlamCode = [1 => 'H224', 2 => 'H225', 3 => 'H226', 4 => 'H227'];
+        foreach ($this->flammableIngredientCats as $flCas => $flCat) {
+            if (isset($ownFlamCode[$flCat]) && !$isPseudo((string) $flCas)) {
+                $map[(string) $flCas][$ownFlamCode[$flCat]] = true;
+            }
+        }
+        $out = [];
+        foreach ($map as $cas => $set) {
+            $list = array_keys($set);
+            sort($list, SORT_STRING);
+            $out[(string) $cas] = $list;
+        }
+        return $out;
+    }
+
+    /**
      * Consolidate hazard classes: for each unique hazard class, keep only the
      * most severe (lowest numbered) category. Then sort by GHS group order
      * (physical > health > environmental) with most severe categories first.
@@ -2616,13 +3465,18 @@ class HazardEngine
                 continue;
             }
 
-            $severity = $this->categoryToSeverity($hc['category'] ?? '');
+            // #20: one class from two sources ('Flammable liquids' / 'Flammable
+            // Liquids', 'Skin Irrit.' / 'Skin Corrosion/Irritation') groups on
+            // its canonical code, and ranks by the canonical category so a bare
+            // PubChem '1' is not outranked by 'Category 2A'.
+            $key = !empty($hc['canonical']) ? 'c:' . $hc['canonical'] : 'n:' . mb_strtolower((string) $class);
+            $severity = $this->categoryToSeverity((string) (($hc['category_canonical'] ?? '') !== '' ? $hc['category_canonical'] : ($hc['category'] ?? '')));
 
-            if (!isset($bestPerClass[$class])) {
-                $bestPerClass[$class] = ['entry' => $hc, 'severity' => $severity];
-            } elseif ($severity < $bestPerClass[$class]['severity']) {
+            if (!isset($bestPerClass[$key])) {
+                $bestPerClass[$key] = ['entry' => $hc, 'severity' => $severity];
+            } elseif ($severity < $bestPerClass[$key]['severity']) {
                 // Lower severity number = more severe (Category 1 < Category 2)
-                $bestPerClass[$class] = ['entry' => $hc, 'severity' => $severity];
+                $bestPerClass[$key] = ['entry' => $hc, 'severity' => $severity];
             }
         }
 
@@ -2638,8 +3492,8 @@ class HazardEngine
                 return $groupA <=> $groupB;
             }
             // Within same group, sort by severity (lower = more severe = listed first)
-            $sevA = $this->categoryToSeverity($a['category'] ?? '');
-            $sevB = $this->categoryToSeverity($b['category'] ?? '');
+            $sevA = $this->categoryToSeverity((string) (($a['category_canonical'] ?? '') !== '' ? $a['category_canonical'] : ($a['category'] ?? '')));
+            $sevB = $this->categoryToSeverity((string) (($b['category_canonical'] ?? '') !== '' ? $b['category_canonical'] : ($b['category'] ?? '')));
             if ($sevA !== $sevB) {
                 return $sevA <=> $sevB;
             }
@@ -2683,6 +3537,11 @@ class HazardEngine
                 $base += ord(strtoupper($sub[2])) - ord('A'); // A=0, B=1, C=2
             }
             return $base;
+        }
+
+        // #20: bare PubChem tokens ('2', '1B') rank like 'Category 2' / 'Category 1B'.
+        if (preg_match('/^(\d+)([A-C])?$/i', $cat, $m)) {
+            return (int) $m[1] * 10 + (isset($m[2]) && $m[2] !== '' ? ord(strtoupper($m[2])) - ord('A') : 0);
         }
 
         // "Division 1.1", "Division 1.2", etc. (Explosives)

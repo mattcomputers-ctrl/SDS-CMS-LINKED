@@ -70,6 +70,46 @@
             </div>
         <?php endif; ?>
 
+        <?php if (!empty($review['incomplete_composition'])): // finding #27 ?>
+            <div class="alert alert-warning">
+                <strong>Constituent data incomplete (warning only).</strong>
+                These raw materials have no constituents, a constituent without a CAS number, or a
+                constituent without a percentage. Those ingredients are left out of the hazard
+                classification and the regulatory checks, and Section 15 cannot state that every
+                component is on the TSCA inventory.
+                <ul style="margin: 0.5rem 0 0;">
+                <?php foreach ($review['incomplete_composition'] as $inc): ?>
+                    <li>
+                        <a href="/raw-materials/<?= (int) $inc['id'] ?>/constituents"><strong><?= e($inc['internal_code']) ?></strong></a>
+                        &mdash; <?= e(implode('; ', array_map([\SDS\Services\TSCAService::class, 'reasonLabel'], (array) $inc['reasons']))) ?>
+                    </li>
+                <?php endforeach; ?>
+                </ul>
+            </div>
+        <?php endif; ?>
+
+        <?php if (!empty($review['fg_component_formula_warning'])): ?>
+            <div class="alert alert-warning">
+                <strong>Component without a formula (warning only).</strong>
+                <?= e($review['fg_component_formula_warning']) ?>
+            </div>
+        <?php endif; ?>
+
+        <?php foreach ($review['supplier_warnings'] ?? [] as $sw): ?>
+            <div class="alert alert-warning">
+                <strong>Supplier details incomplete (warning only).</strong>
+                <?= e($sw) ?>
+                <a href="/admin/settings">Open Admin Settings &rarr;</a>
+            </div>
+        <?php endforeach; ?>
+
+        <?php if (!empty($review['trade_secret_prop65_error'])): ?>
+            <div class="alert alert-danger">
+                <strong>Trade-secret Prop 65 chemical &mdash; publishing is blocked.</strong>
+                <?= e($review['trade_secret_prop65_error']) ?>
+            </div>
+        <?php endif; ?>
+
         <?php if (!$review['has_formula']): ?>
             <div class="alert alert-warning">
                 <strong>No formula entered.</strong>
@@ -134,6 +174,12 @@
                 <a href="/raw-materials/<?= (int) $review['resale_rm']['id'] ?>/edit">Open source raw material</a>
                 <?php if (empty($review['unreviewed'])): ?>
                     &middot; <a href="/sds/resale/<?= (int) $review['resale_rm']['id'] ?>/preview">Preview SDS</a>
+                    <?php if (can_edit('sds')): ?>
+                        &middot; Edit SDS text:
+                        <?php foreach (\SDS\Core\App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']) as $edLang): ?>
+                            <a href="/sds/resale/<?= (int) $review['resale_rm']['id'] ?>/edit?lang=<?= e($edLang) ?>"><?= e(strtoupper($edLang)) ?></a>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
                 <?php endif; ?>
             <?php else: ?>
                 <a href="/formulas/<?= (int) $fg['id'] ?>">View full formula</a>
@@ -186,7 +232,7 @@
                         </td>
                         <td>v<?= (int) $v['version'] ?></td>
                         <td><?= strtoupper(e($v['language'])) ?></td>
-                        <td><?= e(format_date($v['published_at'], 'Y-m-d H:i')) ?></td>
+                        <td><?= e(\SDS\Services\PublishClock::display($v['published_at'], 'Y-m-d H:i')) ?></td>
                         <td>
                             <a href="/lookup/download/<?= (int) $v['id'] ?>" class="btn btn-sm btn-outline pdf-link">View PDF</a>
                         </td>

@@ -21,7 +21,7 @@
             <td><?= e(strtoupper($v['language'])) ?></td>
             <td><span class="badge badge-<?= $v['status'] ?>"><?= e($v['status']) ?></span></td>
             <td><?= e($v['published_by_name'] ?? '—') ?></td>
-            <td><?= format_date($v['published_at'] ?? $v['created_at'], 'm/d/Y H:i') ?></td>
+            <td><?= \SDS\Services\PublishClock::display($v['published_at'] ?? $v['created_at'], 'm/d/Y H:i') ?></td>
             <td><?= (int) $v['is_deleted'] ? '<span class="text-danger">Yes</span>' : 'No' ?></td>
             <td>
                 <?php if ((int) $v['is_deleted']): ?>

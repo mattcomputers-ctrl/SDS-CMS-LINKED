@@ -106,7 +106,7 @@ if ($dryRun) {
     exit(0);
 }
 
-$now = date('Y-m-d H:i:s');
+$now = \SDS\Services\PublishClock::nowUtc();   // formulas.created_at is a staleness input (UTC, audit #59)
 $formulaIds = array_map(fn($f) => (int) $f['formula_id'], $formulas);
 foreach (array_chunk($formulaIds, 200) as $chunk) {
     $ph = implode(',', array_fill(0, count($chunk), '?'));

@@ -10,8 +10,7 @@
  *     names the CAS, truncates after 8, mentions NOT LISTED / no-CAS buckets,
  *     never blocks.
  *   - SDSGenerator::section15(): empty composition prints the "not verified"
- *     sentence; an operator Section 15 TSCA Status override wins and marks
- *     the roll-up overridden (no warning); a blank override falls back.
+ *     sentence; a stored Section 15 TSCA Status override is ignored (Q12).
  *   - SDSReadinessService::tscaWarning(): reads sections[15]['tsca'].
  *   - Translation keys present in all four languages.
  *
@@ -147,10 +146,11 @@ check($r['tsca_status'] === 'TSCA inventory status has not been verified for all
 check(($r['tsca']['all_covered'] ?? null) === false && ($r['tsca']['overridden'] ?? null) === false, 'tsca roll-up stored: not covered, not overridden', $r['tsca'] ?? null);
 check(SDSReadinessService::tscaWarning(['sections' => [15 => $r]]) !== null, 'readiness warning raised from the snapshot');
 
+// Q12: the TSCA sentence is no longer editable per product; a stored row is ignored.
 $r = $s15->invoke($gen, $hz0, $sara, $p65, $hap, ['composition' => []], [15 => ['tsca_status' => 'Vendor confirms TSCA.']]);
-check($r['tsca_status'] === 'Vendor confirms TSCA.', 'operator Section 15 override wins', $r['tsca_status']);
-check(($r['tsca']['overridden'] ?? null) === true, 'override marks the roll-up overridden', $r['tsca'] ?? null);
-check(SDSReadinessService::tscaWarning(['sections' => [15 => $r]]) === null, 'no warning when the operator owns the sentence');
+check($r['tsca_status'] === $t->get('section15.tsca_status_not_verified'), 'stored Section 15 TSCA override ignored (Q12)', $r['tsca_status']);
+check(($r['tsca']['overridden'] ?? null) === false, 'roll-up never marked overridden', $r['tsca'] ?? null);
+check(SDSReadinessService::tscaWarning(['sections' => [15 => $r]]) !== null, 'the TSCA warning still fires');
 
 $r = $s15->invoke($gen, $hz0, $sara, $p65, $hap, ['composition' => []], [15 => ['tsca_status' => '   ']]);
 check($r['tsca_status'] === $t->get('section15.tsca_status_not_verified') && ($r['tsca']['overridden'] ?? null) === false, 'blank override falls back to the translated sentence', $r['tsca_status']);
@@ -176,6 +176,48 @@ foreach (['en', 'es', 'fr', 'de'] as $lang) {
 }
 $en = require $basePath . '/templates/translations/en.php';
 check($en['section15']['tsca_status'] === 'All components of this product are listed on or exempt from the TSCA inventory.', 'en tsca_status wording (decision #29)', $en['section15']['tsca_status']);
+
+// ---------------------------------------------------------------------
+echo "h. #27 / #46\n";
+$inact = TSCAService::rollUp([
+    '108-88-3' => ['status' => TSCAService::STATUS_LISTED, 'name' => 'Toluene'],
+    '64-17-5'  => ['status' => TSCAService::STATUS_INACTIVE, 'name' => 'Ethanol'],
+]);
+check($inact['all_covered'] === true && $inact['inactive'] === ['64-17-5' => 'Ethanol'] && $inact['listed_count'] === 2, '#46 inactive counts as listed, kept for the warning', $inact);
+$w = TSCAService::warningText($inact);
+check(is_string($w) && str_contains($w, 'INACTIVE') && str_contains($w, '64-17-5') && str_contains($w, 'All components'), '#46 inactive entry raises a warning; the sentence stays "all listed"', $w);
+
+check(TSCAService::statusKey(['all_covered' => true, 'not_listed' => []]) === 'section15.tsca_status', 'statusKey covered');
+check(TSCAService::statusKey(['all_covered' => false, 'not_listed' => ['1-1-1' => 'X']]) === 'section15.tsca_status_not_listed', 'statusKey not_listed (#46)');
+check(TSCAService::statusKey(['all_covered' => false, 'not_listed' => [], 'unverified' => ['1-1-1' => 'X']]) === 'section15.tsca_status_not_verified', 'statusKey not verified');
+
+check(TSCAService::incompleteReasons(['n_constituents' => 0]) === ['no_constituents'], '#27 reasons: no constituents');
+check(TSCAService::incompleteReasons(['n_constituents' => 3, 'n_blank_cas' => 1, 'n_ts_no_cas' => 0, 'n_no_pct' => 2]) === ['blank_cas', 'no_percentage'], '#27 reasons: blank CAS + no percentage');
+check(TSCAService::incompleteReasons(['n_constituents' => 2]) === [], '#27 reasons: complete');
+
+$covered = TSCAService::rollUp(['108-88-3' => ['status' => 'listed', 'name' => 'Toluene']]);
+$inc = TSCAService::applyIncomplete($covered, [['id' => 5, 'internal_code' => 'W-1', 'reasons' => ['no_constituents']]]);
+check($inc['all_covered'] === false && ($inc['incomplete_raw_materials'][0]['internal_code'] ?? null) === 'W-1', '#27 a raw material without constituents makes TSCA not verified', $inc);
+$w = TSCAService::warningText($inc);
+check(is_string($w) && str_contains($w, 'W-1') && str_contains($w, 'no constituents'), '#27 TSCA warning names the raw material', $w);
+check(TSCAService::statusKey($inc) === 'section15.tsca_status_not_verified', '#27 sentence is "not verified"');
+
+$inc2 = TSCAService::applyIncomplete($covered, [['id' => 6, 'internal_code' => 'P-2', 'reasons' => ['no_percentage']]]);
+check($inc2['all_covered'] === true, '#27 a missing percentage alone does not affect TSCA', $inc2);
+check(TSCAService::warningText($inc2) === null, '#27 no TSCA warning for a missing percentage alone');
+
+$cw = SDSReadinessService::incompleteCompositionWarning([['id' => 6, 'internal_code' => 'P-2', 'reasons' => ['no_percentage']]]);
+check(is_string($cw) && str_contains($cw, 'P-2') && str_contains($cw, 'Publishing is not blocked'), '#27 composition warning (warning only)', $cw);
+check(SDSReadinessService::incompleteCompositionWarning([]) === null, '#27 no composition warning when complete');
+
+foreach (['en', 'es', 'fr', 'de'] as $lang) {
+    $trFile = require $basePath . '/templates/translations/' . $lang . '.php';
+    $nl = $trFile['section15']['tsca_status_not_listed'] ?? null;
+    check(is_string($nl) && $nl !== ''
+        && $nl !== ($trFile['section15']['tsca_status'] ?? null)
+        && $nl !== ($trFile['section15']['tsca_status_not_verified'] ?? null), "{$lang} section15.tsca_status_not_listed present and distinct", $nl);
+}
+check($en['section15']['tsca_status_not_listed'] === 'One or more components of this product are not listed on the TSCA inventory.', 'en tsca_status_not_listed wording (#46)');
 
 // ---------------------------------------------------------------------
 echo "\n{$checks} checks, {$failures} failures\n";

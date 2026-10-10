@@ -30,12 +30,12 @@ $isAct   = (bool) old('is_active', (string) (int) ($item['is_active'] ?? 1));
                 <label style="font-weight: normal;"><input type="checkbox" name="is_uv" value="1" <?= $isUv ? 'checked' : '' ?>> UV / LED curable family (enables the UV acrylate rule pack and UV handling text)</label>
             </div>
             <div class="form-group">
-                <label style="font-weight: normal;"><input type="checkbox" name="is_active" value="1" <?= $isAct ? 'checked' : '' ?>> Active (inactive families are hidden from pickers; their rules and weight shares are ignored)</label>
+                <label style="font-weight: normal;"><input type="checkbox" name="is_active" value="1" <?= $isAct ? 'checked' : '' ?>> Active (inactive families are hidden from pickers; their rules, weight shares and manual picks are ignored, and they never print Section 1 text or set the UV flag)</label>
             </div>
         </div>
 
         <h3>Section 1 defaults</h3>
-        <p class="text-muted">Printed as Recommended Use / Restrictions on Use for every item resolved to this family unless the product carries its own text. Blank = the English text below; blank English = the translation-file default (shown as placeholder).</p>
+        <p class="text-muted">Printed as Recommended Use / Restrictions on Use for every item resolved to this family unless the product carries its own text. A blank language prints that language's translation-file default (shown as placeholder), never the English text.</p>
         <?php if ($isEdit && !empty($usage)): ?>
             <div class="alert alert-info">
                 <strong><?= (int) $usage['raw_materials'] ?></strong> raw material(s) and <strong><?= (int) $usage['finished_goods'] ?></strong> product(s) currently resolve to this family.

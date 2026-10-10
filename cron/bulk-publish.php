@@ -73,11 +73,13 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
 
     echo "\n[" . date('Y-m-d H:i:s') . "] Bulk SDS Publish starting (job #{$jobId})...\n";
 
-    // Audit #2 — every standard SDS prints the company emergency phone.
-    // Refuse the whole job (the caller marks it failed with this message).
+    // Audit #2 / #68 — every standard, alias and resale SDS prints the company
+    // emergency phone. With it blank, buildWorkItems() emits private-label items
+    // only (they print the manufacturer's number). The job is marked failed at
+    // the end, so the queue shows why the base sheets were not published.
     $phoneError = \SDS\Services\SDSReadinessService::companyEmergencyPhoneErrorFromDb($db);
     if ($phoneError !== null) {
-        throw new \RuntimeException($phoneError);
+        echo "  " . $phoneError . "\n  Only private-label items will be published in this job.\n";
     }
 
     // ── Eligibility ──────────────────────────────────────────────
@@ -112,6 +114,14 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
     $workerCount = BulkPublishController::getWorkerCount($totalItems);
     $stats['work_items_count'] = $totalItems;
     BulkPublishQueue::updateProgress($jobId, $stats);
+
+    if ($totalItems === 0) {
+        echo "  No work items.\n";
+        if ($phoneError !== null) {
+            throw new \RuntimeException($phoneError . ' No private-label items were due, so nothing was published.');
+        }
+        return $stats;
+    }
 
     echo "  Work items:       {$totalItems} (" . count($languages) . " languages × "
         . (count($fgs) + count($resale)) . " items + alias and private label variants)\n";
@@ -274,6 +284,10 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
 
     $stats['published_count'] = $totalPublished;
     $stats['failed_count']    = $totalFailed;
+    if ($phoneError !== null) {
+        throw new \RuntimeException($phoneError . ' Only private-label items were published in this job ('
+            . $totalPublished . ' published, ' . $totalFailed . ' failed).');
+    }
     return $stats;
 }
 

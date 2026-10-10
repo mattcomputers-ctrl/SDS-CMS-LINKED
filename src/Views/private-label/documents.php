@@ -74,7 +74,7 @@
                 </td>
                 <td><?= e(strtoupper((string) $doc['language'])) ?></td>
                 <td>
-                    <?= !empty($doc['published_at']) ? format_date((string) $doc['published_at'], 'm/d/Y g:i A') : '&mdash;' ?>
+                    <?= !empty($doc['published_at']) ? \SDS\Services\PublishClock::display((string) $doc['published_at'], 'm/d/Y g:i A') : '&mdash;' ?>
                     <?php if (!empty($doc['published_by_name'])): ?>
                         <br><small class="text-muted">by <?= e($doc['published_by_name']) ?></small>
                     <?php endif; ?>

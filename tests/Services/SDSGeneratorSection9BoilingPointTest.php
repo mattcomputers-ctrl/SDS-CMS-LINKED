@@ -7,7 +7,7 @@
  *     weight-independent) prints as "n °C (n °F)" exactly like the flash point.
  *   - No value / legacy fixture without the key → labels.not_determined.
  *   - A non-blank Section 9 override wins; a blank/whitespace one is ignored.
- *   - The return key order of section9() is unchanged (snapshot_json,
+ *   - The return key order of section9() is the Appendix D order (#43/Q8) (snapshot_json,
  *     preview.php and PDFService::renderSection9 all read it by key).
  *   - labels.boiling_point / labels.not_determined exist in all four languages.
  *   - The flash point line is unaffected.
@@ -132,11 +132,15 @@ check($r['boiling_point'] === $nd, 'empty override + no data → Not determined'
 echo "7. Type and key order unchanged\n";
 $r = $s9->invoke($gen, $fg, $calc(78.4), []);
 check(is_string($r['boiling_point']), 'boiling_point is a string', $r['boiling_point']);
+// #43 / Q8: Appendix D order (same order as PDFService::renderSection9 and the
+// preview $sec9LabelMap); #18(c) dropped voc_less_water_exempt / solids_vol_pct.
 $expectedKeys = [
-    'title', 'physical_state', 'color', 'appearance', 'odor', 'boiling_point', 'flash_point', 'solubility',
-    'specific_gravity', 'voc_lb_per_gal', 'solids_wt_pct', 'voc_wt_pct', // #18(c) dropped voc_less_water_exempt / solids_vol_pct
+    'title', 'physical_state', 'color', 'appearance', 'odor', 'odor_threshold', 'ph', 'melting_point',
+    'boiling_point', 'flash_point', 'evaporation_rate', 'flammability_solid_gas', 'flammability_limits',
+    'vapor_pressure', 'vapor_density', 'specific_gravity', 'solubility', 'partition_coefficient',
+    'auto_ignition_temp', 'decomposition_temp', 'viscosity', 'voc_lb_per_gal', 'voc_wt_pct', 'solids_wt_pct',
 ];
-check(array_keys($r) === $expectedKeys, 'section9() return key order unchanged', array_keys($r));
+check(array_keys($r) === $expectedKeys, 'section9() return key order = Appendix D order (#43/Q8)', array_keys($r));
 
 // ---------------------------------------------------------------------
 echo "8. Labels present in all four languages\n";

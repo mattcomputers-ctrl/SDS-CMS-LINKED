@@ -62,7 +62,7 @@ class StaleRmSdsController
                     ) latest ON latest.max_id = cur.id
                JOIN raw_materials rm ON rm.id = cur.raw_material_id
               WHERE cur.sds_last_confirmed_at IS NULL
-                 OR DATEDIFF(CURDATE(), cur.sds_last_confirmed_at) >= ?
+                 OR DATEDIFF(?, cur.sds_last_confirmed_at) >= ?
           UNION ALL
              SELECT rm.id,
                     rm.internal_code,
@@ -74,7 +74,8 @@ class StaleRmSdsController
            ORDER BY supplier ASC,
                     sds_last_confirmed_at ASC,
                     internal_code ASC",
-            [$staleDays]
+            // sds_last_confirmed_at is a local DATE; CURDATE() is UTC since audit #59.
+            [date('Y-m-d'), $staleDays]
         );
 
         // Group by supplier for rendering

@@ -7,12 +7,14 @@
  *     generic disposal sentence stays (operator override wins) and the five
  *     old methods_* canned variants are gone.
  *   - rcra_classification is computed only and lists EVERY applicable RCRA
- *     code: D001 from formula_props.flash_point_c < 60 °C (">" flag never
- *     triggers) or Flam. Liq. 1–3, oxidizers and pyrophoric / self-heating
- *     materials; D002 from H314; D003 from water-reactive / explosive /
+ *     code: D001 only with Flam. Liq. 1-3 (Q3), reason from the engine flash
+ *     point (< 60 °C; "> n" the not-determined reason), oxidizers and pyrophoric / self-heating
+ *     materials; D002 from H314 / H290 (not for Solid / Powder / Paste); D003 from water-reactive / explosive /
  *     self-reactive codes; D004–D043 and F / K / P / U from the RCRAService
  *     component matches, printed by name only (never CAS or percentage),
  *     trade-secret components masked.
+ *   - T1d: #11 D001 safety-net reasons (H220-H223, H228), #12 metal
+ *     compounds / reworded rcra_none, #66 D002 state rule, H290, no data-gap wording.
  *   - Both renderers map the new key; labels and translation keys exist in
  *     all four languages; Section 16 abbreviations pick up RCRA and TCLP.
  *
@@ -97,40 +99,42 @@ check(!str_contains($r['rcra_classification'], 'D001') && !str_contains($r['rcra
 check($r['title'] === $t->get('section13.title'), 'title');
 
 // ---------------------------------------------------------------------------
-echo "2. D001 ignitable\n";
-$r = $run([], 38.0);
-check(str_contains($r['rcra_classification'], 'ignitable (D001) — flash point below 60 °C (140 °F)'), 'fp 38 -> D001 flash point', $r['rcra_classification']);
+echo "2. D001 ignitable (Q3: only with Flam. Liq. 1-3 in the final codes; reason from the engine flash point)\n";
+$r = $run(['H226'], 38.0);
+check(str_contains($r['rcra_classification'], 'ignitable (D001) — flash point below 60 °C (140 °F)'), 'H226 + fp 38 -> D001 flash point', $r['rcra_classification']);
 check(str_starts_with($r['rcra_classification'], $intro . ' '), 'starts with rcra_intro');
 check(str_ends_with($r['rcra_classification'], '. ' . $generator), 'ends with ". " + generator');
 check(!str_contains($r['rcra_classification'], $none), 'rcra_none not printed when items exist');
 
-// "> n" with n < 60: the same conservative reading TransportClassifier applies for Class 3
-// (one sheet cannot say "Class 3" in Section 14 and "no characteristic" in Section 13),
-// printed with the "not determined to be at or above 60 °C" reason, never "below 60 °C".
-$r = $run([], 55.0, true);
-check(str_contains($r['rcra_classification'], 'ignitable (D001) — ' . $t->get('section13.rcra_reason_flash_point_gt')), '> 55 flag -> D001 with the "not determined >= 60" reason', $r['rcra_classification']);
-check(!str_contains($r['rcra_classification'], 'flash point below 60'), '> 55 flag never prints "below 60 °C"', $r['rcra_classification']);
+// Q3: no Flam. Liq. 1-3 in the final codes -> no flammable-liquid D001 (Section 13 follows Section 2).
+$r = $run([], 38.0);
+check(!str_contains($r['rcra_classification'], 'D001'), 'fp 38 without H224-H226 -> no D001', $r['rcra_classification']);
+
+// "> n" with n < 60: printed with the "not determined to be at or above 60 °C" reason, never "below 60 °C".
 $r = $run(['H226'], 55.0, true);
-check(str_contains($r['rcra_classification'], 'flash point below 60 °C (140 °F)') && !str_contains($r['rcra_classification'], 'not determined'), '> 55 flag + H226 -> plain flash-point reason', $r['rcra_classification']);
+check(str_contains($r['rcra_classification'], 'ignitable (D001) — ' . $t->get('section13.rcra_reason_flash_point_gt')), 'H226 + > 55 flag -> D001 with the "not determined >= 60" reason', $r['rcra_classification']);
+check(!str_contains($r['rcra_classification'], 'flash point below 60'), '> 55 flag never prints "below 60 °C"', $r['rcra_classification']);
 $r = $run([], 60.0, true);
 check(!str_contains($r['rcra_classification'], 'D001'), '> 60 flag -> no D001', $r['rcra_classification']);
 
-// Section 9 flash-point override: the same override-first value Sections 5, 9 and 14 use.
-$r = $run([], 38.0, false, [], [9 => ['flash_point' => '> 95 °C (203 °F)']]);
-check(!str_contains($r['rcra_classification'], 'D001'), 'Section 9 override "> 95 °C" suppresses D001 despite formula fp 38', $r['rcra_classification']);
-$r = $run([], 95.0, false, [], [9 => ['flash_point' => '38 °C (100.4 °F)']]);
-check(str_contains($r['rcra_classification'], 'flash point below 60 °C (140 °F)'), 'Section 9 override "38 °C" triggers D001 despite formula fp 95', $r['rcra_classification']);
-$r = $run([], 93.0, true, [], [9 => ['flash_point' => '100 °F']]);
-check(str_contains($r['rcra_classification'], 'D001'), '°F-only override converted (37.8 °C) -> D001', $r['rcra_classification']);
-$r = $run([], 95.0, false, [], [9 => ['flash_point' => '75 °F (24 °C)']]);
-check(str_contains($r['rcra_classification'], 'D001'), '°F-first override reads the °C value (24) -> D001', $r['rcra_classification']);
-$r = $run(['H226'], 99.0, false, [], [9 => ['flash_point' => '> 95 °C']]);
-check(str_contains($r['rcra_classification'], 'D001'), 'H226 still triggers D001 regardless of the override', $r['rcra_classification']);
-$r = $run([], 38.0, false, [], [9 => ['flash_point' => 'Not determined']]);
-check(str_contains($r['rcra_classification'], 'D001'), 'override without a number ignored, formula fp 38 -> D001', $r['rcra_classification']);
+// #10: exactly 60 °C is Cat 3 / Class 3 (FP <= 60) but not D001 (FP < 60).
+$r = $run(['H226'], 60.0);
+check(!str_contains($r['rcra_classification'], 'D001'), 'H226 + fp 60.0 -> no D001 (strict <)', $r['rcra_classification']);
+$r = $run(['H226'], 59.9);
+check(str_contains($r['rcra_classification'], 'D001'), 'H226 + fp 59.9 -> D001', $r['rcra_classification']);
 
+// The Section 9 edit never drives D001 (vetFlashPointEdit drops a contradicting one).
+$r = $run(['H226'], 38.0, false, [], [9 => ['flash_point' => '> 95 °C (203 °F)']]);
+check(str_contains($r['rcra_classification'], 'flash point below 60 °C (140 °F)'), 'edit "> 95 °C" ignored: H226 + fp 38 -> D001 below 60', $r['rcra_classification']);
+$r = $run([], 95.0, false, [], [9 => ['flash_point' => '38 °C (100.4 °F)']]);
+check(!str_contains($r['rcra_classification'], 'D001'), 'edit "38 °C" ignored: fp 95, no codes -> no D001', $r['rcra_classification']);
+
+// Flam. Liq. codes that did not come from the flash point (finished-good override): hazard-based reason.
+$fl = $t->get('section13.rcra_reason_flammable_liquid');
 $r = $run(['H226'], null);
-check(str_contains($r['rcra_classification'], 'ignitable (D001) — flash point below 60 °C (140 °F)'), 'fp null + H226 -> D001');
+check(str_contains($r['rcra_classification'], 'ignitable (D001) — ' . $fl) && !str_contains($r['rcra_classification'], 'flash point below 60'), 'fp null + H226 -> D001 flammable-liquid reason', $r['rcra_classification']);
+$r = $run(['H226'], 99.0);
+check(str_contains($r['rcra_classification'], 'ignitable (D001) — ' . $fl), 'fp 99 + H226 (override) -> D001 flammable-liquid reason', $r['rcra_classification']);
 
 $r = $run(['H227'], 70.0);
 check(!str_contains($r['rcra_classification'], 'D001'), 'fp 70 + H227 -> no D001', $r['rcra_classification']);
@@ -138,16 +142,11 @@ check(!str_contains($r['rcra_classification'], 'D001'), 'fp 70 + H227 -> no D001
 $r = $run(['H225'], 38.0);
 check(substr_count($r['rcra_classification'], 'flash point below 60') === 1, 'fp + H225 gives the flash-point reason once');
 
-$r = $run([], 59.9);
-check(str_contains($r['rcra_classification'], 'D001'), 'fp 59.9 -> D001');
-$r = $run([], 60.0);
-check(!str_contains($r['rcra_classification'], 'D001'), 'fp 60.0 -> no D001 (strict <)');
-
 // ---------------------------------------------------------------------------
 echo "3. D002 corrosive\n";
 $r = $run(['H314'], 93.0, true);
-check(str_contains($r['rcra_classification'], $t->get('section13.rcra_d002')), 'H314 -> D002 sentence', $r['rcra_classification']);
-check(str_contains($r['rcra_classification'], 'pH not determined'), 'D002 states pH not determined');
+check(str_contains($r['rcra_classification'], $t->get('section13.rcra_d002', ['reasons' => $t->get('section13.rcra_reason_skin_corrosion')])), 'H314 -> D002 sentence with the skin-corrosion reason', $r['rcra_classification']);
+check(!str_contains($r['rcra_classification'], 'pH not determined'), 'D002 no longer states a data gap (#66)');
 $r = $run(['H315'], 93.0, true);
 check(!str_contains($r['rcra_classification'], 'D002'), 'H315 alone -> no D002');
 
@@ -168,12 +167,12 @@ $r = $run(['H203'], null);
 check(str_contains($r['rcra_classification'], 'reactive (D003) — explosive'), 'H203 -> D003 explosive');
 
 $r = $run(['H226', 'H272', 'H251'], null);
-check(str_contains($r['rcra_classification'], 'ignitable (D001) — flash point below 60 °C (140 °F), oxidizer, pyrophoric or self-heating material'), 'three D001 reasons joined by ", "', $r['rcra_classification']);
+check(str_contains($r['rcra_classification'], 'ignitable (D001) — classified as a flammable liquid (Category 1, 2 or 3), oxidizer, pyrophoric or self-heating material'), 'three D001 reasons joined by ", "', $r['rcra_classification']);
 check(substr_count($r['rcra_classification'], 'D001') === 1, 'D001 printed once');
 
 // ---------------------------------------------------------------------------
 echo "5. All three characteristics in order\n";
-$r = $run(['H314', 'H261'], 10.0);
+$r = $run(['H225', 'H314', 'H261'], 10.0);
 $s = $r['rcra_classification'];
 $p1 = strpos($s, 'D001'); $p2 = strpos($s, 'D002'); $p3 = strpos($s, 'D003');
 check($p1 !== false && $p2 !== false && $p3 !== false && $p1 < $p2 && $p2 < $p3, 'D001 < D002 < D003', $s);
@@ -268,16 +267,27 @@ $r = $run([], null, false, [$empty]);
 check($r['rcra_classification'] === $none . ' ' . $generator, 'component without codes -> rcra_none path');
 
 // ---------------------------------------------------------------------------
-echo "7. Trade secret masking\n";
+echo "7. Trade secret masking (audit #13, decision Q4: no name, no code, no TCLP level)\n";
 $ts = ['cas_number' => '108-88-3', 'chemical_name' => 'Toluene', 'is_trade_secret' => true, 'trade_secret_description' => 'Proprietary resin',
     'codes' => [['waste_code' => 'U220', 'kind' => 'U', 'description' => 'Toluene', 'limit_mg_l' => null]]];
 $r = $run([], null, false, [$ts]);
-check(str_contains($r['rcra_classification'], 'contains Proprietary resin (U220'), 'trade secret description printed', $r['rcra_classification']);
-check(!str_contains($r['rcra_classification'], 'Toluene'), 'chemical_name NOT printed for trade secret');
-
+$tsListed = $t->get('section13.rcra_component_ts_listed', ['name' => 'Proprietary resin']);
+check(str_contains($r['rcra_classification'], $tsListed), 'listed trade secret -> generic fragment with the trade-secret name', $r['rcra_classification']);
+check(!str_contains($r['rcra_classification'], 'U220') && !str_contains($r['rcra_classification'], 'Toluene'), 'no waste code and no chemical name for a trade secret', $r['rcra_classification']);
+check(str_starts_with($r['rcra_classification'], $t->get('section13.rcra_none_characteristic') . ' ' . $t->get('section13.rcra_listed_intro') . ' ' . $tsListed), 'listed-only trade secret stays in the reference sentence', $r['rcra_classification']);
 $ts['trade_secret_description'] = '';
 $r = $run([], null, false, [$ts]);
-check(str_contains($r['rcra_classification'], 'contains Trade Secret (U220'), 'blank description -> "Trade Secret"', $r['rcra_classification']);
+check(str_contains($r['rcra_classification'], $t->get('section13.rcra_component_ts_listed', ['name' => 'Trade Secret'])), 'blank description -> "Trade Secret"', $r['rcra_classification']);
+$tsTc = ['cas_number' => '71-43-2', 'chemical_name' => 'Benzene', 'is_trade_secret' => true, 'trade_secret_description' => 'Proprietary solvent',
+    'codes' => [['waste_code' => 'D018', 'kind' => 'D', 'description' => 'Benzene', 'limit_mg_l' => 0.5]]];
+$r = $run([], null, false, [$tsTc]);
+$s = $r['rcra_classification'];
+check($s === $intro . ' ' . $t->get('section13.rcra_component_ts_tc', ['name' => 'Proprietary solvent']) . '. ' . $generator, 'trade-secret TC constituent -> generic toxicity-characteristic item only', $s);
+check(!str_contains($s, 'D018') && !str_contains($s, '0.5 mg/L') && !str_contains($s, 'Benzene'), 'no D-code, no TCLP level, no name', $s);
+check(!str_contains($s, $none), 'rcra_none not printed', $s);
+$tsTc2 = $tsTc; $tsTc2['cas_number'] = '127-18-4'; $tsTc2['codes'] = [['waste_code' => 'D039', 'kind' => 'D', 'description' => 'x', 'limit_mg_l' => 0.7]];
+$r = $run([], null, false, [$tsTc, $tsTc2]);
+check(substr_count($r['rcra_classification'], $t->get('section13.rcra_component_ts_tc', ['name' => 'Proprietary solvent'])) === 1, 'same description twice -> one fragment', $r['rcra_classification']);
 
 $anon = ['cas_number' => '108-88-3', 'chemical_name' => '', 'is_trade_secret' => false, 'trade_secret_description' => null,
     'codes' => [['waste_code' => 'U220', 'kind' => 'U', 'description' => 'Toluene', 'limit_mg_l' => null]]];
@@ -298,6 +308,60 @@ $r = $s13->invoke($gen, $hz([]), $calc(93.0, true), []);
 check($r['rcra_classification'] === $none . ' ' . $generator, 'three-arg call -> rcra_none path, no error');
 
 // ---------------------------------------------------------------------------
+echo "9b. T1d: #11 D001 safety net, #66 D002 state / H290 / data-gap wording, #12 rcra_none and metal compounds\n";
+$runFg = static fn (array $codes, ?float $fp, array $fg, array $components = []) =>
+    $s13->invoke($gen, $hz($codes), $calc($fp), [], $rcra($components), $fg);
+$gas   = $t->get('section13.rcra_reason_flammable_gas');
+$fsol  = $t->get('section13.rcra_reason_flammable_solid');
+$skin  = $t->get('section13.rcra_reason_skin_corrosion');
+$metal = $t->get('section13.rcra_reason_metal_corrosion');
+
+$r = $run(['H220'], null);
+check(str_contains($r['rcra_classification'], 'ignitable (D001) — ' . $gas), 'H220 -> D001 compressed-gas reason', $r['rcra_classification']);
+$r = $run(['H222', 'H229'], null);
+check(str_contains($r['rcra_classification'], 'ignitable (D001) — ' . $gas), 'H222 aerosol -> D001', $r['rcra_classification']);
+$r = $run(['H228'], null);
+check(str_contains($r['rcra_classification'], 'ignitable (D001) — ' . $fsol), 'H228 -> D001 flammable solid', $r['rcra_classification']);
+$r = $run(['H221', 'H223', 'H228'], null);
+check(substr_count($r['rcra_classification'], $gas) === 1 && substr_count($r['rcra_classification'], 'D001') === 1, 'gas codes give one reason; D001 once', $r['rcra_classification']);
+$r = $run(['H272', 'H228'], null);
+check(str_contains($r['rcra_classification'], 'ignitable (D001) — oxidizer, ' . $fsol), 'new reasons follow oxidizer / pyrophoric', $r['rcra_classification']);
+$r = $run(['H229'], null);
+check(!str_contains($r['rcra_classification'], 'D001'), 'H229 alone -> no D001', $r['rcra_classification']);
+
+$r = $run(['H290'], 93.0, true);
+check(str_contains($r['rcra_classification'], 'corrosive (D002) — ' . $metal), 'H290 liquid -> D002 metal-corrosion reason', $r['rcra_classification']);
+$r = $run(['H314', 'H290'], 93.0, true);
+check(str_contains($r['rcra_classification'], 'corrosive (D002) — ' . $skin . ', ' . $metal) && substr_count($r['rcra_classification'], 'D002') === 1, 'H314 + H290 -> one D002, both reasons', $r['rcra_classification']);
+foreach (['Solid', 'Powder', 'paste', ' PASTE '] as $st) {
+    $r = $runFg(['H314', 'H290'], 93.0, ['physical_state' => $st]);
+    check(!str_contains($r['rcra_classification'], 'D002'), "state '{$st}' -> no D002", $r['rcra_classification']);
+}
+$r = $runFg(['H314'], 93.0, ['physical_state' => 'Solid']);
+check($r['rcra_classification'] === $none . ' ' . $generator, 'solid H314-only product -> rcra_none path', $r['rcra_classification']);
+$r = $runFg(['H314'], 93.0, ['physical_state' => 'Liquid']);
+check(str_contains($r['rcra_classification'], 'D002'), 'Liquid -> D002');
+$r = $runFg(['H314'], 93.0, ['physical_state' => 'Gel']);
+check(str_contains($r['rcra_classification'], 'D002'), 'Gel (not Solid/Powder/Paste) -> D002');
+$calcPowder = $calc(93.0, true);
+$calcPowder['formula_props']['physical_state'] = 'Powder';
+$r = $s13->invoke($gen, $hz(['H314']), $calcPowder, [], $rcra([]), []);
+check(!str_contains($r['rcra_classification'], 'D002'), 'no own state: derived Powder (highest-wt% raw) -> no D002', $r['rcra_classification']);
+
+// H226 with a "> 55" product flash point prints the ">" D001 reason; neither it nor D002 states a data gap.
+$r = $run(['H226', 'H314'], 55.0, true);
+check(str_contains($r['rcra_classification'], 'D001') && !str_contains($r['rcra_classification'], 'not determined') && !str_contains($r['rcra_classification'], 'pH'), 'no data-gap wording in D001 ">" reason or D002', $r['rcra_classification']);
+check(!str_contains($none, 'no component is a') && str_contains($none, 'has been identified as a toxicity characteristic constituent'), 'rcra_none no longer positively denies TC constituents', $none);
+
+$pbcr = ['cas_number' => '7758-97-6', 'chemical_name' => 'Lead chromate', 'is_trade_secret' => false, 'trade_secret_description' => null,
+    'codes' => [
+        ['waste_code' => 'D007', 'kind' => 'D', 'description' => 'Chromium', 'limit_mg_l' => 5.0],
+        ['waste_code' => 'D008', 'kind' => 'D', 'description' => 'Lead', 'limit_mg_l' => 5.0],
+    ]];
+$r = $run([], 93.0, true, [$pbcr]);
+check($r['rcra_classification'] === $intro . ' contains Lead chromate (D007 if the toxicity characteristic regulatory level of 5 mg/L (TCLP) is exceeded; D008 if the toxicity characteristic regulatory level of 5 mg/L (TCLP) is exceeded). ' . $generator, 'metal compound prints both inherited D codes', $r['rcra_classification']);
+
+// ---------------------------------------------------------------------------
 echo "10. getLabels()\n";
 $labels = $method('getLabels')->invoke($gen);
 check(isset($labels['rcra_classification']) && $labels['rcra_classification'] === $t->get('labels.rcra_classification'), 'labels.rcra_classification present', $labels['rcra_classification'] ?? null);
@@ -316,8 +380,9 @@ check(str_contains($preview, "'rcra_classification'  => 'rcra_classification'"),
 echo "12. Translation keys in all four languages\n";
 $keys = [
     'rcra_intro', 'rcra_none', 'rcra_none_characteristic', 'rcra_listed_intro', 'rcra_generator', 'rcra_d001', 'rcra_d002', 'rcra_d003',
-    'rcra_reason_flash_point', 'rcra_reason_flash_point_gt', 'rcra_reason_oxidizer', 'rcra_reason_ignitable_solid',
+    'rcra_reason_flash_point', 'rcra_reason_flash_point_gt', 'rcra_reason_flammable_liquid', 'rcra_reason_oxidizer', 'rcra_reason_ignitable_solid',
     'rcra_reason_water_reactive', 'rcra_reason_explosive', 'rcra_reason_unstable',
+    'rcra_reason_flammable_gas', 'rcra_reason_flammable_solid', 'rcra_reason_skin_corrosion', 'rcra_reason_metal_corrosion',
     'rcra_component', 'rcra_code_d', 'rcra_code_d_nolimit', 'rcra_code_f', 'rcra_code_k', 'rcra_code_p', 'rcra_code_u',
 ];
 foreach (['en', 'es', 'fr', 'de'] as $lang) {
@@ -331,7 +396,7 @@ foreach (['en', 'es', 'fr', 'de'] as $lang) {
     }
     check($missing === [], "{$lang}: every section13.rcra_* key present and non-empty", $missing);
     check(isset($s13t['methods']) && $s13t['methods'] !== '' && isset($s13t['title']), "{$lang}: section13.methods / title kept");
-    check(str_contains($s13t['rcra_d001'] ?? '', ':reasons') && str_contains($s13t['rcra_d003'] ?? '', ':reasons'), "{$lang}: rcra_d001/d003 carry :reasons");
+    check(str_contains($s13t['rcra_d001'] ?? '', ':reasons') && str_contains($s13t['rcra_d002'] ?? '', ':reasons') && str_contains($s13t['rcra_d003'] ?? '', ':reasons'), "{$lang}: rcra_d001/d002/d003 carry :reasons");
     check(str_contains($s13t['rcra_component'] ?? '', ':name') && str_contains($s13t['rcra_component'] ?? '', ':list'), "{$lang}: rcra_component carries :name and :list");
     check(str_contains($s13t['rcra_code_d'] ?? '', ':code') && str_contains($s13t['rcra_code_d'] ?? '', ':limit'), "{$lang}: rcra_code_d carries :code and :limit");
     $okCodes = true;
@@ -351,7 +416,7 @@ $tDe   = new \SDS\Services\TranslationService('de');
 $genDe = new \SDS\Services\SDSGenerator($tDe);
 $mDe   = new ReflectionMethod($genDe, 'section13');
 $mDe->setAccessible(true);
-$rDe = $mDe->invoke($genDe, $hz(['H314']), $calc(38.0), [], $rcra([$mek]));
+$rDe = $mDe->invoke($genDe, $hz(['H226', 'H314']), $calc(38.0), [], $rcra([$mek]));
 check(str_contains($rDe['rcra_classification'], 'entzündbar (D001)') && str_contains($rDe['rcra_classification'], 'ätzend (D002)') && str_contains($rDe['rcra_classification'], 'enthält Methyl ethyl ketone (D035'), 'DE renders D001 + D002 + component', $rDe['rcra_classification']);
 check(str_ends_with($rDe['rcra_classification'], '. ' . $tDe->get('section13.rcra_generator')), 'DE ends with generator sentence');
 

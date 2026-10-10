@@ -972,6 +972,11 @@ class PrivateLabelController
                 $mfgInfo      = $manufacturer !== null ? Manufacturer::toCompanyInfo($manufacturer) : [];
 
                 $sdsData = SDSGenerator::createPrivateLabelVariant($sdsData, $code, $description, $mfgInfo);
+                // Audit #69 — a published record regenerated for want of a snapshot
+                // shows its own version and effective date, not "Draft".
+                if (($version['status'] ?? '') === 'published' && !empty($version['effective_date'])) {
+                    $sdsData = SDSGenerator::stampPublishedVersion($sdsData, (int) $version['version'], (string) $version['effective_date']);
+                }
             } catch (\Throwable $e) {
                 $_SESSION['_flash']['error'] = 'SDS preview failed: ' . $e->getMessage();
                 redirect($backUrl);

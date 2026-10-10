@@ -70,8 +70,10 @@ $s7  = $method('section7');
 $s10 = $method('section10');
 
 $tr = fn(string $key): string => $t->get('section7.' . $key);
-$hz = fn(array $codes): array => [
+// Real engine shape: h_statements + p_statements (#33: lock-up reads the resolved P405).
+$hz = fn(array $codes, array $p = []): array => [
     'h_statements' => array_map(fn($c) => ['code' => $c, 'text' => ''], $codes),
+    'p_statements' => array_map(fn($c) => ['code' => $c, 'text' => ''], $p),
 ];
 
 const S10_MARK = '(see Section 10): ';
@@ -114,12 +116,15 @@ check($noFire($s['handling']), 'no fire wording in handling', $s['handling']);
 check($noFire($s['storage']), 'no fire wording in storage', $s['storage']);
 $inc = $s10->invoke($gen, $hz([]), [])['incompatible'];
 check($inc === 'Strong oxidizing agents, strong acids, strong bases.', 'S10 default list', $inc);
-check($inc === $t->get('section10.incompatible'), 'S10 byte-identical to legacy section10.incompatible', $inc);
+// Finding #70: the dead key section10.incompatible is deleted; compare with its
+// last text (also held by scripts/data/legacy-override-texts.php for pass 2).
+check($inc === 'Strong oxidizing agents, strong acids, strong bases.', 'S10 byte-identical to legacy section10.incompatible text', $inc);
+check($t->get('section10.incompatible') === 'section10.incompatible', 'dead key section10.incompatible removed (#70)', $t->get('section10.incompatible'));
 $agree($hz([]), [], 'no hazards');
 
 // ---------------------------------------------------------------------
 echo "b. Flammable solvent ink H226 + H304 + H336 + H412\n";
-$hzB = $hz(['H226', 'H304', 'H336', 'H412']);
+$hzB = $hz(['H226', 'H304', 'H336', 'H412'], ['P210', 'P233', 'P240', 'P241', 'P242', 'P243', 'P261', 'P271', 'P273', 'P280', 'P301+P310', 'P303+P361+P353', 'P304+P340', 'P312', 'P331', 'P370+P378', 'P403+P233', 'P403+P235', 'P405', 'P501']);
 $s = $s7->invoke($gen, $hzB, []);
 check(
     $s['handling'] === $tr('handling_base') . ' ' . $tr('handling_ignition') . ' ' . $tr('handling_flammable_static'),
@@ -157,7 +162,7 @@ $agree($hzD, [], 'UV sensitiser');
 
 // ---------------------------------------------------------------------
 echo "e. Flammable + corrosive both appear (H226 + H314)\n";
-$hzE = $hz(['H226', 'H314']);
+$hzE = $hz(['H226', 'H314'], ['P210', 'P260', 'P280', 'P301+P330+P331', 'P303+P361+P353', 'P305+P351+P338', 'P310', 'P405', 'P501']);
 $s = $s7->invoke($gen, $hzE, []);
 check(
     $inOrder($s['handling'], [$tr('handling_ignition'), $tr('handling_flammable_static'), $tr('handling_corrosive')]),
@@ -169,22 +174,19 @@ check(str_contains($s['storage'], $tr('storage_locked')), 'storage has locked up
 $agree($hzE, [], 'flammable + corrosive');
 
 // ---------------------------------------------------------------------
-echo "e2. 'Store locked up' (P405) trigger set: H318 no, H335/H336/H371 yes\n";
-$s = $s7->invoke($gen, $hz(['H318', 'H315']), []);
-check(!str_contains($s['storage'], $tr('storage_locked')), 'H318 + H315 (Eye Dam. 1): no locked up', $s['storage']);
+echo "e2. #33 'Store locked up' follows the resolved P405 (Section 2's P list)\n";
+$s = $s7->invoke($gen, $hz(['H318', 'H315'], ['P264', 'P280', 'P305+P351+P338', 'P310', 'P332+P313']), []);
+check(!str_contains($s['storage'], $tr('storage_locked')), 'Eye Dam. 1 + Skin Irrit. 2 (no P405): no locked up', $s['storage']);
 check($s['storage'] === $tr('storage_base') . ' ' . $incompatSentence($defaultList), 'H318 + H315 storage = base + default incompatibles', $s['storage']);
 $agree($hz(['H318', 'H315']), [], 'H318 + H315');
-$s = $s7->invoke($gen, $hz(['H225', 'H319', 'H336']), []);
-check(str_contains($s['storage'], $tr('storage_locked')), 'H225 + H319 + H336 (STOT SE 3): locked up', $s['storage']);
-check(!str_contains($s['handling'], $tr('storage_locked')), 'locked up never leaks into handling', $s['handling']);
-foreach (['H335', 'H371', 'H314', 'H304', 'H370'] as $code) {
-    $s = $s7->invoke($gen, $hz([$code]), []);
-    check(str_contains($s['storage'], $tr('storage_locked')), "{$code} alone: locked up", $s['storage']);
-}
-foreach (['H318', 'H319', 'H315'] as $code) {
-    $s = $s7->invoke($gen, $hz([$code]), []);
-    check(!str_contains($s['storage'], $tr('storage_locked')), "{$code} alone: no locked up", $s['storage']);
-}
+$s = $s7->invoke($gen, $hz(['H351'], ['P201', 'P202', 'P280', 'P308+P313', 'P405', 'P501']), []);
+check(str_contains($s['storage'], $tr('storage_locked')), 'carbon-black powder H351 + P405: locked up', $s['storage']);
+$s = $s7->invoke($gen, $hz(['H225', 'H319', 'H336'], ['P210', 'P261', 'P305+P351+P338', 'P403+P233', 'P405', 'P501']), []);
+check(str_contains($s['storage'], $tr('storage_locked')) && !str_contains($s['handling'], $tr('storage_locked')), 'STOT SE 3 with P405: storage only', $s);
+$s = $s7->invoke($gen, $hz(['H336'], []), []);
+check(!str_contains($s['storage'], $tr('storage_locked')), 'no P405 resolved -> no locked up (Section 2 agrees)', $s['storage']);
+$s = $s7->invoke($gen, $hz([], ['P403+P233', 'P405']), []);
+check(str_contains($s['storage'], $tr('storage_locked')), 'P405 inside the P list is matched as a code', $s['storage']);
 
 // ---------------------------------------------------------------------
 echo "f. H251 self-heating is NOT pyrophoric\n";
@@ -232,6 +234,7 @@ check($inc === 'Combustible materials, reducing agents, organic materials, metal
 check(!str_contains($inc, 'strong oxidizing agents'), 'S10 lacks oxidizers', $inc);
 check(str_contains($s['handling'], $tr('handling_oxidizer_combustibles')), 'handling has oxidizer', $s['handling']);
 check(str_contains($s['storage'], $tr('storage_oxidizer_separate')), 'storage has oxidizer separate', $s['storage']);
+check(str_contains($s['handling'], $tr('handling_ignition')) && str_contains($s['storage'], $tr('storage_ignition')), '#34 oxidizer gets heat/ignition wording', $s);
 $agree($hzI, [], 'H272');
 
 // ---------------------------------------------------------------------
@@ -250,7 +253,7 @@ $ov = [10 => ['incompatible' => 'Strong oxidizers, strong acids.']];
 $inc = $s10->invoke($gen, $hzB, $ov)['incompatible'];
 check($inc === 'Strong oxidizers, strong acids.', 'S10 override verbatim', $inc);
 $s = $s7->invoke($gen, $hzB, $ov);
-check(str_ends_with($s['storage'], '(see Section 10): Strong oxidizers, strong acids.'), 'S7 storage ends with override (single full stop)', $s['storage']);
+check(str_ends_with($s['storage'], '(see Section 10): strong oxidizers, strong acids.'), 'S7 storage embeds the override lower-cased (#64)', $s['storage']);
 check(!str_ends_with($s['storage'], '..'), 'no double full stop', $s['storage']);
 $agree($hzB, $ov, 'S10 override');
 $s = $s7->invoke($gen, $hzB, [7 => ['handling' => 'Custom H', 'storage' => 'Custom S']]);
@@ -268,6 +271,8 @@ $s7Keys = [
     'storage_oxidizer_separate', 'storage_self_reactive', 'storage_self_heating_cool',
     'storage_pyrophoric_air', 'storage_water_reactive_water', 'storage_inert_moisture',
     'storage_corrosive_metals', 'storage_locked', 'storage_incompatible',
+    'handling_pyrophoric_water_reactive', 'handling_explosive', 'handling_gas_pressure', 'handling_stot_re',
+    'handling_sensitizer_clothing', 'storage_explosive', 'storage_gas_pressure', 'uv_handling', 'uv_storage',
 ];
 $incompatKeys = [
     'water', 'air', 'oxidizers', 'combustibles', 'reducing_agents', 'organics',
@@ -307,7 +312,7 @@ check($inc === 'Wasser und Feuchtigkeit, starke Oxidationsmittel, starke Säuren
 $storage = $s7De->invoke($genDe, $hzH, [])['storage'];
 check(str_ends_with($storage, ': Wasser und Feuchtigkeit, starke Oxidationsmittel, starke Säuren, starke Basen.'), 'DE S7 storage ends with list', $storage);
 $inc = $s10De->invoke($genDe, $hz([]), [])['incompatible'];
-check($inc === $tDe->get('section10.incompatible'), 'DE default byte-identical to legacy', $inc);
+check($inc === 'Starke Oxidationsmittel, starke Säuren, starke Basen.', 'DE default byte-identical to legacy', $inc);
 
 $tEs   = new \SDS\Services\TranslationService('es');
 $genEs = new \SDS\Services\SDSGenerator($tEs);
@@ -315,14 +320,14 @@ $s10Es = new ReflectionMethod($genEs, 'section10');
 $s10Es->setAccessible(true);
 $inc = $s10Es->invoke($genEs, $hz([]), [])['incompatible'];
 check($inc === 'Agentes oxidantes fuertes, ácidos fuertes, bases fuertes.', 'ES S10 default', $inc);
-check($inc === $tEs->get('section10.incompatible'), 'ES default byte-identical to legacy', $inc);
+check($inc === 'Agentes oxidantes fuertes, ácidos fuertes, bases fuertes.', 'ES default byte-identical to legacy', $inc);
 
 $tFr   = new \SDS\Services\TranslationService('fr');
 $genFr = new \SDS\Services\SDSGenerator($tFr);
 $s10Fr = new ReflectionMethod($genFr, 'section10');
 $s10Fr->setAccessible(true);
 $inc = $s10Fr->invoke($genFr, $hz([]), [])['incompatible'];
-check($inc === $tFr->get('section10.incompatible'), 'FR default byte-identical to legacy', $inc);
+check($inc === 'Agents oxydants forts, acides forts, bases fortes.', 'FR default byte-identical to legacy', $inc);
 
 echo "\n{$checks} checks, {$failures} failures\n";
 exit($failures === 0 ? 0 : 1);

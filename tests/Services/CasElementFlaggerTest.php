@@ -90,5 +90,33 @@ check($i['has_nitrogen'] === true && $i['has_sulfur'] === true, 'unparseable for
 check(F::infer('', [])['has_halogen'] === false, 'nothing -> none');
 check(F::FLAGS === ['has_nitrogen', 'has_sulfur', 'has_halogen'], 'FLAGS order');
 
+echo "e. TC metals (audit #12)\n";
+check(F::TC_METALS === ['As', 'Ba', 'Cd', 'Cr', 'Pb', 'Hg', 'Se', 'Ag'], 'TC_METALS order');
+check(F::tcMetalsFromFormula('CrO4Pb') === ['Cr', 'Pb'], 'CrO4Pb -> Cr, Pb', F::tcMetalsFromFormula('CrO4Pb'));
+check(F::tcMetalsFromFormula('BaO4S') === ['Ba'], 'BaO4S -> Ba');
+check(F::tcMetalsFromFormula('CdSe') === ['Cd', 'Se'], 'CdSe -> Cd, Se');
+check(F::tcMetalsFromFormula('HgS') === ['Hg'] && F::tcMetalsFromFormula('As2O3') === ['As'] && F::tcMetalsFromFormula('AgNO3') === ['Ag'], 'HgS / As2O3 / AgNO3');
+check(F::tcMetalsFromFormula('TiO2') === [] && F::tcMetalsFromFormula('C32H16CuN8') === [] && F::tcMetalsFromFormula('CaCO3') === [], 'TiO2 / CuPc / CaCO3 -> none (Ca is not Cd)');
+check(F::tcMetalsFromFormula('Unspecified') === null && F::tcMetalsFromFormula(null) === null && F::tcMetalsFromFormula('Mixture') === null, 'unparseable -> null');
+$tn = fn(array $names): array => F::tcMetalsFromNames($names);
+check($tn(['Lead chromate']) === ['Cr', 'Pb'], 'Lead chromate -> Cr, Pb', $tn(['Lead chromate']));
+check($tn(['C.I. Pigment Yellow 34']) === ['Cr', 'Pb'], 'PY34 by CI name');
+check($tn(['Pigment Red 53:1']) === ['Ba'] && $tn(['Pigment Red 53']) === [] && $tn(['Pigment Red 48:2']) === [], 'barium lake by CI name; Na / Ca salts not');
+check($tn(['Pigment White 1']) === ['Pb'] && $tn(['Pigment White 18']) === [], 'PW1 (white lead) yes, PW18 (CaCO3) no');
+check($tn(['Barium sulfate']) === ['Ba'] && $tn(['Blanc fixe']) === ['Ba'], 'barium sulfate names');
+check($tn(['Cadmium sulfoselenide']) === ['Cd', 'Se'], 'cadmium sulfoselenide -> Cd, Se');
+check($tn(['2H-Chromene']) === [] && $tn(['Photochromic dye']) === [], 'chromene / photochromic -> none');
+check($tn(['Chrome yellow']) === ['Cr', 'Pb'], 'chrome yellow -> Cr, Pb');
+check($tn(['Lead-free drier']) === [] && $tn(['Unleaded']) === [] && $tn(['Plumbago']) === [], 'lead-free / unleaded / plumbago -> none');
+check($tn(['Mercurochrome']) === ['Hg'], 'Mercurochrome -> Hg only');
+check($tn(['Silver nitrate']) === ['Ag'], 'Silver nitrate -> Ag');
+check($tn(['Calcium carbonate', 'Titanium dioxide', 'Carbon black', 'Copper phthalocyanine', 'Aluminium']) === [], 'common ink raws -> none');
+check(F::inferTcMetals('BaO4S', ['Lead chromate']) === ['Ba'], 'formula wins over names');
+check(F::inferTcMetals('Unspecified', ['Lead chromate']) === ['Cr', 'Pb'], 'unparseable formula -> names');
+check(F::parseTcMetals(' pb, CR ;hg,xx,Pb') === ['Cr', 'Pb', 'Hg'], 'parseTcMetals normalises, dedupes, orders, drops unknown', F::parseTcMetals(' pb, CR ;hg,xx,Pb'));
+check(F::parseTcMetals(null) === [] && F::parseTcMetals('') === [], 'parseTcMetals empty');
+$mk = F::matchedTcMetalKeywords(['Lead chromate']);
+check(array_keys($mk) === ['Cr', 'Pb'], 'matchedTcMetalKeywords keyed by symbol in order', $mk);
+
 echo "\n{$checks} checks, {$failures} failures\n";
 exit($failures === 0 ? 0 : 1);

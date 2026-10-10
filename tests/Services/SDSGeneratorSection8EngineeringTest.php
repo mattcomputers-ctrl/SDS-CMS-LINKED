@@ -4,7 +4,7 @@
  * SDSGenerator::section8() engineering-controls test (audit item #14, DB-free)
  *
  *   - base sentence alone for an unclassified liquid (and when $fg is omitted);
- *   - dust fragment for physical_state Solid/Powder (case/whitespace tolerant);
+ *   - dust fragment for physical_state Powder only (#64) (case/whitespace tolerant);
  *   - flammable fragment for H224/H225/H226 only (H227, H228 do not trigger);
  *   - eyewash/shower fragment for H314 or H318, printed once when both;
  *   - fixed order base + dust + flammable + corrosive, single-space joined;
@@ -68,7 +68,7 @@ check($eng(['H315', 'H317', 'H319', 'H411'], ['physical_state' => 'Liquid']) ===
 
 echo "b. Dust fragment\n";
 check($eng([], ['physical_state' => 'Powder']) === $base . ' ' . $dust, 'Powder -> base + dust', $eng([], ['physical_state' => 'Powder']));
-check($eng([], ['physical_state' => 'Solid']) === $base . ' ' . $dust, 'Solid -> base + dust');
+check($eng([], ['physical_state' => 'Solid']) === $base, 'Solid -> base only (#64)');
 check($eng([], ['physical_state' => ' powder ']) === $base . ' ' . $dust, 'case/whitespace tolerant');
 
 echo "c. Flammable fragment\n";
@@ -86,7 +86,7 @@ check($eng(['H314', 'H318']) === $base . ' ' . $corr, 'H314 + H318 -> one fragme
 check($eng(['H315', 'H319']) === $base, 'H315/H319 irritants do not trigger');
 
 echo "e. Order and combination\n";
-check($eng(['H314', 'H226'], ['physical_state' => 'Solid']) === $base . ' ' . $dust . ' ' . $flam . ' ' . $corr, 'base + dust + flammable + corrosive in fixed order', $eng(['H314', 'H226'], ['physical_state' => 'Solid']));
+check($eng(['H314', 'H226'], ['physical_state' => 'Powder']) === $base . ' ' . $dust . ' ' . $flam . ' ' . $corr, 'base + dust + flammable + corrosive in fixed order', $eng(['H314', 'H226'], ['physical_state' => 'Powder']));
 check($eng(['H225', 'H319', 'H336'], ['physical_state' => 'Liquid']) === $base . ' ' . $flam, 'solvent ink (H225/H319/H336) -> base + flammable');
 
 echo "f. Override wins whole-field\n";

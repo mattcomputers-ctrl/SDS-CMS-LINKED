@@ -140,7 +140,7 @@ foreach ($versions as $v) {
                     <?php endif; ?>
                 </td>
                 <td>
-                    <?= !empty($g['date']) ? format_date((string) $g['date'], 'm/d/Y H:i') : '&mdash;' ?>
+                    <?= !empty($g['date']) ? \SDS\Services\PublishClock::display((string) $g['date'], 'm/d/Y H:i') : '&mdash;' ?>
                     <br><small class="text-muted">by <?= e((string) ($g['published_by'] ?? 'system')) ?></small>
                 </td>
                 <td><?= e($g['change_summary']) ?></td>

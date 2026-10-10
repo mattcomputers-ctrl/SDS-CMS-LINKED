@@ -15,8 +15,9 @@
  *   2. The pre-existing Carbon Black "only-dangerous-as-powder" rule
  *      in SDSGenerator::removeCarbonBlackFromResults. When any RM in
  *      the formula is a non-solid-non-powder state (liquid, paste,
- *      gel, gas), Carbon Black is scrubbed from Prop 65 and Section
- *      11 carcinogen findings — regardless of which RM carries it.
+ *      gel, gas), Carbon Black is scrubbed from Prop 65; its Section
+ *      11 finding is kept and flagged inhalable_dust_only (audit
+ *      #41(2)) — regardless of which RM carries it.
  *
  * The filter in (2) matches Carbon Black by name via stripos(). The
  * new "(trace)" suffix from (1) must not break that match. This

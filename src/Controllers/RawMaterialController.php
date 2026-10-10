@@ -590,9 +590,7 @@ class RawMaterialController
                 if ($p65 !== null) {
                     $response['prop65'] = [
                         'chemical_name'  => $p65['chemical_name'],
-                        'toxicity_types' => array_values(array_filter(
-                            array_map('trim', explode(',', (string) $p65['toxicity_type']))
-                        )),
+                        'toxicity_types' => \SDS\Services\Prop65Service::normaliseTypes((string) $p65['toxicity_type']),   // #47
                     ];
                 }
 
@@ -640,7 +638,6 @@ class RawMaterialController
         $secrets      = $_POST['is_trade_secret'] ?? [];
         $tsDescs      = $_POST['trade_secret_description'] ?? [];
         $tsHCodes     = $_POST['trade_secret_h_codes'] ?? [];
-        $nonHazardous = $_POST['is_non_hazardous'] ?? [];
 
         foreach ($casNumbers as $i => $cas) {
             $cas         = trim($cas);
@@ -660,7 +657,6 @@ class RawMaterialController
                 'is_trade_secret'          => $isSecret ? 1 : 0,
                 'trade_secret_description' => $isSecret ? trim($tsDescs[$i] ?? '') : null,
                 'trade_secret_h_codes'     => $isSecret ? trim($tsHCodes[$i] ?? '') : null,
-                'is_non_hazardous'         => isset($nonHazardous[$i]) ? 1 : 0,
                 'sort_order'               => $i + 1,
             ];
         }

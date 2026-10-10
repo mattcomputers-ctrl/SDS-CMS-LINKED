@@ -7,72 +7,127 @@ namespace SDS\Services;
 use SDS\Core\Database;
 
 /**
- * SARA313Service — SARA Title III Section 313 / TRI reporting analysis.
+ * SARA313Service — SARA Title III Section 313 / TRI supplier notification
+ * (40 CFR 372.45) analysis for SDS Section 15.
  *
- * Checks whether a finished product's composition triggers SARA 313
- * reporting requirements based on de minimis concentration thresholds.
+ * A constituent is a listed toxic chemical when its CAS is a sara313_list
+ * row, or (finding #26) when it belongs to a TRI category whose members are
+ * not individual rows: the metal compound categories by element and N230
+ * certain glycol ethers by explicit member list (RegulatoryCategoryService).
+ * When both apply, the stricter de minimis and the PBT flag of either win.
  *
- * Key rules:
- *   - Standard threshold: 1.0% by weight
- *   - PBT (persistent bioaccumulative toxic) chemicals: 0.1% threshold
- *   - Category-specific thresholds may apply
+ * Thresholds: the list row's / category's de minimis (1.0 %, 0.1 % for OSHA
+ * carcinogens). PBT chemicals (40 CFR 372.28, chemicals of special concern)
+ * have NO de minimis for supplier notification since the 2023 TRI rule
+ * (88 FR 74360): they are reported at any concentration above 0.
+ * The same rule added the TRI-listed PFAS (40 CFR 372.29) to the chemicals
+ * of special concern: sara313_list.is_special_concern (migration 058, set on
+ * the PFAS rows and every PBT row) also removes the de minimis. is_pbt stays
+ * the PBT designation only (Section 12 names PBTs; PFAS are not PBTs).
+ * sara313_list.pbt_threshold_pct is no longer read.
  */
 class SARA313Service
 {
     /**
-     * Analyse a composition for SARA 313 reportable chemicals.
-     *
      * @param  array $composition  Output from Formula::getExpandedComposition()
-     * Only listed components are returned (audit #42: the not-listed detail
-     * and the English summary sentence were never rendered and are not
-     * computed). 'below_threshold' is kept because SDSGenerator::section12()
-     * names PBT-flagged listed components from it (audit #24).
+     * Only listed components are returned (audit #42). 'below_threshold' is kept
+     * because SDSGenerator::section12() names PBT-flagged listed components from
+     * it (audit #24); a PBT component is never below threshold.
      *
      * @return array {
      *   reportable: array[],      // cas_number, chemical_name, concentration_pct,
-     *                             // threshold_pct, is_pbt, category_code, sara_name, status
-     *   below_threshold: array[], // Listed chemicals below threshold (same shape)
+     *                             // threshold_pct (0.0 for PBT), is_pbt, category_code, sara_name, status
+     *   below_threshold: array[], // listed non-PBT chemicals below their de minimis (same shape)
      * }
      */
     public static function analyse(array $composition): array
     {
-        $db = Database::getInstance();
+        $names = [];
+        foreach ($composition as $c) {
+            $cas = (string) ($c['cas_number'] ?? '');
+            if ($cas === '' || $cas === 'TRADE_SECRET' || (float) ($c['concentration_pct'] ?? 0) <= 0) {
+                continue;
+            }
+            $names[$cas] = [(string) ($c['chemical_name'] ?? '')];
+        }
+        if ($names === []) {
+            return self::evaluate($composition, [], []);   // DB-free
+        }
 
+        $db   = Database::getInstance();
+        $keys = array_map('strval', array_keys($names));
+        $ph   = implode(',', array_fill(0, count($keys), '?'));
+        $direct = [];
+        foreach ($db->fetchAll("SELECT * FROM sara313_list WHERE cas_number IN ({$ph})", $keys) as $r) {
+            $direct[(string) $r['cas_number']] = $r;
+        }
+
+        return self::evaluate(
+            $composition,
+            $direct,
+            RegulatoryCategoryService::matchForCas(RegulatoryCategoryService::LIST_SARA, $names)
+        );
+    }
+
+    /**
+     * DB-free core of analyse().
+     * @param array $direct          cas => sara313_list row
+     * @param array $categoryMatches cas => list of regulatory_categories rows (RegulatoryCategoryService::resolve())
+     */
+    public static function evaluate(array $composition, array $direct, array $categoryMatches): array
+    {
         $reportable     = [];
         $belowThreshold = [];
 
         foreach ($composition as $component) {
-            $cas  = $component['cas_number'];
-            $conc = (float) $component['concentration_pct'];
-            $name = $component['chemical_name'];
-
-            // Look up in SARA 313 list
-            $saraEntry = $db->fetch(
-                "SELECT * FROM sara313_list WHERE cas_number = ?",
-                [$cas]
-            );
-
-            if ($saraEntry === null) {
+            $cas  = (string) ($component['cas_number'] ?? '');
+            $conc = (float) ($component['concentration_pct'] ?? 0);
+            if ($cas === '' || $cas === 'TRADE_SECRET' || $conc <= 0) {
+                continue;
+            }
+            $row  = $direct[$cas] ?? null;
+            $cats = $categoryMatches[$cas] ?? [];
+            if ($row === null && $cats === []) {
                 continue;
             }
 
-            // Determine applicable threshold
-            $threshold = (float) $saraEntry['deminimis_pct'];
-            if ((int) $saraEntry['is_pbt'] && $saraEntry['pbt_threshold_pct'] !== null) {
-                $threshold = (float) $saraEntry['pbt_threshold_pct'];
+            $isPbt     = $row !== null && (int) ($row['is_pbt'] ?? 0) === 1;
+            $isSpecial = $row !== null && (int) ($row['is_special_concern'] ?? 0) === 1;   // 40 CFR 372.28 (TRI PFAS)
+            $threshold = $row !== null ? (float) ($row['deminimis_pct'] ?? 1.0) : null;
+            $catCode   = ($row !== null && trim((string) ($row['category_code'] ?? '')) !== '') ? (string) $row['category_code'] : null;
+            $saraName  = $row !== null ? (string) ($row['chemical_name'] ?? '') : '';
+            foreach ($cats as $cat) {
+                if ((int) ($cat['is_pbt'] ?? 0) === 1) {
+                    $isPbt = true;
+                }
+                $catThreshold = (float) ($cat['deminimis_pct'] ?? 1.0);
+                $threshold    = $threshold === null ? $catThreshold : min($threshold, $catThreshold);
+                $catCode      = $catCode ?? (string) ($cat['category_code'] ?? '');
+                if ($saraName === '') {
+                    $saraName = (string) ($cat['category_name'] ?? '');
+                }
+            }
+            // EPA list names carry footnote markers ("Lead ††"); never print them (same strip as section12()).
+            $saraName = trim((string) preg_replace('/[\s\x{2020}\x{2021}*]+$/u', '', $saraName));
+            $noDeminimis = $isPbt || $isSpecial;
+            if ($noDeminimis) {
+                $threshold = 0.0;   // 2023 TRI rule: no de minimis for chemicals of special concern (PBT, PFAS)
             }
 
             $entry = [
                 'cas_number'        => $cas,
-                'chemical_name'     => $name,
+                'chemical_name'     => (string) ($component['chemical_name'] ?? ''),
                 'concentration_pct' => $conc,
-                'threshold_pct'     => $threshold,
-                'is_pbt'            => (bool) $saraEntry['is_pbt'],
-                'category_code'     => $saraEntry['category_code'],
-                'sara_name'         => $saraEntry['chemical_name'],
+                'threshold_pct'     => (float) $threshold,
+                'is_pbt'            => $isPbt,
+                // Chemical of special concern that is not a PBT (TRI PFAS):
+                // Section 15 prints the special-concern wording instead of "PBT".
+                'is_special_concern' => $noDeminimis,
+                'category_code'     => $catCode,
+                'sara_name'         => $saraName,
             ];
 
-            if ($conc >= $threshold) {
+            if ($noDeminimis || $conc >= (float) $threshold) {
                 $entry['status'] = 'reportable';
                 $reportable[] = $entry;
             } else {
@@ -161,6 +216,11 @@ class SARA313Service
                 'pbt_threshold_pct' => isset($row[5]) && $row[5] !== '' ? (float) $row[5] : null,
                 'last_updated_at'   => date('Y-m-d H:i:s'),
             ];
+            // Optional 7th column special_concern (migration 058; PBT / TRI PFAS).
+            // Absent or blank (e.g. a raw EPA download): the stored flag is kept.
+            if (isset($row[6]) && trim((string) $row[6]) !== '') {
+                $data['is_special_concern'] = strtolower(trim((string) $row[6])) === 'yes' ? 1 : 0;
+            }
 
             try {
                 $existing = $db->fetch("SELECT id FROM sara313_list WHERE cas_number = ?", [$cas]);

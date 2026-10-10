@@ -89,8 +89,8 @@ $assert(
 
 // --- filename() ---------------------------------------------------------------
 $assert(
-    R::filename(['meta' => ['product_code' => 'BK1080-2G', 'language' => 'en']]) === 'SDS_BK1080_draft_en.pdf',
-    'filename: pack extension stripped, draft, en'
+    R::filename(['meta' => ['product_code' => 'ABC-123', 'language' => 'en']]) === 'SDS_ABC-123_draft_en.pdf',
+    'filename: printed code verbatim (PL custom code keeps its hyphen; alias callers pass the base code), draft, en'
 );
 $assert(
     R::filename(['meta' => ['product_code' => 'BK1080', 'language' => 'es', 'sds_version' => 3]]) === 'SDS_BK1080_v3_es.pdf',

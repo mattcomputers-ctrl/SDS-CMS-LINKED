@@ -62,6 +62,19 @@ class CarcinogenService
     ];
 
     /**
+     * #21: registry values that are carcinogen listings for HazCom App. D
+     * Section 11(vi) — IARC Groups 1 / 2A / 2B, NTP Known / Reasonably
+     * anticipated, OSHA-regulated. IARC Group 3 ("not classifiable") and any
+     * value outside these enums (e.g. ACGIH A3) are not reported.
+     */
+    private const REPORTABLE_KEYS = ['iarc_group_1', 'iarc_group_2a', 'iarc_group_2b', 'ntp_known', 'ntp_rahc', 'osha_listed'];
+
+    public static function isReportableListing(string $agency, string $classification): bool
+    {
+        return in_array(self::classificationKey($agency, $classification), self::REPORTABLE_KEYS, true);
+    }
+
+    /**
      * Translation-key suffix for a registry (agency, classification) pair,
      * or null when the pair is not a known enum value.
      */
@@ -156,11 +169,18 @@ class CarcinogenService
 
             $agencies = [];
             foreach ($rows as $row) {
+                // #21: IARC Group 3 never makes a component a listed carcinogen.
+                if (!self::isReportableListing((string) ($row['agency'] ?? ''), (string) ($row['classification'] ?? ''))) {
+                    continue;
+                }
                 $agencies[] = [
                     'agency'         => $row['agency'],
                     'classification' => $row['classification'],
                     'description'    => $row['description'] ?? '',
                 ];
+            }
+            if ($agencies === []) {
+                continue;
             }
 
             $displayName = $name ?: $rows[0]['chemical_name'];
@@ -233,13 +253,21 @@ class CarcinogenService
                 ]);
             }
 
-            $texts[$cas] = $t->get('section11.carcinogenicity_listed_line', [
+            // Audit #13: masked trade-secret findings all carry the TRADE SECRET
+            // label as CAS; keep one line each instead of overwriting.
+            $key = isset($texts[$cas]) ? $cas . '#' . count($texts) : $cas;
+            $line = $t->get('section11.carcinogenicity_listed_line', [
                 'name'     => (string) ($f['chemical_name'] ?? ''),
                 'cas'      => $cas,
                 'range'    => (string) ($f['concentration_range']
                     ?? (round((float) ($f['concentration_pct'] ?? 0), 2) . '%')),
                 'listings' => implode('; ', $parts),
             ]);
+            // Audit #41(2): inhalation-only substance bound in this product.
+            if (!empty($f['inhalable_dust_only'])) {
+                $line .= ' ' . $t->get('section11.carcinogenicity_inhalable_dust_note');
+            }
+            $texts[$key] = $line;
         }
 
         return $texts;

@@ -61,6 +61,31 @@ Recorded as items are reviewed with Matt. Items not listed here are still open.
 ---
 ## SDS Generation — Data-Driven vs Prefilled Review
 
+### Post-implementation audit decisions (2026-10-09)
+
+From the review of [sds-data-sources-findings.md](sds-data-sources-findings.md); implemented in batch E (migrations 056–059).
+
+| Topic | Decision |
+|---|---|
+| Product flash point | Weighted average (wt%) over the raw materials that have a flash point, recursive through intermediates; "> n" values count as n. Matt accepted the concern that a weighted average can understate flammability (the company makes no solvent-based inks) and will enter a high flash point for water and similar raws. |
+| No flash point data | Treated as no flash point: not flammable for Sections 5, 7, 10, 13 and 14; Section 9 prints "Not determined". |
+| Flammability source | One source: the Flammable Liquids category is derived from the product flash point and initial boiling point (Cat 1–4), so Sections 2, 5, 7, 9, 10, 13 and 14 agree; ingredient H224–H227 no longer drive the mixture class. |
+| Transport classes | The company sells no aerosols, gases, flammable solids, oxidizers or peroxides; such H-codes make Section 14 "Not determined" (publish block) as a safety net. |
+| Trade secrets | Only vendors claim them, rarely. Identity masked in every section (description + band); RCRA line generic, no code. Trade secrets may never be Prop 65 chemicals: a match is flagged and blocks publishing. |
+| Non-hazardous checkbox | Removed from the raw-material form and ignored everywhere; the column stays in the database unused. |
+| Acute toxicity | Keep cut-off classification (cut-off and ATEmix, most severe). Section 11 prints the ATEmix only when it produced the category, otherwise "Classified based on ingredient concentration". |
+| Solubility | "Negligible" counts as 3% soluble. |
+| Appendix D | Every Section 9 property prints ("Not determined" where no data); Section 11 routes and symptoms from H-codes; Section 14 bulk and special-precautions lines. Matt may ask to trim "Not determined" lines later. |
+| Aliases | Base code (no pack suffix) on the sheet; sends use the alias's own published PDF. |
+| Numbers | "." decimals and m/d/Y dates in every language. |
+| Missing hazard data block | Applies on SDS Update and bulk publish too. |
+| Overrides | OSHA Status and TSCA Status no longer editable per product; second cleanup pass for previous automatic text. |
+| Families | "Reset legacy manual picks to Auto" action; inactive families ignored; UV by total UV share. |
+| Warnings | Missing specific gravity / VOC → preview-only warnings. |
+| Resale | Resale sheets keep the resale default use text, not the family text. |
+| SARA 313 | PBT chemicals and TRI PFAS (chemicals of special concern) reported at any concentration; PFAS CAS list to be confirmed with regulatory staff. |
+
+
 Scope: every field rendered on the generated SDS (PDF + HTML preview) for the US / OSHA HazCom 2012 (GHS) output, per the verified audit of `src/Services/SDSGenerator.php`, `PDFService.php`, `HazardEngine.php`, `src/Views/sds/preview.php` and `templates/translations/*.php`. No code was changed.
 
 **How refutations were treated.** Many sweep claims were "refuted" only because the text varies by language or because a per-FG `text_overrides` row *could* replace it. Those fields are still canned defaults for every product that has no override, so they are kept in the findings below with that note. The Refuted appendix lists only the claims where verification showed a genuine data path.

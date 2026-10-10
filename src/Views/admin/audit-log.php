@@ -29,7 +29,7 @@
     <tbody>
     <?php foreach ($entries as $e): ?>
         <tr>
-            <td><?= format_date($e['timestamp'], 'm/d/Y H:i:s') ?></td>
+            <td><?= \SDS\Services\PublishClock::display($e['timestamp'], 'm/d/Y H:i:s') ?></td>
             <td><?= e($e['user_display_name'] ?? $e['username'] ?? 'System') ?></td>
             <td><span class="badge"><?= e($e['action']) ?></span></td>
             <td><?= e($e['entity_type']) ?></td>

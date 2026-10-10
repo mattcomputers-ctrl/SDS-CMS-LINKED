@@ -35,7 +35,6 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
             'is_trade_secret'          => !empty($old['is_trade_secret'][$k]) ? 1 : 0,
             'trade_secret_description' => (string) ($old['trade_secret_description'][$k] ?? ''),
             'trade_secret_h_codes'     => (string) ($old['trade_secret_h_codes'][$k]     ?? ''),
-            'is_non_hazardous'         => !empty($old['is_non_hazardous'][$k]) ? 1 : 0,
         ];
     }
 }
@@ -242,7 +241,7 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
                     <td><?= $sds['file_size'] ? number_format($sds['file_size'] / 1024, 1) . ' KB' : '—' ?></td>
                     <td><?= e($sds['notes'] ?? '') ?: '<span class="text-muted">—</span>' ?></td>
                     <td><?= e($sds['uploaded_by_name'] ?? '—') ?></td>
-                    <td><?= format_date($sds['uploaded_at'], 'm/d/Y H:i') ?></td>
+                    <td><?= \SDS\Services\PublishClock::display($sds['uploaded_at'], 'm/d/Y H:i') ?></td>
                     <td><?= !empty($sds['sds_date_received']) ? e($sds['sds_date_received']) : '<span class="text-muted">—</span>' ?></td>
                     <td>
                         <a href="/raw-materials/sds-version/<?= (int) $sds['id'] ?>" class="btn btn-sm pdf-link">View</a>
@@ -337,6 +336,7 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
                         Flash Point Greater than (&gt;)
                     </label>
                 </div>
+                <small class="text-muted">The SDS flash point is the weight-averaged flash point of the raw materials that carry one; raws left blank are left out of the average. Enter a high value (e.g. 100) for water and other non-flammable liquid raws so they count, and a flash point on every solvent. Ticking &quot;&gt;&quot; on any raw makes the product value a &quot;&gt; n&quot; value.</small>
             </div>
             <div class="form-group">
                 <label for="boiling_point_c">Initial Boiling Point (&deg;C)</label>
@@ -484,7 +484,6 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
                     <th>Trade Secret</th>
                     <th>TS Description</th>
                     <th>TS H Codes</th>
-                    <th>Non-Haz</th>
                     <th></th>
                 </tr>
             </thead>
@@ -512,7 +511,6 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
                         <span class="ts-hcodes-summary" style="font-size:0.8rem;"><?= e($c['trade_secret_h_codes'] ?? '') ?></span>
                         <button type="button" class="btn btn-sm ts-hcodes-btn" <?= ((int) ($c['is_trade_secret'] ?? 0)) ? '' : 'disabled' ?> style="margin-top:2px;">Select</button>
                     </td>
-                    <td><input type="checkbox" name="is_non_hazardous[<?= $i ?>]" value="1" <?= ((int) ($c['is_non_hazardous'] ?? 0)) ? 'checked' : '' ?>></td>
                     <td><button type="button" class="btn btn-sm btn-danger remove-row">X</button></td>
                 </tr>
                 <?php endforeach; ?>
@@ -538,7 +536,6 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
                         <span class="ts-hcodes-summary" style="font-size:0.8rem;"></span>
                         <button type="button" class="btn btn-sm ts-hcodes-btn" disabled style="margin-top:2px;">Select</button>
                     </td>
-                    <td><input type="checkbox" name="is_non_hazardous[0]" value="1"></td>
                     <td><button type="button" class="btn btn-sm btn-danger remove-row">X</button></td>
                 </tr>
             <?php endif; ?>
@@ -607,10 +604,14 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
         $autoThreshold = \SDS\Services\Prop65Service::autoTraceThresholdPct();
 
         $constituentCasList = [];
+        $p65TsCas = []; // Q4: trade-secret constituents (never allowed on the Prop 65 list)
         foreach (($constituents ?? []) as $c) {
             $cas = trim((string) ($c['cas_number'] ?? ''));
             if ($cas !== '') {
                 $constituentCasList[$cas] = $c;
+                if ((int) ($c['is_trade_secret'] ?? 0) === 1) {
+                    $p65TsCas[$cas] = true;
+                }
             }
         }
         if (!empty($constituentCasList)) {
@@ -643,6 +644,7 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
                     'toxicity_type' => $lr['toxicity_type'],
                     'effective_pct' => $eff,
                     'is_trace'      => ($eff !== null) ? ($eff < $autoThreshold) : false,
+                    'is_trade_secret' => isset($p65TsCas[$lr['cas_number']]),
                 ];
                 $p65AutoCasSet[$lr['cas_number']] = true;
             }
@@ -713,6 +715,14 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
             configurable in <a href="/admin/settings">Admin Settings</a>).
             Edit the composition above to change this list.
         </p>
+        <?php $p65TsRows = array_values(array_filter($p65AutoRows, static fn (array $r): bool => !empty($r['is_trade_secret']))); ?>
+        <?php if ($p65TsRows !== []): ?>
+            <div class="alert alert-danger">
+                <strong>Trade-secret constituent on the Prop 65 list &mdash; SDS publishing is blocked.</strong>
+                Vendor trade secrets may never be Prop 65 chemicals, and a Prop 65 chemical must be named on the SDS.
+                Ask the vendor to disclose <?= e(implode(', ', array_column($p65TsRows, 'cas_number'))) ?> and clear its trade-secret box above, or correct the CAS number.
+            </div>
+        <?php endif; ?>
         <table class="table table-sm">
             <thead>
                 <tr>
@@ -729,7 +739,7 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
             <?php else: ?>
                 <?php foreach ($p65AutoRows as $ar): ?>
                 <tr>
-                    <td><code><?= e($ar['cas_number']) ?></code></td>
+                    <td><code><?= e($ar['cas_number']) ?></code><?php if (!empty($ar['is_trade_secret'])): ?> <span class="badge badge-error" title="Trade secret on the Prop 65 list: blocks SDS publishing">trade secret</span><?php endif; ?></td>
                     <td><?= e($ar['chemical_name']) ?></td>
                     <td><?= e($ar['toxicity_type']) ?></td>
                     <td><?= $ar['effective_pct'] !== null ? e(number_format($ar['effective_pct'], 3)) . '%' : '—' ?></td>
@@ -801,10 +811,7 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
                     $displayTypesRaw = $listMatch !== null
                         ? (string) $listMatch['toxicity_type']
                         : (string) ($p65['toxicity_types'] ?? '');
-                    $existingTypes = array_values(array_filter(array_map(
-                        'trim',
-                        explode(',', $displayTypesRaw)
-                    )));
+                    $existingTypes = \SDS\Services\Prop65Service::normaliseTypes($displayTypesRaw);   // #47 'Cancer' ticks the box
                     $inputsLocked = !$entryOver;
                     $lockAttr = $inputsLocked ? ' readonly' : '';
                     $cbLockAttr = $inputsLocked ? ' disabled' : '';
@@ -1123,7 +1130,6 @@ document.getElementById('addRow').addEventListener('click', function() {
         '<td><input type="checkbox" name="is_trade_secret[' + idx + ']" value="1" class="ts-checkbox"></td>' +
         '<td><input type="text" name="trade_secret_description[' + idx + ']" list="ts-desc-list" placeholder="Type or select..." class="input-sm ts-desc-input" disabled></td>' +
         '<td><input type="hidden" name="trade_secret_h_codes[' + idx + ']" value="" class="ts-hcodes-hidden"><span class="ts-hcodes-summary" style="font-size:0.8rem;"></span><button type="button" class="btn btn-sm ts-hcodes-btn" disabled style="margin-top:2px;">Select</button></td>' +
-        '<td><input type="checkbox" name="is_non_hazardous[' + idx + ']" value="1"></td>' +
         '<td><button type="button" class="btn btn-sm btn-danger remove-row">X</button></td>';
     tbody.appendChild(tr);
     // Attach CAS lookup to the new row

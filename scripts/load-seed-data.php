@@ -276,6 +276,7 @@ if (file_exists($carcFile)) {
     $inserted = 0;
     $updated  = 0;
     $errors   = 0;
+    $seenCarc = [];   // #22: (CAS, agency) pairs already loaded this run
 
     while (($row = fgetcsv($handle)) !== false) {
         $cas    = trim($row[0] ?? '');
@@ -283,6 +284,17 @@ if (file_exists($carcFile)) {
         if ($cas === '' || !preg_match('/^\d+-\d+-\d+$/', $cas) || $agency === '') {
             continue;
         }
+
+        // #22: carcinogen_list is UNIQUE on (cas_number, agency), so a second
+        // CSV row for the pair used to overwrite the first (a context-specific
+        // "Group 1" row replaced acetaldehyde's Group 2B). Keep the first row
+        // and report the duplicate so the seed gets fixed.
+        $seenKey = $cas . '|' . $agency;
+        if (isset($seenCarc[$seenKey])) {
+            out("  WARNING: duplicate carcinogen seed row {$cas} / {$agency} ignored (first row kept)", $quiet);
+            continue;
+        }
+        $seenCarc[$seenKey] = true;
 
         $data = [
             'cas_number'     => $cas,
@@ -406,6 +418,12 @@ if (file_exists($saraFile)) {
             'source_ref'       => 'EPA Consolidated List of Lists, April 2025',
             'last_updated_at'  => date('Y-m-d H:i:s'),
         ];
+        // Optional 7th column (migration 058): chemical of special concern
+        // (PBT or TRI PFAS, 40 CFR 372.28) — no de minimis. Absent / blank:
+        // the stored flag is left alone.
+        if (isset($row[6]) && trim($row[6]) !== '') {
+            $data['is_special_concern'] = strtolower(trim($row[6])) === 'yes' ? 1 : 0;
+        }
 
         try {
             $existing = $db->fetch("SELECT id FROM sara313_list WHERE cas_number = ?", [$cas]);

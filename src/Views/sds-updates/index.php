@@ -99,13 +99,13 @@
                     </td>
                     <td>
                         <?php if ($item['last_sds_published']): ?>
-                            <?= format_date($item['last_sds_published'], 'm/d/Y g:i A') ?>
+                            <?= \SDS\Services\PublishClock::display($item['last_sds_published'], 'm/d/Y g:i A') ?>
                         <?php else: ?>
                             <span class="text-muted">Never</span>
                         <?php endif; ?>
                     </td>
                     <td>
-                        <?= format_date($item['earliest_queued'], 'm/d/Y g:i A') ?>
+                        <?= \SDS\Services\PublishClock::display($item['earliest_queued'], 'm/d/Y g:i A') ?>
                         <?php if (!empty($item['queued_by_name'])): ?>
                             <br><small class="text-muted">by <?= e($item['queued_by_name']) ?></small>
                         <?php endif; ?>

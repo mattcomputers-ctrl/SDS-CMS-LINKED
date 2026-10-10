@@ -11,14 +11,15 @@ use SDS\Core\Database;
  * resale items to a product family (SDS content audit #3).
  *
  * Resolution per item:
- *   manual override (family_source = 'manual')
+ *   manual override (family_source = 'manual', ACTIVE family only — Q13)
  *   > direct rule match on the item (code prefix / description contains /
  *     exact code; aliases matched too: alias code for prefix/exact, alias
  *     description for contains)
  *   > inherited from content (products only): expand the current formula
  *     recursively, sum wt% per family across the raw materials, highest total
  *     wins, no minimum share; raws with no family contribute nothing;
- *     intermediates are always expanded down to raws (Decision #3)
+ *     intermediates are always expanded down to raws (Decision #3);
+ *     UV/LED families are pooled: when their total share beats the largest non-UV family (ties to UV) the largest UV family wins (Q13 / audit #61)
  *   > NULL (unresolved).
  *
  * matchRules() and resolveFromData() are pure (arrays in, arrays out) and are
@@ -179,7 +180,7 @@ final class FamilyResolver
         $rmOut = [];
         foreach ($d['raw_materials'] ?? [] as $id => $rm) {
             $id = (int) $id;
-            if (($rm['family_source'] ?? null) === self::SOURCE_MANUAL && !empty($rm['family_id'])) {
+            if (($rm['family_source'] ?? null) === self::SOURCE_MANUAL && !empty($rm['family_id']) && isset($active[(int) $rm['family_id']])) { // Q13: a manual pick of an inactive family is released (falls through to rule / content)
                 $rmOut[$id] = ['family_id' => (int) $rm['family_id'], 'source' => self::SOURCE_MANUAL];
                 continue;
             }
@@ -258,7 +259,7 @@ final class FamilyResolver
             $id        = (int) $id;
             $formulaId = $d['formula_by_fg'][$id] ?? null;
             $shares    = $formulaId !== null ? $expand($formulaId, []) : [];
-            if (($fg['family_source'] ?? null) === self::SOURCE_MANUAL && !empty($fg['family_id'])) {
+            if (($fg['family_source'] ?? null) === self::SOURCE_MANUAL && !empty($fg['family_id']) && isset($active[(int) $fg['family_id']])) { // Q13: inactive manual pick falls through
                 $fgOut[$id] = ['family_id' => (int) $fg['family_id'], 'source' => self::SOURCE_MANUAL, 'shares' => $shares];
                 continue;
             }
@@ -280,23 +281,47 @@ final class FamilyResolver
         return ['raw_materials' => $rmOut, 'finished_goods' => $fgOut];
     }
 
-    /** Highest share wins; ties → lower sort_order, then lower family id; empty → null. */
+    /**
+     * Content resolution (audit #61 / Q13). UV/LED families are pooled: when
+     * the TOTAL share of UV families is >= the largest single non-UV family,
+     * the largest UV family wins (so a 20 % + 20 % UV split beats 30 %
+     * Solvent); otherwise the largest non-UV family wins. Within a pool:
+     * highest share, then lower sort_order, then lower family id. Families
+     * missing from $families count as non-UV. Empty / zero shares -> null.
+     */
     public static function pickDominant(array $shares, array $families): ?int
     {
-        $best = null;
+        $better = static function (?array $best, int $fid, float $wt, int $sort): bool {
+            return $best === null
+                || $wt > $best[1]
+                || ($wt == $best[1] && ($sort < $best[2] || ($sort === $best[2] && $fid < $best[0])));
+        };
+        $bestUv = null;
+        $bestOther = null;
+        $uvTotal = 0.0;
         foreach ($shares as $fid => $wt) {
+            $wt = (float) $wt;
             if ($wt <= 0) {
                 continue;
             }
             $fid  = (int) $fid;
             $sort = (int) ($families[$fid]['sort_order'] ?? 0);
-            if ($best === null
-                || $wt > $best[1]
-                || ($wt == $best[1] && ($sort < $best[2] || ($sort === $best[2] && $fid < $best[0])))) {
-                $best = [$fid, $wt, $sort];
+            if ((int) ($families[$fid]['is_uv'] ?? 0) === 1) {
+                $uvTotal += $wt;
+                if ($better($bestUv, $fid, $wt, $sort)) {
+                    $bestUv = [$fid, $wt, $sort];
+                }
+            } elseif ($better($bestOther, $fid, $wt, $sort)) {
+                $bestOther = [$fid, $wt, $sort];
             }
         }
-        return $best === null ? null : $best[0];
+        if ($bestUv === null) {
+            return $bestOther === null ? null : $bestOther[0];
+        }
+        if ($bestOther === null || $uvTotal >= $bestOther[1]) {
+            return $bestUv[0];
+        }
+        return $bestOther[0];
     }
 
     /** Everything before the first '-' (AliasResolver::stripPack semantics). */
@@ -660,6 +685,45 @@ final class FamilyResolver
             $s .= ' ' . $r['queued'] . ' SDS update(s) queued.';
         }
         return $s;
+    }
+
+    /**
+     * Audit #61 / Q13: finished goods still carrying the manual family link
+     * migration 053 (step 5c) created from the legacy family name. The set is
+     * the snapshot migration 059 took (fg_legacy_family_picks) BEFORE anything
+     * bumped finished_goods.updated_at (059's #48 block, ProductStaleness on
+     * SDS text / hazard-override edits), so those bumps no longer hide a pick.
+     * A pick still counts while the product is manual on the SAME family; a
+     * family re-picked (or set to Auto) on the product form drops out.
+     *
+     * @return int[]
+     */
+    public static function legacyManualFinishedGoodIds(Database $db): array
+    {
+        $rows = $db->fetchAll(
+            "SELECT fg.id
+               FROM finished_goods fg
+               JOIN fg_legacy_family_picks lp
+                 ON lp.finished_good_id = fg.id AND lp.family_id = fg.family_id
+              WHERE fg.family_source = 'manual' AND fg.family_id IS NOT NULL
+              ORDER BY fg.id"
+        );
+        return array_map(static fn(array $r): int => (int) $r['id'], $rows);
+    }
+
+    /**
+     * Q13: pure form of the legacy-pick rule (DB-free tests): manual, linked,
+     * and still on the family 053 linked ($snapshot: finished_good_id =>
+     * family_id from fg_legacy_family_picks). updated_at plays no part.
+     */
+    public static function isLegacyManualPick(array $fgRow, array $snapshot): bool
+    {
+        $id  = (int) ($fgRow['id'] ?? 0);
+        $fam = (int) ($fgRow['family_id'] ?? 0);
+        return ($fgRow['family_source'] ?? null) === 'manual'
+            && $fam > 0
+            && isset($snapshot[$id])
+            && (int) $snapshot[$id] === $fam;
     }
 
     /**

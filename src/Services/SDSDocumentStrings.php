@@ -61,4 +61,31 @@ final class SDSDocumentStrings
         $text = $t->get($key, $replacements);
         return $text === $key ? null : $text;
     }
+
+    /**
+     * meta.document completed for the sheet language (audit finding #62).
+     * Every DEFAULTS key the snapshot lacks (or stores blank) is filled from
+     * the sheet language's document.* translation, so a snapshot generated
+     * before meta.document existed prints its own-language banner, section
+     * prefix, footer and PDF Title/Subject instead of the English DEFAULTS.
+     * Values the snapshot carries are kept as stored. resolve() still
+     * supplies the English default for a key no translation file defines.
+     *
+     * @param  array  $document  meta.document from the SDS data array (may be empty)
+     * @param  string $language  meta.language of the sheet ('en', 'es', ...)
+     */
+    public static function forLanguage(array $document, string $language): array
+    {
+        foreach (array_keys(self::DEFAULTS) as $key) {
+            $value = $document[$key] ?? null;
+            if (is_string($value) && $value !== '') {
+                continue;
+            }
+            $translated = self::translate($language, 'document.' . $key);
+            if ($translated !== null && $translated !== '') {
+                $document[$key] = $translated;
+            }
+        }
+        return $document;
+    }
 }

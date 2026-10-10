@@ -55,13 +55,18 @@ class App
         // Initialise database singleton
         self::$database = Database::init(self::$config['db']);
 
-        // Override timezone from DB setting if present, then align MySQL
+        // Override timezone from DB setting if present; MySQL runs in UTC (audit #59)
         try {
             $tzRow = self::$database->fetch("SELECT `value` FROM settings WHERE `key` = 'app.timezone'");
             if ($tzRow && !empty($tzRow['value'])) {
                 date_default_timezone_set($tzRow['value']);
             }
-            self::$database->getPdo()->exec("SET time_zone = '" . date('P') . "'");
+            // Audit #59 — one clock: MySQL writes (CURRENT_TIMESTAMP, ON UPDATE
+            // CURRENT_TIMESTAMP, NOW()) are UTC, matching the UTC_TIMESTAMP()
+            // staleness bumps and the publishers' PublishClock::nowUtc()
+            // published_at. PHP date() stays in the admin time zone for printed
+            // effective dates; stored datetimes are shown via PublishClock::display().
+            self::$database->getPdo()->exec("SET time_zone = '" . \SDS\Services\PublishClock::DB_TIME_ZONE . "'");
         } catch (\Throwable $e) {
             // Non-fatal — fall back to PHP-only timezone
         }
@@ -223,6 +228,8 @@ class App
         $router->get('/sds/{finished_good_id}/preview',     'SDSController@preview');
         $router->get('/sds/resale/{rm_id}/preview',         'SDSController@previewResale');
         $router->post('/sds/resale/{rm_id}/publish',        'SDSController@publishResale');
+        $router->get('/sds/resale/{rm_id}/edit',            'SDSController@editResale');       // audit #45
+        $router->post('/sds/resale/{rm_id}/save-edits',     'SDSController@saveResaleEdits');  // audit #45
         $router->get('/sds/{finished_good_id}/edit',        'SDSController@edit');
         $router->post('/sds/{finished_good_id}/save-edits', 'SDSController@saveEdits');
         $router->post('/sds/{finished_good_id}/publish',    'SDSController@publish');
@@ -238,6 +245,10 @@ class App
         $router->post('/determinations/element-flags', 'AdminController@saveCasElementFlags');
         $router->get('/determinations/element-flags',        'AdminController@elementFlagsSeedPreview'); // seed dry run (CasElementFlagSeeder::plan)
         $router->post('/determinations/element-flags/apply', 'AdminController@applyElementFlagsSeed');   // seed apply (CasElementFlagSeeder::apply)
+        // ── Audit #12: RCRA TC metal flags on cas_master (Section 13 D004-D011 for metal compounds) ──
+        $router->post('/determinations/tc-metals',       'AdminController@saveCasTcMetals');     // manual edit (CAS Descriptions)
+        $router->get('/determinations/tc-metals',        'AdminController@tcMetalsSeedPreview'); // seed dry run (CasTcMetalSeeder::plan)
+        $router->post('/determinations/tc-metals/apply', 'AdminController@applyTcMetalsSeed');   // seed apply (CasTcMetalSeeder::apply)
         $router->post('/determinations/tsca',         'AdminController@saveTscaOverride'); // audit #29 per-CAS TSCA override
         $router->get('/determinations/{id}/edit',    'AdminController@editDetermination');
         $router->post('/determinations/{id}',        'AdminController@updateDetermination');
@@ -408,6 +419,7 @@ class App
             $r->get('/product-families/create',                       'AdminController@createProductFamily');
             $r->get('/product-families/recompute',                    'AdminController@recomputeProductFamilies');
             $r->post('/product-families/recompute',                   'AdminController@applyProductFamilies');
+            $r->post('/product-families/reset-legacy-manual',         'AdminController@resetLegacyFamilyPicks');
             $r->post('/product-families',                             'AdminController@storeProductFamily');
             $r->get('/product-families/{id}/edit',                    'AdminController@editProductFamily');
             $r->post('/product-families/{id}',                        'AdminController@updateProductFamily');

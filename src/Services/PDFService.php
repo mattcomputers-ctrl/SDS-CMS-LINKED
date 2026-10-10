@@ -46,7 +46,7 @@ class PDFService
         // Section 7
         'handling'             => 'handling',
         'storage'              => 'storage',
-        // Sections 4-7 UV acrylate rule-pack note (audit #35); Section 11 prints it in renderSection11()
+        // Sections 4-7 UV acrylate note: pre-#65 snapshots only (new sheets fold it into the fields); Section 11 prints it in renderSection11()
         'uv_acrylate_note'     => 'uv_acrylate_note',
         // Section 10
         'reactivity'           => 'reactivity',
@@ -98,7 +98,7 @@ class PDFService
         $pdf = $this->buildPdf($sdsData);
         $meta = $sdsData['meta'];
 
-        // On-disk name. The stem is the (pack-stripped) product or alias code,
+        // On-disk name. The stem is the product / alias / private-label code exactly as printed,
         // plus the optional meta.filename_tag that distinguishes documents
         // sharing a code (private label variants carry "PL_<manufacturer>").
         // Three forms:
@@ -110,7 +110,7 @@ class PDFService
         // an exact-name clash (a re-render of the same version, or two
         // previews in the same second) gets _2, _3, ... instead of
         // overwriting the earlier file. No random suffixes.
-        $stem = sanitize_filename(strip_pack_extension($meta['product_code']));
+        $stem = sanitize_filename((string) $meta['product_code']); // Q9/#60: callers pass the display code (alias: pack-stripped base; PL custom code verbatim, never cut at a hyphen)
         $tag  = trim((string) ($meta['filename_tag'] ?? ''));
         if ($tag !== '') {
             $stem .= '_' . sanitize_filename($tag);
@@ -252,7 +252,10 @@ class PDFService
         $sections = $sdsData['sections'];
         $this->labels = $meta['labels'] ?? [];
         $this->language = $meta['language'] ?? 'en';
-        $this->document = $meta['document'] ?? [];
+        // #62: a snapshot generated before meta.document (or one of its keys)
+        // existed gets the sheet language's document.* strings (banner,
+        // section prefix, footer, PDF Title/Subject), not the English DEFAULTS.
+        $this->document = SDSDocumentStrings::forLanguage($meta['document'] ?? [], $this->language);
 
         // Create PDF using custom subclass that handles absolute logo paths
         $pdf = new SDSTcpdf('P', 'mm', 'LETTER', true, 'UTF-8');
@@ -354,6 +357,12 @@ class PDFService
                 $this->renderSection15($pdf, $section);
                 break;
             default:
+                // #63: snapshots published before 9d8de70 carry the removed
+                // Section 13 "not required by OSHA HazCom" note; section13()
+                // no longer emits a 'note', so it is never printed.
+                if ($sectionNum === 13) {
+                    unset($section['note']);
+                }
                 $this->renderGenericSection($pdf, $section);
                 break;
         }
@@ -397,8 +406,10 @@ class PDFService
             $pdf->AddPage();
         }
 
-        // Not classified statement
-        if (empty($s['is_classified'])) {
+        // Not classified statement. Snapshots published before 178cbd0 have no
+        // is_classified key; the shared predicate then decides from the stored
+        // signal word / pictograms / classes / H-statements (#63).
+        if (!SDSGenerator::section2IsClassified($s)) {
             $pdf->SetFont('helvetica', '', 9);
             $pdf->MultiCell(0, 5, $s['not_classified_text'] ?? $this->text('section2.not_classified'), 0, 'L');
         }
@@ -524,9 +535,27 @@ class PDFService
             $pdf->Ln(1);
         }
 
-        // Hazard statements are rendered inline with each classification
-        // above (H-code + phrase on the same line under its category) —
-        // no standalone list needed.
+        // #40: H-statements no classification line above carries (FG-override
+        // H-codes entered without a class, class lines with no code) print as
+        // their own list, so every H-code that drives Sections 4-13 is shown.
+        // Same helper as the HTML preview.
+        $uncoveredH = GHSStatements::uncoveredHStatements($s['hazard_classes'] ?? [], $s['h_statements'] ?? []);
+        if (!empty($uncoveredH)) {
+            $pdf->SetFont('helvetica', 'B', 9);
+            $pdf->Cell(0, 5, $this->label('hazard_statements') . ':', 0, 1);
+            $pdf->SetFont('helvetica', '', 9);
+
+            $origLeftMargin = ($pdf->getMargins()['left'] ?? 10);
+            $pdf->SetLeftMargin($origLeftMargin + 4);
+            $pdf->SetX($origLeftMargin + 4);
+            foreach ($uncoveredH as $stmt) {
+                $code = (string) ($stmt['code'] ?? '');
+                $text = (string) ($stmt['text'] ?? '');
+                $pdf->MultiCell(0, 4, $text !== '' ? $code . ': ' . $text : $code, 0, 'L');
+            }
+            $pdf->SetLeftMargin($origLeftMargin);
+            $pdf->Ln(1);
+        }
 
         // Precautionary statements — same 4mm hanging indent as the
         // hazard rows so long statements that wrap keep their indent on
@@ -731,9 +760,11 @@ class PDFService
 
         if (!empty($s['components'])) {
             $pdf->Ln(2);
-            $pdf->SetFont('helvetica', 'I', 8);
-            $pdf->MultiCell(0, 4, $this->label('hazardous_only_note'), 0, 'L');
-            $pdf->Ln(1);
+            if ($s['mixture_notes'] ?? true) {   // #36(3): not on Substance sheets
+                $pdf->SetFont('helvetica', 'I', 8);
+                $pdf->MultiCell(0, 4, $this->label('hazardous_only_note'), 0, 'L');
+                $pdf->Ln(1);
+            }
 
             // Table header — CAS + Chemical Name + Concentration + H-codes
             $pdf->SetFont('helvetica', 'B', 8);
@@ -759,9 +790,14 @@ class PDFService
                 // which underestimated at 8pt — MultiCell with $maxh too
                 // small would silently truncate and the overflow would
                 // bleed into adjacent columns.
+                // The CAS column is measured too: the masked trade-secret
+                // label ('SECRETO COMERCIAL', 'GESCHÄFTSGEHEIMNIS') wraps
+                // to two lines in the 25 mm cell (as in Sections 8 / 12).
                 $rowH = max(
                     5,
+                    $pdf->getStringHeight($w[0], $cas),
                     $pdf->getStringHeight($w[1], $name),
+                    $pdf->getStringHeight($w[2], $conc),
                     $pdf->getStringHeight($w[3], $hCodes)
                 );
 
@@ -770,9 +806,11 @@ class PDFService
                 $pdf->MultiCell($w[2], $rowH, $conc,   1, 'C', false, 0, '', '', true, 0, false, true, $rowH, 'M');
                 $pdf->MultiCell($w[3], $rowH, $hCodes, 1, 'C', false, 1, '', '', true, 0, false, true, $rowH, 'M');
             }
-        } else {
+        } elseif ($s['mixture_notes'] ?? true) {
+            // #37: generator-chosen note (classified products explain Section 2);
+            // older snapshots without the key fall back to the label.
             $pdf->SetFont('helvetica', 'I', 8);
-            $pdf->MultiCell(0, 4, $this->label('no_hazardous_note'), 0, 'L');
+            $pdf->MultiCell(0, 4, (string) ($s['empty_note'] ?? $this->label('no_hazardous_note')), 0, 'L');
         }
 
         // Trade secret / concentration withheld statement
@@ -816,6 +854,7 @@ class PDFService
                 // to silently truncate long names/notes and overflow.
                 $rowH = max(
                     5,
+                    $pdf->getStringHeight($w[0], $cas),
                     $pdf->getStringHeight($w[1], $name),
                     $pdf->getStringHeight($w[6], $notes)
                 );
@@ -829,6 +868,12 @@ class PDFService
                 $pdf->MultiCell($w[6], $rowH, $notes,   1, 'L', false, 1, '', '', true, 0, false, true, $rowH, 'M');
             }
             $pdf->Ln(2);
+        } elseif (trim((string) ($s['exposure_limits_none'] ?? '')) !== '') {
+            // #64: no exposure-limit rows -> one translated sentence (pre-#64 snapshots carry no key).
+            $pdf->SetFont('helvetica', 'I', 8);
+            $pdf->MultiCell(0, 4, (string) $s['exposure_limits_none'], 0, 'L');
+            $pdf->SetFont('helvetica', '', 9);
+            $pdf->Ln(1);
         }
 
         $this->labelValue($pdf, $this->label('engineering_controls'), $s['engineering'] ?? '');
@@ -841,18 +886,31 @@ class PDFService
     private function renderSection9(\TCPDF $pdf, array $s): void
     {
         $props = [
-            'physical_state'    => $s['physical_state'] ?? '',
-            'color'             => $s['color'] ?? '',
-            'appearance'        => $s['appearance'] ?? '',
-            'odor'              => $s['odor'] ?? '',
-            'boiling_point'     => $s['boiling_point'] ?? '',
-            'flash_point'       => $s['flash_point'] ?? '',
-            'solubility'        => $s['solubility'] ?? '',
-            'specific_gravity'  => $s['specific_gravity'] ?? '',
-            'voc_lb_gal'        => $s['voc_lb_per_gal'] ?? '',
-            'voc_wt_pct'        => $s['voc_wt_pct'] ?? '',
-            'solids_wt_pct'     => $s['solids_wt_pct'] ?? '',
+            'physical_state'         => $s['physical_state'] ?? '',
+            'color'                  => $s['color'] ?? '',
+            'appearance'             => $s['appearance'] ?? '',
+            'odor'                   => $s['odor'] ?? '',
+            'odor_threshold'         => $s['odor_threshold'] ?? '',
+            'ph'                     => $s['ph'] ?? '',
+            'melting_point'          => $s['melting_point'] ?? '',
+            'boiling_point'          => $s['boiling_point'] ?? '',
+            'flash_point'            => $s['flash_point'] ?? '',
+            'evaporation_rate'       => $s['evaporation_rate'] ?? '',
+            'flammability_solid_gas' => $s['flammability_solid_gas'] ?? '',
+            'flammability_limits'    => $s['flammability_limits'] ?? '',
+            'vapor_pressure'         => $s['vapor_pressure'] ?? '',
+            'vapor_density'          => $s['vapor_density'] ?? '',
+            'specific_gravity'       => $s['specific_gravity'] ?? '',
+            'solubility'             => $s['solubility'] ?? '',
+            'partition_coefficient'  => $s['partition_coefficient'] ?? '',
+            'auto_ignition_temp'     => $s['auto_ignition_temp'] ?? '',
+            'decomposition_temp'     => $s['decomposition_temp'] ?? '',
+            'viscosity'              => $s['viscosity'] ?? '',
+            'voc_lb_gal'             => $s['voc_lb_per_gal'] ?? '',
+            'voc_wt_pct'             => $s['voc_wt_pct'] ?? '',
+            'solids_wt_pct'          => $s['solids_wt_pct'] ?? '',
             // #18(c): VOC less water & exempts and solids vol% are not printed.
+            // #43/Q8: older snapshots lack the Appendix D keys; '' -> labelValue() skips them.
         ];
 
         foreach ($props as $labelKey => $value) {
@@ -862,6 +920,9 @@ class PDFService
 
     private function renderSection11(\TCPDF $pdf, array $s): void
     {
+        // Q8 / HazCom App. D 11(a)-(c); absent on older snapshots (labelValue skips '').
+        $this->labelValue($pdf, $this->label('routes_of_exposure'), (string) ($s['routes_of_exposure'] ?? ''));
+        $this->labelValue($pdf, $this->label('symptoms_effects'), (string) ($s['symptoms'] ?? ''));
         $this->labelValue($pdf, $this->label('acute_toxicity'), $s['acute_toxicity'] ?? '');
         $this->labelValue($pdf, $this->label('chronic_effects'), $s['chronic_effects'] ?? '');
 
@@ -903,6 +964,11 @@ class PDFService
                         }
                         $pdf->MultiCell(0, 4, $listingText, 0, 'L');
                     }
+                    // Audit #41(2): inhalable-dust note (same text as the HTML preview)
+                    if (!empty($comp['carcinogen_note'])) {
+                        $pdf->Cell(5, 4, '', 0, 0);
+                        $pdf->MultiCell(0, 4, (string) $comp['carcinogen_note'], 0, 'L');
+                    }
                 }
 
                 // Exposure limits for this component
@@ -942,18 +1008,38 @@ class PDFService
         // Same Cell/MultiCell pattern as the Section 8 exposure-limit table.
         $rows = $s['component_aquatic'] ?? [];
         if (!empty($rows) && is_array($rows)) {
+            // #62: FR/DE headers ("Danger aigu pour le milieu aquatique",
+            // "Chronisch gewässergefährdend") are wider than their column at
+            // 7 pt. Every header is a MultiCell in one shared-height row (the
+            // body-row pattern below) instead of a Cell() that runs past the border.
+            $w = [68, 25, 17, 32, 33];
+            $headers = [
+                $this->label('chemical_name'),
+                $this->label('cas_number'),
+                $this->label('el_conc_pct'),
+                $this->label('aquatic_acute'),
+                $this->label('aquatic_chronic'),
+            ];
+            $pdf->SetFont('helvetica', 'B', 7);
+            $headH = 5;
+            foreach ($headers as $i => $text) {
+                $headH = max($headH, $pdf->getStringHeight($w[$i], $text));
+            }
+
             $pdf->Ln(1);
+            // Keep the table title, the header row and the first body row on one page.
+            if ($pdf->GetY() + 5 + $headH + 5 > $pdf->getPageHeight() - $pdf->getBreakMargin()) {
+                $pdf->AddPage();
+            }
             $pdf->SetFont('helvetica', 'B', 9);
             $pdf->Cell(0, 5, $this->label('component_ecotox_data') . ':', 0, 1);
 
             $pdf->SetFont('helvetica', 'B', 7);
             $pdf->SetFillColor(230, 230, 230);
-            $w = [68, 25, 17, 32, 33];
-            $pdf->Cell($w[0], 5, $this->label('chemical_name'), 1, 0, 'C', true);
-            $pdf->Cell($w[1], 5, $this->label('cas_number'), 1, 0, 'C', true);
-            $pdf->Cell($w[2], 5, $this->label('el_conc_pct'), 1, 0, 'C', true);
-            $pdf->Cell($w[3], 5, $this->label('aquatic_acute'), 1, 0, 'C', true);
-            $pdf->Cell($w[4], 5, $this->label('aquatic_chronic'), 1, 1, 'C', true);
+            $lastHeader = count($headers) - 1;
+            foreach ($headers as $i => $text) {
+                $pdf->MultiCell($w[$i], $headH, $text, 1, 'C', true, $i === $lastHeader ? 1 : 0, '', '', true, 0, false, true, $headH, 'M');
+            }
             $pdf->SetFont('helvetica', '', 7);
 
             foreach ($rows as $row) {
@@ -969,6 +1055,7 @@ class PDFService
                 $rowH = max(
                     5,
                     $pdf->getStringHeight($w[0], $name),
+                    $pdf->getStringHeight($w[1], $cas),
                     $pdf->getStringHeight($w[3], $acute),
                     $pdf->getStringHeight($w[4], $chronic)
                 );
@@ -999,6 +1086,9 @@ class PDFService
         $this->labelValue($pdf, $this->label('packing_group'), $s['packing_group'] ?? '');
         // Audit #27: App. D 14(e) environmental hazards (marine pollutant). Old snapshots have no key → line skipped.
         $this->labelValue($pdf, $this->label('environmental_hazards'), (string) ($s['environmental_hazards'] ?? ''));
+        // HazCom App. D 14(f) / 14(g) (finding #43). Old snapshots have no keys → lines skipped.
+        $this->labelValue($pdf, $this->label('transport_in_bulk'), (string) ($s['transport_in_bulk'] ?? ''));
+        $this->labelValue($pdf, $this->label('special_precautions'), (string) ($s['special_precautions'] ?? ''));
         // Carrier-verification note (was preview-only before item #25)
         $this->labelValue($pdf, $this->label('note'), $s['note'] ?? '');
     }
@@ -1027,11 +1117,14 @@ class PDFService
                     // Band only (audit #8/#42): exact percentages are never printed,
                     // so a legacy snapshot without a band shows nothing here.
                     $conc = (string) ($chem['concentration_range'] ?? '');
-                    $text = $name . ' (CAS ' . ($chem['cas_number'] ?? '') . ') — '
-                          . $conc . ' ('
-                          . $this->label('sara_313_threshold') . ': ' . $threshold . '%'
-                          . (!empty($chem['is_pbt']) ? '; ' . $this->label('sara_313_pbt') : '')
-                          . ')';
+                    // #26: PBT and other chemicals of special concern (TRI PFAS, 40 CFR
+                    // 372.28) have no de minimis since the 2023 TRI rule.
+                    $detail = !empty($chem['is_pbt'])
+                        ? $this->label('sara_313_pbt_no_deminimis')
+                        : (!empty($chem['is_special_concern'])
+                            ? $this->label('sara_313_special_concern_no_deminimis')
+                            : $this->label('sara_313_threshold') . ': ' . $threshold . '%');
+                    $text = $name . ' (CAS ' . ($chem['cas_number'] ?? '') . ') — ' . $conc . ' (' . $detail . ')';
                     $pdf->MultiCell(0, 4, "\xE2\x80\xA2 " . $text, 0, 'L');
                 }
                 $pdf->SetFont('helvetica', 'I', 7);
@@ -1066,10 +1159,14 @@ class PDFService
                 $pdf->Cell($wHap[1], 5, $concPct, 1, 1, 'C');
             }
 
-            $pdf->SetFont('helvetica', 'B', 8);
-            $pdf->Cell($wHap[0], 5, $this->label('hap_total') . ':', 1, 0, 'R');
-            $pdf->Cell($wHap[1], 5, number_format((float) ($hap['total_hap_pct'] ?? 0), 2) . '%', 1, 1, 'C');
-            $pdf->SetFont('helvetica', '', 8);
+            // Finding #70: band only; an old snapshot (exact total, no band) prints no total row.
+            $totalBand = (string) ($hap['total_hap_range'] ?? '');
+            if ($totalBand !== '') {
+                $pdf->SetFont('helvetica', 'B', 8);
+                $pdf->Cell($wHap[0], 5, $this->label('hap_total') . ':', 1, 0, 'R');
+                $pdf->Cell($wHap[1], 5, $totalBand, 1, 1, 'C');
+                $pdf->SetFont('helvetica', '', 8);
+            }
             $pdf->Ln(2);
         } elseif (isset($hap['has_haps'])) {
             $pdf->SetFont('helvetica', 'B', 9);
@@ -1157,8 +1254,10 @@ class PDFService
             $this->labelValue($pdf, $this->label('state_regulations'), $stateRegs);
         }
 
-        // Note
-        if (!empty($s['note'])) {
+        // Note. #63: a Section 15 without 'ghs_note' predates 9d8de70; its
+        // 'note' is the removed "not required by OSHA HazCom" sentence that
+        // the shared footnote replaced, so it is not printed.
+        if (!empty($s['note']) && array_key_exists('ghs_note', $s)) {
             $pdf->SetFont('helvetica', 'I', 7);
             $pdf->MultiCell(0, 3, $s['note'], 0, 'L');
         }

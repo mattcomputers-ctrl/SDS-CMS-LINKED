@@ -2,13 +2,14 @@
 <?php
 /**
  * FormulaCalcService::deriveFormulaProperties() — formula-level solubility
- * band and dominant-RM physical state (SDS content audit item #18 (b)/(d)).
+ * band and physical state (SDS content audit items #18 (b)/(d), #42(1), Q7).
  *
- *   F = (soluble wt% + 0.5 x partially-soluble wt%) / (wt% of raws that carry
- *       ANY solubility value)            -> soluble_fraction_pct
+ *   F = (soluble wt% + 0.5 x partially-soluble wt% + 0.03 x negligible wt%)
+ *       / (wt% of raws that carry ANY solubility value)  -> soluble_fraction_pct
  *   F >= 90 soluble | 5 <= F < 90 partially_soluble | 1 <= F < 5 negligible
  *   | F < 1 not_soluble | no raw with a value -> null  -> solubility_key
- *   physical_state = physical_state of the highest summed-wt% raw material.
+ *   physical_state = physical_state of the highest summed-wt% raw material
+ *   that HAS one (#42(1)); '' when none has.
  *
  * DB-free: the method is pure, so it is invoked through reflection with
  * synthetic enriched lines shaped like enrichFormulaLines() output.
@@ -106,9 +107,17 @@ $cases = [
         'lines' => [$line(1, 10.0, $P), $line(2, 90.0, $I)],
         'key'   => 'partially_soluble', 'f' => 5.0,
     ],
-    '2 Soluble + 98 Negligible -> F=2 negligible' => [
+    '2 Soluble + 98 Negligible -> F=4.94 negligible (Q7)' => [
         'lines' => [$line(1, 2.0, $S), $line(2, 98.0, $N)],
-        'key'   => 'negligible', 'f' => 2.0,
+        'key'   => 'negligible', 'f' => 4.94,
+    ],
+    '60 Negligible + 40 Insoluble -> F=1.8 negligible (waterborne after migration 054)' => [
+        'lines' => [$line(1, 60.0, $N), $line(2, 40.0, $I)],
+        'key'   => 'negligible', 'f' => 1.8,
+    ],
+    '50 Soluble + 50 Negligible -> F=51.5 partially_soluble (Q7)' => [
+        'lines' => [$line(1, 50.0, $S), $line(2, 50.0, $N)],
+        'key'   => 'partially_soluble', 'f' => 51.5,
     ],
     '0.5 Soluble + 99.5 Insoluble -> F=0.5 not_soluble' => [
         'lines' => [$line(1, 0.5, $S), $line(2, 99.5, $I)],
@@ -142,9 +151,9 @@ $cases = [
         'lines' => [$line(1, 50.0, 'Miscible'), $line(2, 50.0, $S)],
         'key'   => 'partially_soluble', 'f' => 50.0,
     ],
-    'all Negligible -> F=0 not_soluble' => [
+    'all Negligible -> F=3 negligible (Q7)' => [
         'lines' => [$line(1, 100.0, $N)],
-        'key'   => 'not_soluble', 'f' => 0.0,
+        'key'   => 'negligible', 'f' => 3.0,
     ],
     'all Insoluble -> F=0 not_soluble' => [
         'lines' => [$line(1, 100.0, $I)],
@@ -165,12 +174,16 @@ foreach ($cases as $name => $c) {
     $check($gotKey === $c['key'] && $fOk, $name, ['key' => $c['key'], 'f' => $c['f']], ['key' => $gotKey, 'f' => $gotF]);
 }
 
+// Q7: Negligible weighs 0.03.
+$check(FormulaCalcService::SOLUBILITY_WEIGHTS['Negligible solubility in water'] === 0.03,
+    'Q7: SOLUBILITY_WEIGHTS[Negligible] === 0.03', 0.03, FormulaCalcService::SOLUBILITY_WEIGHTS['Negligible solubility in water']);
+
 // The legacy 'solubility' string is gone from formula_props (#18(d)).
 $props = $m->invoke($svc, [$line(1, 100.0, $S)]);
 $check(!array_key_exists('solubility', $props), 'formula_props no longer carries the legacy solubility string', false, array_key_exists('solubility', $props));
 
 // ---------------------------------------------------------------------
-// 12. physical_state = dominant (highest summed wt%) raw material's state
+// 12. physical_state = largest (summed wt%) raw material that HAS a state (#42(1))
 // ---------------------------------------------------------------------
 $psCases = [
     'dominant Powder (70) + Liquid (30) -> Powder' => [
@@ -185,9 +198,17 @@ $psCases = [
         'lines' => [$line(2, 35.0, null, 'Liquid'), $line(1, 30.0, null, 'Paste'), $line(1, 30.0, null, 'Paste')],
         'state' => 'Paste',
     ],
-    'dominant blank -> empty string (generator falls back to Liquid)' => [
+    'dominant blank -> next-largest raw with a state (#42)' => [
         'lines' => [$line(1, 70.0, null, '  '), $line(2, 30.0, null, 'Powder')],
+        'state' => 'Powder',
+    ],
+    'all blank -> empty string' => [
+        'lines' => [$line(1, 70.0, null, ' '), $line(2, 30.0, null, null)],
         'state' => '',
+    ],
+    'blank 60 + Liquid 25 + Powder 15 -> Liquid (largest with a state)' => [
+        'lines' => [$line(1, 60.0, null, ''), $line(2, 15.0, null, 'Powder'), $line(3, 25.0, null, 'Liquid')],
+        'state' => 'Liquid',
     ],
     'dominant null -> empty string' => [
         'lines' => [$line(1, 100.0, null, null)],

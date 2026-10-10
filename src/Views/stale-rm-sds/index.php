@@ -60,7 +60,7 @@
                         <?php if (!empty($rm['file_date_received'])): ?>
                             <?= e($rm['file_date_received']) ?>
                         <?php elseif (!empty($rm['file_uploaded_at'])): ?>
-                            <small class="text-muted">uploaded <?= e(date('Y-m-d', strtotime($rm['file_uploaded_at']))) ?></small>
+                            <small class="text-muted">uploaded <?= e(\SDS\Services\PublishClock::display($rm['file_uploaded_at'], 'Y-m-d')) ?></small>
                         <?php else: ?>
                             <span class="text-muted">—</span>
                         <?php endif; ?>

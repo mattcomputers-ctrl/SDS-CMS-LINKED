@@ -24,11 +24,13 @@ class FormulaCalcService
      * #18(d) Soluble-fraction weight per raw material solubility value.
      * Keys are the exact option strings from src/Views/raw-materials/form.php.
      * Any other non-blank value counts in the denominator with weight 0.
+     * Q7 (owner, 2026-10-09): Negligible counts as 3 % soluble, so an
+     * all-Negligible formula (F = 3) prints "Negligible solubility in water".
      */
     public const SOLUBILITY_WEIGHTS = [
         'Soluble in water'               => 1.0,
         'Partially soluble in water'     => 0.5,
-        'Negligible solubility in water' => 0.0,
+        'Negligible solubility in water' => 0.03,
         'Insoluble in water'             => 0.0,
     ];
 
@@ -215,8 +217,9 @@ class FormulaCalcService
                 'cas_number'               => 'TRADE_SECRET',
                 'chemical_name'            => 'Trade Secret',
                 'concentration_pct'        => 100.0,
+                'concentration_min'        => 100.0,   // #38: same bounds as Formula's TRADE_SECRET bucket
+                'concentration_max'        => 100.0,
                 'is_trade_secret'          => true,
-                'is_non_hazardous'         => false,
                 'trade_secret_description' => 'Trade Secret',
                 'manual_hazard_json'       => $manual,
                 'contributing_materials'   => [[
@@ -231,24 +234,75 @@ class FormulaCalcService
         $buckets = [];
         foreach ($rm['constituents'] ?? [] as $c) {
             $cas = $c['cas_number'];
+            // Integration (#14 / #38 parity with Formula::getExpandedComposition):
+            // a blank-CAS trade-secret constituent with declared H-codes feeds
+            // the TRADE_SECRET bucket (description only, never the name, Q4),
+            // so its hazards classify the resale sheet instead of vanishing.
+            if (($cas === null || $cas === '') && (int) ($c['is_trade_secret'] ?? 0) === 1
+                && trim((string) ($c['trade_secret_h_codes'] ?? '')) !== '') {
+                $tsPct = $this->resolveConstituentPct($c);
+                [$tsLo, $tsHi] = Formula::constituentBounds($c);
+                if (!isset($buckets['TRADE_SECRET'])) {
+                    $buckets['TRADE_SECRET'] = [
+                        'cas_number'               => 'TRADE_SECRET',
+                        'chemical_name'            => 'Trade Secret',
+                        'concentration_pct'        => 0.0,
+                        'concentration_min'        => 0.0,
+                        'concentration_max'        => 0.0,
+                        'is_trade_secret'          => true,
+                        'trade_secret_description' => 'Trade Secret',
+                        'manual_hazard_json'       => [],
+                        'has_nitrogen'             => false,
+                        'has_sulfur'               => false,
+                        'has_halogen'              => false,
+                        'contributing_materials'   => [],
+                    ];
+                }
+                $buckets['TRADE_SECRET']['concentration_pct'] += $tsPct;
+                $buckets['TRADE_SECRET']['concentration_min'] += $tsLo;
+                $buckets['TRADE_SECRET']['concentration_max'] += $tsHi;
+                $tsDesc = trim((string) ($c['trade_secret_description'] ?? ''));
+                if ($tsDesc !== '') {
+                    $buckets['TRADE_SECRET']['trade_secret_description'] = $tsDesc;
+                }
+                $tsCodes = array_values(array_filter(array_map('trim', explode(',', (string) $c['trade_secret_h_codes']))));
+                if ($tsCodes !== []) {
+                    $tsJson = Formula::tradeSecretHazardJson($tsCodes);
+                    $tsJson['_contribution_pct'] = $tsPct; // #15: its real share of a 100 % resale sheet
+                    $buckets['TRADE_SECRET']['manual_hazard_json'][] = $tsJson;
+                }
+                $buckets['TRADE_SECRET']['contributing_materials'][] = [
+                    'raw_material_id' => $rmId,
+                    'internal_code'   => $rm['internal_code'],
+                    'pct_in_rm'       => $tsPct,
+                    'pct_in_formula'  => $tsPct,
+                ];
+                continue;
+            }
             if ($cas === null || $cas === '') {
                 continue;
             }
 
+            // #38: the same per-row rules as Formula::getExpandedComposition() for
+            // a 100 % line: concentration_pct = exact, else the range MAXIMUM
+            // (was the midpoint), and min/max carry the row bounds, so the resale
+            // sheet bands and classifies exactly like a single-line finished good.
             $pct = $this->resolveConstituentPct($c);
+            [$lo, $hi] = Formula::constituentBounds($c);
 
             if (!isset($buckets[$cas])) {
                 $buckets[$cas] = [
                     'cas_number'               => $cas,
                     'chemical_name'            => $c['chemical_name'],
                     'concentration_pct'        => 0.0,
-                    'is_trade_secret'          => (int) ($c['is_trade_secret'] ?? 0) === 1,
-                    'is_non_hazardous'         => (int) ($c['is_non_hazardous'] ?? 0) === 1,
-                    'trade_secret_description' => $c['trade_secret_description'] ?? null,
+                    'concentration_min'        => 0.0,
+                    'concentration_max'        => 0.0,
+                    'is_trade_secret'          => false,
+                    'trade_secret_description' => null,
                     // Audit #19: cas_master element flags for Section 10 decomposition products
-                    'has_nitrogen'             => (int) ($c['has_nitrogen'] ?? 0) === 1,
-                    'has_sulfur'               => (int) ($c['has_sulfur'] ?? 0) === 1,
-                    'has_halogen'              => (int) ($c['has_halogen'] ?? 0) === 1,
+                    'has_nitrogen'             => false,
+                    'has_sulfur'               => false,
+                    'has_halogen'              => false,
                     'contributing_materials'   => [],
                 ];
             }
@@ -256,16 +310,39 @@ class FormulaCalcService
             // For a 100 % RM the in-formula contribution equals the
             // constituent's percentage in the RM.
             $buckets[$cas]['concentration_pct'] += $pct;
+            $buckets[$cas]['concentration_min'] += $lo;
+            $buckets[$cas]['concentration_max'] += $hi;
+
+            // #38: flag merge as in Formula::getExpandedComposition(): any
+            // trade-secret row marks the CAS (last non-empty description wins);
+            // element flags OR.
+            if ((int) ($c['is_trade_secret'] ?? 0) === 1) {
+                $buckets[$cas]['is_trade_secret'] = true;
+                if (!empty($c['trade_secret_description'])) {
+                    $buckets[$cas]['trade_secret_description'] = $c['trade_secret_description'];
+                }
+            }
+            foreach (['has_nitrogen', 'has_sulfur', 'has_halogen'] as $flag) {
+                if ((int) ($c[$flag] ?? 0) === 1) {
+                    $buckets[$cas][$flag] = true;
+                }
+            }
+
             $buckets[$cas]['contributing_materials'][] = [
                 'raw_material_id' => $rmId,
                 'internal_code'   => $rm['internal_code'],
                 'pct_in_rm'       => $pct,
                 'pct_in_formula'  => $pct,
+                // #36(1) parity with Formula::getExpandedComposition (read
+                // by tradeSecretDisclosureWarnings / Prop 65 TS conflict).
+                'is_trade_secret' => (int) ($c['is_trade_secret'] ?? 0) === 1,
             ];
         }
 
         foreach ($buckets as &$bucket) {
             $bucket['concentration_pct'] = round($bucket['concentration_pct'], 4);
+            $bucket['concentration_min'] = round($bucket['concentration_min'], 4);
+            $bucket['concentration_max'] = round($bucket['concentration_max'], 4);
         }
         unset($bucket);
 
@@ -276,19 +353,8 @@ class FormulaCalcService
 
     private function resolveConstituentPct(array $c): float
     {
-        if (($c['pct_exact'] ?? null) !== null) {
-            return (float) $c['pct_exact'];
-        }
-        if (($c['pct_min'] ?? null) !== null && ($c['pct_max'] ?? null) !== null) {
-            return ((float) $c['pct_min'] + (float) $c['pct_max']) / 2.0;
-        }
-        if (($c['pct_min'] ?? null) !== null) {
-            return (float) $c['pct_min'];
-        }
-        if (($c['pct_max'] ?? null) !== null) {
-            return (float) $c['pct_max'];
-        }
-        return 0.0;
+        // #38: same rule as finished goods (exact, else range MAXIMUM, else the one bound).
+        return Formula::resolveConstituentPct($c);
     }
 
     /**
@@ -348,7 +414,10 @@ class FormulaCalcService
 
                 $compFormula = Formula::findCurrentByFinishedGood($compFgId);
                 if ($compFormula === null) {
-                    $warnings[] = "Finished good component #{$compFgId} has no current formula; skipped.";
+                    // #36(2): name the component so the operator can find it.
+                    $compCode = trim((string) ($line['component_product_code'] ?? ''));
+                    $warnings[] = 'Finished good component ' . ($compCode !== '' ? $compCode : '#' . $compFgId)
+                        . ' has no current formula; its ingredients are left out of Section 3 and the hazard classification.';
                     continue;
                 }
 
@@ -399,6 +468,15 @@ class FormulaCalcService
                 $exemptVocWt = $autoExempt;
             }
 
+            // #71 / Q14 Operator data-gap warnings (preview Warnings box and the
+            // formula Calculate page only; never printed). Once per raw material,
+            // even when it sits on several lines or inside sub-FG components.
+            foreach (self::dataGapWarnings($rm) as $gap) {
+                if (!in_array($gap, $warnings, true)) {
+                    $warnings[] = $gap;
+                }
+            }
+
             $enriched[] = [
                 'raw_material_id'          => $rmId,
                 'internal_code'            => $rm['internal_code'],
@@ -434,15 +512,17 @@ class FormulaCalcService
      *
      * Returns:
      *  - all_voc_less_than_one: true if every RM has the <1% VOC flag
-     *  - flash_point_c: lowest flash point across all RMs (null if none set)
-     *  - flash_point_greater_than: true only if the lowest-FP RM has the ">" flag
+     *  - flash_point_c: Q1 product flash point = wt%-weighted average of the flash
+     *    points of the raws that carry one, sum(wt% x FP) / sum(wt%), rounded to
+     *    0.1 °C (null when no raw with wt% > 0 carries one) — weightedFlashPoint()
+     *  - flash_point_greater_than: true when any contributing raw has the ">" flag
      *  - boiling_point_c: lowest boiling point across all RMs that carry one, weight-independent (null if none) (#16)
      *  - solubility_key: 'soluble' | 'partially_soluble' | 'negligible' | 'not_soluble' | null
-     *    (#18(d): F = (soluble wt% + 0.5 x partially-soluble wt%) / (wt% of raws with any
+     *    (#18(d)/Q7: F = (soluble wt% + 0.5 x partially wt% + 0.03 x negligible wt%) / (wt% of raws with any
      *    solubility value); >=90 soluble, 5-90 partially, 1-5 negligible, <1 not soluble;
      *    null when no raw carries a value)
      *  - soluble_fraction_pct: F as a percentage (null when no raw carries a value)
-     *  - physical_state: physical_state of the dominant raw material ('' if blank) (#18(b))
+     *  - physical_state: physical_state of the highest summed-wt% raw material THAT HAS ONE ('' if none has) (#18(b), #42(1))
      *  - odor: odor of the dominant (highest summed wt%) raw material ('' if blank)
      *  - appearance: appearance of the dominant raw material ('' if blank)
      *  - dominant_raw_material_id / dominant_raw_material_pct: which RM was used (null if no lines)
@@ -450,8 +530,7 @@ class FormulaCalcService
     private function deriveFormulaProperties(array $enrichedLines): array
     {
         $allVocLessThanOne = true;
-        $lowestFp          = null;
-        $lowestFpGt        = false;
+        $fpResult          = self::weightedFlashPoint($enrichedLines); // Q1 product flash point
         $lowestBp          = null; // #16 initial boiling point
         $solWithValuePct   = 0.0; // #18(d) wt% of raws that carry any solubility value
         $solWeightedPct    = 0.0; // #18(d) soluble wt% + 0.5 x partially-soluble wt%
@@ -461,16 +540,6 @@ class FormulaCalcService
             // VOC <1% logic: all lines must have the flag set
             if ((int) ($line['voc_less_than_one'] ?? 0) === 0) {
                 $allVocLessThanOne = false;
-            }
-
-            // Flash point: find the lowest across all RMs
-            $fp = $line['flash_point_c'] ?? null;
-            if ($fp !== null && $fp !== '') {
-                $fpVal = (float) $fp;
-                if ($lowestFp === null || $fpVal < $lowestFp) {
-                    $lowestFp   = $fpVal;
-                    $lowestFpGt = (bool) ($line['flash_point_greater_than'] ?? false);
-                }
             }
 
             // Initial boiling point (#16): the lowest across all RMs that
@@ -487,7 +556,7 @@ class FormulaCalcService
 
             // #18(d) Solubility: soluble fraction over the raws that have a value.
             // Lines are already scaled through sub-FGs, so pct is the share of
-            // the finished good. Negligible / Insoluble / unknown strings weigh 0.
+            // the finished good. Weights from SOLUBILITY_WEIGHTS (Negligible 0.03, Q7); Insoluble / unknown strings weigh 0.
             $sol = trim((string) ($line['solubility'] ?? ''));
             if ($sol !== '') {
                 $linePct          = (float) ($line['pct'] ?? 0);
@@ -532,14 +601,26 @@ class FormulaCalcService
             ? $byRm[$dominantId]
             : ['pct' => 0.0, 'odor' => '', 'appearance' => '', 'physical_state' => ''];
 
+        // #42(1) Physical state: the largest raw material that HAS a state, so
+        // a blank-state dominant raw no longer forces the hard-coded 'Liquid'
+        // default. Strict ">" keeps the first-seen RM on a tie.
+        $stateId  = null;
+        $statePct = -1.0;
+        foreach ($byRm as $rmId => $agg) {
+            if ($agg['physical_state'] !== '' && $agg['pct'] > $statePct) {
+                $statePct = $agg['pct'];
+                $stateId  = $rmId;
+            }
+        }
+
         return [
             'all_voc_less_than_one'     => $allVocLessThanOne,
-            'flash_point_c'             => $lowestFp,
-            'flash_point_greater_than'  => $lowestFpGt,
+            'flash_point_c'             => $fpResult['fp'],
+            'flash_point_greater_than'  => $fpResult['gt'],
             'boiling_point_c'           => $lowestBp,
             'solubility_key'            => $solubilityKey,
             'soluble_fraction_pct'      => $solubleFractionPct !== null ? round($solubleFractionPct, 4) : null,
-            'physical_state'            => $dominant['physical_state'],
+            'physical_state'            => $stateId !== null ? $byRm[$stateId]['physical_state'] : '', // #42(1)
             'odor'                      => $dominant['odor'],
             'appearance'                => $dominant['appearance'],
             'dominant_raw_material_id'  => $dominantId,
@@ -564,6 +645,69 @@ class FormulaCalcService
             return 'negligible';
         }
         return 'not_soluble';
+    }
+
+    /**
+     * #71 / Q14 Preview-only operator warnings for a raw material whose
+     * specific gravity or VOC is missing; VOCCalculator then counts SG 1.0 /
+     * VOC 0 %. Pure (no DB), so it is unit-testable. A VOC of 0 entered on
+     * the form is data, not a gap; the '<1% VOC' flag also counts as data.
+     *
+     * @return string[]
+     */
+    public static function dataGapWarnings(array $rm): array
+    {
+        $code = trim((string) ($rm['internal_code'] ?? ''));
+        if ($code === '') {
+            $code = '#' . (string) ($rm['id'] ?? '?');
+        }
+        $out = [];
+        $sg  = $rm['specific_gravity'] ?? null;
+        if ($sg === null || trim((string) $sg) === '' || (float) $sg <= 0) {
+            $out[] = "Raw material {$code}: no specific gravity entered; the Section 9 specific gravity and VOC (lb/gal) count it as 1.0. Enter it on the raw material.";
+        }
+        $voc = $rm['voc_wt'] ?? null;
+        if ((int) ($rm['voc_less_than_one'] ?? 0) === 0 && ($voc === null || trim((string) $voc) === '')) {
+            $out[] = "Raw material {$code}: no VOC % entered and not flagged '<1% VOC'; the Section 9 VOC values count it as 0%. Enter it on the raw material.";
+        }
+        return $out;
+    }
+
+    /**
+     * Q1 (owner decision): the product flash point is the wt%-weighted
+     * average of the flash points of the raw materials that HAVE one:
+     *   FP = sum(wt%_i x FP_i) / sum(wt%_i)
+     * over enriched lines with a flash point and wt% > 0. Enriched lines are
+     * already flattened and scaled through sub-FG components, so this is
+     * recursive down to raws. Raws with no flash point are left out (the
+     * owner enters a high flash point for water and similar raws). A raw
+     * flagged "greater than" counts as its number and makes the product a
+     * "> n" value. Rounded to 0.1 °C so the printed value is the value the
+     * classification thresholds compare (-0.0 normalised to 0.0). Pure.
+     *
+     * @return array{fp: ?float, gt: bool}
+     */
+    public static function weightedFlashPoint(array $enrichedLines): array
+    {
+        $sum    = 0.0;
+        $weight = 0.0;
+        $gt     = false;
+        foreach ($enrichedLines as $line) {
+            $fp  = $line['flash_point_c'] ?? null;
+            $pct = (float) ($line['pct'] ?? 0);
+            if ($fp === null || $fp === '' || !is_numeric($fp) || $pct <= 0) {
+                continue;
+            }
+            $sum    += $pct * (float) $fp;
+            $weight += $pct;
+            if (!empty($line['flash_point_greater_than'])) {
+                $gt = true;
+            }
+        }
+        if ($weight <= 0) {
+            return ['fp' => null, 'gt' => false];
+        }
+        return ['fp' => round($sum / $weight, 1) + 0.0, 'gt' => $gt];
     }
 
     /**

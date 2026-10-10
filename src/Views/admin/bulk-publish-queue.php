@@ -57,11 +57,14 @@
             $startedAt   = $job['started_at']   ?? '';
             $completedAt = $job['completed_at'] ?? '';
 
+            // Audit #59 — job timestamps are stored in UTC.
             $duration = '';
-            if ($startedAt !== '' && $completedAt !== '') {
-                $duration = gmdate('H:i:s', max(0, strtotime($completedAt) - strtotime($startedAt))) . ' (done)';
-            } elseif ($startedAt !== '') {
-                $duration = gmdate('H:i:s', max(0, time() - strtotime($startedAt))) . ' (running)';
+            $startTs  = \SDS\Services\PublishClock::parseUtc((string) $startedAt);
+            $doneTs   = \SDS\Services\PublishClock::parseUtc((string) $completedAt);
+            if ($startTs !== null && $doneTs !== null) {
+                $duration = gmdate('H:i:s', max(0, $doneTs - $startTs)) . ' (done)';
+            } elseif ($startTs !== null) {
+                $duration = gmdate('H:i:s', max(0, time() - $startTs)) . ' (running)';
             }
 
             $pub = $job['published_count']   ?? null;
@@ -85,13 +88,13 @@
                 </span>
             </td>
             <td><?= e($triggerLabel) ?></td>
-            <td><?= e($queuedAt) ?></td>
+            <td><?= e(\SDS\Services\PublishClock::display((string) $queuedAt, 'Y-m-d H:i:s')) ?></td>
             <td>
                 <?php if ($startedAt): ?>
-                    <div style="font-size:0.85rem;">start <?= e($startedAt) ?></div>
+                    <div style="font-size:0.85rem;">start <?= e(\SDS\Services\PublishClock::display((string) $startedAt, 'Y-m-d H:i:s')) ?></div>
                 <?php endif; ?>
                 <?php if ($completedAt): ?>
-                    <div style="font-size:0.85rem;">done <?= e($completedAt) ?></div>
+                    <div style="font-size:0.85rem;">done <?= e(\SDS\Services\PublishClock::display((string) $completedAt, 'Y-m-d H:i:s')) ?></div>
                 <?php endif; ?>
                 <?php if (!$startedAt && !$completedAt): ?>
                     <span class="text-muted">—</span>

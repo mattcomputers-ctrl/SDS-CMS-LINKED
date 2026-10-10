@@ -114,7 +114,7 @@ class BulkPublishQueue
         $jobId = (int) $row['id'];
         $db->update('bulk_publish_jobs', [
             'status'     => 'running',
-            'started_at' => date('Y-m-d H:i:s'),
+            'started_at' => PublishClock::nowUtc(),
         ], 'id = ?', [$jobId]);
         return $jobId;
     }
@@ -164,7 +164,7 @@ class BulkPublishQueue
     {
         Database::getInstance()->update('bulk_publish_jobs', array_merge($stats, [
             'status'       => 'completed',
-            'completed_at' => date('Y-m-d H:i:s'),
+            'completed_at' => PublishClock::nowUtc(),
         ]), 'id = ?', [$jobId]);
     }
 
@@ -172,7 +172,7 @@ class BulkPublishQueue
     {
         Database::getInstance()->update('bulk_publish_jobs', [
             'status'        => 'failed',
-            'completed_at'  => date('Y-m-d H:i:s'),
+            'completed_at'  => PublishClock::nowUtc(),
             'error_message' => mb_strimwidth($error, 0, 4000, '...'),
         ], 'id = ?', [$jobId]);
     }

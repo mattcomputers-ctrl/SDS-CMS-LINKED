@@ -104,10 +104,10 @@ $cases = [
         'bp'    => 0.0,
         'fp'    => null,
     ],
-    '9. flash point roll-up unaffected (independent lowest)' => [
+    '9. flash point roll-up independent of the boiling point (Q1 weighted average: 50% x 60 + 50% x 12 = 36)' => [
         'lines' => [$line(1, 50.0, 150.0, 60.0), $line(2, 50.0, 78.4, 12.0)],
         'bp'    => 78.4,
-        'fp'    => 12.0,
+        'fp'    => 36.0,
     ],
 ];
 

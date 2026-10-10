@@ -176,13 +176,17 @@ class VOCCalculator
 
     /**
      * Weighted average VOC weight percent of the mixture.
-     * mixture_voc_wt% = SUM(line_pct/100 * rm_voc_wt%) for each line
+     * mixture_voc_wt% = SUM(line_pct * rm_voc_wt%) / SUM(line_pct)  (#71 normalised)
      */
     public function getTotalVOCWeightPercent(): float
     {
         $vocWtPct = 0.0;
+        $totalPct = $this->totalLinePct();
+        if ($totalPct <= 0) {
+            return 0.0;
+        }
         foreach ($this->formulaLines as $line) {
-            $lineFraction = ((float) ($line['pct'] ?? 0)) / 100.0;
+            $lineFraction = ((float) ($line['pct'] ?? 0)) / $totalPct;
             $rmVocWt      = (float) ($line['_effective_voc_wt'] ?? $line['voc_wt'] ?? 0);
             $vocWtPct    += $lineFraction * $rmVocWt;
 
@@ -202,8 +206,12 @@ class VOCCalculator
     public function getTotalExemptVOCWeightPercent(): float
     {
         $exemptWtPct = 0.0;
+        $totalPct    = $this->totalLinePct(); // #71
+        if ($totalPct <= 0) {
+            return 0.0;
+        }
         foreach ($this->formulaLines as $line) {
-            $lineFraction = ((float) ($line['pct'] ?? 0)) / 100.0;
+            $lineFraction = ((float) ($line['pct'] ?? 0)) / $totalPct;
             $rmExemptVoc  = (float) ($line['_effective_exempt_voc_wt'] ?? $line['exempt_voc_wt'] ?? 0);
             $exemptWtPct += $lineFraction * $rmExemptVoc;
         }
@@ -216,8 +224,12 @@ class VOCCalculator
     public function getTotalWaterWeightPercent(): float
     {
         $waterWtPct = 0.0;
+        $totalPct   = $this->totalLinePct(); // #71
+        if ($totalPct <= 0) {
+            return 0.0;
+        }
         foreach ($this->formulaLines as $line) {
-            $lineFraction = ((float) ($line['pct'] ?? 0)) / 100.0;
+            $lineFraction = ((float) ($line['pct'] ?? 0)) / $totalPct;
             $rmWaterWt    = (float) ($line['_effective_water_wt'] ?? $line['water_wt'] ?? 0);
             $waterWtPct  += $lineFraction * $rmWaterWt;
         }
@@ -378,8 +390,12 @@ class VOCCalculator
     public function getSolidsWeightPercent(): float
     {
         $solidsWtPct = 0.0;
+        $totalPct    = $this->totalLinePct(); // #71
+        if ($totalPct <= 0) {
+            return 0.0;
+        }
         foreach ($this->formulaLines as $line) {
-            $lineFraction = ((float) ($line['pct'] ?? 0)) / 100.0;
+            $lineFraction = ((float) ($line['pct'] ?? 0)) / $totalPct;
             $rmSolidsWt   = (float) ($line['_effective_solids_wt'] ?? $line['solids_wt'] ?? 0);
             $solidsWtPct += $lineFraction * $rmSolidsWt;
         }
@@ -404,6 +420,7 @@ class VOCCalculator
         // Try direct weighted average from raw material solids_vol data
         $allHaveSolidsVol = true;
         $solidsVolPct     = 0.0;
+        $totalPct         = $this->totalLinePct(); // #71
 
         foreach ($this->formulaLines as $line) {
             $rmSolidsVol = $line['solids_vol'] ?? null;
@@ -411,7 +428,7 @@ class VOCCalculator
                 $allHaveSolidsVol = false;
                 break;
             }
-            $lineFraction = ((float) ($line['pct'] ?? 0)) / 100.0;
+            $lineFraction = $totalPct > 0 ? ((float) ($line['pct'] ?? 0)) / $totalPct : 0.0;
             $solidsVolPct += $lineFraction * (float) $rmSolidsVol;
         }
 
@@ -530,6 +547,19 @@ class VOCCalculator
     /* ------------------------------------------------------------------
      *  Private helpers
      * ----------------------------------------------------------------*/
+
+    /**
+     * #71 Sum of the line percentages. Mixture weight fractions are divided
+     * by this (not by 100), so a formula entered as 98 % is not understated.
+     */
+    private function totalLinePct(): float
+    {
+        $total = 0.0;
+        foreach ($this->formulaLines as $line) {
+            $total += (float) ($line['pct'] ?? 0);
+        }
+        return $total;
+    }
 
     /**
      * Apply NAPIM-style defaults for missing data.

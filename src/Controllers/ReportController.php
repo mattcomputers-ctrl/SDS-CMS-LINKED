@@ -11,7 +11,6 @@ use SDS\Services\FormulaCalcService;
 use SDS\Services\HAPService;
 use SDS\Services\SARA313Service;
 use SDS\Services\ReportPDFService;
-use SDS\Services\PDFService;
 
 /**
  * ReportController — HAP/VOC reporting from CMS shipment data.
@@ -970,7 +969,56 @@ class ReportController
         $missingItems = [];
         $tempPdfs = [];
 
+        $aliasPdfCache = []; // alias id => [lang => sds_versions row] | error string
+        $exportLangs   = $exportLang === 'all' ? null : [$exportLang];
+
         foreach (array_keys($productCodes) as $productCode) {
+            $aliasByCustomerCode = [];
+            foreach (($aliasesByBase[$productCode] ?? []) as $a) {
+                $aliasByCustomerCode[$a['customer_code']] = $a;
+            }
+            $reportItems = $reportItemsByProduct[$productCode] ?? [];
+
+            // Audit #53 / Q9: alias items (formula and resale aliases) ship the
+            // alias's OWN published PDF, published first when it has none —
+            // never the base sheet re-branded from a stored snapshot.
+            $plainItems = [];
+            foreach (array_keys($reportItems) as $itemCode) {
+                $matchedAlias = $aliasByCustomerCode[$itemCode] ?? null;
+                if ($matchedAlias === null) {
+                    $plainItems[] = $itemCode;
+                    continue;
+                }
+                $aliasId = (int) $matchedAlias['id'];
+                if (!array_key_exists($aliasId, $aliasPdfCache)) {
+                    try {
+                        $aliasPdfCache[$aliasId] = \SDS\Services\AliasPublisher::ensurePublished(
+                            $aliasId, current_user_id(), 'Published for the shipped-SDS export', $db, $exportLangs
+                        );
+                    } catch (\Throwable $e) {
+                        $aliasPdfCache[$aliasId] = $e->getMessage();
+                    }
+                }
+                $rows = $aliasPdfCache[$aliasId];
+                if (is_string($rows)) {
+                    $missingItems[$itemCode] = 'Alias SDS could not be published: ' . $rows;
+                    continue;
+                }
+                $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $itemCode);
+                foreach ($rows as $lang => $row) {
+                    $zipName = $safeCode . '_SDS' . ($lang !== 'en' ? '_' . strtoupper($lang) : '') . '.pdf';
+                    if (isset($seen[$zipName])) {
+                        continue;
+                    }
+                    $seen[$zipName] = true;
+                    $zip->addFile($basePath . '/' . ltrim((string) $row['pdf_path'], '/'), $zipName);
+                    $addedFiles++;
+                }
+            }
+            if ($plainItems === []) {
+                continue;
+            }
+
             $fg = FinishedGood::findByProductCode($productCode);
             if ($fg === null) {
                 $missingItems[$productCode] = true;
@@ -978,9 +1026,10 @@ class ReportController
             }
 
             $versions = $db->fetchAll(
-                "SELECT sv.id, sv.version, sv.language, sv.pdf_path, sv.snapshot_json
+                "SELECT sv.id, sv.version, sv.language, sv.pdf_path
                  FROM sds_versions sv
                  WHERE sv.finished_good_id = ?
+                   AND sv.alias_id IS NULL
                    AND sv.status = 'published'
                    AND sv.is_deleted = 0
                    AND sv.pdf_path IS NOT NULL
@@ -988,43 +1037,12 @@ class ReportController
                  ORDER BY sv.version DESC, sv.language ASC",
                 [(int) $fg['id']]
             );
-
             if (empty($versions)) {
                 $missingItems[$productCode] = true;
                 continue;
             }
 
-            $aliasByCustomerCode = [];
-            foreach (($aliasesByBase[$productCode] ?? []) as $a) {
-                $aliasByCustomerCode[$a['customer_code']] = $a;
-            }
-
-            // Pre-load published alias PDFs for this FG so we can grab
-            // them directly instead of regenerating on the fly.
-            $aliasPublishedPdfs = [];
-            $aliasRows = $db->fetchAll(
-                "SELECT sv.alias_id, sv.language, sv.pdf_path, sv.version
-                 FROM sds_versions sv
-                 WHERE sv.finished_good_id = ?
-                   AND sv.alias_id IS NOT NULL
-                   AND sv.status = 'published'
-                   AND sv.is_deleted = 0
-                   AND sv.pdf_path IS NOT NULL
-                   AND sv.pdf_path != ''
-                 ORDER BY sv.version DESC",
-                [(int) $fg['id']]
-            );
-            foreach ($aliasRows as $ar) {
-                $key = (int) $ar['alias_id'] . '::' . $ar['language'];
-                if (!isset($aliasPublishedPdfs[$key])) {
-                    $aliasPublishedPdfs[$key] = $ar['pdf_path'];
-                }
-            }
-
-            $reportItems = $reportItemsByProduct[$productCode] ?? [];
-            foreach (array_keys($reportItems) as $itemCode) {
-                $matchedAlias = $aliasByCustomerCode[$itemCode] ?? null;
-
+            foreach ($plainItems as $itemCode) {
                 $addedLangs = [];
                 foreach ($versions as $v) {
                     $lang = strtolower($v['language']);
@@ -1037,35 +1055,13 @@ class ReportController
                     if (isset($seen[$zipName])) continue;
                     $seen[$zipName] = true;
 
-                    if ($matchedAlias !== null) {
-                        $aliasKey = (int) $matchedAlias['id'] . '::' . $lang;
-                        $prebuiltPath = $aliasPublishedPdfs[$aliasKey] ?? null;
-                        if ($prebuiltPath !== null) {
-                            $fullPath = $basePath . '/' . ltrim($prebuiltPath, '/');
-                            if (file_exists($fullPath)) {
-                                $zip->addFile($fullPath, $zipName);
-                                $addedFiles++;
-                                continue;
-                            }
-                        }
-                        // Fallback: regenerate if no pre-built alias PDF
-                        $aliasPdf = $this->generateAliasPdf($v, $matchedAlias, $basePath);
-                        if ($aliasPdf !== null) {
-                            $zip->addFile($aliasPdf, $zipName);
-                            $tempPdfs[] = $aliasPdf;
-                            $addedFiles++;
-                        } else {
-                            $missingItems[$itemCode] = 'SDS generation failed (alias rebrand error)';
-                        }
-                    } else {
-                        $pdfFullPath = $basePath . '/' . ltrim($v['pdf_path'], '/');
-                        if (!file_exists($pdfFullPath)) {
-                            $missingItems[$itemCode] = 'Published PDF missing on disk: ' . basename($v['pdf_path']);
-                            continue;
-                        }
-                        $zip->addFile($pdfFullPath, $zipName);
-                        $addedFiles++;
+                    $pdfFullPath = $basePath . '/' . ltrim($v['pdf_path'], '/');
+                    if (!file_exists($pdfFullPath)) {
+                        $missingItems[$itemCode] = 'Published PDF missing on disk: ' . basename($v['pdf_path']);
+                        continue;
                     }
+                    $zip->addFile($pdfFullPath, $zipName);
+                    $addedFiles++;
                 }
             }
         }
@@ -1307,59 +1303,6 @@ class ReportController
         );
 
         return array_column($rows, 'val');
-    }
-
-    /**
-     * Generate a PDF with alias-specific product identifier.
-     */
-    private function generateAliasPdf(array $sdsVersion, array $alias, string $basePath): ?string
-    {
-        try {
-            $snapshot = $sdsVersion['snapshot_json'] ?? null;
-            if ($snapshot === null) {
-                $db = Database::getInstance();
-                $row = $db->fetch(
-                    "SELECT snapshot_json FROM sds_versions WHERE id = ?",
-                    [(int) $sdsVersion['id']]
-                );
-                $snapshot = $row['snapshot_json'] ?? null;
-            }
-
-            if ($snapshot === null) {
-                return null;
-            }
-
-            $data = json_decode($snapshot, true);
-            if ($data === null) {
-                return null;
-            }
-
-            // Use the alias's own description
-            $aliasDesc = !empty($alias['description']) ? $alias['description'] : ($data['meta']['product_name'] ?? '');
-
-            $data['meta']['product_code'] = $alias['customer_code'];
-            $data['meta']['product_name'] = $aliasDesc;
-
-            if (isset($data['sections']['1']['product_identifier'])) {
-                $data['sections']['1']['product_identifier'] = $alias['customer_code'];
-            }
-            if (isset($data['sections']['1']['product_name'])) {
-                $data['sections']['1']['product_name'] = $aliasDesc;
-            }
-
-            $tempPath = tempnam(sys_get_temp_dir(), 'sds_alias_') . '.pdf';
-            $pdfService = new PDFService();
-            $pdfService->generateToFile($data, $tempPath);
-            if (!is_file($tempPath) || filesize($tempPath) === 0) {
-                error_log("generateAliasPdf: failed to write {$tempPath} for alias {$alias['customer_code']}");
-                return null;
-            }
-
-            return $tempPath;
-        } catch (\Throwable $e) {
-            error_log("generateAliasPdf: {$e->getMessage()} for alias " . ($alias['customer_code'] ?? '?'));
-            return null;
-        }
     }
 
     /**

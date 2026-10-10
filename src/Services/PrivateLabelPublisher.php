@@ -19,6 +19,8 @@ use SDS\Models\PrivateLabelItem;
  *  - republishItems(): the manual paths (item create/edit "Publish now",
  *    per-item Republish, "Republish stale", the SDS-update PL-only button).
  *    Recomputes the base once per FG from live data.
+ *  - publishItemFromBase(): the bulk / cron worker (audit #54) — one item from
+ *    the worker's already-generated base data, through publishOne().
  *
  * Both are safe to call from inside a request that has already committed
  * other rows: they NEVER throw. Each item is all-or-nothing — every
@@ -199,17 +201,28 @@ final class PrivateLabelPublisher
                 try {
                     $generator = new SDSGenerator();
                     $base      = $generator->computeBase($fgId);
+                    // Audit #13 / decision Q4: lands in $skipReason via the catch below.
+                    $tsProp65Error = SDSReadinessService::tradeSecretProp65Error($base['prop65Result'] ?? []);
+                    if ($tsProp65Error !== null) {
+                        throw new \RuntimeException($tsProp65Error);
+                    }
 
                     foreach ($languages as $lang) {
                         $sdsData = $generator->generateFromBase($base, $lang);
 
                         if ($lang === $languages[0]) {
-                            $blockError = SDSReadinessService::missingHazardDataError($sdsData, $db)
-                                ?? SDSReadinessService::transportNotDeterminedError($sdsData);
+                            $blockError = SDSReadinessService::missingHazardDataError($sdsData, $db);
                             if ($blockError !== null) {
                                 $skipReason = $blockError;
                                 break;
                             }
+                        }
+
+                        // Finding #6: Section 14 overrides are stored per language.
+                        $transportError = SDSReadinessService::transportNotDeterminedError($sdsData);
+                        if ($transportError !== null) {
+                            $skipReason = $transportError;
+                            break;
                         }
 
                         $baseLangData[$lang] = $sdsData;
@@ -242,6 +255,32 @@ final class PrivateLabelPublisher
         }
 
         return $result;
+    }
+
+    /**
+     * Bulk publish (audit #54): publish ONE item from the caller's base data
+     * (lang => generateFromBase() output for every configured language), through
+     * publishOne(): version re-checked inside a transaction, every language or
+     * none. The caller has already applied the base publish gates. Never throws.
+     *
+     * @return array{ok:bool,version?:int,error?:string}
+     */
+    public function publishItemFromBase(
+        array $item,
+        array $baseLangData,
+        int $sourceFgVersion,
+        ?int $userId,
+        string $changeSummary,
+        string $trigger
+    ): array {
+        if ((int) ($item['is_active'] ?? 0) !== 1) {
+            return ['ok' => false, 'error' => self::itemLabel($item) . ': item is retired'];
+        }
+        try {
+            return $this->publishOne($item, $baseLangData, $sourceFgVersion, $userId, $changeSummary, $trigger);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => self::itemLabel($item) . ': ' . $e->getMessage()];
+        }
     }
 
     /* ------------------------------------------------------------------
@@ -312,6 +351,11 @@ final class PrivateLabelPublisher
         if ($mfgPhoneError !== null) {
             return ['ok' => false, 'error' => $label . ': ' . $mfgPhoneError];
         }
+        // Audit #55 — a blank manufacturer name drops the Section 1 Company line.
+        $mfgNameError = SDSReadinessService::manufacturerNameError($mfgInfo + ['id' => $mfgId]);
+        if ($mfgNameError !== null) {
+            return ['ok' => false, 'error' => $label . ': ' . $mfgNameError];
+        }
 
         // Next version for this item, read BEFORE rendering so the PDFs are
         // named {code}_PL_{Manufacturer}_v{n}[_{lang}].pdf (meta.sds_version).
@@ -323,7 +367,7 @@ final class PrivateLabelPublisher
 
         // Build the variant for every configured language — one code path for all three sources
         $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
-        $effectiveDate = date('Y-m-d');
+        $effectiveDate = PublishClock::todayLocal();   // audit #59: admin time zone
         $variant       = [];
         foreach ($languages as $lang) {
             if (!isset($baseLangData[$lang]) || !is_array($baseLangData[$lang])) {
@@ -356,7 +400,7 @@ final class PrivateLabelPublisher
         $pdo   = $db->getPdo();
         $ownTx = !$pdo->inTransaction();
 
-        $now      = date('Y-m-d H:i:s');
+        $now      = PublishClock::nowUtc();          // audit #59: UTC, like created_at
         $basePath = App::basePath() . '/';
 
         try {
@@ -392,7 +436,7 @@ final class PrivateLabelPublisher
                     'effective_date'      => $effectiveDate,
                     'published_by'        => $userId,
                     'published_at'        => $now,
-                    'snapshot_json'       => json_encode($variant[$lang], JSON_UNESCAPED_UNICODE),
+                    'snapshot_json'       => SDSGenerator::snapshotJson($variant[$lang]),   // finding #70
                     'pdf_path'            => str_replace($basePath, '', $pdfPaths[$lang]),
                     'change_summary'      => $changeSummary !== '' ? $changeSummary : null,
                     'created_by'          => $userId,

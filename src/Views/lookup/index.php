@@ -46,7 +46,7 @@
                     <td><?= e($r['description']) ?></td>
                     <td><?= e($r['family'] ?? '—') ?></td>
                     <td><?= (int) $r['is_active'] ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-muted">Inactive</span>' ?></td>
-                    <td><?= $r['latest_version'] ? 'v' . (int) $r['latest_version'] . ' (' . format_date($r['latest_date'], 'm/d/Y') . ')' : '—' ?></td>
+                    <td><?= $r['latest_version'] ? 'v' . (int) $r['latest_version'] . ' (' . \SDS\Services\PublishClock::display($r['latest_date'], 'm/d/Y') . ')' : '—' ?></td>
                     <td><?php if ($r['has_en'] && !empty($r['sds_id_en'])): ?>
                         <a href="/lookup/download/<?= (int) $r['sds_id_en'] ?>" class="badge badge-success pdf-link" title=" English SDS v<?= (int) $r['ver_en'] ?>">PDF</a>
                     <?php else: ?>—<?php endif; ?></td>

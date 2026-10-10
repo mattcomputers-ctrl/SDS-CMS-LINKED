@@ -121,6 +121,7 @@ $d = [
         1 => ['id' => 1, 'name' => 'UV Offset', 'is_uv' => 1, 'is_active' => 1, 'sort_order' => 1],
         2 => ['id' => 2, 'name' => 'Solvent',   'is_uv' => 0, 'is_active' => 1, 'sort_order' => 2],
         3 => ['id' => 3, 'name' => 'Inactive',  'is_uv' => 0, 'is_active' => 0, 'sort_order' => 3],
+        4 => ['id' => 4, 'name' => 'UV Flexo',  'is_uv' => 1, 'is_active' => 1, 'sort_order' => 4],
     ],
     'rules' => [
         $rule(1, 1, 'code_prefix', 'VEC47'),
@@ -134,6 +135,7 @@ $d = [
         13 => ['id' => 13, 'internal_code' => 'XZZ',       'description' => 'Something',     'family_id' => null, 'family_source' => null],
         14 => ['id' => 14, 'internal_code' => 'MAN1',      'description' => 'Manual pick',   'family_id' => 2,    'family_source' => 'manual'],
         15 => ['id' => 15, 'internal_code' => 'INT-1',     'description' => 'Intermediate as RM', 'family_id' => null, 'family_source' => null],
+        16 => ['id' => 16, 'internal_code' => 'OLD1',      'description' => 'Old manual',    'family_id' => 3,    'family_source' => 'manual'],
     ],
     'finished_goods' => [
         100 => ['id' => 100, 'product_code' => 'P100',      'description' => 'Mixed',          'family_id' => null, 'family_source' => null],
@@ -148,11 +150,12 @@ $d = [
         109 => ['id' => 109, 'product_code' => 'P109',      'description' => 'Tie',            'family_id' => null, 'family_source' => null],
         110 => ['id' => 110, 'product_code' => 'P110',      'description' => 'Cycle A',        'family_id' => null, 'family_source' => null],
         111 => ['id' => 111, 'product_code' => 'P111',      'description' => 'Cycle B',        'family_id' => null, 'family_source' => null],
+        112 => ['id' => 112, 'product_code' => 'P112',      'description' => 'Manual inactive', 'family_id' => 3,   'family_source' => 'manual'],
     ],
     'aliases_by_base' => [],
     'formula_by_fg' => [
         100 => 1000, 101 => 1001, 102 => 1002, 103 => 1003, 104 => 1004, 105 => 1005,
-        107 => 1007, 108 => 1008, 109 => 1009, 110 => 1010, 111 => 1011,
+        107 => 1007, 108 => 1008, 109 => 1009, 110 => 1010, 111 => 1011, 112 => 1012,
     ],
     'lines_by_formula' => [
         1000 => [['rm' => 10, 'fg' => null, 'pct' => 30.0], ['rm' => 11, 'fg' => null, 'pct' => 25.0], ['rm' => 12, 'fg' => null, 'pct' => 45.0]],
@@ -166,6 +169,7 @@ $d = [
         1009 => [['rm' => 10, 'fg' => null, 'pct' => 50.0], ['rm' => 11, 'fg' => null, 'pct' => 50.0]],
         1010 => [['rm' => null, 'fg' => 111, 'pct' => 100.0]],
         1011 => [['rm' => null, 'fg' => 110, 'pct' => 100.0]],
+        1012 => [['rm' => 10, 'fg' => null, 'pct' => 100.0]],
     ],
 ];
 
@@ -188,6 +192,7 @@ if ($res !== null) {
         13 => [null, null],
         14 => [2, 'manual'],
         15 => [null, null],
+        16 => [null, null], // Q13: a manual pick of an inactive family is released (rule 3 is inactive too)
     ];
     $same = static fn(array $row, string $k, $want): bool => array_key_exists($k, $row) && $row[$k] === $want;
     foreach ($expectRm as $id => [$fid, $src]) {
@@ -208,6 +213,7 @@ if ($res !== null) {
         109 => [1, 'content'],
         110 => [null, null],
         111 => [null, null],
+        112 => [1, 'content'], // Q13: inactive manual pick falls through to content
     ];
     foreach ($expectFg as $id => [$fid, $src]) {
         $row = $fg[$id] ?? [];
@@ -233,9 +239,34 @@ check(FR::pickDominant([1 => 10.0, 2 => 20.0], $d['families']) === 2, 'highest s
 check(FR::pickDominant([1 => 20.0, 2 => 20.0], $d['families']) === 1, 'tie -> lower sort_order');
 check(FR::pickDominant([2 => 20.0, 1 => 20.0], $d['families']) === 1, 'tie -> lower sort_order regardless of input order');
 check(FR::pickDominant([7 => 20.0, 5 => 20.0], []) === 5, 'tie with unknown families -> lower family id');
+// Audit #61 / Q13: UV/LED families are pooled against the largest non-UV family.
+check(FR::pickDominant([1 => 20.0, 4 => 20.0, 2 => 30.0], $d['families']) === 1, 'UV pooled: 20+20 UV beats 30 Solvent -> largest UV family (tie -> lower sort_order)');
+check(FR::pickDominant([1 => 10.0, 4 => 15.0, 2 => 30.0], $d['families']) === 2, 'UV pooled 25 < 30 Solvent -> Solvent');
+check(FR::pickDominant([4 => 20.0, 1 => 10.0, 2 => 30.0], $d['families']) === 4, 'UV pooled 30 == 30 -> UV wins the tie, largest UV family');
+check(FR::pickDominant([2 => 30.0], $d['families']) === 2, 'no UV share -> unchanged');
 check(FR::baseCode('VEC47-55G') === 'VEC47', 'baseCode strips pack suffix');
 check(FR::baseCode('WATER') === 'WATER', 'baseCode leaves plain code');
 check(FR::baseCode('A-B-C') === 'A', 'baseCode strips at first dash');
+
+// ---------------------------------------------------------------------
+echo "Q13 reset legacy manual picks: snapshot rule, not updated_at\n";
+$snap = [10 => 3, 11 => 3, 12 => 5];   // fg_legacy_family_picks: finished_good_id => family_id
+check(FR::isLegacyManualPick(['id' => 10, 'family_id' => 3, 'family_source' => 'manual', 'updated_at' => '2099-01-01 00:00:00'], $snap),
+    '053 manual link whose updated_at was bumped later (059 #48 / ProductStaleness) → still legacy');
+check(!FR::isLegacyManualPick(['id' => 11, 'family_id' => 4, 'family_source' => 'manual'], $snap), 'family re-picked on the product form → not legacy');
+check(!FR::isLegacyManualPick(['id' => 13, 'family_id' => 3, 'family_source' => 'manual'], $snap), 'manual pick made after 053 (not in the snapshot) → not legacy');
+check(!FR::isLegacyManualPick(['id' => 12, 'family_id' => 5, 'family_source' => 'rule'], $snap), 'rule-resolved row → not legacy');
+check(!FR::isLegacyManualPick(['id' => 12, 'family_id' => 5, 'family_source' => null], $snap), 'already reset to Auto → not legacy');
+check(!FR::isLegacyManualPick(['id' => 10, 'family_id' => null, 'family_source' => 'manual'], $snap), 'manual with no family → not legacy');
+$frSrc  = (string) file_get_contents($basePath . '/src/Services/FamilyResolver.php');
+preg_match('/function legacyManualFinishedGoodIds.*?\n    }\n/s', $frSrc, $lm);
+check(isset($lm[0]) && str_contains($lm[0], 'fg_legacy_family_picks') && !str_contains($lm[0], 'updated_at'), 'legacyManualFinishedGoodIds reads the snapshot, never updated_at', $lm[0] ?? null);
+$m059 = (string) file_get_contents($basePath . '/migrations/059_sds_audit_batch_t4.sql');
+$posSnap = strpos($m059, 'INSERT IGNORE INTO `fg_legacy_family_picks`');
+$posBump = strpos($m059, "fg.`updated_at`      = UTC_TIMESTAMP()");
+check($posSnap !== false && $posBump !== false && $posSnap < $posBump, '059 takes the snapshot before its #48 updated_at bump');
+$adminSrc = (string) file_get_contents($basePath . '/src/Controllers/AdminController.php');
+check(str_contains($adminSrc, 'DELETE FROM fg_legacy_family_picks WHERE finished_good_id IN'), 'reset action clears the snapshot rows it reset');
 
 // ---------------------------------------------------------------------
 echo "\n{$checks} checks, {$failures} failures\n";

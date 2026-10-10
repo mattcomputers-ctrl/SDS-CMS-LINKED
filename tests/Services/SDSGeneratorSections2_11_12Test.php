@@ -12,7 +12,9 @@
  *   - Section 12: aquatic H-statements echoed; component table rows carry the
  *     Section 3 band (no concentration_pct); "listed below" lead-in only
  *     when a table follows; trade-secret rows are masked.
- *     #24: PBT line from sara_result is_pbt (>= 0.1 %, trade secret masked,
+ *     #66: table lists only CAS that Section 3 lists.
+ *     #24: PBT line from sara_result is_pbt (any conc > 0, as Section 15
+ *     reports PBTs under the 2023 TRI rule; trade secret masked,
  *     EPA footnote markers stripped) on persistence + bioaccumulation;
  *     mobility line default + override.
  *   - Section 15: OSHA status sentence follows is_classified; override wins.
@@ -73,7 +75,7 @@ $s2m = $method('section2');
 $s8m = $method('section8');
 
 $s2 = $s2m->invoke($gen, $hz0, []);
-check($s2['other_hazards'] === $t->get('section2.other_hazards') && $s2['has_other_hazards'] === false, 'S2 default other hazards', $s2['other_hazards']);
+check($s2['other_hazards'] === $t->get('section2.other_hazards') && !array_key_exists('has_other_hazards', $s2), 'S2 default other hazards', $s2['other_hazards']);
 check($s2m->invoke($gen, $hz0, [2 => ['other_hazards' => 'Custom']])['other_hazards'] === 'Custom', 'S2 other hazards override');
 check(array_filter($s2['ppe_recommendations']) === [], 'S2 unclassified -> no PPE', $s2['ppe_recommendations']);
 
@@ -112,7 +114,7 @@ $carcPos = ['has_carcinogens' => true, 'findings' => [
 $s11 = $s11m->invoke($gen, $hzA, $composition, $carcPos, []);
 check(str_starts_with($s11['acute_toxicity'], 'Acute toxicity (oral): Category 4 — Harmful if swallowed (H302). ATEmix = 1250 mg/kg bw.'), 'acute oral line + ATE on the same line', $s11['acute_toxicity']);
 check(str_contains($s11['acute_toxicity'], "\nAcute toxicity (dermal): Not classified based on available data.\n"), 'unclassified route prints the per-route sentence', $s11['acute_toxicity']);
-check(str_ends_with($s11['acute_toxicity'], 'Acute toxicity (inhalation): Category 4 — Harmful if inhaled (H332).'), 'per-component inhalation line, no ATE when the engine computed none', $s11['acute_toxicity']);
+check(str_ends_with($s11['acute_toxicity'], 'Acute toxicity (inhalation): Category 4 — Harmful if inhaled (H332). Classified based on ingredient concentration.'), 'per-component inhalation line: no ATE computed -> Q6 basis phrase', $s11['acute_toxicity']);
 check(substr_count($s11['acute_toxicity'], "\n") === 2, 'exactly three route lines');
 check(!str_contains($s11['acute_toxicity'], 'criteria are not met'), 'old constant no longer printed');
 $nc = "Acute toxicity (oral): Not classified based on available data.\nAcute toxicity (dermal): Not classified based on available data.\nAcute toxicity (inhalation): Not classified based on available data.";
@@ -141,7 +143,7 @@ $hzC = $hzB;
 $hzC['hazard_classes'][0]['category'] = 'Category 1'; $hzC['hazard_classes'][0]['category_canonical'] = 'Cat 1'; $hzC['hazard_classes'][0]['h_codes'] = ['H300'];
 $hzC['h_statements'] = [['code' => 'H300', 'text' => 'Fatal if swallowed']];
 $hzC['ate_results']  = ['oral' => ['route' => 'oral', 'canonical' => \SDS\Services\GHSHazardClass::ACUTE_TOXICITY_ORAL, 'ate_mix' => 250.0, 'category' => 'Cat 3', 'outcome' => 'dominated']];
-check(str_starts_with($bat->invoke($gen, $hzC), "Acute toxicity (oral): Category 1 — Fatal if swallowed (H300).\n"), 'dominated ATE result is not printed', $bat->invoke($gen, $hzC));
+check(str_starts_with($bat->invoke($gen, $hzC), "Acute toxicity (oral): Category 1 — Fatal if swallowed (H300). Classified based on ingredient concentration.\n"), 'dominated ATE result not printed; Q6 basis phrase instead', $bat->invoke($gen, $hzC));
 // inhalation dust unit + small-value formatting
 $hzD = $hz0;
 $hzD['h_statements']   = [['code' => 'H330', 'text' => 'Fatal if inhaled']];
@@ -177,26 +179,43 @@ $s12m = $method('section12');
 $aqComposition = [
     ['cas_number' => '1-1-1', 'chemical_name' => 'X', 'concentration_pct' => 2.35],
     ['cas_number' => '2-2-2', 'chemical_name' => 'Secret Y', 'concentration_pct' => 3.0, 'is_trade_secret' => true, 'trade_secret_description' => 'Proprietary dispersant'],
+    ['cas_number' => '3-3-3', 'chemical_name' => 'Z', 'concentration_pct' => 0.05],
 ];
 $hz12 = ['h_statements' => [['code' => 'H411', 'text' => 'Toxic to aquatic life with long lasting effects']],
+    'hazardous_cas'   => ['1-1-1', '2-2-2', '3-3-3'],   // the engine marks every summation contributor
+    'exposure_limits' => [],
+    'hazard_classes'  => [[
+        'class' => 'Hazardous to the Aquatic Environment (Chronic)', 'category' => 'Category 2',
+        'canonical' => \SDS\Services\GHSHazardClass::AQUATIC_CHRONIC, 'category_canonical' => 'Cat 2',
+        'cas' => 'MIXTURE', 'chemical' => 'Multiple components (aquatic summation)', 'source' => 'aquatic_summation',
+        'h_codes' => ['H411'], 'contributors' => ['1-1-1', '2-2-2', '3-3-3'],
+    ]],
     'aquatic_components' => [
-        ['cas' => '1-1-1', 'name' => 'X', 'conc' => 2.35, 'acute_category' => 'Cat 1', 'acute_m_factor' => 10.0],
-        ['cas' => '2-2-2', 'name' => 'Secret Y', 'conc' => 3.0, 'chronic_category' => 'Cat 2'],
-        ['cas' => '3-3-3', 'name' => 'Z', 'conc' => 0.05, 'chronic_category' => 'Cat 3'],
-    ]];
+        ['cas' => '1-1-1', 'name' => 'X', 'conc' => 2.35, 'acute_category' => 'Cat 1', 'acute_m_factor' => 10.0, 'acute_m_factor_source' => 'vendor', 'chronic_category' => null, 'chronic_m_factor' => null, 'chronic_m_factor_source' => null],
+        ['cas' => '2-2-2', 'name' => 'Secret Y', 'conc' => 3.0, 'acute_category' => null, 'acute_m_factor' => null, 'acute_m_factor_source' => null, 'chronic_category' => 'Cat 2', 'chronic_m_factor' => 1.0, 'chronic_m_factor_source' => 'default'],
+        ['cas' => '3-3-3', 'name' => 'Z', 'conc' => 0.05, 'acute_category' => null, 'acute_m_factor' => null, 'acute_m_factor_source' => null, 'chronic_category' => 'Cat 3', 'chronic_m_factor' => 1.0, 'chronic_m_factor_source' => 'default'],
+    ],
+    'aquatic_basis' => ['summation_codes' => ['H411'], 'override_mode' => null, 'override_codes' => []],
+];
+$inhD = new ReflectionProperty(\SDS\Services\SDSGenerator::class, 'inhalationOnlyCas');
+$inhD->setAccessible(true);
+$inhDSaved = $inhD->getValue();
+$inhD->setValue(null, ['1333-86-4' => 'Carbon Black']);   // section3ListedCas() stays DB-free
 $s12 = $s12m->invoke($gen, $hz12, $aqComposition, []);
 check($s12['ecotoxicity'] === $t->get('section12.ecotoxicity_classified') . ' H411: Toxic to aquatic life with long lasting effects. ' . $t->get('section12.environmental_warning'), 'S12 ecotox lead-in + echoed H411 + warning', $s12['ecotoxicity']);
 check(($s12['component_aquatic'][0]['concentration_range'] ?? null) === '1 - 5%' && !array_key_exists('concentration_pct', $s12['component_aquatic'][0]), 'S12 row carries the Section 3 band, no exact %', $s12['component_aquatic'][0]);
 check($s12['component_aquatic'][0]['acute'] === 'Category 1 (M = 10)' && $s12['component_aquatic'][0]['chronic'] === '', 'S12 Cat 1 M-factor formatting');
 check($s12['component_aquatic'][1]['cas_number'] === 'TRADE SECRET' && $s12['component_aquatic'][1]['chemical_name'] === 'Proprietary dispersant', 'S12 trade-secret row masked like Section 3', $s12['component_aquatic'][1]);
-check($s12['component_aquatic'][2]['concentration_range'] === '<0.1%', 'S12 sub-0.1% buffer row prints <0.1%', $s12['component_aquatic'][2]);
+check(count($s12['component_aquatic']) === 2 && !in_array('3-3-3', array_column($s12['component_aquatic'], 'cas_number'), true), 'S12 table filtered to the Section 3 CAS set: 0.05 % row withheld (#66)', $s12['component_aquatic']);
 check(!array_key_exists('ghs_note', $s12), 'S12 does not carry the shared footnote (printed once on Section 15)');
 
 $s12nt = $s12m->invoke($gen, ['h_statements' => [['code' => 'H411', 'text' => 'Toxic to aquatic life with long lasting effects']]], [], []);
 check(str_starts_with($s12nt['ecotoxicity'], $t->get('section12.ecotoxicity_classified_no_table')) && !str_contains($s12nt['ecotoxicity'], 'listed below'), 'S12 no component table -> neutral lead-in', $s12nt['ecotoxicity']);
 
-$s12n = $s12m->invoke($gen, ['h_statements' => [], 'aquatic_components' => [['cas' => '1-1-1', 'name' => 'X', 'conc' => 2.0, 'chronic_category' => 'Cat 3']]], $aqComposition, []);
-check($s12n['ecotoxicity'] === $t->get('section12.ecotoxicity_not_classified') && $s12n['component_aquatic'][0]['chronic'] === 'Category 3', 'S12 components but no mixture class');
+$s12n = $s12m->invoke($gen, ['h_statements' => [], 'hazardous_cas' => ['1-1-1'], 'exposure_limits' => [], 'aquatic_components' => [['cas' => '1-1-1', 'name' => 'X', 'conc' => 2.0, 'acute_category' => null, 'acute_m_factor' => null, 'acute_m_factor_source' => null, 'chronic_category' => 'Cat 3', 'chronic_m_factor' => 1.0, 'chronic_m_factor_source' => 'default']], 'aquatic_basis' => ['summation_codes' => [], 'override_mode' => null, 'override_codes' => []]], $aqComposition, []);
+check($s12n['ecotoxicity'] === $t->get('section12.ecotoxicity_not_classified') && $s12n['component_aquatic'][0]['chronic'] === 'Category 3', 'S12 components but no mixture class (X listed in Section 3 for another hazard)');
+$s12nn = $s12m->invoke($gen, ['h_statements' => [], 'hazardous_cas' => [], 'exposure_limits' => [], 'aquatic_components' => [['cas' => '1-1-1', 'name' => 'X', 'conc' => 2.0, 'acute_category' => null, 'acute_m_factor' => null, 'acute_m_factor_source' => null, 'chronic_category' => 'Cat 3', 'chronic_m_factor' => 1.0, 'chronic_m_factor_source' => 'default']], 'aquatic_basis' => ['summation_codes' => [], 'override_mode' => null, 'override_codes' => []]], $aqComposition, []);
+check($s12nn['component_aquatic'] === [] && $s12nn['ecotoxicity'] === $t->get('section12.ecotoxicity_not_classified_no_table'), 'S12 aquatic data on a component Section 3 does not list -> no table, no-table sentence (#66)', $s12nn);
 check($s12m->invoke($gen, ['h_statements' => []], [], [])['ecotoxicity'] === $t->get('section12.ecotoxicity'), 'S12 no data default');
 
 // #24: persistence / bioaccumulation / mobility — PBT line from the SARA 313 is_pbt flag
@@ -206,19 +225,20 @@ $saraPbt = [
     'reportable' => [
         ['cas_number' => '7439-92-1', 'chemical_name' => 'Lead powder', 'concentration_pct' => 2.0, 'threshold_pct' => 0.1, 'is_pbt' => true,  'category_code' => null, 'sara_name' => 'Lead ††', 'status' => 'reportable'],
         ['cas_number' => '108-88-3',  'chemical_name' => 'Toluene',     'concentration_pct' => 4.5, 'threshold_pct' => 1.0, 'is_pbt' => false, 'category_code' => null, 'sara_name' => 'Toluene', 'status' => 'reportable'],
+        // SARA313Service::evaluate() shape: a PBT is always 'reportable' with
+        // threshold 0.0 (2023 TRI rule), even at 0.05 %.
+        ['cas_number' => '7439-97-6', 'chemical_name' => 'Mercury',  'concentration_pct' => 0.05, 'threshold_pct' => 0.0, 'is_pbt' => true, 'category_code' => null, 'sara_name' => 'Mercury', 'status' => 'reportable'],
+        ['cas_number' => '2-2-2',     'chemical_name' => 'Secret Y', 'concentration_pct' => 0.5,  'threshold_pct' => 0.0, 'is_pbt' => true, 'category_code' => null, 'sara_name' => 'Hexachlorobenzene', 'status' => 'reportable'],
     ],
-    'below_threshold' => [
-        ['cas_number' => '7439-97-6', 'chemical_name' => 'Mercury',  'concentration_pct' => 0.05, 'threshold_pct' => 0.1, 'is_pbt' => true, 'category_code' => null, 'sara_name' => 'Mercury', 'status' => 'below_threshold'],
-        ['cas_number' => '2-2-2',     'chemical_name' => 'Secret Y', 'concentration_pct' => 0.5,  'threshold_pct' => 1.0, 'is_pbt' => true, 'category_code' => null, 'sara_name' => 'Hexachlorobenzene', 'status' => 'below_threshold'],
-    ],
+    'below_threshold' => [],
     'not_listed' => [], 'summary' => '',
 ];
 $s12p = $s12m->invoke($gen, ['h_statements' => []], $aqComposition, [], $saraPbt);
-$pbtExpected = 'Contains component(s) identified as persistent, bioaccumulative and toxic (PBT) under SARA 313 (40 CFR 372.28): Lead (CAS 7439-92-1); Proprietary dispersant (CAS TRADE SECRET).';
-check($s12p['persistence'] === $pbtExpected, 'S12 PBT line on persistence (EPA name, daggers stripped, trade secret masked, >=0.1% below-threshold row kept)', $s12p['persistence']);
+$pbtExpected = 'Contains component(s) identified as persistent, bioaccumulative and toxic (PBT) under SARA 313 (40 CFR 372.28): Lead (CAS 7439-92-1); Mercury (CAS 7439-97-6); Proprietary dispersant (CAS TRADE SECRET).';
+check($s12p['persistence'] === $pbtExpected, 'S12 PBT line on persistence (EPA name, daggers stripped, trade secret masked, sub-0.1% PBT named as in Section 15)', $s12p['persistence']);
 check($s12p['bioaccumulation'] === $t->get('section12.pbt_see_persistence') && $s12p['bioaccumulation'] === 'See Persistence and Degradability above.', 'S12 bioaccumulation cross-references the persistence PBT line (printed once)', $s12p['bioaccumulation']);
-check(!str_contains($s12p['persistence'], 'Mercury') && !str_contains($s12p['persistence'], 'Toluene') && !str_contains($s12p['persistence'], '2.0') && !str_contains($s12p['persistence'], '†'),
-    'S12 PBT line omits sub-0.1% PBT, non-PBT listed chemicals, percentages and footnote markers', $s12p['persistence']);
+check(!str_contains($s12p['persistence'], 'Toluene') && !str_contains($s12p['persistence'], '2.0') && !str_contains($s12p['persistence'], '0.05') && !str_contains($s12p['persistence'], '†'),
+    'S12 PBT line omits non-PBT listed chemicals, percentages and footnote markers', $s12p['persistence']);
 check($s12p['mobility'] === $t->get('section12.mobility') && $s12p['mobility'] === 'No data available.', 'S12 mobility default', $s12p['mobility']);
 $s12po = $s12m->invoke($gen, ['h_statements' => []], $aqComposition, [12 => ['persistence' => 'Readily biodegradable (OECD 301B).', 'mobility' => 'Low']], $saraPbt);
 check($s12po['persistence'] === 'Readily biodegradable (OECD 301B).' && $s12po['bioaccumulation'] === $pbtExpected && $s12po['mobility'] === 'Low', 'S12 overrides win per line; persistence overridden -> full PBT sentence moves to bioaccumulation', $s12po);
@@ -226,6 +246,7 @@ $s12pb = $s12m->invoke($gen, ['h_statements' => []], $aqComposition, [12 => ['bi
 check($s12pb['persistence'] === $pbtExpected && $s12pb['bioaccumulation'] === 'Log Kow 2.1', 'S12 bioaccumulation override wins over the cross-reference', $s12pb);
 check($s12m->invoke($gen, ['h_statements' => []], [], [], ['reportable' => [['cas_number' => '108-88-3', 'chemical_name' => 'Toluene', 'concentration_pct' => 4.5, 'is_pbt' => false, 'sara_name' => 'Toluene']], 'below_threshold' => []])['persistence'] === $t->get('section12.persistence'),
     'S12 SARA-listed but non-PBT component -> No data available');
+$inhD->setValue(null, $inhDSaved);
 $p->setValue(null, null);
 
 // ---------------------------------------------------------------------
@@ -277,8 +298,8 @@ $hzF['hazard_classes'] = [['class' => 'Flammable Liquids', 'category' => 'Catego
 $hzF['h_statements'] = [['code' => 'H226', 'text' => 'Flammable liquid and vapour']];
 check($osm->invoke($gen, $hzF, []) === $t->get('section15.osha_status'), 'S15 classified -> existing classified sentence', $osm->invoke($gen, $hzF, []));
 check(str_contains($osm->invoke($gen, $hzF, []), 'is classified as hazardous') && str_contains($osm->invoke($gen, $hz0, []), 'is not classified as hazardous'), 'S15 the two sentences differ on classified / not classified');
-check($osm->invoke($gen, $hz0, [15 => ['osha_status' => 'Manual OSHA text']]) === 'Manual OSHA text', 'S15 override wins when unclassified');
-check($osm->invoke($gen, $hzF, [15 => ['osha_status' => 'Manual OSHA text']]) === 'Manual OSHA text', 'S15 override wins when classified');
+check($osm->invoke($gen, $hz0, [15 => ['osha_status' => 'Manual OSHA text']]) === $t->get('section15.osha_status_not_classified'), 'S15 stored OSHA override ignored when unclassified (Q12)');
+check($osm->invoke($gen, $hzF, [15 => ['osha_status' => 'Manual OSHA text']]) === $t->get('section15.osha_status'), 'S15 stored OSHA override ignored when classified (Q12)');
 
 // Sections 2 and 15 must agree for the same hazard result.
 check($s2m->invoke($gen, $hz0, [])['is_classified'] === false && $osm->invoke($gen, $hz0, []) === $t->get('section15.osha_status_not_classified'), 'S2/S15 parity: unclassified');

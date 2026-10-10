@@ -164,7 +164,6 @@ return [
         'P272' => 'Kontaminierte Arbeitskleidung nicht außerhalb des Arbeitsplatzes tragen.',
         'P273' => 'Freisetzung in die Umwelt vermeiden.',
         'P280' => 'Schutzhandschuhe/Schutzkleidung/Augenschutz/Gesichtsschutz tragen.',
-        'P281' => 'Vorgeschriebene persönliche Schutzausrüstung verwenden.',
         'P282' => 'Schutzhandschuhe gegen Kälte/Gesichtsschild/Augenschutz tragen.',
         'P283' => 'Schwer entflammbare/flammhemmende Kleidung tragen.',
         'P284' => 'Atemschutz tragen.',

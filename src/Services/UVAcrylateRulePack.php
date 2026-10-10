@@ -13,10 +13,13 @@ use SDS\Core\Database;
  * This rule pack does NOT invent hazard classifications. Hazards still
  * come from federal CAS data + GHS mixture rules only. This pack:
  *
- *  1. Detects acrylate/monomer CAS numbers via synonym matching
- *  2. Supplies translated safe-handling language for SDS Sections 4, 5, 6,
- *     7 and 11 (printed under labels.uv_acrylate_note) and PPE sentences
- *     folded into the Section 8 PPE fields (audit #35)
+ *  1. Detects acrylate monomers/oligomers by CAS or name at >= 0.1 % —
+ *     used ONLY for the names in the Section 4 sentence (#50); the generic
+ *     UV text is gated on isApplicable() (admin switch + family UV flag)
+ *  2. Supplies the translated Section 4 skin sentence, the Section 8 PPE
+ *     sentences (applied by SDSGenerator::resolvePPE(), #29) and the
+ *     Section 11 note (labels.uv_acrylate_note). Sections 5, 6 and 7 read
+ *     their UV fragments straight from the translation files (#65).
  *  3. Adds tooltip-style warnings for formulators
  *  4. Can be toggled globally in Admin Settings
  *
@@ -32,7 +35,7 @@ class UVAcrylateRulePack
         '57472-68-1'  => 'DPGDA (Dipropylene Glycol Diacrylate)',
         '15625-89-5'  => 'TMPTA (Trimethylolpropane Triacrylate)',
         '4986-89-4'   => 'PETIA / PETA (Pentaerythritol Tetraacrylate)',
-        '42978-66-5'  => 'DPGDA (Dipropylene Glycol Diacrylate)',
+        '42978-66-5'  => 'TPGDA (Tripropylene Glycol Diacrylate)',
         '1680-21-3'   => 'TEGDA (Triethylene Glycol Diacrylate)',
         '13048-33-4'  => 'HDDA (1,6-Hexanediol Diacrylate)',
         '28961-43-5'  => 'IBOA (Isobornyl Acrylate)',
@@ -45,23 +48,24 @@ class UVAcrylateRulePack
         '52408-84-1'  => 'DPHA',
     ];
 
-    /** Chemical name substrings that indicate acrylate content. */
-    private const ACRYLATE_NAME_PATTERNS = [
-        'acrylate',
-        'methacrylate',
-        'acrylic',
-        'diacrylate',
-        'triacrylate',
-        'tetraacrylate',
-        'pentaacrylate',
-        'hexaacrylate',
-    ];
+    /** #50: Section 3 listing cut-off; acrylates below it are never named. */
+    public const NAME_CUTOFF_PCT = 0.1;
+
+    /**
+     * #50: a reactive acrylate monomer/oligomer by name — "...acrylate",
+     * "...acrylated..." or (meth)acrylic ACID. Plain "acrylic" (acrylic
+     * resins/polymers) no longer matches.
+     */
+    private const ACRYLATE_NAME_REGEX = '/acrylate|\b(?:meth)?acrylic\s+acid\b/i';
+
+    /** #50: non-reactive acrylic polymers that never count (prepolymers still do). */
+    private const ACRYLIC_POLYMER_REGEX = '/(?<!pre)polymer|\bpoly\s*\(|poly(?:meth)?acryl|\bresin\b/i';
 
     /**
      * #37: language-free placeholder detectAcrylates() returns for a
      * trade-secret acrylate with no trade_secret_description (also the
      * English placeholder the composition itself stores for synthetic
-     * trade-secret rows). It is never printed as is: getSafeHandlingLanguage()
+     * trade-secret rows). It is never printed as is: section4SkinFragment()
      * maps it to labels.trade_secret in the sheet language. The operator-only
      * formulator warnings (English UI text) show it unchanged.
      */
@@ -111,39 +115,47 @@ class UVAcrylateRulePack
     }
 
     /**
-     * Detect acrylate/monomer content in a composition.
+     * Acrylate monomers/oligomers in a composition, CAS => display name (#50).
+     * Used ONLY for the names in the Section 4 sentence; it never decides
+     * whether UV text prints (isApplicable() does). Rows below
+     * NAME_CUTOFF_PCT are skipped (rows without concentration_pct, e.g.
+     * hand-built fixtures, count). Matched by the known CAS list or by
+     * ACRYLATE_NAME_REGEX, never by acrylic-polymer names.
      *
      * @param  array $composition  Expanded CAS composition.
-     * @return array  List of detected acrylate CAS entries with names.
+     * @return array<string,string>
      */
     public static function detectAcrylates(array $composition): array
     {
         $found = [];
 
         foreach ($composition as $component) {
-            $cas  = $component['cas_number'] ?? '';
-            $name = strtolower($component['chemical_name'] ?? '');
+            if (!is_array($component)) {
+                continue;
+            }
+            if (isset($component['concentration_pct'])
+                && (float) $component['concentration_pct'] < self::NAME_CUTOFF_PCT) {
+                continue;
+            }
+            $cas  = (string) ($component['cas_number'] ?? '');
+            $name = trim((string) ($component['chemical_name'] ?? ''));
 
             // A trade-secret constituent keeps its real chemical_name in the
-            // composition (only Section 3 masks it): never print that identity —
-            // or its CAS — in the Section 4 note (29 CFR 1910.1200(i)). Detection
-            // itself is unchanged so the generic sentences still fire.
+            // composition: never print that identity — or its CAS — (29 CFR
+            // 1910.1200(i); owner decision Q4). Detection itself is unchanged.
             $display = !empty($component['is_trade_secret'])
                 ? (trim((string) ($component['trade_secret_description'] ?? '')) ?: self::TRADE_SECRET_NAME)
                 : null;
 
-            // Match by known CAS
-            if (isset(self::ACRYLATE_CAS_LIST[$cas])) {
-                $found[$cas] = $display ?? ($component['chemical_name'] ?? self::ACRYLATE_CAS_LIST[$cas]);
+            if ($cas !== '' && isset(self::ACRYLATE_CAS_LIST[$cas])) {
+                $found[$cas] = $display ?? ($name !== '' ? $name : self::ACRYLATE_CAS_LIST[$cas]);
                 continue;
             }
 
-            // Match by name pattern
-            foreach (self::ACRYLATE_NAME_PATTERNS as $pattern) {
-                if (str_contains($name, $pattern)) {
-                    $found[$cas] = $display ?? ($component['chemical_name'] ?? $cas);
-                    break;
-                }
+            if ($name !== ''
+                && preg_match(self::ACRYLATE_NAME_REGEX, $name) === 1
+                && preg_match(self::ACRYLIC_POLYMER_REGEX, $name) !== 1) {
+                $found[$cas !== '' ? $cas : $name] = $display ?? $name;
             }
         }
 
@@ -151,56 +163,39 @@ class UVAcrylateRulePack
     }
 
     /**
-     * Translated safe-handling language printed under labels.uv_acrylate_note
-     * in Sections 4, 5, 6, 7 and 11 (audit #35). Section 8 is NOT in this
-     * map: its advice is folded into the PPE fields via getPpeSupplement().
-     * The Section 10 "protect from UV light" condition is appended by
-     * SDSGenerator::section10() for every UV product, pack or not.
-     *
-     * These do NOT override federal hazard data.
-     *
-     * The Section 4 / 11 sentences that assert a skin sensitizer ("known skin
-     * sensitizers", "may cause skin sensitization") print only when the mixture
-     * itself carries H317 ($isSkinSens, from the engine result): below the Skin
-     * Sens. 1 cut-off, or for unclassified oligomers / acrylic polymers matched
-     * by name, the *_unclassified variants print instead so Sections 4 and 11
-     * cannot contradict Section 2 (and Section 11's own "criteria not met").
-     *
-     * @param  array              $acrylates   CAS => name pairs from detectAcrylates()
-     * @param  TranslationService $t           Sheet-language translator
-     * @param  bool               $isSkinSens  H317 present in the mixture classification
-     * @return array  Keyed by section number (4,5,6,7,11); [] when no acrylates.
+     * #65: the Section 4 skin-contact sentence SDSGenerator::section4()
+     * appends to the Skin field of a UV rule-pack product. Names (from
+     * detectAcrylates(), >= 0.1 %) print only when some were recognised;
+     * the trade-secret placeholder prints as labels.trade_secret.
      */
-    public static function getSafeHandlingLanguage(array $acrylates, TranslationService $t, bool $isSkinSens = true): array
+    public static function section4SkinFragment(array $acrylates, TranslationService $t): string
     {
-        if (empty($acrylates)) {
-            return [];
+        if ($acrylates === []) {
+            return $t->get('section4.uv_skin');
         }
-
-        // #37: the trade-secret placeholder prints as labels.trade_secret in
-        // the sheet language (detectAcrylates() runs language-free).
         $tradeSecret = $t->get('labels.trade_secret');
         $display = array_map(
             static fn($n): string => strcasecmp(trim((string) $n), self::TRADE_SECRET_NAME) === 0 ? $tradeSecret : (string) $n,
             array_values($acrylates)
         );
-
         // array_unique: several trade-secret acrylates all display as one label.
-        $names = implode(', ', array_values(array_unique($display)));
-        $sfx   = $isSkinSens ? '' : '_unclassified';
+        return $t->get('section4.uv_skin_names', ['names' => implode(', ', array_values(array_unique($display)))]);
+    }
 
-        return [
-            4  => $t->get('section4.uv_acrylate_note' . $sfx, ['names' => $names]),
-            5  => $t->get('section5.uv_acrylate_note'),
-            6  => $t->get('section6.uv_acrylate_note'),
-            7  => $t->get('section7.uv_acrylate_note'),
-            11 => $t->get('section11.uv_acrylate_note' . $sfx),
-        ];
+    /**
+     * #65: the Section 11 note — the only separate UV note left (printed under
+     * labels.uv_acrylate_note after the component table; editable per
+     * product). The sensitizer wording prints only when the mixture carries
+     * H317, otherwise the *_unclassified variant.
+     */
+    public static function section11Note(TranslationService $t, bool $isSkinSens): string
+    {
+        return $t->get('section11.uv_acrylate_note' . ($isSkinSens ? '' : '_unclassified'));
     }
 
     /**
      * UV acrylate PPE sentences, one per HazardEngine::PPE_FIELDS entry, that
-     * SDSGenerator::section8() appends to the resolved PPE text (audit #35).
+     * SDSGenerator::resolvePPE() appends to a field whose tier is hazard-driven or when the mixture carries H317 (audit #35, #29).
      *
      * @return array<string,string>  field => translated sentence
      */

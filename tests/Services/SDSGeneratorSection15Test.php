@@ -8,8 +8,8 @@
  *   - buildProp65ListedLines(): name (+ CAS) and OEHHA listing type(s) in a
  *     fixed order, duplicates merged, unknown types skipped, no NSRL / MADL /
  *     listing date.
- *   - section15(): the Section 15 copies are banded; the HAP total stays
- *     exact; the Prop 65 warning text is kept verbatim; an empty composition
+ *   - section15(): the Section 15 copies are banded; the HAP total prints as
+ *     a band (finding #70); the Prop 65 warning text is kept verbatim; an empty composition
  *     keeps analyseSnur() DB-free.
  *   - section5() / section16(): no numeric flash_point_c, no voc_assumptions.
  *   - The new translation keys exist in all four languages.
@@ -115,7 +115,7 @@ $s15 = $method('section15')->invoke($gen,
 check($s15['sara_313']['reportable'][0]['concentration_range'] === '1 - 5%' && !isset($s15['sara_313']['reportable'][0]['concentration_pct']), 'S15 SARA row carries the band, no exact %', $s15['sara_313']);
 check(array_keys($s15['sara_313']) === ['reportable'], 'S15 SARA copy holds only reportable (below_threshold is consumed by section12() at generation time and not persisted)', array_keys($s15['sara_313']));
 check($s15['hap']['hap_chemicals'][0]['concentration_range'] === '1 - 5%' && !isset($s15['hap']['hap_chemicals'][0]['concentration_pct']), 'S15 HAP row carries the band, no exact %', $s15['hap']);
-check($s15['hap']['total_hap_pct'] === 4.5, 'S15 HAP total kept exact');
+check(!array_key_exists('total_hap_pct', $s15['hap']) && $s15['hap']['total_hap_range'] !== '' && $s15['hap']['total_hap_range'] === $s15['hap']['hap_chemicals'][0]['concentration_range'], 'S15 HAP total printed as a band, exact total removed (finding #70)', $s15['hap']);
 check($s15['prop65']['listed_lines'] === ['Toluene (CAS 108-88-3) — developmental toxicity'] && !array_key_exists('listed_chemicals', $s15['prop65']), 'S15 Prop 65 lines built, raw listing dropped from the section copy', $s15['prop65']);
 // #37: the printed warning is rebuilt in the sheet language from the chemical
 // lists; in EN it is byte-identical to Prop65Service::WARNING_REPRO.
@@ -137,7 +137,7 @@ check(str_starts_with($frW, 'AVERTISSEMENT :') && str_contains($frW, 'Toluene'),
 $deW = $p65Gen('de', ['Lead'], ['Toluene']);
 check(str_starts_with($deW, 'WARNUNG:') && strpos($deW, 'Toluene') < strpos($deW, 'Lead'), 'DE combined warning translated, repro before cancer', $deW);
 check($s15['snur'] === ['has_snur' => false, 'listed_chemicals' => []], 'empty composition -> no SNUR, no DB');
-check(substr_count(json_encode($s15), '4.5') === 1, 'exact 4.5 appears in Section 15 only once (the HAP total)', json_encode($s15));
+check(substr_count(json_encode($s15), '4.5') === 0, 'no exact 4.5 anywhere in Section 15 (finding #70)', json_encode($s15));
 
 $ghsNoteProp->setValue(null, null);
 
@@ -174,7 +174,7 @@ foreach (['en', 'es', 'fr', 'de'] as $lang) {
     }
     $v = (string) ($trFile['section15']['prop65_warning_combined'] ?? '');
     check(str_contains($v, ':cancer') && str_contains($v, ':repro') && strpos($v, ':repro') < strpos($v, ':cancer'), "{$lang} section15.prop65_warning_combined (:repro before :cancer)", $v);
-    foreach (['prop65_listed', 'sara_313_range_note'] as $k) {
+    foreach (['prop65_listed', 'sara_313_range_note', 'sara_313_pbt_no_deminimis', 'sara_313_special_concern_no_deminimis'] as $k) {
         $v = $trFile['labels'][$k] ?? null;
         check(is_string($v) && $v !== '', "{$lang} labels.{$k}", $v);
     }

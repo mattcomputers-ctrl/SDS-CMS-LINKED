@@ -81,11 +81,17 @@ class SDSController
                 $sdsData['warnings'][] = $phoneError;
             }
 
-            // Audit #27 — a "Not determined" Section 14 blocks publishing; show it here.
-            $transportError = \SDS\Services\SDSReadinessService::transportNotDeterminedError($sdsData);
-            if ($transportError !== null) {
-                $sdsData['warnings'][] = $transportError;
+            // Audit #68 — supplier block gaps (warnings only); #69 — inactive product.
+            foreach (\SDS\Services\SDSReadinessService::companySupplierWarningsFromDb(Database::getInstance()) as $w) {
+                $sdsData['warnings'][] = $w;
             }
+            $inactiveError = \SDS\Services\SDSReadinessService::inactiveFinishedGoodError($fg);
+            if ($inactiveError !== null) {
+                $sdsData['warnings'][] = $inactiveError;
+            }
+
+            // Audit #27 / #45 — the "Not determined" Section 14 warning is added
+            // by SDSGenerator itself (every preview path), so not repeated here.
 
             if ($mode === \SDS\Services\SDSPreviewResponse::MODE_PDF) {
                 \SDS\Services\SDSPreviewResponse::send(
@@ -130,6 +136,17 @@ class SDSController
         try {
             $generator = new SDSGenerator();
             $sdsData   = $generator->generateForResaleRawMaterial($rmId, $language);
+
+            // Audit #68 — same Warnings-box entries as the FG preview: a blank
+            // company emergency phone (a publish block) and supplier block gaps.
+            $previewDb  = Database::getInstance();
+            $phoneError = \SDS\Services\SDSReadinessService::companyEmergencyPhoneErrorFromDb($previewDb);
+            if ($phoneError !== null) {
+                $sdsData['warnings'][] = $phoneError;
+            }
+            foreach (\SDS\Services\SDSReadinessService::companySupplierWarningsFromDb($previewDb) as $w) {
+                $sdsData['warnings'][] = $w;
+            }
 
             // If branded for a specific alias, swap Section 1 + meta
             // identity using the existing alias-variant helper.
@@ -197,14 +214,14 @@ class SDSController
         $language = $this->editorLanguage($_GET['lang'] ?? 'en');
 
         try {
-            // Audit #36: the form pre-fills from STORED overrides only and shows
-            // the automatic text as a hint, so generate with overrides switched
-            // off — $sds['sections'][n][key] is then the computed default of
-            // every field (including Section 2 PPE / signal word display).
+            // Audit #36 / #57: the form pre-fills from STORED overrides only.
+            // Each field's hint is what that field prints with this product's
+            // OTHER stored overrides applied (editorSds ->
+            // TextOverrideService::hintDefaults).
+            $fgId      = (int) $finished_good_id;
             $generator = new SDSGenerator();
-            $sdsData   = $generator->ignoreOverrides()->generate((int) $finished_good_id, $language);
-
-            $overrides = $this->loadStoredOverrides((int) $finished_good_id, $language);
+            $overrides = $this->loadStoredOverrides('fg', $fgId, $language);
+            $sdsData   = $this->editorSds($generator, $generator->computeBase($fgId), $language, $overrides);
 
             view('sds/edit', [
                 'pageTitle'    => 'Edit SDS: ' . $fg['product_code'],
@@ -212,6 +229,7 @@ class SDSController
                 'sds'          => $sdsData,
                 'overrides'    => $overrides,
                 'language'     => $language,
+                'editTarget'   => self::editTarget('fg', $fgId, $language),
             ]);
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = 'SDS generation failed: ' . $e->getMessage();
@@ -220,24 +238,73 @@ class SDSController
     }
 
     /**
-     * Audit #36: stored per-product overrides for one language, shaped
-     * [section => [field_key => override_text]]. Shared by edit() and
-     * saveEdits(); same query SDSGenerator::getOverrides() runs.
+     * Audit #36 / #45: stored per-product overrides for one language, shaped
+     * [section => [field_key => override_text]] (blank and retired rows
+     * included, so a save can delete them). $kind 'fg' = finished good,
+     * 'rm' = resale raw material.
      */
-    private function loadStoredOverrides(int $fgId, string $language): array
+    private function loadStoredOverrides(string $kind, int $id, string $language): array
     {
+        $owner = $kind === 'rm' ? 'raw_material_id = ? AND finished_good_id IS NULL' : 'finished_good_id = ?';
         $rows = Database::getInstance()->fetchAll(
             "SELECT section_number, field_key, override_text
              FROM text_overrides
-             WHERE finished_good_id = ? AND language = ? AND sds_version_id IS NULL
+             WHERE {$owner} AND language = ? AND sds_version_id IS NULL
              ORDER BY section_number, field_key",
-            [$fgId, $language]
+            [$id, $language]
         );
         $overrides = [];
         foreach ($rows as $row) {
             $overrides[(int) $row['section_number']][$row['field_key']] = $row['override_text'];
         }
         return $overrides;
+    }
+
+    /**
+     * Audit #57: SDS data for the editor. 'sections' holds every field's
+     * automatic value with the product's OTHER stored overrides applied
+     * (TextOverrideService::hintDefaults); meta / warnings come from the
+     * first generation.
+     */
+    private function editorSds(SDSGenerator $generator, array $base, string $language, array $stored): array
+    {
+        $sdsData = null;
+        $sectionsWith = static function (array $ov) use ($generator, $base, $language, &$sdsData): array {
+            $d = $generator->withOverrides($ov)->generateFromBase($base, $language);
+            $sdsData ??= $d;
+            return $d['sections'];
+        };
+        try {
+            $sections = TextOverrideService::hintDefaults($stored, $sectionsWith);
+        } finally {
+            $generator->withOverrides(null);
+        }
+        $sdsData['sections'] = $sections;
+        return $sdsData;
+    }
+
+    /** Audit #45: URLs of the shared editor for a finished good or a resale raw material. */
+    private static function editTarget(string $kind, int $id, string $language): array
+    {
+        $q = '?lang=' . rawurlencode($language);
+        if ($kind === 'rm') {
+            return [
+                'kind'        => 'rm',
+                'edit_url'    => '/sds/resale/' . $id . '/edit',
+                'save_url'    => '/sds/resale/' . $id . '/save-edits',
+                'back_url'    => '/sds-review?rm_id=' . $id,
+                'back_label'  => 'Back to SDS Creation Readiness Check',
+                'preview_url' => '/sds/resale/' . $id . '/preview' . $q,
+            ];
+        }
+        return [
+            'kind'        => 'fg',
+            'edit_url'    => '/sds/' . $id . '/edit',
+            'save_url'    => '/sds/' . $id . '/save-edits',
+            'back_url'    => '/sds/' . $id,
+            'back_label'  => 'Back to SDS Versions',
+            'preview_url' => '/sds/' . $id . '/preview' . $q,
+        ];
     }
 
     /** Audit #36: the editor only works in a supported SDS language (default en). */
@@ -263,39 +330,108 @@ class SDSController
             redirect('/finished-goods');
         }
 
-        $fgId     = (int) $finished_good_id;
+        $fgId = (int) $finished_good_id;
+        $this->saveEditorPost('fg', $fgId, static fn (SDSGenerator $g): array => $g->computeBase($fgId));
+    }
+
+    /** Audit #45: resale SDS text editor. GET /sds/resale/{rm_id}/edit */
+    public function editResale(string $rm_id): void
+    {
+        $rmId = (int) $rm_id;
+        if (!can_edit('sds')) {
+            $_SESSION['_flash']['error'] = 'Permission denied.';
+            redirect('/sds-review?rm_id=' . $rmId);
+        }
+        $rm = \SDS\Models\RawMaterial::findById($rmId);
+        if ($rm === null) {
+            $_SESSION['_flash']['error'] = 'Raw material not found.';
+            redirect('/sds-review');
+        }
+        $language = $this->editorLanguage($_GET['lang'] ?? 'en');
+        try {
+            $generator = new SDSGenerator();
+            $base      = $generator->computeBaseForResaleRawMaterial($rmId);
+            $overrides = $this->loadStoredOverrides('rm', $rmId, $language);
+            $sdsData   = $this->editorSds($generator, $base, $language, $overrides);
+            $code      = (string) ($base['resale_source']['base_code'] ?? $rm['internal_code']);
+            view('sds/edit', [
+                'pageTitle'    => 'Edit Resale SDS: ' . $code,
+                'finishedGood' => ['id' => null, 'product_code' => $code],
+                'sds'          => $sdsData,
+                'overrides'    => $overrides,
+                'language'     => $language,
+                'editTarget'   => self::editTarget('rm', $rmId, $language),
+            ]);
+        } catch (\Throwable $e) {
+            $_SESSION['_flash']['error'] = 'SDS generation failed: ' . $e->getMessage();
+            redirect('/sds-review?rm_id=' . $rmId);
+        }
+    }
+
+    /** Audit #45: POST /sds/resale/{rm_id}/save-edits */
+    public function saveResaleEdits(string $rm_id): void
+    {
+        $rmId = (int) $rm_id;
+        if (!can_edit('sds')) {
+            $_SESSION['_flash']['error'] = 'Permission denied.';
+            redirect('/sds-review?rm_id=' . $rmId);
+        }
+        CSRF::validateRequest();
+        if (\SDS\Models\RawMaterial::findById($rmId) === null) {
+            $_SESSION['_flash']['error'] = 'Raw material not found.';
+            redirect('/sds-review');
+        }
+        $this->saveEditorPost('rm', $rmId, static fn (SDSGenerator $g): array => $g->computeBaseForResaleRawMaterial($rmId));
+    }
+
+    /**
+     * Audit #36 / #45 / #57: apply a posted editor form. Only operator-typed
+     * text is stored. A blank field, or text equal to the field's automatic
+     * value (with this product's other stored overrides applied), means
+     * "automatic" and removes any stored row. Blank and retired rows are
+     * dropped too (TextOverrideService::plan). If generation fails, nothing
+     * is saved.
+     */
+    private function saveEditorPost(string $kind, int $id, callable $computeBase): void
+    {
         $language = $this->editorLanguage($_POST['language'] ?? 'en');
+        $target   = self::editTarget($kind, $id, $language);
         $posted   = $_POST['override'] ?? [];
         if (!is_array($posted)) {
             $posted = [];
         }
 
-        // Audit #36: only operator-typed text is stored. A blank field, or text
-        // equal to the automatically generated value, means "automatic" and
-        // removes any stored row. The automatic values come from a generation
-        // run with overrides switched off; if that fails nothing is saved.
         try {
-            $sections = (new SDSGenerator())->ignoreOverrides()->generate($fgId, $language)['sections'];
+            $generator = new SDSGenerator();
+            $stored    = $this->loadStoredOverrides($kind, $id, $language);
+            $sections  = $this->editorSds($generator, $computeBase($generator), $language, $stored)['sections'];
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = 'SDS generation failed, nothing was saved: ' . $e->getMessage();
-            redirect('/sds/' . $finished_good_id . '/edit?lang=' . urlencode($language));
+            redirect($target['edit_url'] . '?lang=' . urlencode($language));
+            return;
         }
 
-        $stored = $this->loadStoredOverrides($fgId, $language);
-        $plan   = TextOverrideService::plan($posted, $sections, $stored);
+        $plan = TextOverrideService::plan($posted, $sections, $stored);
+        // Findings #8 / #44(2): the Section 9 Flash Point and Initial Boiling
+        // Point edits drive Sections 5, 13 and 14, so each must be a
+        // temperature with its unit. An edit that is not is not stored; any
+        // stored value for that field is kept.
+        ['plan' => $plan, 'rejected' => $rejectedTemps] = \SDS\Services\TemperatureParser::filterPlan($plan);
 
         $db    = Database::getInstance();
-        $where = 'finished_good_id = ? AND section_number = ? AND field_key = ? AND language = ? AND sds_version_id IS NULL';
+        $owner = $kind === 'rm' ? 'raw_material_id = ? AND finished_good_id IS NULL' : 'finished_good_id = ?';
+        $where = $owner . ' AND section_number = ? AND field_key = ? AND language = ? AND sds_version_id IS NULL';
 
         foreach ($plan['delete'] as $d) {
-            $db->delete('text_overrides', $where, [$fgId, $d['section'], $d['key'], $language]);
+            $db->delete('text_overrides', $where, [$id, $d['section'], $d['key'], $language]);
         }
         foreach ($plan['upsert'] as $u) {
             if (array_key_exists($u['key'], $stored[$u['section']] ?? [])) {
-                $db->update('text_overrides', ['override_text' => $u['text']], $where, [$fgId, $u['section'], $u['key'], $language]);
+                $db->update('text_overrides', ['override_text' => $u['text']], $where, [$id, $u['section'], $u['key'], $language]);
             } else {
                 $db->insert('text_overrides', [
-                    'finished_good_id' => $fgId,
+                    'finished_good_id' => $kind === 'fg' ? $id : null,
+                    'raw_material_id'  => $kind === 'rm' ? $id : null,
                     'section_number'   => $u['section'],
                     'field_key'        => $u['key'],
                     'language'         => $language,
@@ -304,8 +440,39 @@ class SDSController
             }
         }
 
+        // Audit #58 — SDS text is product content: mark this product's published
+        // SDSs stale (finished_goods.updated_at, read by bulk publish and the
+        // SDS Updates scan) and list it on SDS Updates. Finished goods only:
+        // a resale sheet's staleness input is its raw material, and bumping
+        // that would republish every product that uses the raw.
+        if ($kind === 'fg' && ($plan['upsert'] !== [] || $plan['delete'] !== [])) {
+            $changedFields = array_map(
+                static fn (array $r) => $r['section'] . '.' . $r['key'],
+                array_merge($plan['upsert'], $plan['delete'])
+            );
+            \SDS\Services\ProductStaleness::markFinishedGood(
+                $db,
+                $id,
+                'SDS text edited (' . strtoupper($language) . '): ' . implode(', ', $changedFields),
+                current_user_id()
+            );
+        }
+        // #45 / #58: a resale sheet's own staleness signal (migration 059,
+        // resale_sds_text_edits; UTC like sds_versions.published_at). Bulk
+        // publish folds it into the raw material's upstream timestamp, so the
+        // resale sheet and its alias sheets republish without bumping
+        // raw_materials.updated_at (which would republish every product).
+        if ($kind === 'rm' && ($plan['upsert'] !== [] || $plan['delete'] !== [])) {
+            $db->query(
+                'INSERT INTO resale_sds_text_edits (raw_material_id, edited_at) VALUES (?, ?)
+                 ON DUPLICATE KEY UPDATE edited_at = VALUES(edited_at)',
+                [$id, \SDS\Services\PublishClock::nowUtc()]
+            );
+        }
+
         $c = $plan['counts'];
-        AuditService::log('text_overrides', (string) $fgId, 'bulk_edit', [
+        AuditService::log('text_overrides', $kind === 'rm' ? 'rm:' . $id : (string) $id, 'bulk_edit', [
+            'kind'     => $kind,
             'language' => $language,
             'stored'   => array_map(static fn (array $u) => $u['section'] . '.' . $u['key'], $plan['upsert']),
             'removed'  => array_map(static fn (array $d) => $d['section'] . '.' . $d['key'], $plan['delete']),
@@ -314,13 +481,24 @@ class SDSController
 
         $_SESSION['_flash']['success'] = sprintf(
             'SDS edits saved (%s): %d override(s) stored, %d reset to automatic, %d unchanged. '
-            . 'Fields left blank or matching the automatic text stay automatic. Preview your changes or publish when ready.',
+            . 'Fields left blank or matching the automatic text stay automatic. Preview your changes or publish when ready.'
+            . ($kind === 'rm' ? ' Resale SDS edits are not on SDS Updates: publish this resale SDS here, or let bulk publish pick it up.' : ''),
             strtoupper($language),
             $c['stored'],
             $c['removed'],
             $c['unchanged']
         );
-        redirect('/sds/' . $finished_good_id);
+        if ($rejectedTemps !== []) {
+            $tempLabels = ['flash_point' => 'Flash Point', 'boiling_point' => 'Initial Boiling Point'];
+            $_SESSION['_flash']['error'] = 'Not saved: '
+                . implode('; ', array_map(
+                    static fn (array $r): string => 'Section 9 ' . ($tempLabels[$r['key']] ?? $r['key']) . ' "' . $r['text'] . '"',
+                    $rejectedTemps
+                ))
+                . '. Enter a temperature with its unit, e.g. "24 °C", "75 °F" or "> 93 °C" (the degree sign is optional), or leave the field blank for the automatic value.';
+            redirect($target['edit_url'] . '?lang=' . urlencode($language));
+        }
+        redirect($target['back_url']);
     }
 
     public function publish(string $finished_good_id): void
@@ -336,6 +514,14 @@ class SDSController
         if ($fg === null) {
             $_SESSION['_flash']['error'] = 'Finished good not found.';
             redirect('/finished-goods');
+        }
+
+        // Audit #69 — an inactive product is not published on any path.
+        $inactiveError = \SDS\Services\SDSReadinessService::inactiveFinishedGoodError($fg);
+        if ($inactiveError !== null) {
+            $_SESSION['_flash']['error'] = $inactiveError;
+            redirect('/sds/' . $finished_good_id);
+            return;
         }
 
         $changeSummary = trim($_POST['change_summary'] ?? '');
@@ -357,6 +543,14 @@ class SDSController
             // Compute language-independent base data once
             $baseData = $generator->computeBase((int) $finished_good_id);
 
+            // Audit #13 / decision Q4: a trade-secret constituent on the Prop 65 list blocks publishing.
+            $tsProp65Error = \SDS\Services\SDSReadinessService::tradeSecretProp65Error($baseData['prop65Result'] ?? []);
+            if ($tsProp65Error !== null) {
+                $_SESSION['_flash']['error'] = $tsProp65Error;
+                redirect('/sds/' . $finished_good_id);
+                return;
+            }
+
             // Generate language-specific SDS data (fast — mostly translation)
             $langData = [];
             foreach ($languages as $lang) {
@@ -364,13 +558,21 @@ class SDSController
 
                 // Enforce missing-data threshold once (hazard data is language-independent)
                 if ($lang === $languages[0]) {
-                    $blockError = $this->checkMissingHazardData($sdsData, $db)
-                        ?? \SDS\Services\SDSReadinessService::transportNotDeterminedError($sdsData);
+                    $blockError = \SDS\Services\SDSReadinessService::missingHazardDataError($sdsData, $db);
                     if ($blockError !== null) {
                         $_SESSION['_flash']['error'] = $blockError;
                         redirect('/sds/' . $finished_good_id);
                         return;
                     }
+                }
+
+                // Audit #27 / finding #6: Section 14 overrides are stored per
+                // language, so the transport gate runs on EVERY language.
+                $transportError = \SDS\Services\SDSReadinessService::transportNotDeterminedError($sdsData);
+                if ($transportError !== null) {
+                    $_SESSION['_flash']['error'] = $transportError;
+                    redirect('/sds/' . $finished_good_id);
+                    return;
                 }
 
                 $langData[$lang] = $sdsData;
@@ -393,7 +595,7 @@ class SDSController
                 [(int) $finished_good_id]
             );
             $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
-            $effectiveDate = date('Y-m-d');
+            $effectiveDate = \SDS\Services\PublishClock::todayLocal();
             foreach ($langData as &$d) {
                 $d = SDSGenerator::stampPublishedVersion($d, $nextVersion, $effectiveDate);
             }
@@ -429,7 +631,7 @@ class SDSController
 
             // All generated successfully — insert version records
             $publishedVersions = [];
-            $now = date('Y-m-d H:i:s');
+            $now = \SDS\Services\PublishClock::nowUtc();
 
             foreach ($generated as $item) {
                 $lang = $item['language'];
@@ -442,7 +644,7 @@ class SDSController
                     'effective_date'   => $effectiveDate,
                     'published_by'     => current_user_id(),
                     'published_at'     => $now,
-                    'snapshot_json'    => json_encode($item['sdsData'], JSON_UNESCAPED_UNICODE),
+                    'snapshot_json'    => \SDS\Services\SDSGenerator::snapshotJson($item['sdsData']),
                     'pdf_path'         => $item['relativePath'],
                     'change_summary'   => $changeSummary ?: null,
                     'created_by'       => current_user_id(),
@@ -743,6 +945,14 @@ class SDSController
             $generator = new SDSGenerator();
             $baseData  = $generator->computeBaseForResaleRawMaterial($rmId);
 
+            // Audit #13 / decision Q4: a trade-secret constituent on the Prop 65 list blocks publishing.
+            $tsProp65Error = \SDS\Services\SDSReadinessService::tradeSecretProp65Error($baseData['prop65Result'] ?? []);
+            if ($tsProp65Error !== null) {
+                $_SESSION['_flash']['error'] = $tsProp65Error;
+                redirect('/sds-review?rm_id=' . $rmId);
+                return;
+            }
+
             // Generate per-language SDS data from the shared base.
             $langData = [];
             foreach ($languages as $lang) {
@@ -751,13 +961,21 @@ class SDSController
                 // Enforce missing-data threshold once; hazard data is
                 // language-independent so the first language is sufficient.
                 if ($lang === $languages[0]) {
-                    $blockError = $this->checkMissingHazardData($sdsData, $db)
-                        ?? \SDS\Services\SDSReadinessService::transportNotDeterminedError($sdsData);
+                    $blockError = \SDS\Services\SDSReadinessService::missingHazardDataError($sdsData, $db);
                     if ($blockError !== null) {
                         $_SESSION['_flash']['error'] = $blockError;
                         redirect('/sds-review?rm_id=' . $rmId);
                         return;
                     }
+                }
+
+                // Audit #27 / finding #6: Section 14 overrides are stored per
+                // language, so the transport gate runs on EVERY language.
+                $transportError = \SDS\Services\SDSReadinessService::transportNotDeterminedError($sdsData);
+                if ($transportError !== null) {
+                    $_SESSION['_flash']['error'] = $transportError;
+                    redirect('/sds-review?rm_id=' . $rmId);
+                    return;
                 }
 
                 $langData[$lang] = $sdsData;
@@ -777,7 +995,7 @@ class SDSController
                 [$rmId]
             );
             $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
-            $effectiveDate = date('Y-m-d');
+            $effectiveDate = \SDS\Services\PublishClock::todayLocal();
             foreach ($langData as &$d) {
                 $d = SDSGenerator::stampPublishedVersion($d, $nextVersion, $effectiveDate);
             }
@@ -789,7 +1007,7 @@ class SDSController
             $baseCode = \SDS\Services\AliasResolver::stripPack((string) $rm['internal_code']);
 
             $publishedVersions = [];
-            $now = date('Y-m-d H:i:s');
+            $now = \SDS\Services\PublishClock::nowUtc();
 
             // Check every language before the first insert so a partial
             // failure leaves no orphan {code}_v{n}[_{lang}].pdf behind and no
@@ -817,7 +1035,7 @@ class SDSController
                     'effective_date'   => $effectiveDate,
                     'published_by'     => current_user_id(),
                     'published_at'     => $now,
-                    'snapshot_json'    => json_encode($langData[$lang], JSON_UNESCAPED_UNICODE),
+                    'snapshot_json'    => \SDS\Services\SDSGenerator::snapshotJson($langData[$lang]),
                     'pdf_path'         => $relativePath,
                     'change_summary'   => $changeSummary ?: ('Resale SDS for ' . $baseCode),
                     'created_by'       => current_user_id(),
@@ -919,7 +1137,7 @@ class SDSController
                 [(int) $alias['id']]
             );
             $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
-            $effectiveDate = substr($now, 0, 10);
+            $effectiveDate = \SDS\Services\PublishClock::localDateOfUtc($now);
 
             $aliasLangData = [];
             foreach ($langData as $lang => $sdsData) {
@@ -950,7 +1168,7 @@ class SDSController
                     'effective_date'   => $effectiveDate,
                     'published_by'     => current_user_id(),
                     'published_at'     => $now,
-                    'snapshot_json'    => json_encode($aliasSds, JSON_UNESCAPED_UNICODE),
+                    'snapshot_json'    => \SDS\Services\SDSGenerator::snapshotJson($aliasSds),
                     'pdf_path'         => $relativePath,
                     'change_summary'   => $changeSummary ?: ('Resale alias of ' . $rmBaseCode),
                     'created_by'       => current_user_id(),
@@ -1011,7 +1229,7 @@ class SDSController
                 [(int) $alias['id']]
             );
             $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
-            $effectiveDate = substr($now, 0, 10);
+            $effectiveDate = \SDS\Services\PublishClock::localDateOfUtc($now);
 
             // Build alias-specific SDS data per language, then generate PDFs
             $aliasLangData = [];
@@ -1043,7 +1261,7 @@ class SDSController
                     'effective_date'   => $effectiveDate,
                     'published_by'     => current_user_id(),
                     'published_at'     => $now,
-                    'snapshot_json'    => json_encode($aliasSds, JSON_UNESCAPED_UNICODE),
+                    'snapshot_json'    => \SDS\Services\SDSGenerator::snapshotJson($aliasSds),
                     'pdf_path'         => $relativePath,
                     'change_summary'   => $changeSummary ?: ('Alias of ' . $fg['product_code']),
                     'created_by'       => current_user_id(),
@@ -1125,60 +1343,5 @@ class SDSController
         }
 
         return $result;
-    }
-
-    /**
-     * Check if required hazard data is missing for CAS numbers above the
-     * configured threshold. If blocking is enabled and data is missing,
-     * returns an error message; otherwise returns null.
-     *
-     * A CAS number is "covered" if it has federal hazard source records OR
-     * an active competent person determination.
-     */
-    private function checkMissingHazardData(array $sdsData, Database $db): ?string
-    {
-        // Read threshold settings
-        $blockSetting = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'sds.block_publish_missing'");
-        $blockEnabled = $blockSetting ? ($blockSetting['value'] !== '0') : \SDS\Core\App::config('sds.block_publish_missing', true);
-
-        if (!$blockEnabled) {
-            return null;
-        }
-
-        $thresholdRow = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'sds.missing_threshold_pct'");
-        $threshold = $thresholdRow ? (float) $thresholdRow['value'] : \SDS\Core\App::config('sds.missing_threshold_pct', 1.0);
-
-        // Get composition from the section 3 data or hazard result
-        $composition = [];
-        foreach ($sdsData['sections'][3]['components'] ?? [] as $comp) {
-            $composition[$comp['cas_number']] = (float) ($comp['concentration_pct'] ?? 0);
-        }
-
-        // Also check hazard_result trace for CAS numbers with no data
-        $missingCas = [];
-        foreach ($sdsData['hazard_result']['trace'] ?? [] as $step) {
-            if (($step['step'] ?? '') === 'no_data') {
-                $cas = $step['data']['cas'] ?? null;
-                $conc = $step['data']['concentration_pct'] ?? 0;
-                if ($cas !== null && (float) $conc >= $threshold) {
-                    // Check if a competent person determination covers it
-                    $cpd = $db->fetch(
-                        "SELECT id FROM competent_person_determinations WHERE cas_number = ? AND is_active = 1 LIMIT 1",
-                        [$cas]
-                    );
-                    if (!$cpd) {
-                        $missingCas[] = $cas . ' (' . round((float) $conc, 2) . '%)';
-                    }
-                }
-            }
-        }
-
-        if (!empty($missingCas)) {
-            return 'Publishing blocked: missing federal hazard data for CAS numbers at or above '
-                . $threshold . '% threshold: ' . implode(', ', $missingCas)
-                . '. Create a Competent Person Determination for these CAS numbers or disable the threshold in Admin Settings.';
-        }
-
-        return null;
     }
 }

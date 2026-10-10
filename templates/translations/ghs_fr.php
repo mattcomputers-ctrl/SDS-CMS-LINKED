@@ -164,7 +164,6 @@ return [
         'P272' => 'Les vêtements de travail contaminés ne devraient pas sortir du lieu de travail.',
         'P273' => 'Éviter le rejet dans l\'environnement.',
         'P280' => 'Porter des gants de protection/des vêtements de protection/un équipement de protection des yeux/du visage.',
-        'P281' => 'Utiliser l\'équipement de protection individuel requis.',
         'P282' => 'Porter des gants isolants contre le froid et un équipement de protection des yeux/du visage.',
         'P283' => 'Porter des vêtements résistant au feu ou à retardement de flamme.',
         'P284' => 'Porter un équipement de protection respiratoire.',

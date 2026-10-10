@@ -13,7 +13,7 @@
     <div class="card">
         <div class="card-header">
             <h2>Version <?= (int) $formula['version'] ?></h2>
-            <span class="text-muted">Created <?= format_date($formula['created_at'], 'm/d/Y H:i') ?></span>
+            <span class="text-muted">Created <?= \SDS\Services\PublishClock::display($formula['created_at'], 'm/d/Y H:i') ?></span>
         </div>
 
         <table class="table">

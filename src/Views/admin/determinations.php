@@ -129,7 +129,7 @@
                 <td><?= e(mb_strimwidth($item['rationale_text'], 0, 80, '...')) ?></td>
                 <td><?= (int)$item['is_active'] ? '<span style="color:green;">Yes</span>' : '<span style="color:#999;">No</span>' ?></td>
                 <td><?= e($item['created_by_name'] ?? '—') ?></td>
-                <td><?= e(date('m/d/Y', strtotime($item['created_at']))) ?></td>
+                <td><?= e(\SDS\Services\PublishClock::display($item['created_at'], 'm/d/Y')) ?></td>
                 <td><a href="/determinations/<?= (int)$item['id'] ?>/edit" class="btn btn-sm">Edit</a></td>
             </tr>
         <?php endforeach; ?>
@@ -146,10 +146,12 @@
         The <strong>N / S / Hal</strong> boxes mark substances containing nitrogen, sulfur or a halogen; SDS Section 10 lists
         nitrogen oxides, sulfur oxides or hydrogen halides as decomposition products for every product that contains them.
         Saving flags bumps the affected raw materials for republish.
+        The <strong>RCRA metals</strong> box lists the toxicity-characteristic metals a substance contains (As, Ba, Cd, Cr, Pb, Hg, Se, Ag, comma-separated); SDS Section 13 then gives every product containing it the matching D004&ndash;D011 code and TCLP limit.
     </p>
     <div style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
         <input type="text" id="descFilter" placeholder="Filter by CAS or description..." style="max-width: 320px;">
         <a href="/determinations/element-flags" class="btn btn-sm btn-outline" title="Dry run of the element-flag seed (formula / name keywords) for every CAS, with an Apply button">Seed element flags (preview)</a>
+        <a href="/determinations/tc-metals" class="btn btn-sm btn-outline" title="Dry run of the RCRA metal-flag seed (formula / name patterns) for every CAS, with an Apply button">Seed RCRA metal flags (preview)</a>
     </div>
     <table class="table" id="descTable">
         <thead>
@@ -161,6 +163,7 @@
                 <th style="width: 44px; text-align: center;" title="Contains nitrogen (Section 10: nitrogen oxides)">N</th>
                 <th style="width: 44px; text-align: center;" title="Contains sulfur (Section 10: sulfur oxides)">S</th>
                 <th style="width: 50px; text-align: center;" title="Contains a halogen (Section 10: hydrogen halides)">Hal</th>
+                <th style="width: 150px;" title="RCRA toxicity-characteristic metals contained (Section 13 D004-D011)">RCRA metals</th>
                 <th style="width: 150px;">Action</th>
             </tr>
         </thead>
@@ -200,6 +203,14 @@
                         <input type="checkbox" name="<?= $flag ?>" value="1" form="<?= $flagsId ?>" <?= !empty($d[$flag]) ? 'checked' : '' ?> title="Contains <?= $flagLabel ?>">
                     </td>
                 <?php endforeach; ?>
+                <td>
+                    <form method="POST" action="/determinations/tc-metals" style="display: flex; gap: 0.25rem; margin: 0;">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="cas_number" value="<?= e($d['cas_number']) ?>">
+                        <input type="text" name="tc_metals" value="<?= e($d['tc_metals'] ?? '') ?>" placeholder="none" style="width: 80px;" title="As, Ba, Cd, Cr, Pb, Hg, Se, Ag (comma-separated); blank = none">
+                        <button type="submit" class="btn btn-sm" title="Save RCRA metals<?= !empty($d['tc_metals_source']) ? ' (source: ' . e($d['tc_metals_source']) . ')' : '' ?>">Set</button>
+                    </form>
+                </td>
                 <td>
                     <?php if ($isP65): ?>
                         <a href="/prop65" class="btn btn-sm">Edit on Prop 65</a>
@@ -273,7 +284,7 @@
                 <td><?= e($o['tsca_note'] ?? '') ?></td>
                 <td><?= (int) ($o['on_inventory'] ?? 0) ? 'Yes' : '<span class="text-muted">No</span>' ?></td>
                 <td><?= (int) ($o['rm_count'] ?? 0) > 0 ? (int) $o['rm_count'] : '<span class="text-muted">—</span>' ?></td>
-                <td><small><?= e($o['tsca_updated_by_name'] ?? '—') ?><?= !empty($o['tsca_updated_at']) ? ' · ' . e(date('m/d/Y', strtotime($o['tsca_updated_at']))) : '' ?></small></td>
+                <td><small><?= e($o['tsca_updated_by_name'] ?? '—') ?><?= !empty($o['tsca_updated_at']) ? ' · ' . e(\SDS\Services\PublishClock::display($o['tsca_updated_at'], 'm/d/Y')) : '' ?></small></td>
                 <td>
                     <form method="POST" action="/determinations/tsca" id="<?= $formId ?>" style="display:flex; gap:0.35rem; align-items:center;">
                         <?= csrf_field() ?>

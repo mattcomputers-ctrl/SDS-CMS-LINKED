@@ -13,7 +13,7 @@ $action = $isEdit ? '/manufacturers/' . (int) $item['id'] : '/manufacturers';
         <div class="form-grid-2col">
             <div class="form-group full-width">
                 <label for="name">Company Name <span class="text-danger">*</span></label>
-                <input type="text" id="name" name="name" required
+                <input type="text" id="name" name="name" required pattern=".*\S.*" title="Name is required"
                        value="<?= e(old('name', $item['name'] ?? '')) ?>"
                        placeholder="e.g. Acme Ink Corporation">
             </div>

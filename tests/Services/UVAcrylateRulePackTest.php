@@ -6,8 +6,8 @@
  *   - familyIsUv(): only the resolved family's UV/LED flag (family_is_uv)
  *     counts; the family NAME no longer matters;
  *   - detectAcrylates(): by known CAS and by name pattern;
- *   - getSafeHandlingLanguage(): translated text for Sections 4, 5, 6, 7, 11
- *     only (no 8, no 10), :names interpolated, differs per language;
+ *   - section4SkinFragment() / section11Note(): translated Section 4 skin
+ *     sentence (:names interpolated) and the Section 11 note (#65);
  *   - getPpeSupplement(): one translated sentence per HazardEngine::PPE_FIELDS;
  *   - every new key exists in all four language files.
  *
@@ -72,6 +72,8 @@ check(isset($found['999-99-9']) && $found['999-99-9'] === 'Foo Methacrylate', 'm
 check(!isset($found['64-17-5']), 'ethanol not detected');
 check(count($found) === 2, 'exactly two hits', $found);
 check(UVAcrylateRulePack::detectAcrylates([['cas_number' => '64-17-5', 'chemical_name' => 'Ethanol']]) === [], 'no acrylates -> []');
+check(UVAcrylateRulePack::detectAcrylates([['cas_number' => '15625-89-5', 'chemical_name' => 'TMPTA', 'concentration_pct' => 0.05]]) === [], '#50 below 0.1 % -> not named');
+check(UVAcrylateRulePack::detectAcrylates([['cas_number' => '1', 'chemical_name' => 'Acrylic resin', 'concentration_pct' => 20.0], ['cas_number' => '2', 'chemical_name' => 'Styrene acrylate copolymer', 'concentration_pct' => 10.0]]) === [], '#50 acrylic resins/copolymers not matched');
 
 echo "2b. detectAcrylates() — trade-secret rows are detected but never named (29 CFR 1910.1200(i))\n";
 $tsComp = [
@@ -86,55 +88,32 @@ check(($tsFound['57472-68-1'] ?? null) === 'Proprietary Acrylate Monomer', 'trad
 check(($tsFound['13048-33-4'] ?? null) === 'Trade Secret', 'blank description -> "Trade Secret"', $tsFound['13048-33-4'] ?? null);
 check(($tsFound['999-99-9'] ?? null) === 'Trade Secret', 'name-pattern trade-secret row -> "Trade Secret", never the CAS', $tsFound['999-99-9'] ?? null);
 check(($tsFound['15625-89-5'] ?? null) === 'Trimethylolpropane triacrylate', 'non-secret row keeps its name');
-$tsText = UVAcrylateRulePack::getSafeHandlingLanguage($tsFound, $tEn);
-check(!str_contains($tsText[4], 'Dipropylene') && !str_contains($tsText[4], '57472-68-1') && !str_contains($tsText[4], 'HDDA') && !str_contains($tsText[4], '13048-33-4'), 'section 4 note carries no withheld identity or CAS', $tsText[4]);
-check(str_contains($tsText[4], 'Proprietary Acrylate Monomer') && str_contains($tsText[4], 'Trimethylolpropane triacrylate'), 'section 4 note carries the description and the disclosed name', $tsText[4]);
-check(substr_count($tsText[4], 'Trade Secret') === 1, '"Trade Secret" printed once for two unlabeled trade-secret rows', $tsText[4]);
+$tsText = UVAcrylateRulePack::section4SkinFragment($tsFound, $tEn);
+check(!str_contains($tsText, 'Dipropylene') && !str_contains($tsText, '57472-68-1') && !str_contains($tsText, 'HDDA') && !str_contains($tsText, '13048-33-4'), 'section 4 sentence carries no withheld identity or CAS', $tsText);
+check(str_contains($tsText, 'Proprietary Acrylate Monomer') && str_contains($tsText, 'Trimethylolpropane triacrylate'), 'section 4 sentence carries the description and the disclosed name', $tsText);
+check(substr_count($tsText, 'Trade Secret') === 1, '"Trade Secret" printed once for two unlabeled trade-secret rows', $tsText);
 $tsWarn = UVAcrylateRulePack::getFormulatorWarnings($tsFound);
 check(substr_count($tsWarn[2] ?? '', 'Trade Secret') === 1, 'formulator warning de-duplicates too', $tsWarn[2] ?? null);
 
-echo "3. getSafeHandlingLanguage() — EN\n";
-check(UVAcrylateRulePack::getSafeHandlingLanguage([], $tEn) === [], 'no acrylates -> []');
+echo "3. section4SkinFragment() / section11Note() — EN\n";
+check(UVAcrylateRulePack::section4SkinFragment([], $tEn) === $tEn->get('section4.uv_skin'), 'no names -> generic sentence');
 $one = ['15625-89-5' => 'Trimethylolpropane triacrylate'];
-$en  = UVAcrylateRulePack::getSafeHandlingLanguage($one, $tEn);
-check(array_keys($en) === [4, 5, 6, 7, 11], 'keys are exactly 4,5,6,7,11 (no 8, no 10)', array_keys($en));
-check(($en[4] ?? '') === $tEn->get('section4.uv_acrylate_note', ['names' => 'Trimethylolpropane triacrylate']), 'section 4 === translated key with names');
-check(str_contains($en[4] ?? '', 'Trimethylolpropane triacrylate'), 'section 4 contains the acrylate name');
-check(!str_contains($en[4] ?? '', ':names'), 'section 4 has no literal :names');
-check(str_contains($en[4] ?? '', 'UV/EB'), 'section 4 mentions UV/EB');
-foreach ([5, 6, 7, 11] as $n) {
-    check(($en[$n] ?? '') === $tEn->get("section{$n}.uv_acrylate_note"), "section {$n} === section{$n}.uv_acrylate_note");
-    check(($en[$n] ?? '') !== '' && !str_starts_with((string) $en[$n], 'section'), "section {$n} is a real sentence (key resolved)");
-}
-$two = ['15625-89-5' => 'TMPTA', '13048-33-4' => 'HDDA'];
-check(str_contains(UVAcrylateRulePack::getSafeHandlingLanguage($two, $tEn)[4], 'TMPTA, HDDA'), 'two acrylates joined with ", "');
+$en4 = UVAcrylateRulePack::section4SkinFragment($one, $tEn);
+check($en4 === $tEn->get('section4.uv_skin_names', ['names' => 'Trimethylolpropane triacrylate']), 'names sentence', $en4);
+check(!str_contains($en4, ':names') && str_contains($en4, 'UV/EB'), 'interpolated, mentions UV/EB');
+check(str_contains(UVAcrylateRulePack::section4SkinFragment(['15625-89-5' => 'TMPTA', '13048-33-4' => 'HDDA'], $tEn), 'TMPTA, HDDA'), 'two names joined');
+check(UVAcrylateRulePack::section11Note($tEn, true) === $tEn->get('section11.uv_acrylate_note') && str_contains(UVAcrylateRulePack::section11Note($tEn, true), 'known skin sensitizers'), 'S11 with H317');
+check(!str_contains(UVAcrylateRulePack::section11Note($tEn, false), 'sensitiz'), 'S11 without H317: no sensitizer claim');
+check(!method_exists(UVAcrylateRulePack::class, 'getSafeHandlingLanguage'), 'getSafeHandlingLanguage removed (#65)');
 
-echo "3b. getSafeHandlingLanguage() — sensitizer sentences gated on the mixture's H317\n";
-$ns = UVAcrylateRulePack::getSafeHandlingLanguage($one, $tEn, false);
-check(array_keys($ns) === [4, 5, 6, 7, 11], 'keys unchanged without H317', array_keys($ns));
-check(!str_contains($ns[4], 'sensitiz') && !str_contains($ns[11], 'sensitiz'), 'no sensitizer claim in Sections 4 / 11 without H317', [$ns[4], $ns[11]]);
-check(str_contains($ns[4], 'Trimethylolpropane triacrylate') && str_contains($ns[4], 'wash immediately'), 'Section 4 keeps :names and the first-aid advice', $ns[4]);
-check($ns[4] === $tEn->get('section4.uv_acrylate_note_unclassified', ['names' => 'Trimethylolpropane triacrylate']), 'Section 4 === section4.uv_acrylate_note_unclassified');
-check($ns[11] === $tEn->get('section11.uv_acrylate_note_unclassified'), 'Section 11 === section11.uv_acrylate_note_unclassified');
-check($ns[5] === $en[5] && $ns[6] === $en[6] && $ns[7] === $en[7], 'Sections 5 / 6 / 7 unchanged');
-check(str_contains($en[11], 'known skin sensitizers'), 'with H317 (default) Section 11 keeps the sensitizer sentence');
-$nsDe = UVAcrylateRulePack::getSafeHandlingLanguage($one, new TranslationService('de'), false);
-check(!str_contains(strtolower($nsDe[11]), 'sensibilisator') && !str_contains(strtolower($nsDe[4]), 'sensibilisierung'), 'DE: no sensitizer claim without H317', [$nsDe[4], $nsDe[11]]);
-
-echo "4. getSafeHandlingLanguage() — ES / FR / DE differ from EN and equal their file\n";
+echo "4. ES / FR / DE\n";
 foreach (['es', 'fr', 'de'] as $lang) {
-    $t   = new TranslationService($lang);
-    $out = UVAcrylateRulePack::getSafeHandlingLanguage($one, $t);
-    check(array_keys($out) === [4, 5, 6, 7, 11], "{$lang} keys 4,5,6,7,11");
-    foreach ([4, 5, 6, 7, 11] as $n) {
-        check(($out[$n] ?? '') !== ($en[$n] ?? ''), "{$lang} section {$n} differs from EN");
-        $expected = $n === 4
-            ? $t->get('section4.uv_acrylate_note', ['names' => 'Trimethylolpropane triacrylate'])
-            : $t->get("section{$n}.uv_acrylate_note");
-        check(($out[$n] ?? '') === $expected, "{$lang} section {$n} equals the file's key");
-    }
-    check(!str_contains($out[4] ?? '', ':names'), "{$lang} section 4 interpolated");
+    $t = new TranslationService($lang);
+    $o = UVAcrylateRulePack::section4SkinFragment($one, $t);
+    check($o !== $en4 && $o === $t->get('section4.uv_skin_names', ['names' => 'Trimethylolpropane triacrylate']), "{$lang} section 4 sentence translated");
+    check(UVAcrylateRulePack::section11Note($t, false) !== UVAcrylateRulePack::section11Note($tEn, false), "{$lang} section 11 note translated");
 }
+check(!str_contains(strtolower(UVAcrylateRulePack::section11Note(new TranslationService('de'), false)), 'sensibilisator'), 'DE: no sensitizer claim without H317');
 
 echo "5. getPpeSupplement()\n";
 $ppe = UVAcrylateRulePack::getPpeSupplement($tEn);
@@ -147,11 +126,12 @@ check(str_contains($ppe['respiratory'] ?? '', '1910.134'), 'respiratory cites 29
 
 echo "6. Translation completeness (en/es/fr/de)\n";
 $keys = [
-    ['section4', 'uv_acrylate_note'], ['section5', 'uv_acrylate_note'], ['section6', 'uv_acrylate_note'],
-    ['section7', 'uv_acrylate_note'], ['section8', 'uv_respiratory'], ['section8', 'uv_hand_protection'],
+    ['section4', 'uv_skin'], ['section4', 'uv_skin_names'], ['section5', 'uv_specific_hazards'],
+    ['section6', 'uv_containment'], ['section7', 'uv_handling'], ['section7', 'uv_storage'],
+    ['section8', 'uv_respiratory'], ['section8', 'uv_hand_protection'],
     ['section8', 'uv_eye_protection'], ['section8', 'uv_skin_protection'], ['section10', 'cond_uv'],
     ['section11', 'uv_acrylate_note'], ['labels', 'uv_acrylate_note'],
-    ['section4', 'uv_acrylate_note_unclassified'], ['section11', 'uv_acrylate_note_unclassified'],
+    ['section11', 'uv_acrylate_note_unclassified'],
 ];
 // Audit #40 housekeeping: the old Section 10 keys section10() no longer reads are gone from every language.
 foreach (['en', 'es', 'fr', 'de'] as $lang) {
@@ -166,7 +146,10 @@ foreach (['en', 'es', 'fr', 'de'] as $lang) {
         $v = $trFile[$sec][$k] ?? null;
         check(is_string($v) && trim($v) !== '', "{$lang} {$sec}.{$k}", $v);
     }
-    check(str_contains((string) ($trFile['section4']['uv_acrylate_note'] ?? ''), ':names'), "{$lang} section4.uv_acrylate_note carries :names");
+    check(str_contains((string) ($trFile['section4']['uv_skin_names'] ?? ''), ':names'), "{$lang} section4.uv_skin_names carries :names");
+    foreach (['section4', 'section5', 'section6', 'section7'] as $s) {
+        check(!isset($trFile[$s]['uv_acrylate_note']), "{$lang} {$s}.uv_acrylate_note removed (#65)");
+    }
     foreach (['EB', 'SCBA', 'UV', 'NIOSH'] as $abbr) {
         $v = $trFile['section16']['abbreviation_table'][$abbr] ?? null;
         check(is_string($v) && $v !== '', "{$lang} abbreviation {$abbr}", $v);

@@ -175,7 +175,8 @@ foreach ($rows as $r) {
         }
         foreach ($kept as $k => $e) {
             $c = trim((string) ($e['cas_number'] ?? ''));
-            $kept[$k]['is_override'] = 0;
+            // #47: a legacy name-only entry (no CAS) keeps its typed values (Override on).
+            $kept[$k]['is_override'] = ($c === '' && trim((string) ($e['chemical_name'] ?? '')) !== '') ? 1 : 0;
             if ($c !== '' && isset($listByCas[$c])) {
                 $row = $listByCas[$c];
                 $kept[$k]['chemical_name']  = (string) $row['chemical_name'];

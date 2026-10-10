@@ -56,7 +56,7 @@ final class SDSPreviewResponse
     public static function filename(array $sdsData): string
     {
         $meta = is_array($sdsData['meta'] ?? null) ? $sdsData['meta'] : [];
-        $code = (string) preg_replace('/[^A-Za-z0-9_\-]/', '_', strip_pack_extension((string) ($meta['product_code'] ?? '')));
+        $code = (string) preg_replace('/[^A-Za-z0-9_\-]/', '_', (string) ($meta['product_code'] ?? '')); // Q9/#60: printed code, PL custom codes keep their hyphen
         $lang = (string) preg_replace('/[^a-z]/', '', strtolower((string) ($meta['language'] ?? 'en')));
         if ($lang === '') {
             $lang = 'en';

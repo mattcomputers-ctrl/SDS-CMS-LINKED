@@ -18,6 +18,12 @@ use SDS\Core\Database;
  * SDSGenerator::section13() derives them from the formula flash point and
  * the engine's H-codes.
  *
+ * Audit #12: metals present as compounds. cas_master.tc_metals (migration
+ * 057, seeded by CasTcMetalSeeder) lists the TC metals a CAS contains; the
+ * compound inherits every D row of the matching element CAS
+ * (TC_METAL_ELEMENT_CAS), so lead chromate reports D007 + D008 with the
+ * element TCLP limits. F/K/P/U rows of an element are never inherited.
+ *
  * Same shape as HAPService: analyse() is the DB entry point used by the
  * generator; match() is the pure core the DB-free tests exercise. The
  * result carries names and codes only — never a concentration (audit #42).
@@ -33,6 +39,16 @@ final class RCRAService
      * 0.5 mg/L), and the rcra_code_d wording is already conditional.
      */
     public const MIN_CONCENTRATION_PCT = 0.1;
+
+    /**
+     * Audit #12: element CAS of each TC metal (the 40 CFR 261.24 seed rows
+     * D004–D011 in rcra_waste_codes, migration 055). Keys follow
+     * CasElementFlagger::TC_METALS.
+     */
+    public const TC_METAL_ELEMENT_CAS = [
+        'As' => '7440-38-2', 'Ba' => '7440-39-3', 'Cd' => '7440-43-9', 'Cr' => '7440-47-3',
+        'Pb' => '7439-92-1', 'Hg' => '7439-97-6', 'Se' => '7782-49-2', 'Ag' => '7440-22-4',
+    ];
 
     /** Print order of the code kinds inside one component's parenthesis. */
     private const KIND_ORDER = ['D' => 0, 'F' => 1, 'K' => 2, 'P' => 3, 'U' => 4];
@@ -55,17 +71,42 @@ final class RCRAService
             return self::match($composition, []);
         }
 
-        $db           = Database::getInstance();
-        $placeholders = implode(',', array_fill(0, count($casList), '?'));
+        $db = Database::getInstance();
+
+        // Audit #12: TC metals present as compounds (cas_master.tc_metals,
+        // migration 057). A database without 057 yet simply gets no metal matches.
+        $metalsByCas = [];
+        try {
+            $ph = implode(',', array_fill(0, count($casList), '?'));
+            foreach ($db->fetchAll(
+                "SELECT cas_number, tc_metals FROM cas_master
+                 WHERE cas_number IN ({$ph}) AND tc_metals IS NOT NULL AND tc_metals <> ''",
+                array_keys($casList)
+            ) as $m) {
+                $metalsByCas[(string) $m['cas_number']] = (string) $m['tc_metals'];
+            }
+        } catch (\Throwable $e) {
+            $metalsByCas = [];
+        }
+
+        // Also load the element rows the flagged compounds inherit from.
+        $lookup = $casList;
+        foreach ($metalsByCas as $symbols) {
+            foreach (CasElementFlagger::parseTcMetals($symbols) as $sym) {
+                $lookup[self::TC_METAL_ELEMENT_CAS[$sym]] = true;
+            }
+        }
+
+        $placeholders = implode(',', array_fill(0, count($lookup), '?'));
         $rows         = $db->fetchAll(
             "SELECT cas_number, waste_code, description, kind, limit_mg_l
              FROM rcra_waste_codes
              WHERE cas_number IN ({$placeholders})
              ORDER BY cas_number, waste_code",
-            array_keys($casList)
+            array_keys($lookup)
         );
 
-        return self::match($composition, $rows);
+        return self::match($composition, $rows, $metalsByCas);
     }
 
     /**
@@ -74,6 +115,8 @@ final class RCRAService
      * @param  array $composition  rows with cas_number / chemical_name / concentration_pct /
      *                             is_trade_secret / trade_secret_description
      * @param  array $rows         rcra_waste_codes rows: cas_number, waste_code, description, kind, limit_mg_l
+     * @param  array $metalsByCas  audit #12: cas => TC metal symbols ("Cr,Pb" or ['Cr','Pb']);
+     *                             the CAS inherits every D row of those elements' CAS
      * @return array{
      *   components: list<array{cas_number:string, chemical_name:string, is_trade_secret:bool,
      *                          trade_secret_description:?string,
@@ -85,7 +128,7 @@ final class RCRAService
      * by code. The same CAS reached through several raw materials is one
      * component.
      */
-    public static function match(array $composition, array $rows): array
+    public static function match(array $composition, array $rows, array $metalsByCas = []): array
     {
         $byCas = [];
         foreach ($rows as $row) {
@@ -105,6 +148,23 @@ final class RCRAService
                 'description' => (string) ($row['description'] ?? ''),
                 'limit_mg_l'  => ($limit === null || $limit === '') ? null : (float) $limit,
             ];
+        }
+
+        // Audit #12: a compound inherits the D (toxicity-characteristic) row of
+        // every TC metal it contains; a code it already has directly is kept once.
+        foreach ($metalsByCas as $mCas => $symbols) {
+            $mCas = trim((string) $mCas);
+            if ($mCas === '' || $mCas === 'TRADE_SECRET') {
+                continue;
+            }
+            $list = is_array($symbols) ? implode(',', $symbols) : (string) $symbols;
+            foreach (CasElementFlagger::parseTcMetals($list) as $sym) {
+                foreach ($byCas[self::TC_METAL_ELEMENT_CAS[$sym]] ?? [] as $code => $c) {
+                    if ($c['kind'] === 'D' && !isset($byCas[$mCas][$code])) {
+                        $byCas[$mCas][$code] = $c;
+                    }
+                }
+            }
         }
         if ($byCas === []) {
             return ['components' => [], 'has_matches' => false];

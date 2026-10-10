@@ -4,14 +4,14 @@
  * SDSGenerator::section6() unit test (audit item #12, DB-free)
  *
  * Exercises the Section 6 accidental-release logic directly through Reflection:
- *   - personal precautions: acute tox. cat 1-3 / H314 REPLACE the base text,
- *     the flammable fragment (H220-H226, H228) is APPENDED; H227 does not fire;
- *   - environmental: drains sentence + aquatic tier sentence(s) + notify,
- *     never overstating (H400 acute, H401 toxic, H410 chronic 1 "very toxic",
- *     H411 chronic 2 "toxic", H402/H412/H413 harmful only when nothing
- *     stronger printed);
+ *   - personal precautions: acute tox. 1-3 / H314 replace the base text;
+ *     acute tox + H314 appends the corrosive fragment (#32); the flammable
+ *     fragment (H220-H226, H228) is APPENDED; H227/H250/H260/H261 add the ignition sentence instead;
+ *   - environmental: drains sentence + aquatic sentence(s) + notify: acute
+ *     (H400>H401>H402) and chronic (H410>H411>H412>H413) sentences chosen
+ *     independently; H412/H413 have their own sentences (#24);
  *   - containment keyed on the finished good's physical_state with liquid
- *     as the fallback for blank / Gas / custom states;
+ *     as the fallback for blank / custom states; Gas -> containment_gas;
  *   - a per-FG override replaces the whole field;
  *   - every new translation key exists in all four language files.
  *
@@ -93,7 +93,7 @@ check(
 check($s['containment'] === $tr('containment_liquid'), 'containment liquid', $s['containment']);
 
 // ---------------------------------------------------------------------
-echo "c. Flammable set: H226 / H228 append, H227 does not\n";
+echo "c. Flammable set: H226 / H228 append flammable, H227 appends ignition (#64)\n";
 foreach (['H226', 'H228'] as $code) {
     $s = $m->invoke($gen, $hz([$code]), $liquid, []);
     check(
@@ -103,7 +103,7 @@ foreach (['H226', 'H228'] as $code) {
     );
 }
 $s = $m->invoke($gen, $hz(['H227']), $liquid, []);
-check($s['personal_precautions'] === $tr('personal_precautions'), 'H227 alone -> base only', $s['personal_precautions']);
+check($s['personal_precautions'] === $tr('personal_precautions') . ' ' . $tr('precautions_ignition'), 'H227 alone -> base + ignition', $s['personal_precautions']);
 
 // ---------------------------------------------------------------------
 echo "d. Acute tox / corrosive precedence\n";
@@ -120,7 +120,9 @@ check(
     $s['personal_precautions']
 );
 $s = $m->invoke($gen, $hz(['H301', 'H314']), $liquid, []);
-check($s['personal_precautions'] === $tr('precautions_acute_toxic'), 'H301 + H314 -> acute_toxic wins', $s['personal_precautions']);
+check($s['personal_precautions'] === $tr('precautions_acute_toxic') . ' ' . $tr('precautions_corrosive_addon'), 'H301 + H314 -> acute_toxic + corrosive fragment (#32)', $s['personal_precautions']);
+$s = $m->invoke($gen, $hz(['H331', 'H314', 'H225']), $liquid, []);
+check($s['personal_precautions'] === $tr('precautions_acute_toxic') . ' ' . $tr('precautions_corrosive_addon') . ' ' . $tr('precautions_flammable'), 'H331 + H314 + H225 -> acute + corrosive + flammable', $s['personal_precautions']);
 
 // ---------------------------------------------------------------------
 echo "e. Aquatic tiers\n";
@@ -140,14 +142,13 @@ check($env(['H411']) === $base . ' ' . $tr('environmental_aquatic_chronic') . ' 
 check($env(['H410', 'H411']) === $base . ' ' . $tr('environmental_aquatic_chronic_very') . ' ' . $notify, 'H410 + H411 -> chronic_very only', $env(['H410', 'H411']));
 check($env(['H401']) === $base . ' ' . $tr('environmental_aquatic_acute_toxic') . ' ' . $notify, 'H401 -> acute_toxic', $env(['H401']));
 check($env(['H402']) === $base . ' ' . $tr('environmental_aquatic_harmful') . ' ' . $notify, 'H402 -> harmful', $env(['H402']));
-check($env(['H412']) === $base . ' ' . $tr('environmental_aquatic_harmful') . ' ' . $notify, 'H412 -> harmful', $env(['H412']));
-check($env(['H413']) === $base . ' ' . $tr('environmental_aquatic_harmful') . ' ' . $notify, 'H413 -> harmful', $env(['H413']));
+check($env(['H412']) === $base . ' ' . $tr('environmental_aquatic_chronic_harmful') . ' ' . $notify, 'H412 -> chronic harmful (with long lasting effects)', $env(['H412']));
+check($env(['H413']) === $base . ' ' . $tr('environmental_aquatic_chronic_may_harm') . ' ' . $notify && !str_contains($env(['H413']), 'Harmful to aquatic life'), 'H413 -> may cause long lasting harmful effects, never "Harmful to aquatic life"', $env(['H413']));
 $mixed1 = $env(['H400', 'H412']);
-check($mixed1 === $base . ' ' . $tr('environmental_aquatic_acute') . ' ' . $notify, 'H400 + H412 -> acute only', $mixed1);
-check(!str_contains($mixed1, 'Harmful'), 'H400 + H412 no Harmful', $mixed1);
+check($mixed1 === $base . ' ' . $tr('environmental_aquatic_acute') . ' ' . $tr('environmental_aquatic_chronic_harmful') . ' ' . $notify, 'H400 + H412 -> acute + chronic harmful (routes independent)', $mixed1);
 $mixed2 = $env(['H411', 'H402']);
-check($mixed2 === $base . ' ' . $tr('environmental_aquatic_chronic') . ' ' . $notify, 'H411 + H402 -> chronic only', $mixed2);
-check(!str_contains($mixed2, 'Harmful'), 'H411 + H402 no Harmful', $mixed2);
+check($mixed2 === $base . ' ' . $tr('environmental_aquatic_harmful') . ' ' . $tr('environmental_aquatic_chronic') . ' ' . $notify, 'H411 + H402 -> acute harmful + chronic toxic', $mixed2);
+check($env(['H411', 'H413']) === $base . ' ' . $tr('environmental_aquatic_chronic') . ' ' . $notify, 'H411 + H413 -> chronic toxic only (one sentence per route)', $env(['H411', 'H413']));
 $h412 = $env(['H412']);
 check(!str_contains($h412, 'Toxic') && !str_contains($h412, 'toxic to aquatic'), 'H412 never says toxic', $h412);
 
@@ -160,7 +161,7 @@ $cases = [
     ['POWDER ', 'containment_solid'],
     ['Gel',     'containment_paste'],
     ['Paste',   'containment_paste'],
-    ['Gas',     'containment_liquid'],
+    ['Gas',     'containment_gas'],
     ['',        'containment_liquid'],
     [null,      'containment_liquid'],
     ['Custom',  'containment_liquid'],
@@ -188,8 +189,13 @@ $keys = [
     'environmental_aquatic_chronic_very',
     'environmental_aquatic_chronic',
     'environmental_aquatic_harmful',
+    'environmental_aquatic_chronic_harmful',
+    'environmental_aquatic_chronic_may_harm',
+    'precautions_corrosive_addon',
     'environmental_notify',
     'containment_paste',
+    'precautions_ignition',
+    'containment_gas',
 ];
 foreach (['en', 'es', 'fr', 'de'] as $lang) {
     $trFile = require $basePath . '/templates/translations/' . $lang . '.php';

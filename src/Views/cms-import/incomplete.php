@@ -57,7 +57,7 @@
                     <td><strong><?= (int) ($rm['fg_total_count'] ?? 0) ?></strong></td>
                     <td><span class="text-muted"><?= (int) ($rm['fg_direct_count'] ?? 0) ?></span></td>
                     <td><?= e($rm['cms_item_code'] ?? '—') ?></td>
-                    <td><?= e($rm['created_at'] ?? '') ?></td>
+                    <td><?= e(\SDS\Services\PublishClock::display($rm['created_at'] ?? null, 'Y-m-d H:i:s')) ?></td>
                     <td>
                         <a href="/raw-materials/<?= (int) $rm['id'] ?>/edit" class="btn btn-sm btn-primary">Add Details</a>
                         <a href="/raw-materials/<?= (int) $rm['id'] ?>/constituents" class="btn btn-sm btn-outline">Constituents</a>

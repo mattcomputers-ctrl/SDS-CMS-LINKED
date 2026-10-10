@@ -58,7 +58,7 @@
                 <td>v<?= $ver ?></td>
                 <td><span class="badge badge-<?= $group['status'] ?>"><?= e($group['status']) ?></span></td>
                 <td><?= e($group['published_by']) ?></td>
-                <td><?= format_date($group['date'], 'm/d/Y H:i') ?></td>
+                <td><?= \SDS\Services\PublishClock::display($group['date'], 'm/d/Y H:i') ?></td>
                 <td>
                     <?php
                         $langLabels = ['en' => 'English', 'es' => 'Spanish', 'fr' => 'French', 'de' => 'German'];
@@ -146,7 +146,7 @@
                         <td>v<?= $ver ?></td>
                         <td><span class="badge badge-<?= $group['status'] ?>"><?= e($group['status']) ?></span></td>
                         <td><?= e($group['published_by']) ?></td>
-                        <td><?= format_date($group['date'], 'm/d/Y H:i') ?></td>
+                        <td><?= \SDS\Services\PublishClock::display($group['date'], 'm/d/Y H:i') ?></td>
                         <td>
                             <?php
                                 $langLabels = ['en' => 'English', 'es' => 'Spanish', 'fr' => 'French', 'de' => 'German'];

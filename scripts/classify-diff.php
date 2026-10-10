@@ -386,7 +386,25 @@ foreach ($idList as $sdsIdRaw) {
 
         // Classify
         $engine = new HazardEngine();
-        $result = $engine->classify($composition);
+        // Q3: live mode feeds the product flash point / IBP / state; snapshot
+        // mode has none (Flammable Liquids diffs are expected there).
+        $flamInputs = null;
+        if ($args['mode'] !== 'snapshot') {
+            try {
+                $fgId  = (int) $row['finished_good_id'];
+                $calc  = (new \SDS\Services\FormulaCalcService())->calculate($fgId);
+                $fgRow = \SDS\Models\FinishedGood::findById($fgId) ?? [];
+                $flamInputs = [
+                    'flash_point_c'            => $calc['formula_props']['flash_point_c'] ?? null,
+                    'flash_point_greater_than' => !empty($calc['formula_props']['flash_point_greater_than']),
+                    'boiling_point_c'          => $calc['formula_props']['boiling_point_c'] ?? null,
+                    'physical_state'           => \SDS\Services\SDSGenerator::resolvePhysicalState($fgRow, $calc),
+                ];
+            } catch (\Throwable $e) {
+                $flamInputs = null;
+            }
+        }
+        $result = $engine->classify($composition, null, $flamInputs);
 
         $old = snapshottedClassification($snapshot);
         $new = recomputedClassification($result);

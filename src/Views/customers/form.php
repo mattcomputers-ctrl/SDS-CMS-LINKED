@@ -226,7 +226,7 @@ $action = $isEdit ? '/customers/' . (int) $item['id'] : '/customers';
                 <td><?= e($log['product_code'] ?? '—') ?></td>
                 <td>v<?= (int) ($log['sds_version'] ?? 0) ?></td>
                 <td><?= e(strtoupper($log['language'] ?? 'en')) ?></td>
-                <td><?= e($log['sent_at'] ?? '') ?></td>
+                <td><?= e(\SDS\Services\PublishClock::display($log['sent_at'] ?? null, 'Y-m-d H:i:s')) ?></td>
                 <td><?= e($log['shipment_date'] ?? '—') ?></td>
             </tr>
         <?php endforeach; ?>

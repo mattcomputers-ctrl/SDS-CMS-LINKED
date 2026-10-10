@@ -7,13 +7,14 @@
  *     fallbacks; SDSGenerator::getDocumentStrings() translates exactly that
  *     key list in every language.
  *   - SDSDocumentStrings::resolve() falls back for missing AND empty values.
- *   - The dead labels (hazard_statements, health_hazard, revision_note) are
+ *   - The dead labels (health_hazard, revision_note) are
  *     gone from SDSGenerator::getLabels() and from all four language files,
  *     while the live keys they were confused with remain.
  *   - Every key getLabels() lists resolves in all four languages.
  *   - Source-text assertions: sds.voc_calc_mode is gone from the settings UI,
- *     config example and seed; the seed writes only real keys; auto-send
- *     delegates the missing-data gate to SDSReadinessService; the renderers
+ *     config example and seed; the seed writes only real keys; the manual
+ *     publish path delegates the missing-data gate to SDSReadinessService;
+ *     auto-send has no publish path; the renderers
  *     carry no inline document-string fallbacks.
  *
  * Same Reflection bootstrap as SDSGeneratorSection5Test.php. Run:
@@ -61,7 +62,10 @@ use SDS\Services\TranslationService;
 
 $languages    = ['en', 'es', 'fr', 'de'];
 $expectedKeys = ['title', 'section_prefix', 'page', 'page_of', 'revision_prefix', 'pdf_title', 'pdf_subject']; // #37: + PDF metadata
-$deadLabels   = ['hazard_statements', 'health_hazard', 'revision_note'];
+// batch E #40: 'hazard_statements' is live again (Section 2 list of
+// H-statements no class line carries), so it is no longer a dead label;
+// TranslationCompletenessTest / RendererTranslationParityTest cover it.
+$deadLabels   = ['health_hazard', 'revision_note'];
 
 // ---------------------------------------------------------------------------
 echo "\n[1] SDSDocumentStrings::DEFAULTS matches the EN document.* translations\n";
@@ -166,7 +170,8 @@ check(strpos($configExample, 'voc_calc_mode') === false, 'config.example.php: no
 $autoSend = $src('src/Services/SDSAutoSendService.php');
 check($autoSend !== '', 'SDSAutoSendService.php readable');
 check(strpos($autoSend, 'missing_threshold_pct') === false, 'SDSAutoSendService.php: no missing_threshold_pct');
-check(strpos($autoSend, 'SDSReadinessService::missingHazardDataError') !== false, 'SDSAutoSendService.php: delegates to SDSReadinessService::missingHazardDataError');
+check(strpos($autoSend, 'function canAutoPublish') === false, 'SDSAutoSendService.php: dead canAutoPublish() gate removed (#69); auto-send never publishes');
+check(strpos($src('src/Controllers/SDSController.php'), 'SDSReadinessService::missingHazardDataError') !== false, 'SDSController.php: delegates to SDSReadinessService::missingHazardDataError (Q11)');
 
 $fallbacks = ["?? 'SAFETY DATA SHEET'", "?? 'SECTION'", "?? 'Page'", "?? 'of'", "?? 'Rev.'"];
 foreach (['src/Services/SDSTcpdf.php', 'src/Services/PDFService.php', 'src/Views/sds/preview.php'] as $rel) {

@@ -234,7 +234,7 @@ class ProductFamily
     }
 
     /**
-     * Default text of one family for one language: requested language, then en, then ''.
+     * Default text of one family for one language: requested language, else '' (no EN fallback, finding #62).
      * @param string $field 'recommended_use' | 'restrictions'
      */
     public static function text(?array $family, string $field, string $lang): string
@@ -244,6 +244,6 @@ class ProductFamily
         }
         $col  = $field === 'restrictions' ? 'restrictions_json' : 'recommended_use_json';
         $map  = self::decodeLangJson($family[$col] ?? null);
-        return $map[$lang] ?? ($map['en'] ?? '');
+        return $map[$lang] ?? '';
     }
 }

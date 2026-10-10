@@ -35,7 +35,7 @@
                 <td><strong><?= e($r['product_name']) ?></strong></td>
                 <td><?= e($r['supplier']) ?: '<span class="text-muted">—</span>' ?></td>
                 <td><?= e($r['filename'] ?? '—') ?></td>
-                <td><?= $r['date'] ? e(date('m/d/Y', strtotime($r['date']))) : '<span class="text-muted">—</span>' ?></td>
+                <td><?= $r['date'] ? e(\SDS\Services\PublishClock::display($r['date'], 'm/d/Y')) : '<span class="text-muted">—</span>' ?></td>
                 <td>
                     <?php if ($r['sds_count'] > 1): ?>
                         <a href="<?= e($r['edit_url']) ?>" class="text-muted"><?= (int) $r['sds_count'] ?> version(s)</a>

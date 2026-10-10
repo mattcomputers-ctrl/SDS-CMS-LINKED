@@ -134,7 +134,7 @@ class SDSUpdateController
 
         // Find all active finished goods with a current formula and a published SDS
         $finishedGoods = $db->fetchAll(
-            "SELECT DISTINCT fg.id, fg.product_code,
+            "SELECT DISTINCT fg.id, fg.product_code, fg.updated_at AS fg_updated_at,
                     svmax.last_published
              FROM finished_goods fg
              INNER JOIN formulas f ON f.finished_good_id = fg.id AND f.is_current = 1
@@ -163,6 +163,20 @@ class SDSUpdateController
                 [$fgId]
             );
             if ($existing) {
+                continue;
+            }
+
+            // Audit #58 — product-level edits (SDS text, hazard override, printed
+            // finished-good columns) move finished_goods.updated_at.
+            if (!empty($fg['fg_updated_at']) && $fg['fg_updated_at'] > $lastPublished) {
+                $db->insert('sds_update_queue', [
+                    'finished_good_id' => $fgId,
+                    'reason'           => 'Product data or SDS text edited on ' . \SDS\Services\PublishClock::display($fg['fg_updated_at'], 'm/d/Y H:i'),
+                    'source_type'      => 'finished_good',
+                    'source_id'        => $fgId,
+                    'queued_by'        => $userId,
+                ]);
+                $queued++;
                 continue;
             }
 
@@ -290,7 +304,10 @@ class SDSUpdateController
         // Audit #2 — every standard SDS prints the company emergency phone.
         $phoneError = \SDS\Services\SDSReadinessService::companyEmergencyPhoneErrorFromDb($db);
         if ($phoneError !== null) {
-            $_SESSION['_flash']['error'] = $phoneError;
+            // Audit #68 — private-label documents print the manufacturer's own
+            // number; the PL-only button is not gated on the company phone.
+            $_SESSION['_flash']['error'] = $phoneError
+                . ' Private label SDSs print the manufacturer\'s own emergency number: "Republish Private Labels Only" still regenerates them.';
             redirect('/sds-updates');
         }
 
@@ -300,10 +317,22 @@ class SDSUpdateController
             if ($fg === null) {
                 continue;
             }
+            // Audit #69 — an inactive product is not published on any path.
+            $inactiveError = \SDS\Services\SDSReadinessService::inactiveFinishedGoodError($fg);
+            if ($inactiveError !== null) {
+                $failedCount++;
+                $errors[] = $fg['product_code'] . ': ' . $inactiveError;
+                continue;
+            }
 
             try {
                 $generator = new SDSGenerator();
                 $baseData = $generator->computeBase($fgId);
+                // Audit #13 / decision Q4: same gate as SDSController::publish; lands in $errors[] via the catch below.
+                $tsProp65Error = \SDS\Services\SDSReadinessService::tradeSecretProp65Error($baseData['prop65Result'] ?? []);
+                if ($tsProp65Error !== null) {
+                    throw new \RuntimeException($tsProp65Error);
+                }
 
                 // Determine next version BEFORE rendering so the PDFs are
                 // named {code}_v{n}[_{lang}].pdf (meta.sds_version); the
@@ -315,16 +344,24 @@ class SDSUpdateController
                 $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
 
                 // Generate all languages
-                $effectiveDate = date('Y-m-d');
+                $effectiveDate = \SDS\Services\PublishClock::todayLocal();
                 $langData = [];
                 foreach ($languages as $lang) {
                     $langData[$lang] = $generator->generateFromBase($baseData, $lang);
-                    // Audit #27 — same gate as SDSController::publish; lands in $errors[] via the catch below.
+                    // Same gates and order as SDSController::publish: Q11/#28 missing
+                    // hazard data, then #27 transport. A block lands in $errors[] via
+                    // the catch below and leaves the queue row pending.
                     if ($lang === $languages[0]) {
-                        $transportError = \SDS\Services\SDSReadinessService::transportNotDeterminedError($langData[$lang]);
-                        if ($transportError !== null) {
-                            throw new \RuntimeException($transportError);
+                        $blockError = \SDS\Services\SDSReadinessService::missingHazardDataError($langData[$lang], $db);
+                        if ($blockError !== null) {
+                            throw new \RuntimeException($blockError);
                         }
+                    }
+                    // Finding #6: Section 14 overrides are stored per language, so the
+                    // transport gate runs on EVERY language. No PDF is rendered yet.
+                    $transportError = \SDS\Services\SDSReadinessService::transportNotDeterminedError($langData[$lang]);
+                    if ($transportError !== null) {
+                        throw new \RuntimeException($transportError);
                     }
                     $langData[$lang] = SDSGenerator::stampPublishedVersion($langData[$lang], $nextVersion, $effectiveDate);
                 }
@@ -332,7 +369,7 @@ class SDSUpdateController
                 // Generate PDFs in parallel
                 $pdfResults = $this->generatePdfsInParallel($langData);
 
-                $now = date('Y-m-d H:i:s');
+                $now = \SDS\Services\PublishClock::nowUtc();
 
                 // Check every language before the first insert so a partial
                 // failure leaves no orphan {code}_v{n}[_{lang}].pdf behind (the
@@ -358,7 +395,7 @@ class SDSUpdateController
                         'effective_date'   => $effectiveDate,
                         'published_by'     => $userId,
                         'published_at'     => $now,
-                        'snapshot_json'    => json_encode($langData[$lang], JSON_UNESCAPED_UNICODE),
+                        'snapshot_json'    => \SDS\Services\SDSGenerator::snapshotJson($langData[$lang]),
                         'pdf_path'         => $relativePath,
                         'change_summary'   => 'Republished via SDS Update Required',
                         'created_by'       => $userId,
@@ -651,7 +688,7 @@ class SDSUpdateController
                 [(int) $alias['id']]
             );
             $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
-            $effectiveDate = substr($now, 0, 10);
+            $effectiveDate = \SDS\Services\PublishClock::localDateOfUtc($now);
 
             $aliasLangData = [];
             foreach ($langData as $lang => $sdsData) {
@@ -681,7 +718,7 @@ class SDSUpdateController
                     'effective_date'   => $effectiveDate,
                     'published_by'     => $userId,
                     'published_at'     => $now,
-                    'snapshot_json'    => json_encode($aliasSds, JSON_UNESCAPED_UNICODE),
+                    'snapshot_json'    => \SDS\Services\SDSGenerator::snapshotJson($aliasSds),
                     'pdf_path'         => $relativePath,
                     'change_summary'   => 'Republished via SDS Update Required (alias)',
                     'created_by'       => $userId,

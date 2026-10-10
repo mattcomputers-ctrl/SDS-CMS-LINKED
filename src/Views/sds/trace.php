@@ -4,7 +4,7 @@
 
 <div class="card">
     <h2>Version <?= (int) $version['version'] ?> (<?= e($version['language']) ?>) — <?= e($version['product_code']) ?></h2>
-    <p class="text-muted">Published <?= format_date($version['published_at'], 'm/d/Y H:i') ?></p>
+    <p class="text-muted">Published <?= \SDS\Services\PublishClock::display($version['published_at'], 'm/d/Y H:i') ?></p>
 </div>
 
 <div class="card">

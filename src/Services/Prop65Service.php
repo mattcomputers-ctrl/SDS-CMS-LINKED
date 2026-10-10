@@ -70,6 +70,52 @@ class Prop65Service
      */
     public const DEFAULT_AUTO_TRACE_THRESHOLD_PCT = 0.1;
 
+    /** OEHHA reproductive listing types (normalised vocabulary). */
+    private const REPRO_TYPES = ['developmental', 'reproductive', 'female reproductive', 'male reproductive'];
+
+    /**
+     * Finding #47: listing types compared case-insensitively. Accepts the
+     * list's comma string or an array; lower-cases, trims, collapses spaces,
+     * strips a trailing " toxicity", maps OEHHA's short 'female' / 'male',
+     * drops blanks and duplicates.
+     *
+     * @param string|array $types
+     * @return string[]
+     */
+    public static function normaliseTypes($types): array
+    {
+        if (is_string($types)) {
+            $types = explode(',', $types);
+        }
+        $out = [];
+        foreach ((array) $types as $t) {
+            $t = strtolower(trim((string) preg_replace('/\s+/u', ' ', (string) $t)));
+            $t = (string) preg_replace('/ toxicity$/', '', $t);
+            if ($t === 'female') {
+                $t = 'female reproductive';
+            } elseif ($t === 'male') {
+                $t = 'male reproductive';
+            }
+            if ($t !== '' && !in_array($t, $out, true)) {
+                $out[] = $t;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Finding #47: a manual entry with a chemical name but no CAS and no
+     * Override tick (migration 015's copy of the legacy single-entry fields,
+     * or a row typed before the CAS-driven form) has nothing to look up on the
+     * public list, so its typed name and types are used as given.
+     */
+    public static function isLegacyNameOnly(array $manual): bool
+    {
+        return empty($manual['is_override'])
+            && trim((string) ($manual['cas_number'] ?? '')) === ''
+            && trim((string) ($manual['chemical_name'] ?? '')) !== '';
+    }
+
     /**
      * Return the Prop 65 auto-trace threshold in percent as configured
      * by the admin, falling back to the class default.
@@ -137,6 +183,7 @@ class Prop65Service
      *   repro_chemicals: string[] names of repro-listed chemicals,
      *   requires_warning: bool,
      *   warning_text: string,
+     *   trade_secret_conflicts: list of {cas_number, chemical_name, raw_materials[]} (Q4; never printed),
      * }
      */
     public static function analyse(array $composition, array $manualEntries = []): array
@@ -152,13 +199,22 @@ class Prop65Service
         // false = at least one non-trace occurrence exists
         $traceStatus = [];
 
+        // Audit #13 / owner decision Q4: vendor trade secrets are never Prop 65
+        // chemicals, and a Prop 65 chemical must be named. A trade-secret
+        // constituent matching the list is kept OUT of every printed key and
+        // recorded in trade_secret_conflicts (operator data; any entry blocks
+        // publishing via SDSReadinessService::tradeSecretProp65Error()).
+        $tradeSecretCas = self::tradeSecretCasSet($composition);
+        $tsConflicts    = [];
+
         // Check CAS-level composition against the Prop 65 database
         foreach ($composition as $component) {
             $cas  = $component['cas_number'] ?? '';
             $name = $component['chemical_name'] ?? '';
             $conc = (float) ($component['concentration_pct'] ?? 0);
 
-            if ($cas === '' || $conc < 0.01) {
+            // A trade-secret constituent is checked at any concentration (Q4).
+            if ($cas === '' || ($conc < 0.01 && !isset($tradeSecretCas[$cas]))) {
                 continue;
             }
 
@@ -171,7 +227,12 @@ class Prop65Service
                 continue;
             }
 
-            $types = array_map('trim', explode(',', $row['toxicity_type']));
+            if (isset($tradeSecretCas[$cas])) {
+                $tsConflicts[$cas] = self::tradeSecretConflictEntry($cas, (string) ($row['chemical_name'] ?? ''), $tradeSecretCas[$cas]);
+                continue; // never listed, never in the warning text
+            }
+
+            $types = self::normaliseTypes((string) $row['toxicity_type']);   // #47 case-insensitive
 
             // The Prop 65 list is the authoritative source for the chemical's
             // display name in warnings — prefer it over the composition /
@@ -197,10 +258,10 @@ class Prop65Service
             $autoIsTrace = $conc < $autoTraceLimit;
             self::updateTraceStatus($traceStatus, $displayName, $autoIsTrace);
 
-            if (in_array('cancer', $types)) {
+            if (in_array('cancer', $types, true)) {
                 $cancerChemicals[] = $displayName;
             }
-            if (array_intersect(['developmental', 'reproductive', 'female reproductive', 'male reproductive'], $types)) {
+            if (array_intersect(self::REPRO_TYPES, $types)) {
                 $reproChemicals[] = $displayName;
             }
         }
@@ -216,8 +277,14 @@ class Prop65Service
         // different classification.
         foreach ($manualEntries as $manual) {
             $cas        = trim((string) ($manual['cas_number'] ?? ''));
-            $isOverride = !empty($manual['is_override']);
+            // #47: a legacy name-only entry (no CAS, no Override tick) is used as typed.
+            $isOverride = !empty($manual['is_override']) || self::isLegacyNameOnly($manual);
             $isTrace    = !empty($manual['is_trace']);
+            if ($cas !== '' && isset($tradeSecretCas[$cas])) {
+                $tsConflicts[$cas] = $tsConflicts[$cas]
+                    ?? self::tradeSecretConflictEntry($cas, (string) ($manual['chemical_name'] ?? ''), $tradeSecretCas[$cas]);
+                continue;
+            }
 
             $chemName = '';
             $types    = [];
@@ -225,11 +292,7 @@ class Prop65Service
             if ($isOverride) {
                 // Use exactly what the operator stored.
                 $chemName = trim((string) ($manual['chemical_name'] ?? ''));
-                $types    = $manual['toxicity_type'] ?? [];
-                if (is_string($types)) {
-                    $types = array_map('trim', explode(',', $types));
-                }
-                $types = array_values(array_filter($types));
+                $types    = self::normaliseTypes($manual['toxicity_type'] ?? []);
             } else {
                 // Derive from the public list. If the CAS isn't on the
                 // list, skip — the operator's typed data isn't trusted
@@ -245,10 +308,7 @@ class Prop65Service
                     continue;
                 }
                 $chemName = (string) $row['chemical_name'];
-                $types    = array_values(array_filter(array_map(
-                    'trim',
-                    explode(',', (string) $row['toxicity_type'])
-                )));
+                $types    = self::normaliseTypes((string) $row['toxicity_type']);
             }
 
             if ($chemName === '') {
@@ -270,7 +330,7 @@ class Prop65Service
             if (in_array('cancer', $types, true)) {
                 $cancerChemicals[] = $chemName;
             }
-            if (array_intersect(['developmental', 'reproductive', 'female reproductive', 'male reproductive'], $types)) {
+            if (array_intersect(self::REPRO_TYPES, $types)) {
                 $reproChemicals[] = $chemName;
             }
         }
@@ -300,6 +360,54 @@ class Prop65Service
             'repro_chemicals'   => $reproChemicals,
             'requires_warning'  => $requiresWarning,
             'warning_text'      => $warningText,
+            'trade_secret_conflicts' => array_values($tsConflicts),  // Q4: operator data only
+        ];
+    }
+
+    /**
+     * Audit #13 / owner decision Q4: trade-secret constituents of a composition
+     * that carry a real CAS, keyed by CAS (the TRADE_SECRET placeholder bucket
+     * has no CAS and is excluded). Pure; used by analyse() and the tests.
+     *
+     * @return array<string, array>
+     */
+    public static function tradeSecretCasSet(array $composition): array
+    {
+        $out = [];
+        foreach ($composition as $component) {
+            $cas = trim((string) ($component['cas_number'] ?? ''));
+            if ($cas === '' || $cas === 'TRADE_SECRET' || empty($component['is_trade_secret'])) {
+                continue;
+            }
+            $out[$cas] = $component;
+        }
+        return $out;
+    }
+
+    /**
+     * One trade_secret_conflicts entry: list name (else the composition name),
+     * CAS, and the raw materials that declare it trade secret (all
+     * contributing raw materials when the row has no per-material flag).
+     * Operator data only; never printed on the sheet.
+     */
+    public static function tradeSecretConflictEntry(string $cas, string $listName, array $component): array
+    {
+        $flagged = [];
+        $all     = [];
+        foreach ($component['contributing_materials'] ?? [] as $m) {
+            $code = trim((string) ($m['internal_code'] ?? ''));
+            if ($code === '') {
+                continue;
+            }
+            $all[$code] = true;
+            if (!empty($m['is_trade_secret'])) {
+                $flagged[$code] = true;
+            }
+        }
+        return [
+            'cas_number'    => $cas,
+            'chemical_name' => $listName !== '' ? $listName : (string) ($component['chemical_name'] ?? ''),
+            'raw_materials' => array_keys($flagged !== [] ? $flagged : $all),
         ];
     }
 

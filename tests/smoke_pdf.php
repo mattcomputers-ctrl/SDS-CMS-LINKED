@@ -13,7 +13,7 @@ $bp->setAccessible(true);
 $bp->setValue(null, dirname(__DIR__));
 
 // Per-run output directory. The checks below assert exact fixed basenames
-// (TEST_v3_en.pdf, ..._v2_en.pdf, the [8b] stem), and reserveUniquePath()
+// (TEST-001_v3.pdf, ..._v2.pdf, the [8b] stem), and reserveUniquePath()
 // hands out _2/_3 across processes, so a concurrent run or a leftover from a
 // killed run in the shared storage/temp would fail them spuriously. The
 // random component is what isolates runs: php is PID 1 in every Docker
@@ -62,10 +62,13 @@ $sdsData = [
             'is_classified' => true,
             'signal_word_en' => 'Warning',
             'pictograms'  => ['GHS07', 'GHS09'],
+            // h_codes as HazardEngine::classify() stamps them on each class
+            // entry (batch E #40: an H-statement no class line carries prints
+            // in its own Section 2 list, so the fixture mirrors real output).
             'hazard_classes' => [
-                ['class' => 'Skin Irritation', 'category' => 'Category 2'],
-                ['class' => 'Eye Irritation', 'category' => 'Category 2A'],
-                ['class' => 'Aquatic Toxicity', 'category' => 'Chronic Category 2'],
+                ['class' => 'Skin Irritation', 'category' => 'Category 2', 'h_codes' => ['H315']],
+                ['class' => 'Eye Irritation', 'category' => 'Category 2A', 'h_codes' => ['H319']],
+                ['class' => 'Aquatic Toxicity', 'category' => 'Chronic Category 2', 'h_codes' => ['H411']],
             ],
             'h_statements' => [
                 ['code' => 'H315', 'text' => 'Causes skin irritation'],
@@ -163,6 +166,8 @@ $sdsData = [
         ],
         11 => [
             'title'           => 'Toxicological Information',
+            'routes_of_exposure' => 'Skin Contact, Eye Contact.', // Q8
+            'symptoms'        => 'Acute: Causes skin irritation.',  // Q8
             'acute_toxicity'  => "Acute toxicity (oral): Not classified based on available data.\nAcute toxicity (dermal): Not classified based on available data.\nAcute toxicity (inhalation): Not classified based on available data.",
             'chronic_effects' => 'Prolonged exposure may cause skin drying.',
             'carcinogenicity' => 'No listed carcinogens.',
@@ -224,6 +229,16 @@ $sdsData = [
                         'sara_name'           => 'Toluene',
                         'status'              => 'reportable',
                     ],
+                    [
+                        'cas_number'          => '7439-92-1',
+                        'chemical_name'       => 'Lead',
+                        'concentration_range' => '<0.1%',
+                        'threshold_pct'       => 0.0,
+                        'is_pbt'              => true,
+                        'category_code'       => null,
+                        'sara_name'           => 'Lead',
+                        'status'              => 'reportable',
+                    ],
                 ],
             ],
             'prop65' => [
@@ -234,7 +249,7 @@ $sdsData = [
             'hap' => [
                 'has_haps'      => true,
                 'hap_chemicals' => [['cas_number' => '108-88-3', 'chemical_name' => 'Toluene', 'hap_name' => 'Toluene', 'concentration_range' => '1 - 5%']],
-                'total_hap_pct' => 4.5,
+                'total_hap_range' => '1 - 5%',
             ],
             'state_regs' => '',
             'ghs_note'   => 'Sections 12-15 are included as required by 29 CFR 1910.1200(g)(2); content not enforced by OSHA.',
@@ -341,7 +356,7 @@ try {
         // Filenames: {code}_SDS_{lang}_{Ymd_His}.pdf, no random suffix, and a
         // second render in the same second must get "_2" rather than
         // overwriting the first file.
-        $namePattern = '/^TEST_SDS_en_\d{8}_\d{6}(_\d+)?\.pdf$/';
+        $namePattern = '/^TEST-001_SDS_en_\d{8}_\d{6}(_\d+)?\.pdf$/';
         $firstSize   = filesize($pdfPath);
         $pdfPath2    = $pdfService->generate($sdsData, $outputDir);
         $created[]   = $pdfPath2;
@@ -398,7 +413,8 @@ try {
             $sdsData,
             'ACME01',
             'Acme Private Label Ink',
-            ['name' => 'Acme Printing Inks', 'emergency_phone' => 'Acme 24-hr: (800) 555-0199']
+            // 'phone' set: a blank supplier phone adds its own warning (audit #68).
+            ['name' => 'Acme Printing Inks', 'emergency_phone' => 'Acme 24-hr: (800) 555-0199', 'phone' => '555-0100']
         );
         $noPhoneWarned = false;
         foreach ($plNoPhone['warnings'] ?? [] as $w) {
@@ -446,7 +462,7 @@ try {
         }
         $vPath = $pdfService->generate($vData, $outputDir);
         $created[] = $vPath;
-        if (basename($vPath) === 'TEST_v3.pdf' && file_exists($vPath) && filesize($vPath) > 1024) {
+        if (basename($vPath) === 'TEST-001_v3.pdf' && file_exists($vPath) && filesize($vPath) > 1024) {
             echo "[10] Versioned filename: PASS (" . basename($vPath) . ")\n";
         } else {
             echo "[10] FAIL: versioned filename: " . basename($vPath) . "\n";
@@ -465,13 +481,25 @@ try {
             $failed = true;
         }
 
+        // [11b] Q9/#60: a private-label custom code is never cut at a hyphen.
+        $plHy = \SDS\Services\SDSGenerator::createPrivateLabelVariant($sdsData, 'ABC-123', 'Acme Hyphen Ink', ['name' => 'Acme Printing Inks']);
+        $plHy['meta']['sds_version'] = 2;
+        $plHyPath = $pdfService->generate($plHy, $outputDir);
+        $created[] = $plHyPath;
+        if (basename($plHyPath) === 'ABC-123_PL_Acme_Printing_Inks_v2.pdf' && file_exists($plHyPath)) {
+            echo "[11b] PL custom code keeps its hyphen: PASS (" . basename($plHyPath) . ")\n";
+        } else {
+            echo "[11b] FAIL: PL hyphen code filename: " . basename($plHyPath) . "\n";
+            $failed = true;
+        }
+
         // Re-rendering the same version must not overwrite: _2 suffix, first
         // file untouched.
         $vSize  = filesize($vPath);
         $vPath2 = $pdfService->generate($vData, $outputDir);
         $created[] = $vPath2;
         clearstatcache();
-        if (basename($vPath2) === 'TEST_v3_2.pdf' && file_exists($vPath2) && filesize($vPath) === $vSize) {
+        if (basename($vPath2) === 'TEST-001_v3_2.pdf' && file_exists($vPath2) && filesize($vPath) === $vSize) {
             echo "[12] Same-version re-render gets _2, first file unchanged: PASS\n";
         } else {
             echo "[12] FAIL: re-render: " . basename($vPath2) . " (first size " . $vSize . " -> " . filesize($vPath) . ")\n";
@@ -483,7 +511,7 @@ try {
         $vEs['meta']['language'] = 'es';
         $vEsPath = $pdfService->generate($vEs, $outputDir);
         $created[] = $vEsPath;
-        if (basename($vEsPath) === 'TEST_v3_es.pdf' && file_exists($vEsPath)) {
+        if (basename($vEsPath) === 'TEST-001_v3_es.pdf' && file_exists($vEsPath)) {
             echo "[13] Non-default language keeps suffix: PASS (" . basename($vEsPath) . ")\n";
         } else {
             echo "[13] FAIL: non-default language filename: " . basename($vEsPath) . "\n";

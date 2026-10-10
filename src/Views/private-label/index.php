@@ -91,7 +91,7 @@
                 </td>
                 <td>
                     <?php if (!empty($m['last_published'])): ?>
-                        <?= format_date((string) $m['last_published'], 'm/d/Y g:i A') ?>
+                        <?= \SDS\Services\PublishClock::display((string) $m['last_published'], 'm/d/Y g:i A') ?>
                     <?php else: ?>
                         <span class="text-muted">&mdash;</span>
                     <?php endif; ?>

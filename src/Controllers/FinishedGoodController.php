@@ -48,8 +48,8 @@ class FinishedGoodController
         $families       = $this->loadProductFamilies();
         $physicalStates = $this->loadPhysicalStates();
         $colorOptions   = $this->loadColorOptions();
-        // Pre-fill with default recommended use / restrictions from settings
-        $defaults = $this->loadDefaultUseSettings();
+        // Audit #48: no pre-fill — blank use text lets the product family's
+        // per-language text (or the translated standard sentence) print.
 
         // Restore formula lines from flash data if returning from a validation error
         $oldFormula = $_SESSION['_flash']['_old_formula'] ?? null;
@@ -61,7 +61,7 @@ class FinishedGoodController
 
         view('finished-goods/form', [
             'pageTitle'      => 'Add Finished Good',
-            'item'           => $defaults,
+            'item'           => [],
             'mode'           => 'create',
             'families'       => $families,
             'physicalStates' => $physicalStates,
@@ -189,6 +189,19 @@ class FinishedGoodController
                 $this->bumpSdsStalenessForTransportChange((int) $id, current_user_id());
             }
 
+            // Audit #58 — a printed finished-good column changed: list the product
+            // on SDS Updates (finished_goods.updated_at already moved with the row,
+            // which is what bulk publish reads).
+            $sdsColumns = \SDS\Services\ProductStaleness::sdsColumnsChanged($diff);
+            if ($sdsColumns !== []) {
+                \SDS\Services\ProductStaleness::markFinishedGood(
+                    \SDS\Core\Database::getInstance(),
+                    (int) $id,
+                    'Product data edited: ' . implode(', ', $sdsColumns),
+                    current_user_id()
+                );
+            }
+
             // Save formula (already validated above)
             if (!empty($formulaLines)) {
                 $this->saveFormulaLines((int) $id, $formulaLines);
@@ -232,12 +245,14 @@ class FinishedGoodController
         $rationale = trim((string) ($_POST['hazard_override_rationale'] ?? ''));
 
         $payload = [];
+        $rawP = '';
         if ($mode !== 'none') {
             $payload['hazard_classes'] = $this->parseOverrideHazardClasses(
                 (string) ($_POST['hazard_override_classes'] ?? '')
             );
             $payload['h_statements']   = trim((string) ($_POST['hazard_override_h_codes']    ?? ''));
-            $payload['p_statements']   = trim((string) ($_POST['hazard_override_p_codes']    ?? ''));
+            $rawP = trim((string) ($_POST['hazard_override_p_codes'] ?? ''));
+            $payload['p_statements']   = \SDS\Services\GHSStatements::normalisePCodeList($rawP); // #39: P281 -> P280
             $payload['pictograms']     = trim((string) ($_POST['hazard_override_pictograms'] ?? ''));
             $payload['signal_word']    = trim((string) ($_POST['hazard_override_signal']     ?? ''));
         }
@@ -249,9 +264,16 @@ class FinishedGoodController
                 'rationale' => $rationale,
                 'payload'   => $payload,
             ]);
+            // Audit #58 — the classification prints on the SDS: mark it stale.
+            \SDS\Services\ProductStaleness::markFinishedGood(
+                \SDS\Core\Database::getInstance(),
+                $fgId,
+                $mode === 'none' ? 'Hazard override cleared' : "Hazard override saved ({$mode})",
+                current_user_id()
+            );
             $_SESSION['_flash']['success'] = $mode === 'none'
                 ? 'Hazard override cleared.'
-                : "Hazard override saved in '{$mode}' mode.";
+                : "Hazard override saved in '{$mode}' mode." . (preg_match('/\bP281\b/i', $rawP) ? ' P281 was withdrawn in GHS Rev. 6 and was saved as P280.' : '');
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = $e->getMessage();
         }
@@ -424,21 +446,6 @@ class FinishedGoodController
         return [
             'lines' => $lines,
             'notes' => $oldFormula['formula_notes'] ?? '',
-        ];
-    }
-
-    /**
-     * Load default recommended use / restrictions from settings for new finished goods.
-     */
-    private function loadDefaultUseSettings(): array
-    {
-        $db  = \SDS\Core\Database::getInstance();
-        $recRow = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'sds.default_recommended_use'");
-        $resRow = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'sds.default_restrictions_on_use'");
-
-        return [
-            'recommended_use'     => $recRow['value'] ?? '',
-            'restrictions_on_use' => $resRow['value'] ?? '',
         ];
     }
 

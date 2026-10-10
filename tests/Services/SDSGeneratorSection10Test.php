@@ -97,7 +97,8 @@ check($s['stability'] === $tr('stability'), 'stability legacy', $s['stability'])
 check($s['conditions_avoid'] === 'Excessive heat, contact with strong oxidizing agents.', 'conditions default', $s['conditions_avoid']);
 check(!str_contains($s['conditions_avoid'], 'flame') && !str_contains($s['conditions_avoid'], 'spark'), 'no ignition wording without ignition class');
 check($s['decomposition'] === $tr('decomposition'), 'decomposition legacy', $s['decomposition']);
-check($s['incompatible'] === $tr('incompatible'), 'incompatible legacy', $s['incompatible']);
+// Finding #70: dead key section10.incompatible deleted; compare with its last text.
+check($s['incompatible'] === 'Strong oxidizing agents, strong acids, strong bases.', 'incompatible legacy', $s['incompatible']);
 $two = $s10->invoke($gen, $hz([]), []);
 check($two === $s, 'two-argument call equals defaults');
 
@@ -132,7 +133,7 @@ check($s['reactivity'] === $tr('reactivity_water_reactive'), 'reactivity water-r
 check($s['stability'] === $unstable(['water_reactive']), 'stability unstable (water-reactive)', $s['stability']);
 check(str_contains($s['conditions_avoid'], $tr('cond_water')), 'conditions has water');
 check(!str_contains($s['conditions_avoid'], $tr('cond_air')), 'conditions lacks air');
-check(!str_contains($s['conditions_avoid'], $tr('cond_ignition')), 'conditions lacks ignition');
+check(str_contains($s['conditions_avoid'], $tr('cond_ignition')), '#34 water-reactive avoids ignition sources');
 
 // ---------------------------------------------------------------------
 echo "f. Combined H242 + H261 + H226\n";
@@ -153,14 +154,28 @@ check(!str_contains($s['conditions_avoid'], $tr('cond_oxidizers')), 'conditions 
 check($s['stability'] === $tr('stability'), 'stability legacy');
 check($s['incompatible'] === 'Combustible materials, reducing agents, organic materials, metals in powder form, strong acids, strong bases.', 'incompatible unchanged from #13', $s['incompatible']);
 check(str_contains($run(['H270'])['conditions_avoid'], $tr('cond_combustibles')), 'H270 (oxidizing gas) also an oxidizer');
+check($s['reactivity'] === $tr('reactivity_oxidizer'), '#34 oxidizer reactivity', $s['reactivity']);
+check(str_contains($s['conditions_avoid'], $tr('cond_ignition')), '#34 oxidizer avoids ignition sources');
 
 // ---------------------------------------------------------------------
 echo "h. H251 self-heating\n";
 $s = $run(['H251']);
 check(str_contains($s['conditions_avoid'], $tr('cond_storage_temp')), 'conditions has storage temp', $s['conditions_avoid']);
 check(!str_contains($s['conditions_avoid'], $tr('cond_ignition')), 'conditions lacks ignition');
-check($s['stability'] === $tr('stability'), 'stability legacy');
-check($s['reactivity'] === $tr('reactivity'), 'reactivity legacy');
+check($s['stability'] === $unstable(['self_heating']), '#34 self-heating unstable', $s['stability']);
+check($s['reactivity'] === $tr('reactivity_self_heating'), '#34 self-heating reactivity');
+
+// ---------------------------------------------------------------------
+echo "h2. #34 explosive / unstable gas / organic peroxide / oxidizer combinations\n";
+$s = $run(['H201']);
+check($s['reactivity'] === $tr('reactivity_explosive') && $s['stability'] === $unstable(['explosive']), 'explosive', $s);
+check($inOrder($s['conditions_avoid'], [$tr('cond_heat'), $tr('cond_ignition'), $tr('cond_shock'), $tr('cond_oxidizers')]), 'explosive conditions', $s['conditions_avoid']);
+$s = $run(['H231']);
+check($s['reactivity'] === $tr('reactivity_unstable_gas') && $s['stability'] === $unstable(['unstable_gas']), 'unstable gas', $s);
+$s = $run(['H241']);
+check(str_contains($s['reactivity'], 'organic peroxide'), 'H241 wording covers organic peroxides', $s['reactivity']);
+$s = $run(['H272', 'H242']);
+check($s['reactivity'] === $tr('reactivity_self_reactive') . ' ' . $tr('reactivity_oxidizer') && $s['stability'] === $unstable(['self_reactive']), 'oxidizer never makes Stability unstable', $s);
 
 // ---------------------------------------------------------------------
 echo "i. Decomposition products from element flags\n";
@@ -237,6 +252,15 @@ foreach (['en', 'es', 'fr', 'de'] as $lang) {
     foreach (['decomposition_nitrogen', 'decomposition_sulfur', 'decomposition_halogen'] as $k) {
         check(is_string($sec[$k] ?? null) && $sec[$k] !== '', "{$lang}: legacy {$k} still present");
     }
+    // #34 keys
+    $missing34 = [];
+    foreach (['reactivity_explosive', 'reactivity_oxidizer', 'reactivity_self_heating', 'reactivity_unstable_gas',
+              'stability_cond_explosive', 'stability_cond_self_heating', 'stability_cond_unstable_gas'] as $k) {
+        if (!is_string($sec[$k] ?? null) || $sec[$k] === '') {
+            $missing34[] = $k;
+        }
+    }
+    check($missing34 === [], "{$lang}: #34 reactive-class keys present and non-empty", $missing34);
 }
 
 // ---------------------------------------------------------------------

@@ -171,7 +171,7 @@ check(str_contains($r['specific_hazards'], 'Flash point: 0 °C (32 °F).'), 'fp 
 echo "g. Overrides win\n";
 $ov = [5 => ['suitable_media' => 'A', 'unsuitable_media' => 'B', 'specific_hazards' => 'C', 'firefighter_advice' => 'D']];
 $r = $s5->invoke($gen, $calc(-4.0), $hz(['H224', 'H260']), $ov);
-check($r['suitable_media'] === 'A' && $r['unsuitable_media'] === 'B' && $r['specific_hazards'] === 'C' && $r['firefighter_advice'] === 'D', 'all four overrides applied', $r);
+check($r['suitable_media'] === 'A' && $r['unsuitable_media'] === 'B' && $r['specific_hazards'] === 'C Flash point: -4 °C (24.8 °F).' && $r['firefighter_advice'] === 'D', 'all four overrides applied; #35 the current flash point sentence is appended to the Specific Hazards edit', $r);
 
 // ---------------------------------------------------------------------
 echo "g2. Section 9 flash_point override is the value Section 5 embeds\n";

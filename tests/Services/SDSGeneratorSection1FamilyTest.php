@@ -6,8 +6,10 @@
  * Exercises the Recommended Use / Restrictions on Use chain through
  * Reflection on the private section1() method:
  *   per-FG text override > finished_goods column > family default for the
- *   SDS language (blank -> en) > translation file (section1.<field>, or
- *   section1.<field>_resale for resale raw-material SDSs).
+ *   SDS language (blank -> translation default, never the family's EN text,
+ *   finding #62) > translation file (section1.<field>, or
+ *   section1.<field>_resale for resale raw-material SDSs); resale sheets
+ *   skip the family tier (Q15); an inactive family contributes nothing (Q13).
  * Also checks that the two new resale keys exist in all four language files.
  *
  * Run:
@@ -83,10 +85,13 @@ check($s['restrictions'] === 'Res EN', 'restrictions = family en text', $s['rest
 check(!array_key_exists('product_family', $s), 'product_family is never emitted (family stays internal)', json_encode(array_keys($s)));
 
 // ---------------------------------------------------------------------
-echo "2. es: language text, restrictions fall back to en\n";
+echo "2. es: language text; a blank language falls back to the translated default, never the en family text (#62)\n";
 $s = $section1('es', $baseFg);
 check($s['recommended_use'] === 'Fam ES', 'recommended_use = family es text', $s['recommended_use']);
-check($s['restrictions'] === 'Res EN', 'restrictions fall back to family en text (no es)', $s['restrictions']);
+check($s['restrictions'] === $tr('es', 'restrictions') && $s['restrictions'] !== 'Res EN', 'restrictions = es translation default (no es family text; en family text not used)', $s['restrictions']);
+$s = $section1('de', $baseFg);
+check($s['recommended_use'] === $tr('de', 'recommended_use'), 'de: no de family text -> de translation default', $s['recommended_use']);
+check($s['restrictions'] === $tr('de', 'restrictions'), 'de: restrictions -> de translation default', $s['restrictions']);
 
 // ---------------------------------------------------------------------
 echo "3. finished_goods column beats family\n";
@@ -129,9 +134,24 @@ foreach (['en', 'de'] as $lang) {
 }
 $resaleFam = $baseFg;
 $resaleFam['is_resale'] = true;
-$s = $section1('en', $resaleFam);
-check($s['recommended_use'] === 'Fam EN', 'resale with family defaults -> family text wins', $s['recommended_use']);
-check($s['restrictions'] === 'Res EN', 'resale with family defaults -> family restrictions win', $s['restrictions']);
+foreach (['en', 'es'] as $lang) {
+    $s = $section1($lang, $resaleFam);
+    check($s['recommended_use'] === $tr($lang, 'recommended_use_resale'), "resale in a family -> resale default, never the family product text ({$lang}, Q15 / audit #49)", $s['recommended_use']);
+    check($s['restrictions'] === $tr($lang, 'restrictions_resale'), "resale in a family -> resale restrictions default ({$lang})", $s['restrictions']);
+}
+
+// ---------------------------------------------------------------------
+echo "7b. familyFields() (audit #61 / Q13)\n";
+$G = \SDS\Services\SDSGenerator::class;
+$famRow = ['name' => 'UV Offset', 'is_uv' => 1, 'is_active' => 1, 'recommended_use_json' => '{"en":"Fam EN"}', 'restrictions_json' => null];
+$f = $G::familyFields($famRow, 'Legacy');
+check($f['family'] === 'UV Offset' && $f['family_is_uv'] === true && ($f['family_defaults']['recommended_use']['en'] ?? '') === 'Fam EN', 'active UV family -> name, UV flag, defaults', $f);
+$f = $G::familyFields(['is_active' => 0] + $famRow, 'Legacy');
+check($f['family'] === 'Legacy' && $f['family_is_uv'] === null && $f['family_defaults'] === ['recommended_use' => [], 'restrictions' => []], 'inactive family -> no text, no UV flag, legacy name kept', $f);
+$f = $G::familyFields(null, null);
+check($f['family_is_uv'] === null && $f['family_defaults']['recommended_use'] === [], 'no family -> empty', $f);
+$s = $section1('en', array_merge($plain, $G::familyFields(['is_active' => 0] + $famRow, 'UV Offset')));
+check($s['recommended_use'] === $tr('en', 'recommended_use'), 'inactive family text never prints (falls to translation default)', $s['recommended_use']);
 
 // ---------------------------------------------------------------------
 echo "7. translation completeness (all four files)\n";

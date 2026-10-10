@@ -169,5 +169,38 @@ check(count($r['components']) === 1, 'CAS whitespace trimmed on composition side
 $r = $match([$comp('108-88-3', 'Toluene', 5.0)], [$row('108-88-3', 'U220', 'U'), $row('108-88-3', 'U220', 'U')]);
 check($codesOf($r['components'][0]) === ['U220'], 'duplicate (cas, code) rows collapse to one code');
 
+// ---------------------------------------------------------------------------
+echo "8. TC metals present as compounds (audit #12)\n";
+$m3   = static fn (array $composition, array $rows, array $metals): array => \SDS\Services\RCRAService::match($composition, $rows, $metals);
+$elem = [
+    $row('7440-47-3', 'D007', 'D', '5.000', 'Chromium'),
+    $row('7439-92-1', 'D008', 'D', '5.000', 'Lead'),
+    $row('7440-39-3', 'D005', 'D', '100.000', 'Barium'),
+    $row('7439-92-1', 'U999', 'U', null, 'fake listed row on an element CAS'),
+];
+$r = $m3([$comp('7758-97-6', 'Lead chromate', 2.0)], $elem, ['7758-97-6' => 'Cr,Pb']);
+check(count($r['components']) === 1 && $r['components'][0]['cas_number'] === '7758-97-6' && $r['components'][0]['chemical_name'] === 'Lead chromate', 'lead chromate is one component; element CAS not in the composition are not reported', $r);
+check($codesOf($r['components'][0]) === ['D007', 'D008'], 'inherits D007 + D008 only (no U999), ordered', $codesOf($r['components'][0]));
+check($r['components'][0]['codes'][1]['limit_mg_l'] === 5.0 && $r['has_matches'] === true, 'element TCLP limit carried; has_matches', $r['components'][0]['codes'][1]);
+$r = $match([$comp('7758-97-6', 'Lead chromate', 2.0)], $elem);
+check($r['components'] === [], 'two-argument call unchanged: compound CAS without metals map not matched', $r);
+$r = $m3([$comp('7727-43-7', 'Barium sulfate', 0.01)], $elem, ['7727-43-7' => 'Ba']);
+check(count($r['components']) === 1 && $codesOf($r['components'][0]) === ['D005'], 'inherited D code reports below 0.1 %', $r);
+$r = $m3([$comp('7440-02-0', 'Nickel', 2.0)], $elem, ['7440-02-0' => 'Ni,Zn,xx']);
+check($r['components'] === [], 'non-TC symbols ignored', $r);
+$r = $m3([$comp('7761-88-8', 'Silver nitrate', 2.0)], $elem, ['7761-88-8' => 'Ag']);
+check($r['components'] === [], 'element row missing from the list (Ag) -> no match', $r);
+$r = $m3([$comp('7758-97-6', 'Lead chromate', 2.0)], array_merge($elem, [$row('7758-97-6', 'D008', 'D', '5')]), ['7758-97-6' => 'pb, CR']);
+check($codesOf($r['components'][0]) === ['D007', 'D008'], 'direct row + inherited code collapse; symbols case-insensitive', $codesOf($r['components'][0]));
+$r = $m3([$comp('7439-92-1', 'Lead', 1.0)], $elem, ['7439-92-1' => 'Pb']);
+check($codesOf($r['components'][0]) === ['D008', 'U999'], 'element itself flagged: D008 once, its own U row kept', $codesOf($r['components'][0]));
+$r = $m3([$comp('1306-23-6', 'Cadmium sulfide', 1.0)], array_merge($elem, [$row('7440-43-9', 'D006', 'D', '1')]), ['1306-23-6' => ['Cd']]);
+check($codesOf($r['components'][0]) === ['D006'], 'metals given as a list accepted', $r);
+$r = $m3([$comp('7758-97-6', 'Lead chromate', 2.0, ['is_trade_secret' => true, 'trade_secret_description' => 'Yellow pigment'])], $elem, ['7758-97-6' => 'Cr,Pb']);
+check($r['components'][0]['is_trade_secret'] === true && $r['components'][0]['trade_secret_description'] === 'Yellow pigment', 'trade-secret flags carried for an inherited match', $r['components'][0]);
+$r = $m3([$comp('TRADE_SECRET', 'Secret', 5.0, ['is_trade_secret' => true])], $elem, ['TRADE_SECRET' => 'Pb']);
+check($r['components'] === [], 'TRADE_SECRET placeholder never inherits', $r);
+check(array_keys(\SDS\Services\RCRAService::TC_METAL_ELEMENT_CAS) === \SDS\Services\CasElementFlagger::TC_METALS, 'element CAS map covers the eight TC metals in order');
+
 echo "\n{$checks} checks, {$failures} failures\n";
 exit($failures === 0 ? 0 : 1);

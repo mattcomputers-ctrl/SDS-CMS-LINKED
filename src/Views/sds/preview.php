@@ -1,8 +1,9 @@
 <?php
 include dirname(__DIR__) . '/layouts/main.php';
 $labels = $sds['meta']['labels'] ?? [];
-$doc = $sds['meta']['document'] ?? [];
 $sheetLang = (string) ($sds['meta']['language'] ?? $language ?? 'en');
+// #62: a snapshot without meta.document (or one of its keys) gets the sheet language's document.* strings, not the English defaults.
+$doc = \SDS\Services\SDSDocumentStrings::forLanguage($sds['meta']['document'] ?? [], $sheetLang);
 // meta.labels first, then labels.<key> in the sheet language (snapshots generated
 // before the key was added to getLabels(), audit #37), then $fallback, then the key.
 $l = function(string $key, string $fallback = '') use ($labels, $sheetLang) {
@@ -69,7 +70,7 @@ $sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, '
             <?php endif; endforeach; ?>
 
         <?php elseif ($num === 2): // ── Hazard Identification ── ?>
-            <?php if (empty($section['is_classified'])): ?>
+            <?php if (!\SDS\Services\SDSGenerator::section2IsClassified($section)): // #63: legacy snapshots without is_classified ?>
                 <p style="margin: 0.5rem 0;"><?= e($section['not_classified_text'] ?? $tx('section2.not_classified')) ?></p>
             <?php endif; ?>
             <?php if (!empty($section['signal_word'])): ?>
@@ -172,10 +173,14 @@ $sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, '
                 <?php endforeach; ?>
             <?php endif; ?>
 
-            <?php // Hazard statements are rendered inline with the
-                  // classification above (H-code + phrase on the same line
-                  // under its Physical / Health / Environmental heading) —
-                  // no separate Hazard Statements list. ?>
+            <?php // #40: H-statements no classification line carries — same helper as PDFService::renderSection2.
+                $uncoveredH = \SDS\Services\GHSStatements::uncoveredHStatements($section['hazard_classes'] ?? [], $section['h_statements'] ?? []); ?>
+            <?php if (!empty($uncoveredH)): ?>
+                <p><strong><?= e($l('hazard_statements')) ?>:</strong></p>
+                <?php foreach ($uncoveredH as $hs): ?>
+                    <p style="margin-left: 1rem; margin-bottom: 0.1rem;"><strong><?= e((string) ($hs['code'] ?? '')) ?></strong><?php if (!empty($hs['text'])): ?>: <?= e((string) $hs['text']) ?><?php endif; ?></p>
+                <?php endforeach; ?>
+            <?php endif; ?>
 
             <?php if (!empty($section['p_statements'])): ?>
                 <p><strong><?= e($l('precautionary_statements')) ?>:</strong></p>
@@ -239,7 +244,9 @@ $sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, '
         <?php elseif ($num === 3): // ── Composition ── ?>
             <p><strong><?= e($l('type')) ?>:</strong> <?= e($section['substance_or_mixture'] ?? $l('mixture')) ?></p>
             <?php if (!empty($section['components'])): ?>
+            <?php if ($section['mixture_notes'] ?? true): /* #36(3): not on Substance sheets */ ?>
             <p class="text-muted" style="font-size: 0.85rem; font-style: italic; margin: 0.25rem 0;"><?= e($l('hazardous_only_note')) ?></p>
+            <?php endif; ?>
             <table class="table table-sm">
                 <thead><tr>
                     <th><?= e($l('cas_number')) ?></th>
@@ -258,8 +265,8 @@ $sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, '
                 <?php endforeach; ?>
                 </tbody>
             </table>
-            <?php else: ?>
-            <p class="text-muted" style="font-size: 0.85rem; font-style: italic; margin: 0.25rem 0;"><?= e($l('no_hazardous_note')) ?></p>
+            <?php elseif ($section['mixture_notes'] ?? true): /* #37 generator-chosen note; label fallback for older snapshots */ ?>
+            <p class="text-muted" style="font-size: 0.85rem; font-style: italic; margin: 0.25rem 0;"><?= e((string) ($section['empty_note'] ?? $l('no_hazardous_note'))) ?></p>
             <?php endif; ?>
             <?php if (!empty($section['trade_secret_note'])): ?>
             <p class="text-muted" style="font-size: 0.85rem; font-style: italic; margin: 0.25rem 0;"><?= e($section['trade_secret_note']) ?></p>
@@ -292,6 +299,8 @@ $sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, '
                 <?php endforeach; ?>
                 </tbody>
             </table>
+            <?php elseif (!empty($section['exposure_limits_none'])): // #64 — same sentence as PDFService::renderSection8() ?>
+            <p class="text-muted" style="font-size: 0.85rem; font-style: italic; margin: 0.25rem 0;"><?= e($section['exposure_limits_none']) ?></p>
             <?php endif; ?>
             <?php
                 // Field-key-to-label mapping for section 8 remaining fields
@@ -304,7 +313,7 @@ $sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, '
                 ];
             ?>
             <?php foreach ($section as $key => $val): ?>
-                <?php if (!is_string($val) || $key === 'title' || $val === '' || $key === 'exposure_limits' || $key === 'uv_acrylate_note') continue; // uv_acrylate_note: pre-#35 snapshots only; PDFService::renderSection8() never prints it ?>
+                <?php if (!is_string($val) || $key === 'title' || $val === '' || $key === 'exposure_limits' || $key === 'exposure_limits_none' || $key === 'uv_acrylate_note') continue; // uv_acrylate_note: pre-#35 snapshots only; PDFService::renderSection8() never prints it ?>
                 <?php $fieldLabel = isset($sec8LabelMap[$key]) ? $l($sec8LabelMap[$key]) : ucwords(str_replace('_', ' ', $key)); ?>
                 <p><strong><?= e($fieldLabel) ?>:</strong> <?= e($val) ?></p>
             <?php endforeach; ?>
@@ -312,17 +321,30 @@ $sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, '
         <?php elseif ($num === 9): // ── Physical/Chemical Properties ── ?>
             <?php
                 $sec9LabelMap = [
-                    'physical_state'       => 'physical_state',
-                    'color'                => 'color',
-                    'appearance'           => 'appearance',
-                    'odor'                 => 'odor',
-                    'boiling_point'        => 'boiling_point',
-                    'flash_point'          => 'flash_point',
-                    'solubility'           => 'solubility',
-                    'specific_gravity'     => 'specific_gravity',
-                    'voc_lb_per_gal'       => 'voc_lb_gal',
-                    'voc_wt_pct'           => 'voc_wt_pct',
-                    'solids_wt_pct'        => 'solids_wt_pct',
+                    // Same order as SDSGenerator::section9() and PDFService::renderSection9() (#43 / Q8)
+                    'physical_state'         => 'physical_state',
+                    'color'                  => 'color',
+                    'appearance'             => 'appearance',
+                    'odor'                   => 'odor',
+                    'odor_threshold'         => 'odor_threshold',
+                    'ph'                     => 'ph',
+                    'melting_point'          => 'melting_point',
+                    'boiling_point'          => 'boiling_point',
+                    'flash_point'            => 'flash_point',
+                    'evaporation_rate'       => 'evaporation_rate',
+                    'flammability_solid_gas' => 'flammability_solid_gas',
+                    'flammability_limits'    => 'flammability_limits',
+                    'vapor_pressure'         => 'vapor_pressure',
+                    'vapor_density'          => 'vapor_density',
+                    'specific_gravity'       => 'specific_gravity',
+                    'solubility'             => 'solubility',
+                    'partition_coefficient'  => 'partition_coefficient',
+                    'auto_ignition_temp'     => 'auto_ignition_temp',
+                    'decomposition_temp'     => 'decomposition_temp',
+                    'viscosity'              => 'viscosity',
+                    'voc_lb_per_gal'         => 'voc_lb_gal',
+                    'voc_wt_pct'             => 'voc_wt_pct',
+                    'solids_wt_pct'          => 'solids_wt_pct',
                 ];
             ?>
             <?php foreach ($section as $key => $val): ?>
@@ -337,6 +359,12 @@ $sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, '
             <?php endforeach; ?>
 
         <?php elseif ($num === 11): // ── Toxicological Information ── ?>
+            <?php if (!empty($section['routes_of_exposure'])): // Q8 / App. D 11(a) — same order as PDFService::renderSection11() ?>
+                <p><strong><?= e($l('routes_of_exposure')) ?>:</strong> <?= e($section['routes_of_exposure']) ?></p>
+            <?php endif; ?>
+            <?php if (!empty($section['symptoms'])): // Q8 / App. D 11(b)-(c) ?>
+                <p><strong><?= e($l('symptoms_effects')) ?>:</strong> <?= e($section['symptoms']) ?></p>
+            <?php endif; ?>
             <p style="white-space: pre-line;"><strong><?= e($l('acute_toxicity')) ?>:</strong> <?= e($section['acute_toxicity'] ?? '') ?></p>
             <p><strong><?= e($l('chronic_effects')) ?>:</strong> <?= e($section['chronic_effects'] ?? '') ?></p>
 
@@ -360,6 +388,9 @@ $sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, '
                                         <span style="font-size: 0.85rem; margin-right: 8px;"><?= e($listing['description']) ?></span>
                                     <?php endif; ?>
                                 <?php endforeach; ?>
+                                <?php if (!empty($comp['carcinogen_note'])): /* audit #41(2), same text as the PDF */ ?>
+                                    <div style="font-size: 0.85rem; margin-top: 0.2rem;"><?= e($comp['carcinogen_note']) ?></div>
+                                <?php endif; ?>
                             </div>
                         <?php endif; ?>
 
@@ -433,6 +464,12 @@ $sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, '
             <?php if (($section['environmental_hazards'] ?? '') !== ''): // audit #27 ?>
                 <p><strong><?= e($l('environmental_hazards')) ?>:</strong> <?= e($section['environmental_hazards']) ?></p>
             <?php endif; ?>
+            <?php if (($section['transport_in_bulk'] ?? '') !== ''): // finding #43 ?>
+                <p><strong><?= e($l('transport_in_bulk')) ?>:</strong> <?= e($section['transport_in_bulk']) ?></p>
+            <?php endif; ?>
+            <?php if (($section['special_precautions'] ?? '') !== ''): ?>
+                <p><strong><?= e($l('special_precautions')) ?>:</strong> <?= e($section['special_precautions']) ?></p>
+            <?php endif; ?>
             <?php if (!empty($section['note'])): ?>
                 <p><strong><?= e($l('note')) ?>:</strong> <?= e($section['note']) ?></p>
             <?php endif; ?>
@@ -459,7 +496,7 @@ $sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, '
                     ?>
                     <li><?= e($saraName) ?> (CAS <?= e($chem['cas_number'] ?? '') ?>) &mdash;
                         <?= e((string) ($chem['concentration_range'] ?? '')) ?><?php /* band only, never the exact % */ ?>
-                        (<?= e($l('sara_313_threshold')) ?>: <?= e($saraThreshold) ?>%<?= !empty($chem['is_pbt']) ? '; ' . e($l('sara_313_pbt')) : '' ?>)</li>
+                        (<?= !empty($chem['is_pbt']) ? e($l('sara_313_pbt_no_deminimis')) : (!empty($chem['is_special_concern']) ? e($l('sara_313_special_concern_no_deminimis')) : e($l('sara_313_threshold')) . ': ' . e($saraThreshold) . '%') ?>)</li>
                 <?php endforeach; ?>
                 </ul>
                 <p class="text-muted" style="font-size: 0.75rem; font-style: italic;"><?= e($l('sara_313_range_note')) ?></p>
@@ -483,12 +520,14 @@ $sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, '
                         </tr>
                     <?php endforeach; ?>
                     </tbody>
+                    <?php if ((string) ($hap['total_hap_range'] ?? '') !== ''): // finding #70: band only; old snapshots print no total row ?>
                     <tfoot>
                         <tr style="font-weight: bold; border-top: 2px solid #333;">
                             <td><?= e($l('hap_total')) ?></td>
-                            <td style="text-align: right;"><?= number_format((float) $hap['total_hap_pct'], 2) ?>%</td>
+                            <td style="text-align: right;"><?= e((string) $hap['total_hap_range']) ?></td>
                         </tr>
                     </tfoot>
+                    <?php endif; ?>
                 </table>
             <?php elseif (isset($hap['has_haps'])): ?>
                 <h4 style="margin-top: 1rem;"><?= e($l('hap_title')) ?></h4>
@@ -550,12 +589,16 @@ $sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, '
                 <p><strong><?= e($l('state_regulations')) ?>:</strong> <?= e($stateRegs) ?></p>
             <?php endif; ?>
 
-            <?php if (!empty($section['note'])): ?>
+            <?php if (!empty($section['note']) && array_key_exists('ghs_note', $section)): // #63: no ghs_note = pre-9d8de70 snapshot; its note is the removed "not required by OSHA HazCom" sentence ?>
                 <p class="text-muted"><em><?= e($section['note']) ?></em></p>
             <?php endif; ?>
 
         <?php else: // ── Generic section ── ?>
             <?php
+                // #63: pre-9d8de70 snapshots carry the removed Section 13 note; section13() no longer emits one.
+                if ((int) $num === 13) {
+                    unset($section['note']);
+                }
                 // Field-key-to-label mapping for generic sections
                 $genericLabelMap = [
                     'inhalation'           => 'inhalation',

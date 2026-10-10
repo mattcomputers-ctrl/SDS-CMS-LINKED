@@ -189,6 +189,8 @@ class BulkPublishController
      *   2. The FG's latest non-alias published SDS is older than the most
      *      recent upstream change (formula created_at, raw material
      *      updated_at, constituent updated_at, or active CPD updated_at)
+     *      —  plus finished_goods.updated_at for product-level edits (SDS text,
+     *      hazard override, printed columns; audit #58)
      *      — OR the FG has no published SDS yet.
      *
      * All data is batch-loaded up front; recursion runs in memory with
@@ -201,7 +203,7 @@ class BulkPublishController
     {
         // All active FGs with a current formula — the candidate set.
         $fgs = $db->fetchAll(
-            "SELECT fg.id, fg.product_code, f.id AS formula_id, f.created_at
+            "SELECT fg.id, fg.product_code, fg.updated_at AS fg_updated_at, f.id AS formula_id, f.created_at
              FROM finished_goods fg
              INNER JOIN formulas f ON f.finished_good_id = fg.id AND f.is_current = 1
              WHERE fg.is_active = 1
@@ -374,6 +376,11 @@ class BulkPublishController
                 }
             }
 
+            // Audit #58 — product-level content edits move finished_goods.updated_at.
+            if (!empty($fg['fg_updated_at']) && ($maxTs === null || $fg['fg_updated_at'] > $maxTs)) {
+                $maxTs = $fg['fg_updated_at'];
+            }
+
             $entry = ['id' => (int) $fg['id'], 'product_code' => $fg['product_code']];
 
             if (!$allReviewed) {
@@ -521,6 +528,20 @@ class BulkPublishController
             }
         }
 
+        // #45 / #58: resale SDS text edits (migration 059; UTC) make the resale
+        // sheet stale without touching raw_materials.updated_at.
+        foreach ($db->fetchAll(
+            "SELECT raw_material_id, edited_at AS max_upd
+             FROM resale_sds_text_edits
+             WHERE raw_material_id IN ({$placeholders})",
+            $rmIds
+        ) as $r) {
+            $rmId = (int) $r['raw_material_id'];
+            if (!isset($rmMaxUpstream[$rmId]) || $r['max_upd'] > $rmMaxUpstream[$rmId]) {
+                $rmMaxUpstream[$rmId] = $r['max_upd'];
+            }
+        }
+
         // Latest non-alias resale SDS per RM (raw_material_id set,
         // alias_id NULL).
         $lastPublished = [];
@@ -570,7 +591,10 @@ class BulkPublishController
      * Build the flat work-items list the parallel workers consume.
      *
      * For each eligible FG: one base work item per language plus one
-     * alias-branded work item per deduplicated alias per language.
+     * alias-branded work item per deduplicated alias per language, and
+     * one work item per private label item (all languages; audit #54);
+     * with a blank company emergency phone only private-label items
+     * (audit #68).
      * For each eligible resale RM: one base work item under the RM's
      * own code plus one alias-branded work item per alias that points
      * at it via the resale path.
@@ -589,11 +613,16 @@ class BulkPublishController
         array $languages
     ): array {
         $workItems = [];
-        // Audit #2 — manufacturer rows keyed by id, for the emergency phone gate below.
-        $mfgRows   = [];
+        // Audit #68 — a blank company emergency phone blocks every standard,
+        // alias and resale sheet (they print it) but not private-label sheets,
+        // which print the manufacturer's own number. With it blank only the
+        // private-label items are emitted, against the latest PUBLISHED base
+        // version (this run publishes no new base version).
+        $companyPhoneError = \SDS\Services\SDSReadinessService::companyEmergencyPhoneErrorFromDb($db);
+        $baseLanguages     = $companyPhoneError === null ? $languages : [];
 
         foreach ($eligibleFgs as $fg) {
-            $aliases = self::deduplicateAliasesByBaseCode($db->fetchAll(
+            $aliases = $companyPhoneError !== null ? [] : self::deduplicateAliasesByBaseCode($db->fetchAll(
                 "SELECT id, customer_code, description FROM aliases WHERE internal_code_base = ? ORDER BY customer_code",
                 [$fg['product_code']]
             ));
@@ -604,7 +633,7 @@ class BulkPublishController
             );
             $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
 
-            foreach ($languages as $lang) {
+            foreach ($baseLanguages as $lang) {
                 $workItems[] = [
                     'id'           => $fg['id'],
                     'product_code' => $fg['product_code'],
@@ -633,72 +662,23 @@ class BulkPublishController
                 }
             }
 
-            // Private label items (active + auto_republish) of this FG: one
-            // work item per language, branded by the worker from the same
-            // base data it already computes for the FG. The version is
-            // pre-computed here (same pattern as aliases above) so parallel
-            // workers never race on MAX(version).
+            // Private label items (active + auto_republish) of this FG: ONE work
+            // item per item, covering every language (audit #54). The worker
+            // publishes it through PrivateLabelPublisher::publishItemFromBase(),
+            // which re-checks the shared-alias owner and the manufacturer gates
+            // (emergency phone, name), assigns the version inside a transaction
+            // and inserts all languages or none, so no version is pre-computed here.
+            $plSourceVersion = $companyPhoneError === null
+                ? $nextVersion
+                : (int) (\SDS\Models\PrivateLabelItem::fgLatestBaseVersions([(int) $fg['id']])[(int) $fg['id']] ?? 0);
+            $plError = $plSourceVersion > 0 ? null
+                : 'Publish the base SDS for ' . $fg['product_code'] . ' first: it has no published version and the blank company emergency phone stops this run from publishing one';
             foreach (\SDS\Models\PrivateLabelItem::forFinishedGood((int) $fg['id'], true) as $pli) {
-                // R4 — a shared alias the CMS has re-pointed to another
-                // product must never be printed on this FG's SDS. The work
-                // items are still emitted, carrying pl_error, so the worker
-                // fails them (errors[] / failed_count / cron log) under the
-                // PL code instead of silently leaving the item on its old
-                // version. Same wording as PrivateLabelPublisher::publishOne.
-                $plError = null;
-                if ($pli['alias_id'] !== null
-                    && strcasecmp((string) ($pli['alias_internal_code_base'] ?? ''), (string) $fg['product_code']) !== 0) {
-                    $plError = 'Shared alias '
-                        . strip_pack_extension((string) ($pli['alias_customer_code'] ?? ('#' . (int) $pli['alias_id'])))
-                        . ' no longer belongs to ' . $fg['product_code'];
-                }
-
-                // Audit #2 — same gate as PrivateLabelPublisher::publishOne: a
-                // manufacturer with no emergency phone cannot be printed. Set as
-                // pl_error so the worker fails the item without consuming a version.
-                if ($plError === null) {
-                    $plMfgId = (int) $pli['manufacturer_id'];
-                    if (!array_key_exists($plMfgId, $mfgRows)) {
-                        $mfgRows[$plMfgId] = \SDS\Models\Manufacturer::findById($plMfgId);
-                    }
-                    $plError = $mfgRows[$plMfgId] === null
-                        ? 'Manufacturer not found for private label item'
-                        : \SDS\Services\SDSReadinessService::manufacturerEmergencyPhoneError($mfgRows[$plMfgId]);
-                }
-
-                $identity = \SDS\Services\PrivateLabelPublisher::resolveIdentity($pli);
-
-                // No version is consumed for an item that is going to fail.
-                $plNext = 0;
-                if ($plError === null) {
-                    $plLast = $db->fetch(
-                        "SELECT MAX(version) AS max_ver FROM private_label_sds WHERE item_id = ?",
-                        [(int) $pli['id']]
-                    );
-                    $plNext = ((int) ($plLast['max_ver'] ?? 0)) + 1;
-                }
-
-                foreach ($languages as $lang) {
-                    $workItems[] = [
-                        'type'              => 'private_label',
-                        'id'                => $fg['id'],
-                        'product_code'      => $fg['product_code'],
-                        'language'          => $lang,
-                        'version'           => $plNext,
-                        'source_fg_version' => $nextVersion,
-                        'pl_item_id'        => (int) $pli['id'],
-                        'manufacturer_id'   => (int) $pli['manufacturer_id'],
-                        'alias_id'          => $pli['alias_id'] !== null ? (int) $pli['alias_id'] : null,
-                        'pl_code'           => $identity['code'],
-                        'pl_description'    => $identity['description'],
-                        'pl_source'         => $identity['source'],
-                        'pl_error'          => $plError,
-                    ];
-                }
+                $workItems[] = self::privateLabelWorkItem($fg, $pli, $plSourceVersion, $plError);
             }
         }
 
-        foreach ($eligibleResaleItems as $resale) {
+        foreach ($companyPhoneError === null ? $eligibleResaleItems : [] as $resale) {   // audit #68
             $rmId     = (int) $resale['rm_id'];
             $baseCode = (string) $resale['base_code'];
 
@@ -749,6 +729,29 @@ class BulkPublishController
         }
 
         return $workItems;
+    }
+
+    /**
+     * One bulk work item for a private label item (audit #54), covering every
+     * language. DB-free. The identity is resolved only for the worker's error
+     * strings: PrivateLabelPublisher re-resolves it at publish time.
+     */
+    public static function privateLabelWorkItem(array $fg, array $pli, int $sourceFgVersion, ?string $plError): array
+    {
+        $identity = \SDS\Services\PrivateLabelPublisher::resolveIdentity($pli);
+        return [
+            'type'              => 'private_label',
+            'id'                => (int) $fg['id'],
+            'product_code'      => (string) $fg['product_code'],
+            'language'          => 'all',
+            'version'           => 0,   // assigned by PrivateLabelPublisher inside its transaction
+            'source_fg_version' => $sourceFgVersion,
+            'pl_item_id'        => (int) $pli['id'],
+            'manufacturer_id'   => (int) $pli['manufacturer_id'],
+            'pl_code'           => $identity['code'],
+            'pl_source'         => $identity['source'],
+            'pl_error'          => $plError,
+        ];
     }
 
     /**
@@ -882,7 +885,7 @@ class BulkPublishController
 
         $db->update('bulk_publish_jobs', [
             'status'        => 'failed',
-            'completed_at'  => date('Y-m-d H:i:s'),
+            'completed_at'  => \SDS\Services\PublishClock::nowUtc(),
             'error_message' => 'Dismissed from queue by admin (' . (current_user_id() ?? '?') . ')',
         ], 'id = ?', [(int) $id]);
 
@@ -926,7 +929,7 @@ class BulkPublishController
 
         $db->update('bulk_publish_jobs', [
             'status'        => 'failed',
-            'completed_at'  => date('Y-m-d H:i:s'),
+            'completed_at'  => \SDS\Services\PublishClock::nowUtc(),
             'error_message' => 'Force-failed from queue by admin (' . (current_user_id() ?? '?') . '); workers sent SIGTERM',
         ], 'id = ?', [(int) $id]);
 

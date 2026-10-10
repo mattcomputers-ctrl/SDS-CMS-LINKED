@@ -8,7 +8,6 @@ use SDS\Core\App;
 use SDS\Core\Database;
 use SDS\Models\Customer;
 use SDS\Models\FinishedGood;
-use SDS\Models\Formula;
 
 /**
  * SDSAutoSendService — sends SDS documents to customer regulatory
@@ -27,14 +26,19 @@ use SDS\Models\Formula;
  *      - If SDS is published → send email with PDF
  *      - If SDS can't be published (missing data) → queue for regulatory review
  *
- * The legacy autoPublishReady() method is retained on the class but no
- * longer called from processNewShipments(). The Bulk SDS Publish flow
- * (cron/bulk-publish.php) supersedes it with stricter eligibility rules
- * that require every RM to be user-reviewed.
+ * Auto-send never publishes a base sheet. The bulk publish (cron/bulk-publish.php)
+ * runs first and applies every publish gate (SDSReadinessService). The one
+ * exception is an alias with no published sheet of its own (audit #53 / Q9):
+ * AliasPublisher::ensurePublished() publishes it first, through the same gates. The old
+ * autoPublishReady()/canAutoPublish()/publishSds() path was dead code and
+ * was removed (audit #69).
  */
 class SDSAutoSendService
 {
     private Database $db;
+
+    /** Why getLatestPublishedSds() returned null for an alias (audit #53 / Q9). */
+    private ?string $aliasPublishError = null;
 
     public function __construct()
     {
@@ -79,343 +83,6 @@ class SDSAutoSendService
         }
 
         return $results;
-    }
-
-    /* ------------------------------------------------------------------
-     *  Phase A: Auto-Publish
-     * ----------------------------------------------------------------*/
-
-    /**
-     * Auto-publish SDS for all finished goods that:
-     * - Have a formula but no published SDS (or SDS is outdated)
-     * - All upstream raw materials have constituents
-     * - No pending CAS determinations block publishing
-     */
-    private function autoPublishReady(): int
-    {
-        $count = 0;
-
-        // 1. FGs with formulas where:
-        //    - No published SDS exists, OR
-        //    - Formula was updated after last publish, OR
-        //    - Any upstream raw material was updated after last publish, OR
-        //    - Any CAS determination was updated after last publish
-        $candidates = $this->db->fetchAll(
-            "SELECT fg.id, fg.product_code,
-                    f.created_at AS formula_date,
-                    (SELECT MAX(sv.published_at) FROM sds_versions sv
-                     WHERE sv.finished_good_id = fg.id AND sv.status = 'published' AND sv.is_deleted = 0
-                    ) AS last_published_at,
-                    (SELECT MAX(rm.updated_at) FROM formula_lines fl2
-                     JOIN raw_materials rm ON rm.id = fl2.raw_material_id
-                     WHERE fl2.formula_id = f.id
-                    ) AS rm_updated_at,
-                    (SELECT MAX(rmc.updated_at) FROM formula_lines fl3
-                     JOIN raw_material_constituents rmc ON rmc.raw_material_id = fl3.raw_material_id
-                     WHERE fl3.formula_id = f.id
-                    ) AS constituents_updated_at,
-                    (SELECT MAX(cpd.updated_at) FROM competent_person_determinations cpd
-                     WHERE cpd.is_active = 1
-                     AND cpd.cas_number IN (
-                         SELECT rmc2.cas_number FROM formula_lines fl4
-                         JOIN raw_material_constituents rmc2 ON rmc2.raw_material_id = fl4.raw_material_id
-                         WHERE fl4.formula_id = f.id
-                     )
-                    ) AS cpd_updated_at
-             FROM finished_goods fg
-             JOIN formulas f ON f.finished_good_id = fg.id AND f.is_current = 1
-             WHERE fg.is_active = 1
-             HAVING last_published_at IS NULL
-                 OR last_published_at < formula_date
-                 OR last_published_at < rm_updated_at
-                 OR last_published_at < constituents_updated_at
-                 OR last_published_at < cpd_updated_at"
-        );
-
-        foreach ($candidates as $candidate) {
-            if ($this->canAutoPublish((int) $candidate['id'])) {
-                $reason = 'Auto-published by CMS sync';
-                if ($candidate['last_published_at'] !== null) {
-                    if ($candidate['formula_date'] > $candidate['last_published_at']) {
-                        $reason = 'Auto-republished: formula updated';
-                    } elseif (($candidate['constituents_updated_at'] ?? '') > $candidate['last_published_at']) {
-                        $reason = 'Auto-republished: raw material constituents updated';
-                    } elseif (($candidate['rm_updated_at'] ?? '') > $candidate['last_published_at']) {
-                        $reason = 'Auto-republished: raw material data updated';
-                    } elseif (($candidate['cpd_updated_at'] ?? '') > $candidate['last_published_at']) {
-                        $reason = 'Auto-republished: CAS determination updated';
-                    }
-                }
-                try {
-                    $this->publishSds((int) $candidate['id'], $reason);
-                    $count++;
-                } catch (\Throwable $e) {
-                    // Silently skip — will be caught on next run or manual publish
-                }
-            }
-        }
-
-        // 2. New aliases for FGs that already have a published SDS but the
-        //    alias doesn't have its own published version yet
-        $newAliases = $this->db->fetchAll(
-            "SELECT a.id AS alias_id, a.customer_code, a.description, a.internal_code_base,
-                    fg.id AS fg_id, fg.product_code
-             FROM aliases a
-             JOIN finished_goods fg ON fg.product_code = a.internal_code_base
-             WHERE EXISTS (
-                 SELECT 1 FROM sds_versions sv
-                 WHERE sv.finished_good_id = fg.id AND sv.alias_id IS NULL
-                   AND sv.status = 'published' AND sv.is_deleted = 0
-             )
-             AND NOT EXISTS (
-                 SELECT 1 FROM sds_versions sv2
-                 WHERE sv2.alias_id = a.id AND sv2.status = 'published' AND sv2.is_deleted = 0
-             )"
-        );
-
-        foreach ($newAliases as $aliasRow) {
-            try {
-                // Get the base FG's latest published SDS data per language
-                $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
-                $pdfService = new PDFService();
-                $pdfDir = App::basePath() . '/public/generated-pdfs';
-
-                $aliasLastVer = $this->db->fetch(
-                    "SELECT MAX(version) AS max_ver FROM sds_versions WHERE alias_id = ?",
-                    [(int) $aliasRow['alias_id']]
-                );
-                $aliasNextVer = ((int) ($aliasLastVer['max_ver'] ?? 0)) + 1;
-                $now = date('Y-m-d H:i:s');
-                $effectiveDate = date('Y-m-d');
-
-                $published = false;
-                foreach ($languages as $lang) {
-                    $baseSds = $this->db->fetch(
-                        "SELECT snapshot_json FROM sds_versions
-                         WHERE finished_good_id = ? AND alias_id IS NULL AND language = ?
-                           AND status = 'published' AND is_deleted = 0
-                         ORDER BY version DESC LIMIT 1",
-                        [(int) $aliasRow['fg_id'], $lang]
-                    );
-
-                    if (!$baseSds || empty($baseSds['snapshot_json'])) {
-                        continue;
-                    }
-
-                    $sdsData = json_decode($baseSds['snapshot_json'], true);
-                    if (!$sdsData) {
-                        continue;
-                    }
-
-                    $aliasData = SDSGenerator::createAliasVariant(
-                        $sdsData,
-                        $aliasRow['customer_code'],
-                        $aliasRow['description']
-                    );
-
-                    $filename = $this->writeVersionedPdf(
-                        $pdfService,
-                        $pdfDir,
-                        (string) $aliasRow['customer_code'],
-                        $aliasNextVer,
-                        $lang,
-                        $aliasData,
-                        $effectiveDate
-                    );
-
-                    $this->db->insert('sds_versions', [
-                        'finished_good_id' => (int) $aliasRow['fg_id'],
-                        'alias_id'         => (int) $aliasRow['alias_id'],
-                        'language'         => $lang,
-                        'version'          => $aliasNextVer,
-                        'status'           => 'published',
-                        'effective_date'   => $effectiveDate,
-                        'published_at'     => $now,
-                        'snapshot_json'    => json_encode($aliasData, JSON_UNESCAPED_UNICODE),
-                        'pdf_path'         => 'public/generated-pdfs/' . $filename,
-                        'change_summary'   => 'Auto-published for new alias',
-                    ]);
-
-                    $published = true;
-                }
-
-                if ($published) {
-                    $count++;
-                }
-            } catch (\Throwable $e) {
-                // Skip — will retry next run
-            }
-        }
-
-        return $count;
-    }
-
-    /**
-     * Check if a finished good's SDS can be auto-published.
-     * Returns false if any upstream raw materials lack constituents
-     * or if CAS numbers need determinations.
-     */
-    private function canAutoPublish(int $fgId): bool
-    {
-        // Audit #2 — never auto-publish without the company emergency phone.
-        if (\SDS\Services\SDSReadinessService::companyEmergencyPhoneErrorFromDb($this->db) !== null) {
-            return false;
-        }
-
-        $formula = Formula::findCurrentByFinishedGood($fgId);
-        if (!$formula || empty($formula['lines'])) {
-            return false;
-        }
-
-        // Check all raw materials in the formula have constituents
-        $rmIds = array_filter(array_column($formula['lines'], 'raw_material_id'));
-        if (!empty($rmIds)) {
-            $placeholders = implode(',', array_fill(0, count($rmIds), '?'));
-            $incomplete = $this->db->fetch(
-                "SELECT COUNT(*) AS cnt FROM raw_materials rm
-                 LEFT JOIN raw_material_constituents rmc ON rmc.raw_material_id = rm.id
-                 WHERE rm.id IN ({$placeholders}) AND rmc.id IS NULL",
-                array_values($rmIds)
-            );
-            if ((int) ($incomplete['cnt'] ?? 0) > 0) {
-                return false;
-            }
-        }
-
-        // Missing-hazard-data gate: the SAME check the interactive publish
-        // paths use (SDSReadinessService::missingHazardDataError), so the
-        // auto-send path honours the DB settings (sds.block_publish_missing
-        // and the missing-data threshold) instead of config.php (audit #40).
-        try {
-            $generator = new SDSGenerator();
-            $baseData = $generator->computeBase($fgId);
-            $sdsData = $generator->generateFromBase($baseData, 'en');
-
-            // Audit #27 — never auto-publish a "Not determined" transport section.
-            if (\SDS\Services\SDSReadinessService::transportNotDeterminedError($sdsData) !== null) {
-                return false;
-            }
-
-            if (\SDS\Services\SDSReadinessService::missingHazardDataError($sdsData, $this->db) !== null) {
-                return false; // missing data at/above threshold, no determination
-            }
-        } catch (\Throwable $e) {
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
-     * Publish an SDS for a finished good (all configured languages + aliases).
-     */
-    private function publishSds(int $fgId, string $changeSummary): void
-    {
-        $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
-        $generator = new SDSGenerator();
-        $baseData = $generator->computeBase($fgId);
-
-        $langData = [];
-        foreach ($languages as $lang) {
-            $langData[$lang] = $generator->generateFromBase($baseData, $lang);
-        }
-
-        // Generate PDFs
-        $pdfService = new PDFService();
-        $fg = FinishedGood::findById($fgId);
-        $basePath = App::basePath();
-        $pdfDir = $basePath . '/public/generated-pdfs';
-
-        // Base rows only (alias rows share finished_good_id but number from
-        // their own per-alias counter), so base numbering stays contiguous
-        // and matches SDSUpdateController / BulkPublishController.
-        $lastVersion = $this->db->fetch(
-            "SELECT MAX(version) AS max_ver FROM sds_versions WHERE finished_good_id = ? AND alias_id IS NULL",
-            [$fgId]
-        );
-        $nextVersion = ((int) ($lastVersion['max_ver'] ?? 0)) + 1;
-        $now = date('Y-m-d H:i:s');
-        $effectiveDate = date('Y-m-d');
-
-        foreach ($langData as $lang => $sdsData) {
-            $filename = $this->writeVersionedPdf(
-                $pdfService,
-                $pdfDir,
-                (string) ($fg['product_code'] ?? 'UNKNOWN'),
-                $nextVersion,
-                $lang,
-                $sdsData,
-                $effectiveDate
-            );
-            $relativePath = 'public/generated-pdfs/' . $filename;
-
-            $this->db->insert('sds_versions', [
-                'finished_good_id' => $fgId,
-                'language'         => $lang,
-                'version'          => $nextVersion,
-                'status'           => 'published',
-                'effective_date'   => $effectiveDate,
-                'published_by'     => null,
-                'published_at'     => $now,
-                'snapshot_json'    => json_encode($sdsData, JSON_UNESCAPED_UNICODE),
-                'pdf_path'         => $relativePath,
-                'change_summary'   => $changeSummary,
-                'created_by'       => null,
-            ]);
-        }
-
-        // Also publish for aliases
-        $aliases = $this->db->fetchAll(
-            "SELECT a.id, a.customer_code, a.description
-             FROM aliases a
-             WHERE a.internal_code_base = ?",
-            [$fg['product_code'] ?? '']
-        );
-
-        foreach ($aliases as $alias) {
-            $aliasLangData = [];
-            foreach ($langData as $lang => $sdsData) {
-                $aliasLangData[$lang] = SDSGenerator::createAliasVariant(
-                    $sdsData,
-                    $alias['customer_code'],
-                    $alias['description']
-                );
-            }
-
-            $aliasLastVer = $this->db->fetch(
-                "SELECT MAX(version) AS max_ver FROM sds_versions WHERE alias_id = ?",
-                [(int) $alias['id']]
-            );
-            $aliasNextVer = ((int) ($aliasLastVer['max_ver'] ?? 0)) + 1;
-
-            foreach ($aliasLangData as $lang => $aliasData) {
-                $aliasFilename = $this->writeVersionedPdf(
-                    $pdfService,
-                    $pdfDir,
-                    (string) $alias['customer_code'],
-                    $aliasNextVer,
-                    $lang,
-                    $aliasData,
-                    $effectiveDate
-                );
-                $aliasRelPath = 'public/generated-pdfs/' . $aliasFilename;
-
-                $this->db->insert('sds_versions', [
-                    'finished_good_id' => $fgId,
-                    'alias_id'         => (int) $alias['id'],
-                    'language'          => $lang,
-                    'version'           => $aliasNextVer,
-                    'status'            => 'published',
-                    'effective_date'    => $effectiveDate,
-                    'published_by'      => null,
-                    'published_at'      => $now,
-                    'snapshot_json'     => json_encode($aliasData, JSON_UNESCAPED_UNICODE),
-                    'pdf_path'          => $aliasRelPath,
-                    'change_summary'    => $changeSummary,
-                    'created_by'        => null,
-                ]);
-            }
-        }
     }
 
     /* ------------------------------------------------------------------
@@ -494,7 +161,7 @@ class SDSAutoSendService
             $sdsVersion = $this->getLatestPublishedSds((int) $fg['id'], $itemName);
 
             if ($sdsVersion === null) {
-                $this->queueForReview($customer, $row, 'SDS not available — missing raw material data or CAS determination');
+                $this->queueForReview($customer, $row, $this->sdsUnavailableReason());
                 $results['queued']++;
                 continue;
             }
@@ -636,7 +303,7 @@ class SDSAutoSendService
 
         // OSHA + 6mo: also send if last send was > 6 months ago
         if ($mode === 'osha_6mo') {
-            $sixMonthsAgo = date('Y-m-d H:i:s', strtotime('-6 months'));
+            $sixMonthsAgo = PublishClock::nowUtc(strtotime('-6 months'));   // sent_at is UTC (audit #59)
             if ($lastSend['sent_at'] < $sixMonthsAgo) {
                 return true;
             }
@@ -647,7 +314,7 @@ class SDSAutoSendService
 
     /**
      * Get the latest published SDS version for a specific item identifier.
-     * If the item is an alias, looks for alias-specific SDS first.
+     * If the item is an alias, returns the alias's own published SDS (published first when missing) and never the base sheet.
      */
     private function getLatestPublishedSds(int $fgId, string $itemIdentifier): ?array
     {
@@ -657,77 +324,28 @@ class SDSAutoSendService
             [$itemIdentifier]
         );
 
+        $this->aliasPublishError = null;
         if ($alias) {
-            $aliasId = $this->findPublishedAliasId($alias);
-
-            if ($aliasId !== null) {
-                $version = $this->db->fetch(
-                    "SELECT * FROM sds_versions
-                     WHERE alias_id = ? AND status = 'published' AND is_deleted = 0 AND language = 'en'
-                     ORDER BY version DESC LIMIT 1",
-                    [$aliasId]
-                );
-                if ($version) {
-                    return $version;
-                }
+            // Audit #53 / Q9: an alias is always sent as its OWN published
+            // sheet (alias base code + description); published first when it
+            // has none. Never the base sheet, never another alias's sheet.
+            try {
+                $rows = AliasPublisher::ensurePublished((int) $alias['id'], null, 'Auto-published for shipment SDS send', $this->db);
+                $default = strtolower((string) App::config('sds.default_language', 'en'));
+                return $rows[$default] ?? (reset($rows) ?: null);
+            } catch (\Throwable $e) {
+                $this->aliasPublishError = $e->getMessage();
+                return null;
             }
         }
 
-        // Fall back to the FG's published SDS
+        // Not an alias: the FG's published SDS
         return $this->db->fetch(
             "SELECT * FROM sds_versions
              WHERE finished_good_id = ? AND alias_id IS NULL AND status = 'published' AND is_deleted = 0 AND language = 'en'
              ORDER BY version DESC LIMIT 1",
             [$fgId]
         );
-    }
-
-    /**
-     * Find the alias_id that has a published SDS for the given alias.
-     *
-     * Prefers: exact alias → pack-stripped variant (UV19001-84 → UV19001)
-     * → canonical (first alias for the same base product, last resort).
-     */
-    private function findPublishedAliasId(array $alias): ?int
-    {
-        $hasSds = function (int $id): bool {
-            return (bool) $this->db->fetch(
-                "SELECT id FROM sds_versions
-                 WHERE alias_id = ? AND status = 'published' AND is_deleted = 0
-                 LIMIT 1",
-                [$id]
-            );
-        };
-
-        if ($hasSds((int) $alias['id'])) {
-            return (int) $alias['id'];
-        }
-
-        // Pack-variant fallback: bulk publish strips "-84" etc. and publishes
-        // under the first alias id for the stripped code.
-        $code = $alias['customer_code'];
-        $stripped = str_contains($code, '-') ? substr($code, 0, strpos($code, '-')) : null;
-        if ($stripped !== null) {
-            $packSibling = $this->db->fetch(
-                "SELECT id FROM aliases
-                 WHERE internal_code_base = ? AND customer_code LIKE ? AND id != ?
-                 ORDER BY customer_code ASC LIMIT 1",
-                [$alias['internal_code_base'], $stripped . '%', (int) $alias['id']]
-            );
-            if ($packSibling && $hasSds((int) $packSibling['id'])) {
-                return (int) $packSibling['id'];
-            }
-        }
-
-        // Last resort: any alias for this base product that has a published SDS.
-        $canonical = $this->db->fetch(
-            "SELECT a.id FROM aliases a
-             JOIN sds_versions sv ON sv.alias_id = a.id AND sv.status = 'published' AND sv.is_deleted = 0
-             WHERE a.internal_code_base = ?
-             ORDER BY a.customer_code ASC LIMIT 1",
-            [$alias['internal_code_base']]
-        );
-        return $canonical ? (int) $canonical['id'] : null;
     }
 
     /**
@@ -769,22 +387,21 @@ class SDSAutoSendService
                 : $itemIdentifier;
             $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $displayCode);
 
-            $publishedAliasId = null;
+            // Audit #53 / Q9: alias rows per language from the alias's own
+            // sheet (published first when missing); null = not an alias.
+            $aliasRows = null;
             if ($alias) {
-                $publishedAliasId = $this->findPublishedAliasId($alias);
+                try {
+                    $aliasRows = AliasPublisher::ensurePublished((int) $alias['id'], null, 'Auto-published for shipment SDS send', $this->db, $languages);
+                } catch (\Throwable $e) {
+                    $aliasRows = []; // not publishable: attach nothing for this alias (never the base sheet)
+                }
             }
 
             foreach ($languages as $lang) {
-                $langVersion = null;
-                if ($publishedAliasId !== null) {
-                    $langVersion = $this->db->fetch(
-                        "SELECT * FROM sds_versions
-                         WHERE alias_id = ? AND language = ? AND status = 'published' AND is_deleted = 0
-                         ORDER BY version DESC LIMIT 1",
-                        [$publishedAliasId, $lang]
-                    );
-                }
-                if (!$langVersion) {
+                if ($aliasRows !== null) {
+                    $langVersion = $aliasRows[strtolower((string) $lang)] ?? null;
+                } else {
                     $langVersion = $this->db->fetch(
                         "SELECT * FROM sds_versions
                          WHERE finished_good_id = ? AND alias_id IS NULL AND language = ? AND status = 'published' AND is_deleted = 0
@@ -1057,7 +674,7 @@ class SDSAutoSendService
 
             $sdsVersion = $this->getLatestPublishedSds((int) $fg['id'], $itemName);
             if ($sdsVersion === null) {
-                $this->queueForReview($customer, $row, 'SDS not available — missing raw material data or CAS determination');
+                $this->queueForReview($customer, $row, $this->sdsUnavailableReason());
                 $results['queued']++;
                 continue;
             }
@@ -1146,6 +763,13 @@ class SDSAutoSendService
             ? ($shipmentRow['item_name_description'] ?? '')
             : ($shipmentRow['item_description'] ?? '');
 
+        // sds_send_queue.reason is VARCHAR(500) (migration 031). Alias
+        // publish-gate messages (Section 14 / trade-secret Prop 65) can be
+        // longer; under strict SQL mode an over-long value throws and
+        // aborts the whole auto-send run before sds_processed_at is
+        // stamped, so every later run fails on the same row.
+        $reason = self::clampReason($reason);
+
         $this->db->insert('sds_send_queue', [
             'customer_id'      => (int) $customer['id'],
             'ship_to'          => $shipmentRow['ship_to'] ?? '',
@@ -1156,6 +780,15 @@ class SDSAutoSendService
             'item_description' => $desc,
             'reason'           => $reason,
         ]);
+    }
+
+    /** Cut a queue reason to the sds_send_queue.reason width (500 chars). */
+    public static function clampReason(string $reason, int $max = 500): string
+    {
+        if (mb_strlen($reason, 'UTF-8') <= $max) {
+            return $reason;
+        }
+        return mb_substr($reason, 0, $max - 1, 'UTF-8') . '…';
     }
 
     private function notifyRegulatoryStaff(int $queuedCount): void
@@ -1272,7 +905,7 @@ class SDSAutoSendService
             $sdsVersion = $this->getLatestPublishedSds((int) $fg['id'], $itemName);
 
             if ($sdsVersion === null) {
-                $this->queueForReview($customer, $row, 'SDS not available — missing raw material data or CAS determination');
+                $this->queueForReview($customer, $row, $this->sdsUnavailableReason());
                 $results['queued']++;
                 continue;
             }
@@ -1325,6 +958,14 @@ class SDSAutoSendService
         return $results;
     }
 
+    /** Queue reason when getLatestPublishedSds() returned null (audit #53 / Q9). */
+    private function sdsUnavailableReason(): string
+    {
+        return $this->aliasPublishError !== null
+            ? 'Alias SDS could not be published — ' . $this->aliasPublishError
+            : 'SDS not available — missing raw material data or CAS determination';
+    }
+
     private function setLastRunTimestamp(): void
     {
         $now = date('Y-m-d H:i:s');
@@ -1334,49 +975,5 @@ class SDSAutoSendService
         } else {
             $this->db->insert('settings', ['key' => 'auto_send.last_run_at', 'value' => $now]);
         }
-    }
-
-    /**
-     * Render one versioned SDS PDF into $pdfDir and return its basename.
-     *
-     * Names the file exactly as PDFService::generate() would for a versioned
-     * publish — {code}_v{n}[_{lang}].pdf, with the same stem helpers
-     * (strip_pack_extension + sanitize_filename) so the two code paths agree
-     * for both product codes and alias customer codes. The path is reserved
-     * through PDFService::uniquePath(), so an existing file of that name is
-     * never overwritten (the new one becomes {base}_2.pdf). A failed render
-     * removes the reserved placeholder before rethrowing.
-     *
-     * $sdsData is taken by reference so the version / effective-date stamp
-     * (SDSGenerator::stampPublishedVersion) lands on
-     * the caller's array and is carried into the snapshot_json it inserts,
-     * matching the other publishers. This also overwrites a version number
-     * inherited from a decoded base snapshot via createAliasVariant().
-     */
-    private function writeVersionedPdf(
-        PDFService $pdfService,
-        string $pdfDir,
-        string $code,
-        int $version,
-        string $lang,
-        array &$sdsData,
-        string $effectiveDate
-    ): string {
-        if (!is_dir($pdfDir) && !@mkdir($pdfDir, 0775, true) && !is_dir($pdfDir)) {
-            throw new \RuntimeException("Unable to create PDF output directory: {$pdfDir}");
-        }
-
-        $sdsData = SDSGenerator::stampPublishedVersion($sdsData, $version, $effectiveDate);
-        $base    = PDFService::versionedBaseName(sanitize_filename(strip_pack_extension($code)), $version, $lang);
-        $pdfPath = PDFService::uniquePath($pdfDir, $base, '.pdf');
-
-        try {
-            $pdfService->generateToFile($sdsData, $pdfPath);
-        } catch (\Throwable $e) {
-            @unlink($pdfPath);
-            throw $e;
-        }
-
-        return basename($pdfPath);
     }
 }

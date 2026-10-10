@@ -489,29 +489,41 @@ class PubChemConnector implements FederalDataInterface
      */
     private function extractStatementsFromValue(array $value, array &$result, string $key, string $prefix): void
     {
+        // A code never follows a letter ("EUH066" is not H066); H350i / H360FD keep their suffix.
+        $codeRe = '(?<![A-Za-z])' . $prefix . '\d{3}[A-Za-z]{0,2}(?:\s*\+\s*' . $prefix . '\d{3}[A-Za-z]{0,2})*';
+
         foreach ($value['StringWithMarkup'] ?? [] as $swm) {
             $str = $swm['String'] ?? '';
             if ($str === '') {
                 continue;
             }
 
+            /* #19: a bare code list ("P210, P233, P240, ... and P501", PubChem's
+               "Precautionary Statement Codes") carries one statement per code.
+               The single-statement pattern below only ever read the first. */
+            if (preg_match_all('/' . $codeRe . '/', $str, $all) && count($all[0]) > 1) {
+                $rest = (string) preg_replace('/' . $codeRe . '/', '', $str);
+                if (trim((string) preg_replace('/\band\b|[\s,;.]/i', '', $rest)) === '') {
+                    foreach ($all[0] as $code) {
+                        $result[$key][] = ['code' => strtoupper((string) preg_replace('/\s+/', '', $code)), 'text' => ''];
+                    }
+                    continue;
+                }
+            }
+
             /* Pattern: "H225: Highly flammable liquid and vapour" or "H225 - Highly flammable..."
-               Also handles combined codes like "H302+H312+H332" */
-            $pattern = '/(' . $prefix . '\d{3}(?:\s*\+\s*' . $prefix . '\d{3})*)\s*[:;\-\s]\s*(.*)/i';
-            if (preg_match($pattern, $str, $m)) {
+               Also handles combined codes like "H302+H332" */
+            if (preg_match('/(' . $codeRe . ')\s*[:;\-\s]\s*(.*)/', $str, $m)) {
                 $result[$key][] = [
-                    'code' => strtoupper(preg_replace('/\s+/', '', $m[1])),
+                    'code' => strtoupper((string) preg_replace('/\s+/', '', $m[1])),
                     'text' => trim($m[2]),
                 ];
-            } else {
+            } elseif (preg_match('/' . $codeRe . '/', $str, $m)) {
                 /* Bare code or plain text */
-                $codePattern = '/' . $prefix . '\d{3}(?:\s*\+\s*' . $prefix . '\d{3})*/i';
-                if (preg_match($codePattern, $str, $m)) {
-                    $result[$key][] = [
-                        'code' => strtoupper(preg_replace('/\s+/', '', $m[0])),
-                        'text' => trim($str),
-                    ];
-                }
+                $result[$key][] = [
+                    'code' => strtoupper((string) preg_replace('/\s+/', '', $m[0])),
+                    'text' => trim($str),
+                ];
             }
         }
     }
@@ -540,6 +552,10 @@ class PubChemConnector implements FederalDataInterface
      *   "Flammable Liquids, Category 2"
      *   "Acute Toxicity - Oral, Category 4"
      *   "Skin Corrosion/Irritation Category 2"
+     *   "Flam. Liq. 2 (100%)"        (CLP short form; the notification share is dropped)
+     *   "STOT SE 3"                  -> ['class' => 'STOT SE', 'category' => 'Category 3']
+     *
+     * A bare category token is stored as 'Category N' (#20).
      *
      * @return array|null  ['class' => ..., 'category' => ...]
      */
@@ -554,6 +570,17 @@ class PubChemConnector implements FederalDataInterface
         if (preg_match('/[,\s]+Category\s+(\S+)/i', $text, $m)) {
             $category = trim($m[1]);
             $text     = trim(preg_replace('/[,\s]+Category\s+\S+/i', '', $text));
+        }
+        // CLP / PubChem short form with the notification share:
+        // "Flam. Liq. 2 (100%)", "Eye Irrit. 2A", "STOT SE 3", "Aquatic Chronic 1".
+        $text = trim((string) preg_replace('/\s*\(\s*\d+(?:\.\d+)?\s*%\s*\)\s*$/', '', $text));
+        if ($category === null && preg_match('/^(.*\S)\s+(\d[A-C]?)$/i', $text, $m)) {
+            $text     = $m[1];
+            $category = $m[2];
+        }
+        // #20: store 'Category 2', never the bare token '2'.
+        if ($category !== null) {
+            $category = \SDS\Services\HazardRowNormalizer::categoryDisplayFromToken($category);
         }
 
         if ($text === '') {
@@ -665,33 +692,25 @@ class PubChemConnector implements FederalDataInterface
                 'payload_json' => $payloadJson,
             ]);
 
-            /* ---- hazard classifications ---- */
+            /* ---- hazard classifications (#19/#20) ----
+               One row per class, each carrying only its own class's codes and
+               signal word plus both canonical columns. Classes PubChem does not
+               name are derived from its H-codes (no more 'Unclassified' row
+               carrying the whole substance label). The full substance-level
+               label stays in hazard_source_records.payload_json. */
             $ghs = $result['ghs'] ?? [];
-
-            foreach ($ghs['hazard_classes'] ?? [] as $hc) {
+            foreach (\SDS\Services\HazardRowNormalizer::rowsForStorage($ghs) as $row) {
                 $this->db->insert('hazard_classifications', [
                     'hazard_source_record_id' => $recordId,
                     'cas_number'              => $cas,
-                    'class_name'              => $hc['class'],
-                    'category'                => $hc['category'] ?? '',
-                    'signal_word'             => $ghs['signal_word'],
-                    'h_statements_json'       => json_encode($ghs['hazard_statements'] ?? [], JSON_UNESCAPED_UNICODE),
-                    'p_statements_json'       => json_encode($ghs['precautionary_statements'] ?? [], JSON_UNESCAPED_UNICODE),
-                    'pictograms_json'         => json_encode($ghs['pictogram_codes'] ?? [], JSON_UNESCAPED_UNICODE),
-                ]);
-            }
-
-            /* If no hazard classes were found but we have H-statements, store a generic row */
-            if (empty($ghs['hazard_classes']) && !empty($ghs['hazard_statements'])) {
-                $this->db->insert('hazard_classifications', [
-                    'hazard_source_record_id' => $recordId,
-                    'cas_number'              => $cas,
-                    'class_name'              => 'Unclassified',
-                    'category'                => '',
-                    'signal_word'             => $ghs['signal_word'],
-                    'h_statements_json'       => json_encode($ghs['hazard_statements'], JSON_UNESCAPED_UNICODE),
-                    'p_statements_json'       => json_encode($ghs['precautionary_statements'] ?? [], JSON_UNESCAPED_UNICODE),
-                    'pictograms_json'         => json_encode($ghs['pictogram_codes'] ?? [], JSON_UNESCAPED_UNICODE),
+                    'class_name'              => $row['class_name'],
+                    'class_name_canonical'    => $row['class_name_canonical'],
+                    'category'                => $row['category'],
+                    'category_canonical'      => $row['category_canonical'],
+                    'signal_word'             => $row['signal_word'],
+                    'h_statements_json'       => json_encode($row['h_statements'], JSON_UNESCAPED_UNICODE),
+                    'p_statements_json'       => json_encode($row['p_statements'], JSON_UNESCAPED_UNICODE),
+                    'pictograms_json'         => json_encode($row['pictograms'], JSON_UNESCAPED_UNICODE),
                 ]);
             }
 

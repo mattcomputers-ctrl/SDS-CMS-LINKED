@@ -17,7 +17,8 @@
 
 <?php if (!empty($companyPhoneError)): ?>
 <div class="alert alert-danger" style="max-width: 700px;">
-    <strong>Bulk publish will fail:</strong> <?= e($companyPhoneError) ?>
+    <strong>Standard, alias and resale SDSs will not be published:</strong> <?= e($companyPhoneError) ?>
+    Private label SDSs (they print the manufacturer's own number) are still published.
     <a href="/admin/settings">Open Admin Settings &rarr;</a>
 </div>
 <?php endif; ?>

@@ -164,7 +164,6 @@ return [
         'P272' => 'Las prendas de trabajo contaminadas no podrán sacarse del lugar de trabajo',
         'P273' => 'Evitar su liberación al medio ambiente',
         'P280' => 'Llevar guantes/prendas/gafas/máscara de protección',
-        'P281' => 'Utilizar el equipo de protección individual obligatorio',
         'P282' => 'Llevar guantes que aíslen del frío y gafas/máscara de protección',
         'P283' => 'Llevar prendas ignífugas o resistentes al fuego',
         'P284' => '[En caso de ventilación insuficiente] llevar equipo de protección respiratoria',

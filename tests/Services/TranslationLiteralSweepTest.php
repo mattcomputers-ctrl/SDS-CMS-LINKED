@@ -108,7 +108,7 @@ $nonDisplayCalls = [
 //   [file, regex on the trimmed source line, reason]
 $allowlist = [
     ['src/Services/UVAcrylateRulePack.php', "/const TRADE_SECRET_NAME = 'Trade Secret';/",
-        'language-free placeholder; getSafeHandlingLanguage() maps it to labels.trade_secret'],
+        'language-free placeholder; section4SkinFragment() maps it to labels.trade_secret'],
     ['src/Services/FormulaCalcService.php', "/'chemical_name'\s*=>\s*'Trade Secret',/",
         'synthetic trade-secret composition row; SDSGenerator::tradeSecretName() prints labels.trade_secret'],
     ['src/Services/FormulaCalcService.php', "/'trade_secret_description'\s*=>\s*'Trade Secret',/",

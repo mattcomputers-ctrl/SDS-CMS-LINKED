@@ -8,12 +8,14 @@ use SDS\Core\CSRF;
 use SDS\Core\Database;
 use SDS\Models\Customer;
 use SDS\Models\FinishedGood;
+use SDS\Services\AliasPublisher;
 use SDS\Services\MailService;
-use SDS\Services\PDFService;
-use SDS\Services\SDSGenerator;
 
 class SDSSendQueueController
 {
+    /** Why findPublishedSds() returned null for an alias (audit #53 / Q9). */
+    private ?string $aliasError = null;
+
     public function index(): void
     {
         $db = Database::getInstance();
@@ -73,7 +75,8 @@ class SDSSendQueueController
 
         $fg = FinishedGood::findByProductCode($stripped);
         if (!$fg) {
-            $alias = $db->fetch("SELECT internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1", [$stripped]);
+            $alias = $db->fetch("SELECT internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1", [$itemIdentifier])
+                ?? $db->fetch("SELECT internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1", [$stripped]);
             if ($alias) {
                 $fg = FinishedGood::findByProductCode($alias['internal_code_base']);
             }
@@ -87,7 +90,9 @@ class SDSSendQueueController
         // Find published SDS
         $sdsVersion = $this->findPublishedSds((int) $fg['id'], $itemIdentifier, $db);
         if (!$sdsVersion) {
-            $_SESSION['_flash']['error'] = "No published SDS found for '{$itemIdentifier}'. Please publish the SDS first.";
+            $_SESSION['_flash']['error'] = $this->aliasError !== null
+                ? "Alias SDS for '{$itemIdentifier}' could not be published: {$this->aliasError}"
+                : "No published SDS found for '{$itemIdentifier}'. Please publish the SDS first.";
             redirect('/sds-send-queue');
         }
 
@@ -145,7 +150,8 @@ class SDSSendQueueController
 
             $fg = FinishedGood::findByProductCode($stripped);
             if (!$fg) {
-                $alias = $db->fetch("SELECT internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1", [$stripped]);
+                $alias = $db->fetch("SELECT internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1", [$itemIdentifier])
+                    ?? $db->fetch("SELECT internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1", [$stripped]);
                 if ($alias) {
                     $fg = FinishedGood::findByProductCode($alias['internal_code_base']);
                 }
@@ -205,17 +211,19 @@ class SDSSendQueueController
 
     private function findPublishedSds(int $fgId, string $itemIdentifier, Database $db): ?array
     {
+        $this->aliasError = null;
         $alias = $db->fetch("SELECT id FROM aliases WHERE customer_code = ? LIMIT 1", [$itemIdentifier]);
 
         if ($alias) {
-            $version = $db->fetch(
-                "SELECT * FROM sds_versions
-                 WHERE alias_id = ? AND status = 'published' AND is_deleted = 0 AND language = 'en'
-                 ORDER BY version DESC LIMIT 1",
-                [(int) $alias['id']]
-            );
-            if ($version) {
-                return $version;
+            // Audit #53 / Q9: an alias is sent as ITS OWN published sheet
+            // (pack variants share one), published first when it has none.
+            // Never the base sheet re-branded from a snapshot.
+            try {
+                $rows = AliasPublisher::ensurePublished((int) $alias['id'], current_user_id(), 'Published for the SDS send queue', $db, ['en']);
+                return $rows['en'] ?? null;
+            } catch (\Throwable $e) {
+                $this->aliasError = $e->getMessage();
+                return null;
             }
         }
 
@@ -236,24 +244,9 @@ class SDSSendQueueController
             ? $queueItem['item_name'] : $queueItem['item_code'];
         $itemDesc = $queueItem['item_description'] ?? '';
 
-        // If alias and SDS is non-alias, generate alias PDF
-        $tempPdf = null;
-        $alias = $db->fetch("SELECT * FROM aliases WHERE customer_code = ? LIMIT 1", [$itemIdentifier]);
-
-        if ($alias && empty($sdsVersion['alias_id'])) {
-            $snapshot = json_decode($sdsVersion['snapshot_json'] ?? '{}', true);
-            if ($snapshot) {
-                $snapshot = SDSGenerator::createAliasVariant(
-                    $snapshot,
-                    $alias['customer_code'],
-                    $alias['description']
-                );
-                $tempPdf = tempnam(sys_get_temp_dir(), 'sds_queue_') . '.pdf';
-                $pdfService = new PDFService();
-                $pdfService->generateToFile($snapshot, $tempPdf);
-                $pdfPath = $tempPdf;
-            }
-        }
+        // Audit #53 / Q9: the attachment is always the PDF of the row passed
+        // in (an alias's own published sheet for alias items) — never a
+        // snapshot re-render.
 
         $companyRow = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'company.name'");
         $companyName = $companyRow['value'] ?? \SDS\Core\App::config('company.name', 'SDS System');
@@ -279,10 +272,6 @@ class SDSSendQueueController
             $body,
             [['path' => $pdfPath, 'name' => $safeCode . '_SDS.pdf']]
         );
-
-        if ($tempPdf !== null) {
-            @unlink($tempPdf);
-        }
 
         // Log the send
         $db->insert('sds_send_log', [

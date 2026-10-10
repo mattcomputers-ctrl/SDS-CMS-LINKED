@@ -5,12 +5,12 @@
  *
  * Exercises the Section 4 first-aid logic directly through Reflection:
  *   - severe fragments REPLACE the base paragraph (H330/H331, H314, H318,
- *     H304/H305, H300/H301, H310/H311);
+ *     H304, H300/H301, H310/H311);
  *   - additive fragments are APPENDED to whichever paragraph was chosen
  *     (H332/H334/H335/H336, H312/H315/H317, contact-lens sentence, H302);
  *   - the 4(b) symptoms line is built from H3xx statements only, split
  *     into acute / delayed;
- *   - the 4(c) notes fragments (H304/H305, H314/H318, H330/H331) are placed BEFORE the default sentence (audit #9);
+ *   - the 4(c) notes fragments (H304, H314 or H318 eye-damage, H330/H331) are placed BEFORE the default sentence (audit #9);
  *   - a per-FG override replaces the whole field;
  *   - every new translation key exists in all four language files.
  *
@@ -166,9 +166,9 @@ $s = $m->invoke($gen, $hz(['H315', 'H317', 'H319', 'H411']), []);
 check($s['notes'] === $tr('notes'), 'UV sensitiser ink: default only', $s['notes']);
 check(str_contains($s['skin'], $tr('skin_sensitizer')), 'UV sensitiser ink: H317 advice still in skin paragraph', $s['skin']);
 
-// H318 alone triggers the corrosive-burns fragment; H319 alone does not.
 $s = $m->invoke($gen, $hz(['H318']), []);
-check($s['notes'] === $tr('notes_corrosive') . ' ' . $tr('notes'), 'H318 -> corrosive then base', $s['notes']);
+check($s['notes'] === $tr('notes_eye_damage') . ' ' . $tr('notes'), 'H318 -> eye-damage note then base (#30)', $s['notes']);
+check(!str_contains($s['notes'], $tr('notes_corrosive')), 'H318 alone never prints the corrosive-burns note (#30)');
 $s = $m->invoke($gen, $hz(['H319']), []);
 check($s['notes'] === $tr('notes'), 'H319 -> default only', $s['notes']);
 
@@ -176,6 +176,7 @@ check($s['notes'] === $tr('notes'), 'H319 -> default only', $s['notes']);
 $s = $m->invoke($gen, $hz(['H314', 'H318']), []);
 check($s['notes'] === $tr('notes_corrosive') . ' ' . $tr('notes'), 'H314+H318 -> single corrosive fragment', $s['notes']);
 check(substr_count($s['notes'], $tr('notes_corrosive')) === 1, 'corrosive fragment not duplicated', $s['notes']);
+check(!str_contains($s['notes'], $tr('notes_eye_damage')), 'H314+H318 -> no eye-damage note', $s['notes']);
 
 // H330 alone and H331 alone -> delayed-effects fragment then base.
 foreach (['H330', 'H331'] as $c) {
@@ -197,11 +198,24 @@ check($s['notes'] === 'Custom notes', 'notes override wins over fragments', $s['
 foreach (['en', 'es', 'fr', 'de'] as $lang) {
     $trFile = require $basePath . '/templates/translations/' . $lang . '.php';
     $def = $trFile['section4']['notes'] ?? '';
-    foreach (['notes_aspiration', 'notes_corrosive', 'notes_inhalation_delayed'] as $k) {
+    foreach (['notes_aspiration', 'notes_corrosive', 'notes_inhalation_delayed', 'notes_eye_damage'] as $k) {
         $v = $trFile['section4'][$k] ?? '';
         check(is_string($v) && $v !== '' && $v !== $def && !str_contains($v, $def), "{$lang} section4.{$k} is a standalone fragment", $v);
     }
 }
+
+// ---------------------------------------------------------------------
+echo "i. #30 H305 / #31 additive toxicity sentences\n";
+$s = $m->invoke($gen, $hz(['H305']), []);
+check($s['ingestion'] === $tr('ingestion') && $s['notes'] === $tr('notes'), 'H305 alone -> base ingestion + base notes', $s);
+$s = $m->invoke($gen, $hz(['H304', 'H301']), []);
+check($s['ingestion'] === $tr('ingestion_aspiration') . ' ' . $tr('poison_center_immediate'), 'H304 + H301 -> aspiration + poison center', $s['ingestion']);
+$s = $m->invoke($gen, $hz(['H304', 'H302']), []);
+check($s['ingestion'] === $tr('ingestion_aspiration') . ' ' . $tr('ingestion_harmful'), 'H304 + H302 -> aspiration + harmful', $s['ingestion']);
+$s = $m->invoke($gen, $hz(['H314', 'H311']), []);
+check($s['skin'] === $tr('skin_corrosive') . ' ' . $tr('poison_center_immediate'), 'H314 + H311 -> corrosive + poison center', $s['skin']);
+$s = $m->invoke($gen, $hz(['H314', 'H312']), []);
+check($s['skin'] === $tr('skin_corrosive') . ' ' . $tr('skin_harmful'), 'H314 + H312 -> corrosive + harmful', $s['skin']);
 
 // ---------------------------------------------------------------------
 echo "g. Translation completeness (en/es/fr/de)\n";
@@ -210,6 +224,7 @@ $keys = [
     'skin_toxic', 'skin_harmful', 'skin_irritant', 'skin_sensitizer', 'eyes_contact_lenses',
     'ingestion_harmful', 'symptoms_none', 'symptoms_acute_prefix', 'symptoms_delayed_prefix',
     'notes_aspiration', 'notes_corrosive', 'notes_inhalation_delayed',
+    'notes_eye_damage', 'poison_center_immediate',
 ];
 foreach (['en', 'es', 'fr', 'de'] as $lang) {
     $trFile = require $basePath . '/templates/translations/' . $lang . '.php';

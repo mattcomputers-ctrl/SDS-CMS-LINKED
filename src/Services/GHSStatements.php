@@ -155,7 +155,6 @@ class GHSStatements
         'P272' => 'Contaminated work clothing should not be allowed out of the workplace',
         'P273' => 'Avoid release to the environment',
         'P280' => 'Wear protective gloves/protective clothing/eye protection/face protection',
-        'P281' => 'Use personal protective equipment as required', // withdrawn in GHS Rev. 6 (merged into P280); kept for legacy stored data only — never add to class defaults
         'P282' => 'Wear cold insulating gloves and either face shield or eye protection',
         'P283' => 'Wear fire resistant or flame retardant clothing',
         'P284' => 'Wear respiratory protection',
@@ -484,6 +483,103 @@ class GHSStatements
         }
 
         return $hazardResult;
+    }
+
+    /** #39: withdrawn P-codes and their GHS Rev. 7 replacement. */
+    public const WITHDRAWN_P_CODES = ['P281' => 'P280'];
+
+    /**
+     * #40: H-codes 29 CFR 1910.1200 App. A (HazCom 2024) does not adopt —
+     * acute toxicity Cat 5, skin irritation Cat 3, aspiration Cat 2. Never
+     * listed on their own in Section 2.
+     */
+    public const NOT_ADOPTED_H_CODES = ['H303', 'H313', 'H333', 'H316', 'H305'];
+
+    /** Upper-cased, trimmed code with a withdrawn P-code replaced (P281 -> P280). */
+    public static function normalisePCode(string $code): string
+    {
+        $c = strtoupper(trim($code));
+        return self::WITHDRAWN_P_CODES[$c] ?? $c;
+    }
+
+    /** Comma-separated P-code list (FG override field) with withdrawn codes replaced and duplicates dropped. */
+    public static function normalisePCodeList(string $list): string
+    {
+        $out = [];
+        foreach (explode(',', $list) as $c) {
+            $c = self::normalisePCode($c);
+            if ($c !== '' && !in_array($c, $out, true)) {
+                $out[] = $c;
+            }
+        }
+        return implode(', ', $out);
+    }
+
+    /**
+     * #39: replace withdrawn P-codes in a statement list (a list of
+     * ['code','text'] or a map keyed by code), dropping the replacement's
+     * duplicate. A replaced entry carries the replacement's English wording
+     * (resolvePStatements re-resolves it per language).
+     */
+    public static function replaceWithdrawnPCodes(array $statements): array
+    {
+        $isList = array_is_list($statements);
+        $out = [];
+        foreach ($statements as $key => $stmt) {
+            $raw  = is_array($stmt) ? (string) ($stmt['code'] ?? $key) : (string) $stmt;
+            $code = self::normalisePCode($raw);
+            if ($code === '' || isset($out[$code])) {
+                continue;
+            }
+            if ($code !== strtoupper(trim($raw))) {
+                $stmt = is_array($stmt) ? ['code' => $code, 'text' => self::pText($code)] : $code;
+            }
+            $out[$code] = $stmt;
+        }
+        return $isList ? array_values($out) : $out;
+    }
+
+    /**
+     * #40: Section 2 H-statements not printed on a classification line. A
+     * statement is covered when its code, or every '+' part of it, is in some
+     * hazard class's h_codes. HazCom-non-adopted codes are never listed.
+     * Shared by PDFService::renderSection2 and src/Views/sds/preview.php so
+     * the PDF and the HTML preview agree (old snapshots included).
+     *
+     * @return array<int, array> subset of $hStatements, in order
+     */
+    public static function uncoveredHStatements(array $hazardClasses, array $hStatements): array
+    {
+        $covered = [];
+        foreach ($hazardClasses as $hc) {
+            foreach ((array) ($hc['h_codes'] ?? []) as $c) {
+                foreach (explode('+', strtoupper((string) $c)) as $part) {
+                    $part = trim($part);
+                    if ($part !== '') {
+                        $covered[$part] = true;
+                    }
+                }
+            }
+        }
+        $out = [];
+        foreach ($hStatements as $s) {
+            $code = strtoupper(trim((string) ($s['code'] ?? '')));
+            if ($code === '') {
+                continue;
+            }
+            $parts = array_values(array_filter(array_map('trim', explode('+', $code)), fn($p) => $p !== ''));
+            $allCovered = true;
+            $allNotAdopted = true;
+            foreach ($parts as $p) {
+                $allCovered    = $allCovered && isset($covered[$p]);
+                $allNotAdopted = $allNotAdopted && in_array($p, self::NOT_ADOPTED_H_CODES, true);
+            }
+            if ($parts === [] || $allCovered || $allNotAdopted) {
+                continue;
+            }
+            $out[] = $s;
+        }
+        return $out;
     }
 
     /**

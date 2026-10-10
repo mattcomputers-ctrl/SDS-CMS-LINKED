@@ -291,6 +291,26 @@ assertEquals('kg does not match KG', [], AbbreviationService::filter(['KG' => 'k
 assertEquals('mg/kg KG matches KG', ['KG' => 'k'], AbbreviationService::filter(['KG' => 'k'], 'mg/kg KG'));
 
 // ──────────────────────────────────────────────────────────────────────
+echo "[7b] Section 14 transport terms (finding #52).\n";
+$fx14 = $fixture;
+$fx14['sections'][14] = ['title' => 'Transport', 'un_number' => 'UN1210', 'note' => $en->get('section14.note'),
+    'transport_in_bulk' => $en->get('section14.transport_in_bulk_text'), 'environmental_hazards' => 'Marine pollutant: Yes'];
+$line14 = AbbreviationService::build($fx14, $en);
+foreach (['IATA = ', 'IMDG = ', 'MARPOL = ', 'IBC = '] as $needle) {
+    assertContains("Section 14 line contains '{$needle}'", $needle, $line14);
+}
+$fx14b = $fixture;
+$fx14b['sections'][14] = ['title' => 'Transport', 'environmental_hazards' => 'IMDG marine pollutant'];
+assertContains('environmental_hazards is scanned', 'IMDG = ', AbbreviationService::build($fx14b, $en));
+$fx14c = $fixture;
+$fx14c['sections'][14] = ['title' => 'Transport', 'un_number' => 'Not regulated', 'ghs_note' => 'LED test'];
+assertNotContains('ghs_note is no longer scanned in Section 14', 'LED = ', AbbreviationService::build($fx14c, $en));
+$frTable14 = AbbreviationService::table(new TranslationService('fr'));
+foreach (['IATA', 'IMDG', 'MARPOL', 'IBC'] as $k) {
+    assertTrue("fr: has {$k}", array_key_exists($k, $frTable14));
+}
+
+// ──────────────────────────────────────────────────────────────────────
 echo "[8] Per-language master tables.\n";
 $sorted = static function (array $k): array { usort($k, 'strcasecmp'); return $k; };
 foreach (['en', 'es', 'fr', 'de'] as $lang) {

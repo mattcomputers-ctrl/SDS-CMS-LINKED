@@ -125,7 +125,7 @@ final class AbbreviationService
             switch ((int) $num) {
                 case 2: // renderSection2: only these fields print
                     $parts[] = (string) ($section['signal_word'] ?? '');
-                    if (empty($section['is_classified'])) {
+                    if (!SDSGenerator::section2IsClassified($section)) { // #63 legacy snapshots
                         $parts[] = (string) ($section['not_classified_text'] ?? '');
                     }
                     foreach ($section['hazard_classes'] ?? [] as $hc) {
@@ -152,7 +152,7 @@ final class AbbreviationService
 
                 case 11: // only these keys are rendered (hazard_classes /
                          // carcinogen_result are never printed)
-                    foreach (['acute_toxicity', 'chronic_effects', 'carcinogenicity', 'uv_acrylate_note'] as $k) { // uv_acrylate_note: audit #35
+                    foreach (['routes_of_exposure', 'symptoms', 'acute_toxicity', 'chronic_effects', 'carcinogenicity', 'uv_acrylate_note'] as $k) { // uv_acrylate_note: audit #35; routes/symptoms: Q8
                         $parts[] = (string) ($section[$k] ?? '');
                     }
                     if (!empty($section['component_toxicology'])) {
@@ -162,7 +162,7 @@ final class AbbreviationService
                     break;
 
                 case 14: // renderSection14 prints a fixed key list
-                    foreach (['un_number', 'proper_shipping_name', 'hazard_class', 'packing_group', 'note', 'ghs_note'] as $k) {
+                    foreach (['un_number', 'proper_shipping_name', 'hazard_class', 'packing_group', 'environmental_hazards', 'transport_in_bulk', 'special_precautions', 'note'] as $k) {   // finding #52: ghs_note is a Section 15 key
                         $parts[] = (string) ($section[$k] ?? '');
                     }
                     break;
@@ -172,7 +172,7 @@ final class AbbreviationService
                     $prop65 = is_array($copy['prop65'] ?? null) ? $copy['prop65'] : [];
                     $sara   = is_array($copy['sara_313'] ?? null) ? $copy['sara_313'] : [];
                     $snur   = is_array($copy['snur'] ?? null) ? $copy['snur'] : [];
-                    unset($copy['prop65'], $copy['sara_313'], $copy['snur'], $copy['state_regs']);
+                    unset($copy['prop65'], $copy['sara_313'], $copy['snur'], $copy['state_regs'], $copy['tsca']);   // tsca roll-up (names, RM codes) never prints
                     // Prop 65 warning text prints only when required.
                     if (!empty($prop65['requires_warning'])) {
                         $parts[] = (string) ($prop65['warning_text'] ?? '');
@@ -274,7 +274,8 @@ final class AbbreviationService
             'sara_313_title'       => $saraBlock,
             'sara_313_statement'   => $saraList,
             'sara_313_threshold'   => $saraList,
-            'sara_313_pbt'         => $saraList,
+            'sara_313_pbt_no_deminimis' => $saraList,   // #26: replaces labels.sara_313_pbt (no longer printed)
+            'sara_313_special_concern_no_deminimis' => $saraList,   // TRI PFAS (40 CFR 372.28)
             'sara_313_range_note'  => $saraList,
             'sara_313_none'        => $saraBlock && !$saraList,
             'hap_title'            => array_key_exists('has_haps', $hap),

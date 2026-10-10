@@ -362,6 +362,23 @@ class AdminController
             return;
         }
 
+        // Audit #69 — the missing-data threshold is a percentage from 0.01 to 100.
+        // A blank field used to save as 0 %, which blocked every constituent with
+        // no federal data regardless of its concentration.
+        if (array_key_exists('sds__missing_threshold_pct', $_POST)) {
+            $thresholdError = \SDS\Services\SDSReadinessService::missingThresholdInputError((string) $_POST['sds__missing_threshold_pct']);
+            if ($thresholdError !== null) {
+                $_SESSION['_flash']['error'] = 'Settings not saved: ' . $thresholdError;
+                redirect('/admin/settings');
+                return;
+            }
+            $_POST['sds__missing_threshold_pct'] = trim((string) $_POST['sds__missing_threshold_pct']);
+        }
+
+        // Audit #58 — snapshot before saving, to offer an SDS bump when a setting
+        // that prints on every sheet changes (end of this method).
+        $settingsBefore = self::settingsSnapshot($db);
+
         // Handle logo removal
         if (!empty($_POST['remove_logo'])) {
             $currentLogo = $db->fetch("SELECT `value` FROM settings WHERE `key` = 'company.logo_path'");
@@ -450,6 +467,12 @@ class AdminController
             $_SESSION['_flash']['error'] = $crontabWarning;
         } else {
             $_SESSION['_flash']['success'] = 'Settings saved.';
+        }
+        $changedSheetSettings = \SDS\Services\SheetContentSettings::changedKeys($settingsBefore, self::settingsSnapshot($db));
+        if ($changedSheetSettings !== []) {
+            $_SESSION['_flash']['warning'] = 'You changed settings that print on every SDS ('
+                . implode(', ', $changedSheetSettings) . '). Published SDSs keep the old text until they are republished: '
+                . 'to reissue them, click "Bump ALL unblocked SDSs" under Maintenance below, then run Bulk SDS Publish.';
         }
         redirect('/admin/settings');
     }
@@ -639,11 +662,18 @@ class AdminController
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = 'Could not compute pending family changes: ' . $e->getMessage();
         }
+        $legacyManual = 0;
+        try {
+            $legacyManual = count(\SDS\Services\FamilyResolver::legacyManualFinishedGoodIds(\SDS\Core\Database::getInstance()));
+        } catch (\Throwable $e) {
+            // non-fatal: the button is simply hidden
+        }
         view('admin/product-families', [
-            'pageTitle' => 'Product Families',
-            'families'  => $families,
-            'usage'     => $usage,
-            'pending'   => $pending,
+            'pageTitle'    => 'Product Families',
+            'families'     => $families,
+            'usage'        => $usage,
+            'pending'      => $pending,
+            'legacyManual' => $legacyManual,
         ]);
     }
 
@@ -731,17 +761,25 @@ class AdminController
         // flags them: bump / flag here (count was shown on the form before Save).
         $textChanged = \SDS\Models\ProductFamily::encodeLangJson($data['recommended_use']) !== ($item['recommended_use_json'] ?? null)
             || \SDS\Models\ProductFamily::encodeLangJson($data['restrictions']) !== ($item['restrictions_json'] ?? null);
-        $uvChanged   = (int) ($item['is_uv'] ?? 0) !== (int) $data['is_uv'];
-        $nameChanged = (string) ($item['name'] ?? '') !== (string) $data['name'];
-        if ($textChanged || $uvChanged || $nameChanged) {
-            $what = implode(' / ', array_keys(array_filter(['default text' => $textChanged, 'UV/LED flag' => $uvChanged, 'name' => $nameChanged])));
+        $uvChanged     = (int) ($item['is_uv'] ?? 0) !== (int) $data['is_uv'];
+        $nameChanged   = (string) ($item['name'] ?? '') !== (string) $data['name'];
+        $activeChanged = (int) ($item['is_active'] ?? 1) !== (int) $data['is_active'];
+        if ($textChanged || $uvChanged || $nameChanged || $activeChanged) {
+            $what = implode(' / ', array_keys(array_filter(['default text' => $textChanged, 'UV/LED flag' => $uvChanged, 'name' => $nameChanged, 'active flag' => $activeChanged])));
             $f = \SDS\Services\FamilyResolver::flagFamilyTextChange((int) $id, current_user_id(), 'Product family "' . $data['name'] . '" ' . $what . ' changed');
             $msg .= self::bumpedTail($f['bumped_rms']) . self::queuedTail($f['queued']);
         }
-        // Active-flag changes alter resolution: report pending, do not apply (Recompute
-        // applies and flags reassignments). A rename also shows the legacy fg.family
-        // name sync as pending; that write is metadata-only.
-        $msg .= $this->pendingFamilyTail();
+        if ($activeChanged) {
+            // Audit #61 / Q13: an inactive family never drives Section 1 text or
+            // the UV flag (SDSGenerator::familyFields); FamilyResolver ignores its
+            // rules, content shares and manual picks. Re-resolve now (members were
+            // flagged above, before they move) so stored families match the sheets.
+            $r = \SDS\Services\FamilyResolver::recompute(true, current_user_id(), 'Product family "' . $data['name'] . '" ' . ((int) $data['is_active'] === 1 ? 'activated' : 'deactivated'));
+            $msg .= \SDS\Services\FamilyResolver::summaryLine($r);
+        } else {
+            // A rename shows the legacy fg.family name sync as pending; that write is metadata-only.
+            $msg .= $this->pendingFamilyTail();
+        }
         $_SESSION['_flash']['success'] = $msg;
         redirect('/admin/product-families/' . (int) $id . '/edit');
     }
@@ -847,6 +885,33 @@ class AdminController
         redirect('/admin/product-families');
     }
 
+    /**
+     * POST /admin/product-families/reset-legacy-manual (audit #61 / Q13):
+     * release every manual family link migration 053 created from the legacy
+     * family name (FamilyResolver::legacyManualFinishedGoodIds) back to Auto
+     * and re-resolve those products by rule / content. family_id is kept while
+     * the source is cleared, so the scoped recompute writes only real
+     * reassignments (flagged for republish) and source-only metadata.
+     */
+    public function resetLegacyFamilyPicks(): void
+    {
+        $this->requireAdmin();
+        CSRF::validateRequest();
+        $db  = Database::getInstance();
+        $ids = \SDS\Services\FamilyResolver::legacyManualFinishedGoodIds($db);
+        if ($ids === []) {
+            $_SESSION['_flash']['success'] = 'No legacy manual family picks left.';
+            redirect('/admin/product-families');
+        }
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        $db->query("UPDATE finished_goods SET family_source = NULL, updated_at = updated_at WHERE family_source = 'manual' AND id IN ({$ph})", $ids);
+        $db->query("DELETE FROM fg_legacy_family_picks WHERE finished_good_id IN ({$ph})", $ids);   // Q13 snapshot (059): done
+        $r = \SDS\Services\FamilyResolver::recompute(true, current_user_id(), 'Legacy manual family picks reset to Auto', ['raw_material_ids' => [], 'finished_good_ids' => $ids]);
+        AuditService::log('product_family', 'reset_legacy_manual', 'apply', ['finished_good_ids' => $ids, 'counts' => $r['counts'], 'bumped_rms' => $r['bumped_rms'], 'queued' => $r['queued']]);
+        $_SESSION['_flash']['success'] = 'Reset ' . count($ids) . ' legacy manual family pick(s) to Auto.' . \SDS\Services\FamilyResolver::summaryLine($r);
+        redirect('/admin/product-families');
+    }
+
     /** Validate + normalise the family form. Never fails (model validates name/dup). */
     private function collectProductFamilyInput(): array
     {
@@ -892,6 +957,16 @@ class AdminController
     /**
      * Upsert a single setting key/value.
      */
+    /** Audit #58 — every settings row as key => value (string). */
+    private static function settingsSnapshot(Database $db): array
+    {
+        $out = [];
+        foreach ($db->fetchAll("SELECT `key`, `value` FROM settings") as $r) {
+            $out[(string) $r['key']] = (string) ($r['value'] ?? '');
+        }
+        return $out;
+    }
+
     private function saveSetting(Database $db, string $key, string $value): void
     {
         $existing = $db->fetch("SELECT `key` FROM settings WHERE `key` = ?", [$key]);
@@ -2415,8 +2490,8 @@ class AdminController
         );
 
         // All distinct CAS numbers from raw material constituents that do
-        // not yet have an active determination, excluding non-hazardous and
-        // trade-secret entries. CAS numbers with federal data are included
+        // not yet have an active determination, excluding trade-secret
+        // entries. CAS numbers with federal data are included
         // so users can review and complete the determination; a flag
         // indicates whether federal data is available.
         $needsDetermination = $db->fetchAll(
@@ -2442,7 +2517,6 @@ class AdminController
              JOIN raw_materials rm ON rm.id = rmc.raw_material_id
              WHERE rmc.cas_number != ''
                AND rmc.is_trade_secret = 0
-               AND rmc.is_non_hazardous = 0
                AND NOT EXISTS (
                    SELECT 1 FROM competent_person_determinations cpd
                    WHERE cpd.cas_number = rmc.cas_number AND cpd.is_active = 1
@@ -2456,6 +2530,7 @@ class AdminController
         $descriptions = $db->fetchAll(
             "SELECT cm.cas_number, cm.preferred_name,
                     cm.has_nitrogen, cm.has_sulfur, cm.has_halogen, cm.element_flags_source,
+                    cm.tc_metals, cm.tc_metals_source,
                     p.chemical_name AS prop65_name,
                     (SELECT COUNT(DISTINCT rmc.raw_material_id)
                      FROM raw_material_constituents rmc
@@ -2741,6 +2816,137 @@ class AdminController
         redirect('/determinations?tab=descriptions');
     }
 
+    /**
+     * GET /determinations/tc-metals — audit #12. Dry run of the RCRA metal-flag
+     * seed (CasTcMetalSeeder::plan(); the same rows scripts/seed-cas-tc-metals.php
+     * prints without --confirm). Nothing is written. ?force=1 includes manual rows.
+     */
+    public function tcMetalsSeedPreview(): void
+    {
+        $this->requirePageAccess('cas_determinations', 'full');
+
+        $force = isset($_GET['force']) && (string) $_GET['force'] !== '0';
+        $plan  = (new \SDS\Services\CasTcMetalSeeder(Database::getInstance()))->plan($force);
+
+        view('determinations/tc-metals', [
+            'pageTitle' => 'Seed RCRA Metal Flags — Preview',
+            'plan'      => $plan,
+            'force'     => $force,
+        ]);
+    }
+
+    /**
+     * POST /determinations/tc-metals/apply — audit #12. Applies the seed
+     * (re-planned live), bumps the RMs carrying a changed CAS and, unless
+     * "no_queue" is ticked, queues SDS-update rows.
+     */
+    public function applyTcMetalsSeed(): void
+    {
+        $this->requirePageAccess('cas_determinations', 'full');
+        CSRF::validateRequest();
+
+        $force   = isset($_POST['force']);
+        $noQueue = isset($_POST['no_queue']);
+
+        set_time_limit(0);
+        ignore_user_abort(true);
+
+        $seeder = new \SDS\Services\CasTcMetalSeeder(Database::getInstance());
+        try {
+            $r = $seeder->apply(['force' => $force, 'queue' => !$noQueue, 'userId' => current_user_id()]);
+        } catch (\RuntimeException $e) {
+            $_SESSION['_flash']['error'] = $e->getMessage();
+            redirect('/determinations/tc-metals');
+            return;
+        }
+
+        AuditService::log('cas_master', 'tc_metals', 'seed', \SDS\Services\CasTcMetalSeeder::summary($r) + [
+            'changed_cas'       => $r['changedCas'],
+            'post_commit_error' => $r['postCommitError'],
+        ]);
+
+        if ($r['postCommitError'] !== null) {
+            $_SESSION['_flash']['error'] = sprintf(
+                'RCRA metal flags were written (%d changed, %d raw material%s bumped) but %s '
+                . 'The affected CAS are listed in the audit log; run the SDS Updates scan to queue the affected products.',
+                $r['changed'], $r['rmsBumped'], $r['rmsBumped'] === 1 ? '' : 's', $r['postCommitError']
+            );
+            redirect('/determinations/tc-metals');
+            return;
+        }
+
+        $_SESSION['_flash']['success'] = sprintf(
+            'RCRA metal flags seeded: %d changed, %d manual skipped; %d raw material%s bumped, %d SDS%s queued%s.',
+            $r['changed'], $r['skippedManual'],
+            $r['rmsBumped'], $r['rmsBumped'] === 1 ? '' : 's',
+            $r['sdsQueued'], $r['sdsQueued'] === 1 ? '' : 's',
+            $noQueue ? ' (SDS-update queue skipped)' : ''
+        );
+        redirect('/determinations/tc-metals');
+    }
+
+    /**
+     * POST /determinations/tc-metals — audit #12. Sets cas_master.tc_metals by
+     * hand (CAS Descriptions tab, "RCRA metals"). Content change: bump + queue,
+     * like saveCasElementFlags().
+     */
+    public function saveCasTcMetals(): void
+    {
+        $this->requirePageAccess('cas_determinations', 'full');
+        CSRF::validateRequest();
+        $db = Database::getInstance();
+
+        $cas = trim($_POST['cas_number'] ?? '');
+        if ($cas === '') {
+            $_SESSION['_flash']['error'] = 'CAS number is required.';
+            redirect('/determinations?tab=descriptions');
+            return;
+        }
+
+        $raw     = trim((string) ($_POST['tc_metals'] ?? ''));
+        $unknown = [];
+        foreach (preg_split('/[\s,;]+/', $raw) ?: [] as $tok) {
+            if ($tok !== '' && !in_array(ucfirst(strtolower($tok)), \SDS\Services\CasElementFlagger::TC_METALS, true)) {
+                $unknown[] = $tok;
+            }
+        }
+        if ($unknown !== []) {
+            $_SESSION['_flash']['error'] = 'Unknown RCRA metal symbol(s): ' . implode(', ', $unknown)
+                . '. Use As, Ba, Cd, Cr, Pb, Hg, Se, Ag (comma-separated), or leave blank for none.';
+            redirect('/determinations?tab=descriptions');
+            return;
+        }
+        $new = \SDS\Services\CasElementFlagger::parseTcMetals($raw);
+
+        $existing = $db->fetch("SELECT tc_metals FROM cas_master WHERE cas_number = ?", [$cas]);
+        if ($existing === null) {
+            $_SESSION['_flash']['error'] = "CAS {$cas} is not in the registry.";
+            redirect('/determinations?tab=descriptions');
+            return;
+        }
+        $old = \SDS\Services\CasElementFlagger::parseTcMetals($existing['tc_metals'] ?? null);
+        if ($old === $new) {
+            $_SESSION['_flash']['success'] = "RCRA metal flags for CAS {$cas} unchanged.";
+            redirect('/determinations?tab=descriptions');
+            return;
+        }
+
+        $db->update('cas_master', ['tc_metals' => implode(',', $new), 'tc_metals_source' => 'manual'], 'cas_number = ?', [$cas]);
+
+        // Deliberate content change: Section 13 changes for every product carrying this CAS.
+        $bumped = \SDS\Services\RegulatoryListBumper::bumpByCas($cas);
+        $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByCas(
+            [$cas],
+            current_user_id(),
+            "Section 13 RCRA metal flags updated for {$cas}"
+        );
+
+        AuditService::log('cas_tc_metals', $cas, 'update', ['before' => $old, 'after' => $new]);
+        $_SESSION['_flash']['success'] = "RCRA metal flags for CAS {$cas} saved."
+            . self::bumpedTail($bumped) . self::queuedTail($queued);
+        redirect('/determinations?tab=descriptions');
+    }
+
     public function createDetermination(): void
     {
         $this->requirePageAccess('cas_determinations', 'full');
@@ -2834,7 +3040,7 @@ class AdminController
             $pStmts = json_decode($row['p_statements_json'] ?? '[]', true);
             if (is_array($pStmts)) {
                 foreach ($pStmts as $stmt) {
-                    $code = is_string($stmt) ? $stmt : ($stmt['code'] ?? '');
+                    $code = \SDS\Services\GHSStatements::normalisePCode(is_string($stmt) ? $stmt : (string) ($stmt['code'] ?? '')); // #39
                     if ($code !== '') {
                         $allPCodes[$code] = true;
                     }

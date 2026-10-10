@@ -54,19 +54,19 @@ $selfId = $isEdit ? (int) $item['id'] : 0;
 
         <!-- Recommended Use & Restrictions -->
         <h3>SDS Product Use</h3>
-        <p class="text-muted">These fields appear in SDS Section 1 — Product Identification.</p>
+        <p class="text-muted">These fields appear in SDS Section 1 — Product Identification. Leave them blank: the product family's text then prints in each sheet language (or the standard translated sentence). Text typed here prints as typed on every language.</p>
         <div class="form-grid-2col">
             <div class="form-group full-width">
                 <label for="recommended_use">Recommended Use</label>
                 <input type="text" id="recommended_use" name="recommended_use"
                        value="<?= e(old('recommended_use', $item['recommended_use'] ?? '')) ?>"
-                       placeholder="e.g. Industrial ink for offset printing">
+                       placeholder="Blank = product family text">
             </div>
             <div class="form-group full-width">
                 <label for="restrictions_on_use">Restrictions on Use</label>
                 <input type="text" id="restrictions_on_use" name="restrictions_on_use"
                        value="<?= e(old('restrictions_on_use', $item['restrictions_on_use'] ?? '')) ?>"
-                       placeholder="e.g. Not for food contact or consumer use">
+                       placeholder="Blank = product family text">
             </div>
         </div>
 

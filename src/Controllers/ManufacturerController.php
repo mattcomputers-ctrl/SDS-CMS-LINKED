@@ -71,6 +71,7 @@ class ManufacturerController
 
         $data = $this->extractFormData();
         $data['created_by'] = current_user_id();
+        $this->validateName($data, '/manufacturers/create');
         $this->validateEmergencyPhone($data, '/manufacturers/create');
 
         // Handle logo upload
@@ -141,6 +142,7 @@ class ManufacturerController
         }
 
         $data = $this->extractFormData();
+        $this->validateName($data, '/manufacturers/' . $id . '/edit');
         $this->validateEmergencyPhone($data, '/manufacturers/' . $id . '/edit');
 
         // Handle logo upload
@@ -216,6 +218,17 @@ class ManufacturerController
      * falls back to the company number. Flashes the error + old input and
      * redirects back to the form (redirect() exits).
      */
+    /** Audit #55 — refuse a blank / whitespace-only name before any logo upload. */
+    private function validateName(array $data, string $backUrl): void
+    {
+        if (trim((string) ($data['name'] ?? '')) !== '') {
+            return;
+        }
+        $_SESSION['_flash']['error'] = 'Manufacturer name is required. It prints as the Company line in Section 1 of every private label SDS (29 CFR 1910.1200 Appendix D, Section 1(c)).';
+        $_SESSION['_flash']['_old_input'] = $_POST;
+        redirect($backUrl);
+    }
+
     private function validateEmergencyPhone(array $data, string $backUrl): void
     {
         if (trim((string) ($data['emergency_phone'] ?? '')) !== '') {

@@ -2866,12 +2866,14 @@ class SDSGenerator
 
     /**
      * A4(a): tiers stricter than the UV sentence. On these the tier sentence
-     * prints alone and the UV sentence is dropped: impervious gloves
-     * (H310/H311/H314: butyl/Viton, double gloving) and goggles AND face shield
-     * (H314/H318). [] = the UV sentence always replaces.
+     * prints alone and the UV sentence is dropped. Only eyewear has a floor:
+     * goggles AND face shield (H314/H318). Gloves have none: UV products always
+     * print the UV nitrile glove sentence, even on corrosive inks, because
+     * acrylates can permeate butyl (owner decision 2026-10-12).
+     * [] for a field = the UV sentence always replaces.
      */
     private const UV_PPE_TIER_FLOOR = [
-        'hand_protection' => ['impervious'],
+        'hand_protection' => [],
         'eye_protection'  => ['goggles_faceshield'],
     ];
 

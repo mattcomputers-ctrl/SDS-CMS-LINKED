@@ -4,9 +4,10 @@
  * Batch F A4 — Section 8 (DB-free).
  *
  *   A4(a) On UV rule-pack products the UV glove / eyewear sentence REPLACES the
- *         tier sentence (respiratory / clothing keep tier + UV appended); the
- *         stricter tiers (impervious gloves, goggles + face shield) stand alone
- *         (UV_PPE_TIER_FLOOR); Section 2 mirrors Section 8; an override wins;
+ *         tier sentence (respiratory / clothing keep tier + UV appended); gloves
+ *         are always the UV nitrile sentence, even on corrosive inks; only the
+ *         goggles + face shield eyewear tier stands alone (UV_PPE_TIER_FLOOR);
+ *         Section 2 mirrors Section 8; an override wins;
  *         pack off = tier sentences only.
  *   A4(b) One italic sentence naming the components whose exposure-limit Notes
  *         carry a Skin notation, from the MASKED rows (trade secret by its
@@ -99,10 +100,10 @@ foreach (HazardEngine::PPE_FIELDS as $f) {
 }
 
 // ---------------------------------------------------------------------
-echo "2. Safety floor: stricter tiers stand alone\n";
+echo "2. Safety floor: eyewear only; UV gloves are always nitrile\n";
 $p = $s8->invoke($gen, hz(['H314', 'H317']), [], [], $liq, true);
-check($p['hand_protection'] === $tr('ppe.hand_protection.impervious'), 'H314+H317: impervious glove sentence alone', $p['hand_protection']);
-check(!str_contains(strtolower($p['hand_protection']), 'nitrile'), 'H314+H317: no nitrile sentence', $p['hand_protection']);
+check($p['hand_protection'] === $tr('uv_hand_protection'), 'H314+H317: UV nitrile glove sentence replaces the impervious tier (owner 2026-10-12)', $p['hand_protection']);
+check(!str_contains(strtolower($p['hand_protection']), 'butyl'), 'H314+H317: no butyl glove advice on a UV ink', $p['hand_protection']);
 check($p['eye_protection'] === $tr('ppe.eye_protection.goggles_faceshield'), 'H314+H317: goggles + face shield alone', $p['eye_protection']);
 check($p['skin_protection'] === $tr('ppe.skin_protection.suit') . ' ' . $tr('uv_skin_protection'), 'H314+H317: suit + UV skin appended', $p['skin_protection']);
 

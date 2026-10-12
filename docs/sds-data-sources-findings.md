@@ -831,3 +831,5 @@ Defects confirmed by the post-implementation verifiers of the approved fixed-tex
 Pending owner decisions (code not changed):
 - **Decision 2 (A4(a) UV PPE safety floor):** on UV sheets with H310/H311/H314 (impervious gloves) or H314/H318 (goggles and face shield) the tier sentence stands alone instead of the UV sentence (`UV_PPE_TIER_FLOOR`). Literal A4(a) would print nitrile gloves / "goggles or a face shield" on corrosive UV inks. Owner yes keeps it; no = set the constant to [] and update SDSGeneratorSection8UvPpeNotationTest §2.
 - **Decision 1 (A3 wording):** H370/H371 print the official GHS P308+P311 text "If exposed or concerned: Call a POISON CENTER/doctor."; the brief's "Call a POISON CENTER/doctor if you feel unwell." is the P312 wording.
+
+- **Decision 2 resolved (2026-10-12):** UV gloves are always the UV nitrile sentence, including on corrosive (H310/H311/H314) UV inks, because acrylates can permeate butyl. The eyewear floor stays: H314/H318 UV inks keep goggles and face shield. Decision 1: the official P308+P311 wording is accepted.

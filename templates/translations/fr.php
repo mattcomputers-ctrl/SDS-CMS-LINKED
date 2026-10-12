@@ -13,7 +13,51 @@ return [
     'section2' => [
         'title'          => 'Identification des Dangers',
         'other_hazards'  => 'Aucun connu.',
+        'other_hazards_uv' => 'Le produit non réticulé peut polymériser lorsqu\'il est exposé à la lumière UV, à des températures élevées ou à des contaminants.',
         'not_classified' => 'N\'est pas une substance ou un mélange dangereux.',
+        // A12(c) combustible dust (raw_materials.combustible_dust = yes; Powder/Solid product)
+        'combustible_dust_class'     => 'Poussières combustibles',
+        'combustible_dust_statement' => 'Peut former des concentrations de poussières combustibles dans l\'air.',
+    ],
+    // A12(b) / T4a: STOT target organs and route (cas_master.stot_*), filled
+    // into H370-H373 (Section 2, Sections 4/11 symptoms) and the Section 11
+    // STOT RE line by StotTargetOrgans. GHS statement text with the organs in
+    // brackets after the organ word and the route last; no trailing period.
+    'stot' => [
+        'h370'               => 'Risque avéré d\'effets graves pour les organes (:organs)',
+        'h370_route'         => 'Risque avéré d\'effets graves pour les organes (:organs) :route',
+        'h371'               => 'Risque présumé d\'effets graves pour les organes (:organs)',
+        'h371_route'         => 'Risque présumé d\'effets graves pour les organes (:organs) :route',
+        'h372'               => 'Risque avéré d\'effets graves pour les organes (:organs) à la suite d\'expositions répétées ou d\'une exposition prolongée',
+        'h372_route'         => 'Risque avéré d\'effets graves pour les organes (:organs) à la suite d\'expositions répétées ou d\'une exposition prolongée :route',
+        'h373'               => 'Risque présumé d\'effets graves pour les organes (:organs) à la suite d\'expositions répétées ou d\'une exposition prolongée',
+        'h373_route'         => 'Risque présumé d\'effets graves pour les organes (:organs) à la suite d\'expositions répétées ou d\'une exposition prolongée :route',
+        'chronic_re_1'       => 'Toxicité spécifique pour certains organes cibles, exposition répétée (Catégorie 1) : risque avéré d\'effets graves pour les organes (:organs) à la suite d\'expositions répétées ou d\'une exposition prolongée (H372).',
+        'chronic_re_1_route' => 'Toxicité spécifique pour certains organes cibles, exposition répétée (Catégorie 1) : risque avéré d\'effets graves pour les organes (:organs) à la suite d\'expositions répétées ou d\'une exposition prolongée :route (H372).',
+        'chronic_re_2'       => 'Toxicité spécifique pour certains organes cibles, exposition répétée (Catégorie 2) : risque présumé d\'effets graves pour les organes (:organs) à la suite d\'expositions répétées ou d\'une exposition prolongée (H373).',
+        'chronic_re_2_route' => 'Toxicité spécifique pour certains organes cibles, exposition répétée (Catégorie 2) : risque présumé d\'effets graves pour les organes (:organs) à la suite d\'expositions répétées ou d\'une exposition prolongée :route (H373).',
+        'route' => [
+            'inhalation' => 'par inhalation',
+            'oral'       => 'par ingestion',
+            'dermal'     => 'par contact avec la peau',
+        ],
+        'organ' => [
+            'respiratory_tract'      => 'voies respiratoires',
+            'lungs'                  => 'poumons',
+            'liver'                  => 'foie',
+            'kidneys'                => 'reins',
+            'central_nervous_system' => 'système nerveux central',
+            'nervous_system'         => 'système nerveux',
+            'blood'                  => 'sang',
+            'heart'                  => 'cœur',
+            'eyes'                   => 'yeux',
+            'skin'                   => 'peau',
+            'gastrointestinal_tract' => 'tractus gastro-intestinal',
+            'bone_marrow'            => 'moelle osseuse',
+            'thyroid'                => 'thyroïde',
+            'reproductive_organs'    => 'organes reproducteurs',
+            'hearing_organs'         => 'organes auditifs',
+        ],
     ],
     'section3' => [
         'title'            => 'Composition / Information sur les Ingrédients',
@@ -52,6 +96,10 @@ return [
         'notes_inhalation_delayed'   => 'Maintenir sous surveillance médicale pendant au moins 48 heures ; un œdème pulmonaire différé est possible.',
         'poison_center_immediate'    => 'Appeler immédiatement un centre antipoison ou un médecin.',
         'notes_eye_damage'           => 'Lésions oculaires graves : continuer à rincer les yeux pendant le transport vers les soins médicaux et faire examiner le patient par un ophtalmologiste sans délai.',
+        // A3 (2026-10-12): P308+P313 (H340-H373) / P308+P311 (H370/H371)
+        'exposed_medical_advice' => 'En cas d\'exposition prouvée ou suspectée : consulter un médecin.',
+        'exposed_poison_center'  => 'En cas d\'exposition prouvée ou suspectée : appeler un CENTRE ANTIPOISON/un médecin.',
+        'call_poison_center'     => 'Appeler un CENTRE ANTIPOISON/un médecin.',
         // Audit #35 — UV acrylate rule pack (UVAcrylateRulePack); :names = detected acrylate names (#65 fragments)
         'uv_skin'       => 'Produit réticulable UV/EB : éliminer immédiatement le produit non réticulé de la peau à l\'eau et au savon. Ne pas utiliser de solvants ni de diluants pour nettoyer la peau.',
         'uv_skin_names' => 'Produit réticulable UV/EB contenant des monomères/oligomères acrylates (:names) : éliminer immédiatement le produit non réticulé de la peau à l\'eau et au savon. Ne pas utiliser de solvants ni de diluants pour nettoyer la peau.',
@@ -60,12 +108,14 @@ return [
         'title'            => 'Mesures de Lutte contre l\'Incendie',
         'suitable_media'   => 'Eau pulvérisée, poudre chimique sèche, dioxyde de carbone (CO2), mousse.',
         'unsuitable_media' => 'Ne pas utiliser de jet d\'eau direct, qui risquerait de propager l\'incendie.',
-        'specific_hazards' => 'La combustion peut produire du monoxyde de carbone, du dioxyde de carbone et d\'autres fumées toxiques.',
+        'specific_hazards' => 'La combustion peut produire du monoxyde de carbone, du dioxyde de carbone et d\'autres gaz toxiques.',
         'firefighter_advice' => 'Porter un appareil respiratoire autonome (ARA) et une tenue de protection complète. Refroidir à l\'eau pulvérisée les récipients exposés au feu.',
         'unsuitable_water_reactive' => 'Eau, eau pulvérisée, mousse et tout agent extincteur à base d\'eau : le produit réagit avec l\'eau en dégageant des gaz inflammables.',
         'suitable_oxidizer'         => 'Eau pulvérisée en grande quantité (noyage), mousse. Ne pas utiliser de poudre chimique sèche sur les incendies importants impliquant des comburants.',
-        'specific_hazards_oxidizer' => 'Comburant — peut provoquer ou aggraver un incendie. La combustion peut produire du monoxyde de carbone, du dioxyde de carbone et d\'autres fumées toxiques.',
-        'specific_hazards_organic_peroxide' => 'Peut s\'enflammer ou exploser en cas d\'échauffement. La combustion peut produire du monoxyde de carbone, du dioxyde de carbone et d\'autres fumées toxiques.',
+        'specific_hazards_oxidizer' => 'Comburant — peut provoquer ou aggraver un incendie.',
+        'specific_hazards_organic_peroxide' => 'Peut s\'enflammer ou exploser en cas d\'échauffement.',
+        // A1 (2026-10-12): :products = section10.decomp_* items joined ", "
+        'combustion_products' => 'La combustion peut produire du monoxyde de carbone, du dioxyde de carbone, des :products et d\'autres gaz toxiques.',
         'firefighter_advice_explosive' => 'Évacuer la zone. Combattre le feu depuis un emplacement protégé. Porter un ARA et un équipement de protection complet.',
         // Audit #11: Flammable Liquids category (H224/H225/H226) and water-reactive (H260/H261) fragments
         'suitable_flammable'   => 'Mousse résistant à l\'alcool, poudre chimique sèche, dioxyde de carbone (CO2) ou eau pulvérisée (brouillard).',
@@ -83,6 +133,9 @@ return [
         'firefighter_no_water' => 'Ne pas appliquer d\'eau ni de mousse sur le produit ou sur ses récipients.', // #64: explosive + water-reactive
         // Audit #35 — UV acrylate rule pack (UVAcrylateRulePack) (#65 fragments)
         'uv_specific_hazards' => 'Sous l\'effet de la chaleur, le produit réticulable UV/EB non réticulé peut polymériser de façon incontrôlée, en dégageant de la chaleur et en pouvant faire éclater les récipients fermés. Le produit en combustion peut dégager des fumées âcres.',
+        // A12(c) combustible dust (raw_materials.combustible_dust = yes; Powder/Solid product)
+        'unsuitable_combustible_dust'       => 'Éviter les jets d\'eau à haute pression et tout autre moyen susceptible de soulever des poussières et de former un nuage de poussières.',
+        'specific_hazards_combustible_dust' => 'Les poussières fines dispersées dans l\'air en concentration suffisante peuvent former un mélange explosif et, en présence d\'une source d\'inflammation, présentent un risque potentiel d\'explosion de poussières.',
     ],
     'section6' => [
         'title'                => 'Mesures en Cas de Déversement Accidentel',
@@ -100,7 +153,7 @@ return [
         'environmental_aquatic_chronic_very' => 'Très toxique pour les organismes aquatiques, entraîne des effets néfastes à long terme.',
         'environmental_aquatic_chronic'   => 'Toxique pour les organismes aquatiques, entraîne des effets néfastes à long terme.',
         'environmental_aquatic_harmful'   => 'Nocif pour les organismes aquatiques.',
-        'environmental_aquatic_chronic_harmful'  => 'Nocif pour les organismes aquatiques, entraîne des effets à long terme.',
+        'environmental_aquatic_chronic_harmful'  => 'Nocif pour les organismes aquatiques, entraîne des effets néfastes à long terme.',
         'environmental_aquatic_chronic_may_harm' => 'Peut être nocif à long terme pour les organismes aquatiques.',
         'environmental_notify'            => 'Informer les autorités si le produit atteint les égouts ou les cours d\'eau.',
         'containment_paste'               => 'Arrêter la fuite si possible en toute sécurité. Racler ou pelleter le matériau et le collecter dans des récipients adaptés pour l\'élimination. Nettoyer la zone affectée avec un agent de nettoyage approprié.',
@@ -138,6 +191,11 @@ return [
         'storage_corrosive_metals' => 'Stocker dans un récipient résistant à la corrosion avec revêtement intérieur résistant.',
         'storage_locked'           => 'Garder sous clef.',
         'storage_incompatible'     => 'Stocker à l\'écart des matières incompatibles (voir Section 10) : :list.',
+        // A11 family SDS profile (storage temperatures; water-based products)
+        'storage_temp_range'       => 'Stocker entre :min_c et :max_c °C (:min_f–:max_f °F).',
+        'storage_temp_max'         => 'Stocker à une température ne dépassant pas :max_c °C (:max_f °F).',
+        'storage_temp_min'         => 'Stocker à une température d\'au moins :min_c °C (:min_f °F).',
+        'storage_protect_freezing' => 'Protéger du gel.',
         // #64 fragments
         'handling_pyrophoric_water_reactive' => 'Éviter tout contact avec l\'air ou l\'eau. Manipuler sous gaz inerte.',
         'handling_explosive'           => 'Ne pas soumettre à des broyages, des chocs ou des frottements. Conserver uniquement dans l\'emballage d\'origine.',
@@ -149,6 +207,9 @@ return [
         // Audit #35 — UV acrylate rule pack (UVAcrylateRulePack) (#65 fragments)
         'uv_handling' => 'Éviter tout contact prolongé ou répété de la peau avec le produit non réticulé.',
         'uv_storage'  => 'Stocker à l\'abri des sources de lumière UV et de la lumière directe du soleil afin d\'éviter une polymérisation prématurée.',
+        // A12(c) combustible dust (raw_materials.combustible_dust = yes; Powder/Solid product)
+        'handling_combustible_dust' => 'Éviter l\'accumulation de poussières et leur dispersion dans l\'air. Nettoyer par des méthodes qui ne soulèvent pas de poussières, par exemple avec des aspirateurs adaptés aux poussières combustibles. Ne pas utiliser d\'air comprimé pour le nettoyage. Mettre les équipements à la terre et assurer leur liaison équipotentielle pour éviter les décharges électrostatiques.',
+        'handling_combustible_dust_no_ground' => 'Éviter l\'accumulation de poussières et leur dispersion dans l\'air. Nettoyer par des méthodes qui ne soulèvent pas de poussières, par exemple avec des aspirateurs adaptés aux poussières combustibles. Ne pas utiliser d\'air comprimé pour le nettoyage.',
     ],
     'section8' => [
         'title'           => 'Contrôles d\'Exposition / Protection Individuelle',
@@ -157,6 +218,8 @@ return [
         'engineering_flammable' => 'Utiliser une ventilation antidéflagrante et un matériel électrique adapté à la zone dangereuse (classée) (NFPA 70 ; 29 CFR 1910.307). Mettre à la terre et relier équipotentiellement les récipients et les équipements de réception lors du transfert afin d\'éviter les décharges électrostatiques (NFPA 77). La ventilation doit maintenir les concentrations de vapeurs en dessous de la limite inférieure d\'explosivité (LIE).',
         'engineering_corrosive' => 'Des fontaines oculaires et des douches de sécurité doivent être disponibles dans la zone de travail immédiate pour les urgences (29 CFR 1910.151(c) ; ANSI/ISEA Z358.1).',
         'no_exposure_limits'    => 'Aucune valeur limite d\'exposition professionnelle ne s\'applique aux composants de ce produit sous la forme fournie.', // #64
+        'engineering_no_limits' => 'Assurer une ventilation générale adéquate. Utiliser une ventilation locale par aspiration aux endroits où se forment des brouillards, des vapeurs ou des poussières, afin de maintenir les concentrations dans l\'air aussi basses que possible.',
+        'skin_notation'         => 'Composants portant la mention « peau » (l\'absorption par la peau peut contribuer de manière significative à l\'exposition totale ; éviter tout contact avec la peau) : :names.',
         // Audit #35 — UV acrylate rule pack (UVAcrylateRulePack)
         'uv_respiratory' => 'Utiliser une ventilation par aspiration locale lors de la manipulation du produit non réticulé ; en cas de formation de brouillards ou de vapeurs, utiliser un respirateur à épuration d\'air homologué NIOSH avec cartouches pour vapeurs organiques (29 CFR 1910.134).',
         'uv_hand_protection' => 'Pour le produit acrylate non réticulé, porter des gants résistants aux produits chimiques (nitrile, épaisseur minimale de 0,4 mm recommandée) et les remplacer dès le premier signe de contamination.',
@@ -217,6 +280,11 @@ return [
         // #37 Appearance = state + colour (French order: "Liquide, noir")
         'appearance_color_state' => ':state ; couleur : :lc_color',
         'appearance_state'       => ':state',
+        // A11 family typical pH (Section 9; display only)
+        'ph_typical_range'       => ':ph_min – :ph_max (typique)',
+        'ph_typical_value'       => ':ph_value (typique)',
+        // A10 formula (weighted-average) flash point marker; a measured Section 9 edit prints without it
+        'flash_point_calculated' => ':fp (calculé)',
     ],
     'section10' => [
         'title'            => 'Stabilité et Réactivité',
@@ -239,12 +307,18 @@ return [
         'reactivity_oxidizer'           => 'Comburant : peut provoquer ou aggraver un incendie au contact de matières combustibles.',
         'reactivity_self_heating'       => 'Auto-échauffant : peut s\'échauffer spontanément en grandes quantités et s\'enflammer.',
         'reactivity_unstable_gas'       => 'Gaz chimiquement instable : peut réagir de manière explosive même en l\'absence d\'air.',
+        // A9: familles UV/LED
+        'reactivity_uv_polymerization' => 'Une polymérisation dangereuse peut se produire si le produit non réticulé est exposé à la lumière UV, à des températures élevées ou à une contamination par des peroxydes ou des amorceurs radicalaires.',
+        'stability_uv_inhibitor'       => 'Contient des acrylates stabilisés par un inhibiteur de polymérisation qui nécessite de l\'oxygène pour rester efficace : ne pas stocker sous atmosphère de gaz inerte et laisser un volume d\'air au-dessus du produit dans les récipients.',
         'stability_cond_explosive'      => 'chaleur, feu, choc ou friction (explosif)',
         'stability_cond_self_heating'   => 'stockage en grandes quantités ou à température élevée (auto-échauffant ; peut s\'enflammer)',
         'stability_cond_unstable_gas'   => 'pression ou température élevée (gaz chimiquement instable ; peut réagir de manière explosive même sans air)',
         // Audit #19 — conditions-to-avoid items
         'cond_heat'         => 'chaleur excessive',
         'cond_storage_temp' => 'températures supérieures à la limite de stockage recommandée',
+        // A11 family SDS profile
+        'cond_storage_max'  => 'températures supérieures à :max_c °C (:max_f °F)',
+        'cond_freezing'     => 'gel',
         'cond_ignition'     => 'étincelles, flammes nues et autres sources d\'inflammation',
         'cond_air'          => 'exposition à l\'air',
         'cond_water'        => 'eau et humidité',
@@ -271,6 +345,7 @@ return [
         'incompat_amines'          => 'amines',
         'incompat_metal_salts'     => 'métaux lourds et sels métalliques',
         'incompat_metals'          => 'métaux',
+        'incompat_peroxides_initiators' => 'peroxydes et amorceurs radicalaires',
     ],
     'section11' => [
         'title'           => 'Informations Toxicologiques',
@@ -362,6 +437,8 @@ return [
     'section13' => [
         'title'   => 'Considérations relatives à l\'Élimination',
         'methods' => 'Éliminer conformément à toutes les réglementations fédérales, étatiques et locales applicables. Ne pas déverser dans les égouts, les canalisations ni les cours d\'eau.',
+        'packaging'       => 'Les emballages vides retiennent des résidus de produit ; respecter toutes les précautions de la présente fiche de données de sécurité jusqu\'à ce que les emballages aient été nettoyés ou détruits. Éliminer les emballages contaminés de la même manière que le produit, ou confier les emballages entièrement vidés à un reconditionneur ou recycleur agréé, conformément à la réglementation applicable.',
+        'uv_cure_residue' => 'Les petites quantités de résidus non dangereux peuvent être réticulées avant élimination lorsque cela est autorisé.',
         // Ligne de classification des déchets dangereux RCRA (audit #26) — calculée, jamais remplacée.
         'rcra_intro'     => 'S\'il est mis au rebut tel que vendu, ce produit peut être réglementé comme déchet dangereux au titre de la RCRA de l\'EPA des États-Unis (40 CFR 261) :',
         'rcra_none'      => 'Aucune caractéristique de déchet dangereux RCRA (40 CFR 261, sous-partie C) n\'a été identifiée pour ce produit tel que vendu, et aucun composant n\'a été identifié comme constituant de la caractéristique de toxicité ni comme déchet dangereux listé.',
@@ -425,6 +502,10 @@ return [
         // HazCom App. D 14(f) / 14(g) (finding #43): standard wording on every sheet.
         'transport_in_bulk_text'                  => 'Non destiné au transport en vrac conformément à l\'annexe II de la convention MARPOL 73/78 et au recueil IBC.',
         'special_precautions_text'                => 'Lire cette fiche de données de sécurité avant toute manipulation. Maintenir les récipients fermés, debout et calés contre tout déplacement pendant le transport, et s\'assurer que les personnes qui transportent le produit savent quoi faire en cas d\'accident ou de déversement.',
+        'special_precautions_flammable'           => 'Liquide inflammable (classe 3) : tenir à l\'écart de la chaleur, des étincelles et des flammes nues ; ne pas fumer pendant le chargement et le déchargement.',
+        'special_precautions_corrosive'           => 'Matière corrosive (classe 8) : maintenir les colis debout et protégés contre les dommages ; éviter tout contact avec le produit répandu.',
+        'special_precautions_marine'              => 'Polluant marin : empêcher le produit répandu de pénétrer dans les égouts, les canalisations ou les cours d\'eau.',
+        'special_precautions_uv'                  => 'Produit réticulable UV/EB : protéger de la chaleur et de la lumière directe du soleil pendant le transport afin d\'éviter la polymérisation.',
     ],
     'section15' => [
         'title'       => 'Informations Réglementaires',
@@ -442,10 +523,13 @@ return [
         'prop65_type_female_reproductive'  => 'toxicité pour la reproduction féminine',
         'prop65_type_male_reproductive'    => 'toxicité pour la reproduction masculine',
         'prop65_type_reproductive'         => 'toxicité pour la reproduction',
-        // #37 Prop 65 safe-harbor warnings; :cancer / :repro = chemical names. www.P65Warnings.ca.gov stays as is.
-        'prop65_warning_cancer'   => 'AVERTISSEMENT : Ce produit peut vous exposer à des substances chimiques, dont :cancer, reconnue(s) par l\'État de Californie comme cancérogène(s). Pour plus d\'informations, consultez www.P65Warnings.ca.gov.',
-        'prop65_warning_repro'    => 'AVERTISSEMENT : Ce produit peut vous exposer à des substances chimiques, dont :repro, reconnue(s) par l\'État de Californie comme pouvant provoquer des malformations congénitales ou d\'autres effets nocifs sur la reproduction. Pour plus d\'informations, consultez www.P65Warnings.ca.gov.',
-        'prop65_warning_combined' => 'AVERTISSEMENT : Ce produit peut vous exposer à des substances chimiques, dont :repro, reconnue(s) par l\'État de Californie comme pouvant provoquer des malformations congénitales ou d\'autres effets nocifs sur la reproduction, ainsi qu\'à des substances chimiques, dont :cancer, reconnue(s) par l\'État de Californie comme cancérogène(s). Pour plus d\'informations, consultez www.P65Warnings.ca.gov.',
+        // A7 Prop 65 (Prop65Service::safeHarborWarning()); :names = noms séparés par des virgules. www.P65Warnings.ca.gov stays as is.
+        'prop65_clause_cancer_one'  => ':names, reconnue par l\'État de Californie comme cancérogène',
+        'prop65_clause_cancer_many' => ':names, reconnues par l\'État de Californie comme cancérogènes',
+        'prop65_clause_repro_one'   => ':names, reconnue par l\'État de Californie comme pouvant provoquer des malformations congénitales ou d\'autres effets nocifs sur la reproduction',
+        'prop65_clause_repro_many'  => ':names, reconnues par l\'État de Californie comme pouvant provoquer des malformations congénitales ou d\'autres effets nocifs sur la reproduction',
+        'prop65_warning_one'        => 'AVERTISSEMENT : Ce produit peut vous exposer à des substances chimiques, dont :clause. Pour plus d\'informations, consultez www.P65Warnings.ca.gov.',
+        'prop65_warning_both'       => 'AVERTISSEMENT : Ce produit peut vous exposer à des substances chimiques, dont :cancer_part, et :repro_part. Pour plus d\'informations, consultez www.P65Warnings.ca.gov.',
         'prop65_trace_name'       => ':name (traces)',
     ],
     'section16' => [
@@ -459,6 +543,7 @@ return [
             'ACGIH'  => 'American Conference of Governmental Industrial Hygienists (Conférence américaine des hygiénistes industriels gouvernementaux)',
             'ANSI'   => 'Institut national américain de normalisation (American National Standards Institute)',
             'ARA'    => 'Appareil Respiratoire Autonome',
+            'ASTM'   => 'ASTM International (anciennement American Society for Testing and Materials)',
             'CAS'    => 'Numéro de registre du Chemical Abstracts Service',
             'CFR'    => 'Code of Federal Regulations (Code des règlements fédéraux des États-Unis)',
             'CIRC'   => 'Centre International de Recherche sur le Cancer',
@@ -469,6 +554,7 @@ return [
             'EPA'    => 'Agence de Protection de l\'Environnement des États-Unis (U.S. Environmental Protection Agency)',
             'EPI'    => 'Équipement de Protection Individuelle',
             'ETA'    => 'Estimation de la Toxicité Aiguë (SGH chapitre 3.1 ; ETAmél = estimation calculée pour le mélange)',
+            'FDS'    => 'Fiche de Données de Sécurité (Safety Data Sheet)',
             'HAP'    => 'Polluant Atmosphérique Dangereux (Hazardous Air Pollutant, Clean Air Act Section 112(b))',
             'HazCom' => 'Norme OSHA de communication des dangers, 29 CFR 1910.1200',
             'Hxxx'   => 'Code de mention de danger du SGH',
@@ -477,6 +563,7 @@ return [
             'IBC'    => 'Recueil international de règles relatives à la construction et à l\'équipement des navires transportant des produits chimiques dangereux en vrac (recueil IBC)',
             'IDLH'   => 'Danger immédiat pour la vie ou la santé (Immediately Dangerous to Life or Health, NIOSH)',
             'IMDG'   => 'Code maritime international des marchandises dangereuses (International Maritime Dangerous Goods Code)',
+            'ISEA'   => 'Association internationale des équipements de sécurité (International Safety Equipment Association)',
             'LC50'   => 'Concentration létale médiane (inhalation)',
             'LD50'   => 'Dose létale médiane (orale ou cutanée)',
             'LED'    => 'Diode électroluminescente (lampe de séchage)',
@@ -492,6 +579,7 @@ return [
             'OSHA'   => 'Administration de la sécurité et de la santé au travail des États-Unis (Occupational Safety and Health Administration)',
             'OV'     => 'Vapeurs organiques (cartouche de respirateur)',
             'P100'   => 'Classe de filtre à particules NIOSH, à l\'épreuve des huiles, efficacité 99,97 %',
+            'PBT'    => 'Persistant, bioaccumulable et toxique (désignation de l\'EPA, 40 CFR 372.28)',
             'pc'     => 'Poids corporel (mg/kg pc)',
             'PEL'    => 'Limite d\'exposition admissible (Permissible Exposure Limit, OSHA, 29 CFR 1910.1000)',
             'Pxxx'   => 'Code de conseil de prudence du SGH',
@@ -662,6 +750,7 @@ return [
         // Section 13 (Disposal)
         'disposal_methods'      => 'Méthodes d\'Élimination',
         'rcra_classification'   => 'Classification des Déchets Dangereux RCRA',
+        'contaminated_packaging' => 'Emballages Contaminés',    // A5
 
         // Section 14 (Transport)
         'un_number'             => 'Numéro ONU',

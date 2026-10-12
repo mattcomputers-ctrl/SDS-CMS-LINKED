@@ -37,7 +37,8 @@ final class TextOverrideService
         11 => ['acute_toxicity', 'chronic_effects', 'carcinogenicity', 'uv_acrylate_note'], // uv_acrylate_note: #65
         12 => ['ecotoxicity', 'persistence', 'bioaccumulation', 'mobility'],
         13 => ['methods'],
-        14 => ['un_number', 'proper_shipping_name', 'hazard_class', 'packing_group', 'environmental_hazards'],
+        14 => ['un_number', 'proper_shipping_name', 'hazard_class', 'packing_group', 'environmental_hazards',
+               'special_precautions'],   // A6: replaces the whole Special Precautions line
         15 => ['state_regs'],   // Q12: osha_status / tsca_status retired (RETIRED_FIELDS)
     ];
 
@@ -54,7 +55,8 @@ final class TextOverrideService
      * Audit #57: fields whose stored override changes ANOTHER field's
      * automatic text. In SDSGenerator: 9.flash_point -> Sections 5, 13, 14;
      * 9.boiling_point -> Section 14 once it reads the override (#44);
-     * 10.incompatible -> 7.storage; 12.persistence -> 12.bioaccumulation.
+     * 10.incompatible -> 7.storage; 12.persistence -> 12.bioaccumulation;
+     * 14.hazard_class / 14.environmental_hazards -> 14.special_precautions (A6).
      * Keep this list in step whenever a section starts reading another
      * section's override.
      */
@@ -62,6 +64,7 @@ final class TextOverrideService
         9  => ['flash_point', 'boiling_point'],
         10 => ['incompatible'],
         12 => ['persistence'],
+        14 => ['hazard_class', 'environmental_hazards'],   // A6: feed 14.special_precautions
     ];
 
     public static function isEditable(int $section, string $key): bool

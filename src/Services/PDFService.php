@@ -61,6 +61,7 @@ class PDFService
         'note'                 => 'note',
         // Section 13
         'methods'              => 'disposal_methods',
+        'packaging'            => 'contaminated_packaging',   // A5
         'rcra_classification'  => 'rcra_classification',   // audit #26: computed RCRA code line
         // Section 16
         'version'              => 'version',
@@ -518,6 +519,9 @@ class PDFService
                         $hCodes   = is_array($hc['h_codes'] ?? null) ? $hc['h_codes'] : [];
                         $hcPrefix = !empty($hCodes) ? implode(', ', $hCodes) . ' — ' : '';
                         $stmtText = $lookupStatement($hCodes);
+                        if ($stmtText === '' && trim((string) ($hc['statement'] ?? '')) !== '') {
+                            $stmtText = trim((string) $hc['statement']); // A12(c): OSHA-defined hazard without an H-code (same as preview.php)
+                        }
 
                         $line = $hcPrefix . $classLabel;
                         if ($stmtText !== '') {
@@ -866,6 +870,13 @@ class PDFService
                 $pdf->MultiCell($w[4], $rowH, $units,   1, 'C', false, 0, '', '', true, 0, false, true, $rowH, 'M');
                 $pdf->MultiCell($w[5], $rowH, $concPct, 1, 'C', false, 0, '', '', true, 0, false, true, $rowH, 'M');
                 $pdf->MultiCell($w[6], $rowH, $notes,   1, 'L', false, 1, '', '', true, 0, false, true, $rowH, 'M');
+            }
+            // A4(b): Skin-notation sentence under the table (pre-A4 snapshots carry no key).
+            if (trim((string) ($s['skin_notation_note'] ?? '')) !== '') {
+                $pdf->Ln(1);
+                $pdf->SetFont('helvetica', 'I', 8);
+                $pdf->MultiCell(0, 4, (string) $s['skin_notation_note'], 0, 'L');
+                $pdf->SetFont('helvetica', '', 9);
             }
             $pdf->Ln(2);
         } elseif (trim((string) ($s['exposure_limits_none'] ?? '')) !== '') {

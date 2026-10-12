@@ -92,7 +92,7 @@ $generator = $t->get('section13.rcra_generator');
 // ---------------------------------------------------------------------------
 echo "1. Unclassified, fp > 93, no components\n";
 $r = $run([], 93.0, true);
-check(array_keys($r) === ['title', 'methods', 'rcra_classification'], 'keys exactly title/methods/rcra_classification', array_keys($r));
+check(array_keys($r) === ['title', 'methods', 'packaging', 'rcra_classification'], 'keys exactly title/methods/packaging/rcra_classification (A5)', array_keys($r));
 check($r['methods'] === $t->get('section13.methods'), 'methods = generic sentence');
 check($r['rcra_classification'] === $none . ' ' . $generator, 'rcra_none + generator', $r['rcra_classification']);
 check(!str_contains($r['rcra_classification'], 'D001') && !str_contains($r['rcra_classification'], 'D002') && !str_contains($r['rcra_classification'], 'D003'), 'no D001/D002/D003');

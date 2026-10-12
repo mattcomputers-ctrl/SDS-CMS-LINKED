@@ -290,7 +290,7 @@ $exposureLimits = json_decode($det['exposure_limits'] ?? ($old['exposure_limits_
 
         <!-- ═══════════════ EXPOSURE LIMITS ═══════════════ -->
         <h2 class="mt-2">Exposure Limits</h2>
-        <p class="text-muted mb-1">Add occupational exposure limits (OEL). These will appear in Section 8 of generated SDSs.</p>
+        <p class="text-muted mb-1">Add occupational exposure limits (OEL). These will appear in Section 8 of generated SDSs. Enter <strong>Skin</strong> in Notes when the limit carries a skin notation; Section 8 then names the component in its skin-notation sentence.</p>
 
         <div id="exposure-limits-container">
             <table class="table table-sm" id="exposure-limits-table">
@@ -327,7 +327,7 @@ $exposureLimits = json_decode($det['exposure_limits'] ?? ($old['exposure_limits_
                                     <option value="mppcf" <?= ($el['units'] ?? '') === 'mppcf' ? 'selected' : '' ?>>mppcf</option>
                                 </select>
                             </td>
-                            <td><input type="text" name="exp_limit_notes[]" value="<?= e($el['notes'] ?? '') ?>" placeholder="Optional notes"></td>
+                            <td><input type="text" name="exp_limit_notes[]" value="<?= e($el['notes'] ?? '') ?>" placeholder="Optional notes (e.g. Skin, A4, DSEN)"></td>
                             <td><button type="button" class="btn btn-sm btn-danger remove-exp-limit">X</button></td>
                         </tr>
                         <?php endforeach; ?>

@@ -249,7 +249,12 @@ class App
         $router->post('/determinations/tc-metals',       'AdminController@saveCasTcMetals');     // manual edit (CAS Descriptions)
         $router->get('/determinations/tc-metals',        'AdminController@tcMetalsSeedPreview'); // seed dry run (CasTcMetalSeeder::plan)
         $router->post('/determinations/tc-metals/apply', 'AdminController@applyTcMetalsSeed');   // seed apply (CasTcMetalSeeder::apply)
+        // ── A12(a): acrylate flag on cas_master (UV Section 4 acrylate names; literal paths precede /determinations/{id}) ──
+        $router->post('/determinations/acrylate',             'AdminController@saveCasAcrylateFlag');      // manual edit (CAS Descriptions)
+        $router->get('/determinations/acrylate-flags',        'AdminController@acrylateFlagsSeedPreview'); // seed dry run (CasAcrylateFlagSeeder::plan)
+        $router->post('/determinations/acrylate-flags/apply', 'AdminController@applyAcrylateFlagsSeed');   // seed apply (CasAcrylateFlagSeeder::apply)
         $router->post('/determinations/tsca',         'AdminController@saveTscaOverride'); // audit #29 per-CAS TSCA override
+        $router->post('/determinations/stot',         'AdminController@saveCasStot');      // A12(b) STOT target organs + route
         $router->get('/determinations/{id}/edit',    'AdminController@editDetermination');
         $router->post('/determinations/{id}',        'AdminController@updateDetermination');
 

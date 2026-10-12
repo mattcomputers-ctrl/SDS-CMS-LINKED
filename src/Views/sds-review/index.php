@@ -95,6 +95,13 @@
             </div>
         <?php endif; ?>
 
+        <?php if (!empty($review['combustible_dust_warning'])): // A12(c) ?>
+            <div class="alert alert-warning">
+                <strong>Combustible dust not assessed (warning only).</strong>
+                <?= e($review['combustible_dust_warning']) ?>
+            </div>
+        <?php endif; ?>
+
         <?php foreach ($review['supplier_warnings'] ?? [] as $sw): ?>
             <div class="alert alert-warning">
                 <strong>Supplier details incomplete (warning only).</strong>

@@ -10,6 +10,7 @@
  *   - fixed order base + dust + flammable + corrosive, single-space joined;
  *   - a per-FG override replaces the whole field;
  *   - every new key exists in all four language files.
+ *   - A4(c) no limit rows -> section8.engineering_no_limits (see SDSGeneratorSection8UvPpeNotationTest)
  *
  * Run: php tests/Services/SDSGeneratorSection8EngineeringTest.php
  * Exit code: 0 = passed, 1 = failed.
@@ -46,10 +47,10 @@ $m   = new ReflectionMethod($gen, 'section8');
 $m->setAccessible(true);
 
 $tr = fn(string $key): string => $t->get('section8.' . $key);
-$hz = fn(array $codes): array => [
+$hz = fn(array $codes, bool $withLimit = true): array => [
     'h_statements'    => array_map(fn($c) => ['code' => $c, 'text' => ''], $codes),
     'p_statements'    => [],
-    'exposure_limits' => [],
+    'exposure_limits' => $withLimit ? [['cas_number' => '64-17-5', 'chemical_name' => 'Ethanol', 'limit_type' => 'PEL-TWA', 'value' => '1000', 'units' => 'ppm', 'notes' => '', 'concentration_pct' => 5.0]] : [],
 ];
 $eng = fn(array $codes, array $fg = [], array $ov = []): string => $m->invoke($gen, $hz($codes), [], $ov, $fg)['engineering'];
 
@@ -95,7 +96,7 @@ check($eng(['H225', 'H314'], ['physical_state' => 'Powder'], [8 => ['engineering
 echo "g. Translation completeness (en/es/fr/de)\n";
 foreach (['en', 'es', 'fr', 'de'] as $lang) {
     $trFile = require $basePath . '/templates/translations/' . $lang . '.php';
-    foreach (['engineering', 'engineering_dust', 'engineering_flammable', 'engineering_corrosive'] as $k) {
+    foreach (['engineering', 'engineering_dust', 'engineering_flammable', 'engineering_corrosive', 'engineering_no_limits', 'skin_notation'] as $k) {
         $v = $trFile['section8'][$k] ?? null;
         check(is_string($v) && $v !== '', "{$lang} section8.{$k}", $v);
     }
@@ -113,8 +114,12 @@ $uvOff = $m->invoke($gen, $hz(['H315', 'H317', 'H319']), [], [], ['physical_stat
 $uvDef = $m->invoke($gen, $hz(['H315', 'H317', 'H319']), [], [], ['physical_state' => 'Liquid']);
 foreach ($ppeFields as $f) {
     $uvSentence = $t->get('section8.uv_' . $f);
-    check(str_ends_with((string) $uvOn[$f], ' ' . $uvSentence), "uvPack true: {$f} ends with the UV sentence", $uvOn[$f]);
-    check(strlen((string) $uvOn[$f]) > strlen($uvSentence) + 1, "uvPack true: {$f} keeps the tier sentence in front");
+    if (in_array($f, ['hand_protection', 'eye_protection'], true)) {
+        check($uvOn[$f] === $uvSentence, "uvPack true: {$f} is the UV sentence alone (A4a)", $uvOn[$f]);
+    } else {
+        check(str_ends_with((string) $uvOn[$f], ' ' . $uvSentence), "uvPack true: {$f} ends with the UV sentence", $uvOn[$f]);
+        check(strlen((string) $uvOn[$f]) > strlen($uvSentence) + 1, "uvPack true: {$f} keeps the tier sentence in front");
+    }
     check(!str_contains((string) $uvOff[$f], $uvSentence), "uvPack false: {$f} has no UV sentence");
     check(!str_contains((string) $uvDef[$f], $uvSentence), "uvPack omitted: {$f} has no UV sentence");
     check($uvOff[$f] === $uvDef[$f], "uvPack false === omitted for {$f}");
@@ -122,7 +127,7 @@ foreach ($ppeFields as $f) {
 check(!isset($uvOn['uv_acrylate_note']), 'Section 8 carries no uv_acrylate_note key');
 $uvOv = $m->invoke($gen, $hz(['H315', 'H317', 'H319']), [], [8 => ['hand_protection' => 'Custom gloves']], ['physical_state' => 'Liquid'], true);
 check($uvOv['hand_protection'] === 'Custom gloves', 'override replaces the whole hand_protection field (no UV append)', $uvOv['hand_protection']);
-check(str_ends_with((string) $uvOv['eye_protection'], ' ' . $t->get('section8.uv_eye_protection')), 'eye_protection still ends with the UV sentence beside an override');
+check($uvOv['eye_protection'] === $t->get('section8.uv_eye_protection'), 'eye_protection is the UV sentence beside an override (A4a)', $uvOv['eye_protection']);
 $uvBlank = $m->invoke($gen, $hz(['H315']), [], [8 => ['skin_protection' => '   ']], ['physical_state' => 'Liquid'], true);
 check(str_ends_with((string) $uvBlank['skin_protection'], ' ' . $t->get('section8.uv_skin_protection')), 'blank override does not block the UV append');
 foreach (['es', 'fr', 'de'] as $lang) {
@@ -131,7 +136,7 @@ foreach (['es', 'fr', 'de'] as $lang) {
     $ml = new ReflectionMethod($gl, 'section8');
     $ml->setAccessible(true);
     $sl = $ml->invoke($gl, $hz(['H315', 'H317']), [], [], ['physical_state' => 'Liquid'], true);
-    check(str_ends_with((string) $sl['hand_protection'], ' ' . $tl->get('section8.uv_hand_protection')) && $tl->get('section8.uv_hand_protection') !== $t->get('section8.uv_hand_protection'), "{$lang} hand_protection ends with the translated UV sentence");
+    check($sl['hand_protection'] === $tl->get('section8.uv_hand_protection') && $tl->get('section8.uv_hand_protection') !== $t->get('section8.uv_hand_protection'), "{$lang} hand_protection is the translated UV sentence (A4a)");
 }
 
 echo "\n{$checks} checks, {$failures} failures\n";

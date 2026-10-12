@@ -13,9 +13,12 @@ use SDS\Core\Database;
  * This rule pack does NOT invent hazard classifications. Hazards still
  * come from federal CAS data + GHS mixture rules only. This pack:
  *
- *  1. Detects acrylate monomers/oligomers by CAS or name at >= 0.1 % —
- *     used ONLY for the names in the Section 4 sentence (#50); the generic
- *     UV text is gated on isApplicable() (admin switch + family UV flag)
+ *  1. Detects acrylate monomers/oligomers at >= 0.1 % by the cas_master
+ *     acrylate flag (A12a; composition rows carry is_acrylate), falling back
+ *     to the legacy CAS list (one release) or the name rule when the flag is
+ *     not determined — used ONLY for the names in the Section 4 sentence
+ *     (#50); the generic UV text is gated on isApplicable() (admin switch +
+ *     family UV flag)
  *  2. Supplies the translated Section 4 skin sentence, the Section 8 PPE
  *     sentences (applied by SDSGenerator::resolvePPE(), #29) and the
  *     Section 11 note (labels.uv_acrylate_note). Sections 5, 6 and 7 read
@@ -30,22 +33,20 @@ use SDS\Core\Database;
  */
 class UVAcrylateRulePack
 {
-    /** Known acrylate/monomer CAS fragments for synonym matching. */
-    private const ACRYLATE_CAS_LIST = [
-        '57472-68-1'  => 'DPGDA (Dipropylene Glycol Diacrylate)',
-        '15625-89-5'  => 'TMPTA (Trimethylolpropane Triacrylate)',
-        '4986-89-4'   => 'PETIA / PETA (Pentaerythritol Tetraacrylate)',
-        '42978-66-5'  => 'TPGDA (Tripropylene Glycol Diacrylate)',
-        '1680-21-3'   => 'TEGDA (Triethylene Glycol Diacrylate)',
-        '13048-33-4'  => 'HDDA (1,6-Hexanediol Diacrylate)',
-        '28961-43-5'  => 'IBOA (Isobornyl Acrylate)',
-        '2223-82-7'   => 'EO-TMPTA',
-        '96-33-3'     => 'Methyl Acrylate',
-        '141-32-2'    => 'n-Butyl Acrylate',
-        '818-61-1'    => 'HEA (2-Hydroxyethyl Acrylate)',
-        '999-61-1'    => 'HPA (2-Hydroxypropyl Acrylate)',
-        '55818-57-0'  => 'PO-TMPTA',
-        '52408-84-1'  => 'DPHA',
+    /**
+     * A12(a): the CAS the pre-flag release recognised (the former labelled
+     * list; its labels are gone: four were wrong, for 2223-82-7, 28961-43-5,
+     * 52408-84-1 and 55818-57-0, and names now come from the CAS records).
+     * Used ONLY (1) as the runtime fallback for a composition row whose
+     * cas_master.is_acrylate is not determined (NULL) and (2) by
+     * CasAcrylateFlagSeeder to seed the flag. Keep for one release after the
+     * seed has run, then delete (detection then relies on the flag plus the
+     * name rule).
+     */
+    public const LEGACY_ACRYLATE_CAS = [
+        '57472-68-1', '15625-89-5', '4986-89-4',  '42978-66-5', '1680-21-3',
+        '13048-33-4', '28961-43-5', '2223-82-7',  '96-33-3',    '141-32-2',
+        '818-61-1',   '999-61-1',   '55818-57-0', '52408-84-1',
     ];
 
     /** #50: Section 3 listing cut-off; acrylates below it are never named. */
@@ -115,12 +116,81 @@ class UVAcrylateRulePack
     }
 
     /**
+     * A12(a): a stored / propagated is_acrylate value -> true / false, or
+     * null when not determined (NULL, '' or absent). Composition rows carry
+     * ?bool; DB rows carry '0' / '1' / NULL.
+     */
+    public static function flagValue(mixed $v): ?bool
+    {
+        if ($v === null || $v === '') {
+            return null;
+        }
+        if (is_bool($v)) {
+            return $v;
+        }
+        return (int) $v === 1;
+    }
+
+    /** A12(a): on the legacy (pre-flag) CAS list. */
+    public static function isLegacyAcrylateCas(string $cas): bool
+    {
+        $cas = trim($cas);
+        return $cas !== '' && in_array($cas, self::LEGACY_ACRYLATE_CAS, true);
+    }
+
+    /**
+     * #50 name rule: a reactive acrylate monomer/oligomer name ("...acrylate",
+     * "...acrylated...", (meth)acrylic acid), never an acrylic polymer/resin.
+     */
+    public static function nameLooksLikeAcrylate(string $name): bool
+    {
+        $name = trim($name);
+        return $name !== ''
+            && preg_match(self::ACRYLATE_NAME_REGEX, $name) === 1
+            && preg_match(self::ACRYLIC_POLYMER_REGEX, $name) !== 1;
+    }
+
+    /**
+     * A12(a): is this component an acrylate? The cas_master flag wins
+     * (1 = yes, 0 = a manual "no"); when it is not determined (NULL, no
+     * registry row, CAS-less row, hand-built fixture) the pre-flag rule
+     * applies: legacy CAS list (one release) or the name rule.
+     */
+    public static function effectiveFlag(mixed $flag, string $cas, string $name): bool
+    {
+        return self::flagValue($flag) ?? (self::isLegacyAcrylateCas($cas) || self::nameLooksLikeAcrylate($name));
+    }
+
+    /**
+     * A12(a): the value CasAcrylateFlagSeeder proposes for a CAS: 1 when it
+     * is on the legacy list or any of its names passes the name rule, else
+     * null. Never 0: "not an acrylate" is a manual decision.
+     *
+     * @param string[] $names
+     */
+    public static function seedFlagFor(string $cas, array $names): ?int
+    {
+        if (self::isLegacyAcrylateCas($cas)) {
+            return 1;
+        }
+        foreach ($names as $n) {
+            if (self::nameLooksLikeAcrylate((string) $n)) {
+                return 1;
+            }
+        }
+        return null;
+    }
+
+    /**
      * Acrylate monomers/oligomers in a composition, CAS => display name (#50).
      * Used ONLY for the names in the Section 4 sentence; it never decides
      * whether UV text prints (isApplicable() does). Rows below
      * NAME_CUTOFF_PCT are skipped (rows without concentration_pct, e.g.
-     * hand-built fixtures, count). Matched by the known CAS list or by
-     * ACRYLATE_NAME_REGEX, never by acrylic-polymer names.
+     * hand-built fixtures, count). A12(a): matched by the row's is_acrylate
+     * flag (cas_master; 1 = yes, 0 = manual no); when that is not determined,
+     * by the legacy CAS list (one release) or ACRYLATE_NAME_REGEX, never by
+     * acrylic-polymer names. The display name is the composition name (Prop
+     * 65 / CAS registry description); a nameless disclosed row shows its CAS.
      *
      * @param  array $composition  Expanded CAS composition.
      * @return array<string,string>
@@ -147,16 +217,16 @@ class UVAcrylateRulePack
                 ? (trim((string) ($component['trade_secret_description'] ?? '')) ?: self::TRADE_SECRET_NAME)
                 : null;
 
-            if ($cas !== '' && isset(self::ACRYLATE_CAS_LIST[$cas])) {
-                $found[$cas] = $display ?? ($name !== '' ? $name : self::ACRYLATE_CAS_LIST[$cas]);
+            // A12(a): the cas_master acrylate flag decides; not determined ->
+            // legacy CAS list (one release) or the name rule.
+            if (!self::effectiveFlag($component['is_acrylate'] ?? null, $cas, $name)) {
                 continue;
             }
-
-            if ($name !== ''
-                && preg_match(self::ACRYLATE_NAME_REGEX, $name) === 1
-                && preg_match(self::ACRYLIC_POLYMER_REGEX, $name) !== 1) {
-                $found[$cas !== '' ? $cas : $name] = $display ?? $name;
+            $key = $cas !== '' ? $cas : $name;
+            if ($key === '') {
+                continue;
             }
+            $found[$key] = $display ?? ($name !== '' ? $name : $cas);
         }
 
         return $found;

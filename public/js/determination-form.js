@@ -195,7 +195,7 @@
                     '<option value="mppcf"' + (data.units === 'mppcf' ? ' selected' : '') + '>mppcf</option>' +
                 '</select>' +
             '</td>' +
-            '<td><input type="text" name="exp_limit_notes[]" value="' + escapeHtml(data.notes || '') + '" placeholder="Optional notes"></td>' +
+            '<td><input type="text" name="exp_limit_notes[]" value="' + escapeHtml(data.notes || '') + '" placeholder="Optional notes (e.g. Skin, A4, DSEN)"></td>' +
             '<td><button type="button" class="btn btn-sm btn-danger remove-exp-limit">X</button></td>';
         return tr;
     }

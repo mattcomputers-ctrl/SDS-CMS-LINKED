@@ -132,14 +132,15 @@ check($w->invoke(null, [7 => ['storage' => '  ']]) === null, 'blank override -> 
 // ---------------------------------------------------------------------
 echo "5. Section 8 dust sentence and no-exposure-limits sentence\n";
 $s = $s8->invoke($gen, hz([]), [], [], ['physical_state' => 'Solid']);
-check($s['engineering'] === $t->get('section8.engineering'), 'Solid -> no dust sentence', $s['engineering']);
+check($s['engineering'] === $t->get('section8.engineering_no_limits'), 'Solid, no limit rows -> no-limits sentence, no dust sentence (A4c)', $s['engineering']);
 check($s['exposure_limits_none'] === $t->get('section8.no_exposure_limits'), 'no limit rows -> sentence', $s['exposure_limits_none']);
 $s = $s8->invoke($gen, hz([]), [], [], ['physical_state' => 'Powder']);
-check($s['engineering'] === $t->get('section8.engineering') . ' ' . $t->get('section8.engineering_dust'), 'Powder -> dust sentence', $s['engineering']);
+check($s['engineering'] === $t->get('section8.engineering_no_limits') . ' ' . $t->get('section8.engineering_dust'), 'Powder -> dust sentence after the no-limits sentence (A4c)', $s['engineering']);
 $withEl = hz([]);
 $withEl['exposure_limits'] = [['cas_number' => '64-17-5', 'chemical_name' => 'Ethanol', 'limit_type' => 'OSHA PEL TWA', 'value' => '1000', 'units' => 'ppm', 'notes' => '', 'concentration_pct' => 5.0]];
 $s = $s8->invoke($gen, $withEl, [['cas_number' => '64-17-5', 'concentration_pct' => 5.0]], [], $liq);
 check($s['exposure_limits_none'] === '' && count($s['exposure_limits']) === 1, 'limit row present -> no sentence', $s['exposure_limits_none']);
+check($s['engineering'] === $t->get('section8.engineering'), 'limit row present -> original engineering sentence', $s['engineering']);
 
 // ---------------------------------------------------------------------
 echo "6. HazardEngine::dedupeExposureLimits() ignores notes\n";

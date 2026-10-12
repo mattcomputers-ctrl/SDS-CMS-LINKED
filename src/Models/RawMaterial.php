@@ -251,6 +251,8 @@ class RawMaterial
             'family_source'         => (int) ($data['family_id'] ?? 0) > 0 ? 'manual' : null,
             // Audit #6: resale SDS / single-line formulas print Substance only when this says so.
             'substance_mixture'     => self::validatedSubstanceMixture($data['substance_mixture'] ?? null),
+            // A12(c): vendor SDS Section 2 combustible-dust determination (migration 062).
+            'combustible_dust'      => self::normalizeCombustibleDust($data['combustible_dust'] ?? null),
             'created_by'            => $data['created_by'] ?? null,
         ];
 
@@ -324,6 +326,11 @@ class RawMaterial
         if (array_key_exists('substance_mixture', $data)) {
             $data['substance_mixture'] = self::validatedSubstanceMixture($data['substance_mixture']);
         }
+        // A12(c): normalised like substance_mixture; whether a change bumps updated_at is
+        // decided by the controller (combustibleDustChangeIsMetadataOnly()).
+        if (array_key_exists('combustible_dust', $data)) {
+            $data['combustible_dust'] = self::normalizeCombustibleDust($data['combustible_dust']);
+        }
         $allowed = [
             'internal_code', 'supplier', 'supplier_product_name', 'supplier_product_code', 'supplier_sds_path',
             'voc_wt', 'voc_less_than_one', 'exempt_voc_wt', 'water_wt',
@@ -335,6 +342,7 @@ class RawMaterial
             'hazardous_no_cas', 'manual_hazard_json',
             'sds_last_confirmed_at',
             'substance_mixture',
+            'combustible_dust',   // A12(c)
             'family_id', 'family_source',
         ];
 
@@ -396,6 +404,7 @@ class RawMaterial
         $db = Database::getInstance();
         return $db->fetchAll(
             "SELECT rmc.*, cm.preferred_name AS cas_preferred_name,
+                    cm.is_acrylate AS is_acrylate,
                     COALESCE(cm.has_nitrogen, 0) AS has_nitrogen,
                     COALESCE(cm.has_sulfur, 0)   AS has_sulfur,
                     COALESCE(cm.has_halogen, 0)  AS has_halogen
@@ -527,6 +536,55 @@ class RawMaterial
             throw new \InvalidArgumentException('Substance / Mixture must be Auto, Substance or Mixture.');
         }
         return \SDS\Services\SubstanceMixtureResolver::normalize($value);
+    }
+
+    /** A12(c): stored values of raw_materials.combustible_dust (migration 062). */
+    public const COMBUSTIBLE_DUST_VALUES = ['not_assessed', 'yes', 'no'];
+
+    /**
+     * A12(c) Pure: a posted / stored combustible-dust value. Blank or missing = 'not_assessed';
+     * other unknown values are rejected (same contract as validatedSubstanceMixture()).
+     *
+     * @throws \InvalidArgumentException
+     */
+    public static function normalizeCombustibleDust($value): string
+    {
+        $v = strtolower(trim((string) ($value ?? '')));
+        if ($v === '') {
+            return 'not_assessed';
+        }
+        if (!in_array($v, self::COMBUSTIBLE_DUST_VALUES, true)) {
+            throw new \InvalidArgumentException('Combustible Dust must be Not assessed, Yes or No.');
+        }
+        return $v;
+    }
+
+    /**
+     * A12(c) Pure: true when a combustible-dust change prints nothing, i.e. a change
+     * between not_assessed and no. Only 'yes' classifies a sheet; the other two values
+     * only drive operator warnings. Such a change is written with
+     * `updated_at = updated_at` (setCombustibleDustMetadataOnly()) so marking a pigment
+     * "No" does not republish every ink that uses it. Any change to or from 'yes' is
+     * sheet content and bumps updated_at (ON UPDATE, UTC session) like substance_mixture.
+     * False when nothing was posted ($new null) or nothing changed.
+     */
+    public static function combustibleDustChangeIsMetadataOnly($old, $new): bool
+    {
+        if ($new === null) {
+            return false;
+        }
+        $o = self::normalizeCombustibleDust($old);
+        $n = self::normalizeCombustibleDust($new);
+        return $o !== $n && $o !== 'yes' && $n !== 'yes';
+    }
+
+    /** A12(c): metadata-only write (no staleness bump), see combustibleDustChangeIsMetadataOnly(). */
+    public static function setCombustibleDustMetadataOnly(int $id, string $value): void
+    {
+        Database::getInstance()->query(
+            'UPDATE raw_materials SET combustible_dust = ?, updated_at = updated_at WHERE id = ?',
+            [self::normalizeCombustibleDust($value), $id]
+        );
     }
 
     /* ------------------------------------------------------------------

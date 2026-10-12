@@ -104,7 +104,7 @@ check($r['status'] === 'regulated', 'status regulated', $r['status']);
 check(array_keys($r) === $expectedKeys, 'exact key set', array_keys($r));
 check($r['title'] === $t->get('section14.title'), 'title', $r['title']);
 check($r['transport_in_bulk'] === $t->get('section14.transport_in_bulk_text'), 'transport_in_bulk standard wording (#43)', $r['transport_in_bulk']);
-check($r['special_precautions'] === $t->get('section14.special_precautions_text'), 'special_precautions standard wording (#43)', $r['special_precautions']);
+check($r['special_precautions'] === $t->get('section14.special_precautions_text') . ' ' . $t->get('section14.special_precautions_flammable'), 'special_precautions = standard wording + Class 3 fragment (#43, A6)', $r['special_precautions']);
 check(($r['status_reason'] ?? null) === null, 'no status_reason when decided', $r);
 // PG II (fp 15 °C) Class 3 with no subsidiary: the viscous-liquid reassignment note prints.
 $r = $s14->invoke($gen, $fg, $calc(15.0), $hz(['H225']), []);
@@ -276,6 +276,14 @@ check($r['packing_group'] === 'I', 'bp 30 °C → PG I', $r['packing_group']);
 $r = $s14->invoke($gen, $fg, $calc(38.0), $hz(['H226', 'H411']), []);
 check($r['environmental_hazards'] === $t->get('section14.marine_pollutant_yes'), 'H411 → marine pollutant yes', $r['environmental_hazards']);
 check($r['un_number'] === 'UN1210', 'still UN1210', $r['un_number']);
+check(str_contains($r['special_precautions'], $t->get('section14.special_precautions_marine')), 'A6: marine pollutant yes → marine fragment', $r['special_precautions']);
+// A6 pin: the marine fragment keys on the PRINTED line being exactly "Marine pollutant: Yes";
+// an environmental-hazards override with other text (even one naming the pollutant) drops it.
+$r = $s14->invoke($gen, $fg, $calc(38.0), $hz(['H226', 'H411']), [14 => ['environmental_hazards' => 'Marine pollutant: Yes (zinc pyrithione)']]);
+check($r['environmental_hazards'] === 'Marine pollutant: Yes (zinc pyrithione)'
+    && !str_contains($r['special_precautions'], $t->get('section14.special_precautions_marine')), 'A6: non-exact override text → no marine fragment (exact match pinned)', $r['special_precautions']);
+$r = $s14->invoke($gen, $fg, $calc(38.0), $hz(['H226']), [14 => ['environmental_hazards' => $t->get('section14.marine_pollutant_yes')]]);
+check(str_contains($r['special_precautions'], $t->get('section14.special_precautions_marine')), 'A6: override equal to "Marine pollutant: Yes" → marine fragment', $r['special_precautions']);
 $fgNoState = $fg;
 $fgNoState['physical_state'] = '';
 $c = $calc(95.0, true);

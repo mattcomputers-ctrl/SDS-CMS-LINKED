@@ -165,6 +165,7 @@ class SDSReadinessService
             'tsca_warning'    => self::tscaWarningForRawMaterialIds(array_keys($rmContext), $db, $fgId),
             'incomplete_composition' => TSCAService::incompleteRawMaterials(array_keys($rmContext)),   // finding #27
             'fg_component_formula_warning' => self::fgComponentsWithoutFormulaWarning(array_values($missingFgCodes)), // #36(2) warning only
+            'combustible_dust_warning' => self::combustibleDustWarningForFinishedGood($fgId, array_keys($rmContext), $db), // A12(c) warning only
             'trade_secret_prop65_error' => self::tradeSecretProp65ForRawMaterialIds(array_keys($rmContext), $db), // Q4
             'company_emergency_phone_error' => self::companyEmergencyPhoneErrorFromDb($db),
             'supplier_warnings' => self::companySupplierWarningsFromDb($db),   // audit #68
@@ -251,6 +252,7 @@ class SDSReadinessService
             'published_versions' => $publishedVersions,
             'tsca_warning'    => self::tscaWarningForRawMaterialIds([$rmId], $db),
             'incomplete_composition' => TSCAService::incompleteRawMaterials([$rmId]),   // finding #27
+            'combustible_dust_warning' => self::combustibleDustWarningForRawMaterial($rmId, $db), // A12(c) warning only
             'trade_secret_prop65_error' => self::tradeSecretProp65ForRawMaterialIds([$rmId], $db), // Q4
             'company_emergency_phone_error' => self::companyEmergencyPhoneErrorFromDb($db),
             'supplier_warnings' => self::companySupplierWarningsFromDb($db),   // audit #68
@@ -671,6 +673,71 @@ class SDSReadinessService
             default:
                 return $what . '. ' . ucfirst($record);
         }
+    }
+
+    /**
+     * A12(c) Readiness / preview WARNING (never a block, never printed). DB-free.
+     * $status = SDSGenerator::combustibleDustStatus(). Null unless the product is Powder/Solid,
+     * no raw is marked Yes (once classified, further determinations change nothing), and at
+     * least one Powder/Solid raw is still not assessed.
+     */
+    public static function combustibleDustNotAssessedWarning(array $status): ?string
+    {
+        if (empty($status['applies']) || !empty($status['yes']) || empty($status['not_assessed'])) {
+            return null;
+        }
+        $codes = array_values(array_unique(array_map('strval', (array) $status['not_assessed'])));
+        sort($codes, SORT_STRING);
+        $one = count($codes) === 1;
+        return 'Combustible dust: this product\'s physical state is ' . (string) ($status['state'] ?? '')
+            . ' and its formula contains ' . ($one ? 'a powder/solid raw material' : 'powder/solid raw materials')
+            . ' whose combustible-dust status is not assessed: ' . implode(', ', $codes)
+            . '. Section 2 classifies the product as a combustible dust only when a raw material is marked Yes. Set Combustible Dust on '
+            . ($one ? 'it' : 'each') . ' (Raw Materials > Edit) from the vendor SDS Section 2. Publishing is not blocked.';
+    }
+
+    /** A12(c): readiness warning for a finished good. A cheap SQL pre-check runs first; the full state resolution runs only when a candidate raw exists. */
+    public static function combustibleDustWarningForFinishedGood(int $fgId, array $rmIds, Database $db): ?string
+    {
+        $rmIds = array_values(array_unique(array_map('intval', $rmIds)));
+        if ($rmIds === []) {
+            return null;
+        }
+        $ph  = implode(',', array_fill(0, count($rmIds), '?'));
+        $hit = $db->fetch(
+            "SELECT 1 FROM raw_materials
+              WHERE id IN ({$ph}) AND combustible_dust = 'not_assessed'
+                AND LOWER(TRIM(COALESCE(physical_state, ''))) IN ('powder', 'solid')
+              LIMIT 1",
+            $rmIds
+        );
+        if (!$hit) {
+            return null;
+        }
+        try {
+            return self::combustibleDustNotAssessedWarning(SDSGenerator::combustibleDustStatusForFinishedGood($fgId));
+        } catch (\Throwable $e) {
+            return null; // readiness page must never fail on this warning
+        }
+    }
+
+    /** A12(c): readiness warning for a resale raw material (the sheet's state is the RM's own). */
+    public static function combustibleDustWarningForRawMaterial(int $rmId, Database $db): ?string
+    {
+        $rm = $db->fetch('SELECT internal_code, physical_state, combustible_dust FROM raw_materials WHERE id = ?', [$rmId]);
+        if (!$rm) {
+            return null;
+        }
+        $state = trim((string) ($rm['physical_state'] ?? ''));
+        return self::combustibleDustNotAssessedWarning(SDSGenerator::combustibleDustStatus(
+            ['physical_state' => $state],
+            ['formula_props' => ['enriched_lines' => [[
+                'internal_code'    => (string) $rm['internal_code'],
+                'pct'              => 100.0,
+                'physical_state'   => $state,
+                'combustible_dust' => (string) ($rm['combustible_dust'] ?? 'not_assessed'),
+            ]]]]
+        ));
     }
 
     /**

@@ -375,6 +375,17 @@ class AdminController
             $_POST['sds__missing_threshold_pct'] = trim((string) $_POST['sds__missing_threshold_pct']);
         }
 
+        // A11 — water-based threshold (% water CAS 7732-18-5 in the formula), 1 to 100.
+        if (array_key_exists('sds__water_based_threshold_pct', $_POST)) {
+            $wbError = \SDS\Services\WaterBasedRule::thresholdInputError((string) $_POST['sds__water_based_threshold_pct']);
+            if ($wbError !== null) {
+                $_SESSION['_flash']['error'] = 'Settings not saved: ' . $wbError;
+                redirect('/admin/settings');
+                return;
+            }
+            $_POST['sds__water_based_threshold_pct'] = trim((string) $_POST['sds__water_based_threshold_pct']);
+        }
+
         // Audit #58 — snapshot before saving, to offer an SDS bump when a setting
         // that prints on every sheet changes (end of this method).
         $settingsBefore = self::settingsSnapshot($db);
@@ -688,6 +699,7 @@ class AdminController
             'defaults'  => $this->familyTranslationDefaults(),
             'rules'     => [],
             'usage'     => null,
+            'waterThreshold' => \SDS\Services\WaterBasedRule::threshold(), // A11
         ]);
     }
 
@@ -724,6 +736,7 @@ class AdminController
             'defaults'  => $this->familyTranslationDefaults(),
             'rules'     => \SDS\Models\ProductFamily::rules((int) $id),
             'usage'     => \SDS\Models\ProductFamily::usageCounts()[(int) $id] ?? null,
+            'waterThreshold' => \SDS\Services\WaterBasedRule::threshold(), // A11
         ]);
     }
 
@@ -744,6 +757,8 @@ class AdminController
             $_SESSION['_flash']['_old_input'] = $_POST;
             redirect('/admin/product-families/' . (int) $id . '/edit');
         }
+        // A11: the stored row after the save (normalised profile) for the audit diff and the bump decision.
+        $after = \SDS\Models\ProductFamily::findById((int) $id) ?? $item;
         AuditService::log('product_family', (int) $id, 'update', AuditService::diff($item, [
             'name'                 => $data['name'],
             'is_uv'                => $data['is_uv'],
@@ -751,6 +766,12 @@ class AdminController
             'sort_order'           => $data['sort_order'],
             'recommended_use_json' => \SDS\Models\ProductFamily::encodeLangJson($data['recommended_use']),
             'restrictions_json'    => \SDS\Models\ProductFamily::encodeLangJson($data['restrictions']),
+            'storage_temp_min_c'     => $after['storage_temp_min_c'] ?? null,
+            'storage_temp_max_c'     => $after['storage_temp_max_c'] ?? null,
+            'water_based'            => $after['water_based'] ?? 'auto',
+            'default_physical_state' => $after['default_physical_state'] ?? null,
+            'ph_min'                 => $after['ph_min'] ?? null,
+            'ph_max'                 => $after['ph_max'] ?? null,
         ]));
 
         $msg = 'Product family updated.';
@@ -764,8 +785,10 @@ class AdminController
         $uvChanged     = (int) ($item['is_uv'] ?? 0) !== (int) $data['is_uv'];
         $nameChanged   = (string) ($item['name'] ?? '') !== (string) $data['name'];
         $activeChanged = (int) ($item['is_active'] ?? 1) !== (int) $data['is_active'];
-        if ($textChanged || $uvChanged || $nameChanged || $activeChanged) {
-            $what = implode(' / ', array_keys(array_filter(['default text' => $textChanged, 'UV/LED flag' => $uvChanged, 'name' => $nameChanged, 'active flag' => $activeChanged])));
+        // A11: the SDS profile prints (Sections 6-10, 14 physical state; freezing; storage; pH), so a change bumps like default text.
+        $profileChanged = \SDS\Models\ProductFamily::profile($item) !== \SDS\Models\ProductFamily::profile($after);
+        if ($textChanged || $uvChanged || $nameChanged || $activeChanged || $profileChanged) {
+            $what = implode(' / ', array_keys(array_filter(['default text' => $textChanged, 'UV/LED flag' => $uvChanged, 'name' => $nameChanged, 'active flag' => $activeChanged, 'SDS profile' => $profileChanged])));
             $f = \SDS\Services\FamilyResolver::flagFamilyTextChange((int) $id, current_user_id(), 'Product family "' . $data['name'] . '" ' . $what . ' changed');
             $msg .= self::bumpedTail($f['bumped_rms']) . self::queuedTail($f['queued']);
         }
@@ -928,6 +951,15 @@ class AdminController
             'sort_order'      => (int) ($_POST['sort_order'] ?? 0),
             'recommended_use' => $rec,
             'restrictions'    => $res,
+            // A11 SDS profile (raw strings; ProductFamily::normaliseProfileInput validates)
+            'profile'         => [
+                'storage_temp_min_c'     => (string) ($_POST['storage_temp_min_c'] ?? ''),
+                'storage_temp_max_c'     => (string) ($_POST['storage_temp_max_c'] ?? ''),
+                'water_based'            => (string) ($_POST['water_based'] ?? 'auto'),
+                'default_physical_state' => (string) ($_POST['default_physical_state'] ?? ''),
+                'ph_min'                 => (string) ($_POST['ph_min'] ?? ''),
+                'ph_max'                 => (string) ($_POST['ph_max'] ?? ''),
+            ],
         ];
     }
 
@@ -2531,6 +2563,7 @@ class AdminController
             "SELECT cm.cas_number, cm.preferred_name,
                     cm.has_nitrogen, cm.has_sulfur, cm.has_halogen, cm.element_flags_source,
                     cm.tc_metals, cm.tc_metals_source,
+                    cm.is_acrylate, cm.acrylate_source,
                     p.chemical_name AS prop65_name,
                     (SELECT COUNT(DISTINCT rmc.raw_material_id)
                      FROM raw_material_constituents rmc
@@ -2545,6 +2578,10 @@ class AdminController
         $tscaReview    = TSCAService::reviewCandidates();
         $tscaOverrides = TSCAService::overridesInEffect();
 
+        // A12(b) / T4a: STOT Target Organs tab — CAS whose hazard data or active
+        // determination carries H370-H373, plus every CAS with organs entered.
+        $stotRows = \SDS\Services\StotTargetOrgans::adminRows($db);
+
         view('admin/determinations', [
             'pageTitle'          => 'CAS Number Determinations',
             'items'              => $items,
@@ -2553,6 +2590,9 @@ class AdminController
             'tscaReview'         => $tscaReview,
             'tscaOverrides'      => $tscaOverrides,
             'tscaOptions'        => TSCAService::OVERRIDE_OPTIONS,
+            'stotRows'           => $stotRows,                                   // A12(b)
+            'stotOrgans'         => \SDS\Services\StotTargetOrgans::ORGANS,
+            'stotRoutes'         => \SDS\Services\StotTargetOrgans::ROUTES,
         ]);
     }
 
@@ -2944,6 +2984,227 @@ class AdminController
         AuditService::log('cas_tc_metals', $cas, 'update', ['before' => $old, 'after' => $new]);
         $_SESSION['_flash']['success'] = "RCRA metal flags for CAS {$cas} saved."
             . self::bumpedTail($bumped) . self::queuedTail($queued);
+        redirect('/determinations?tab=descriptions');
+    }
+
+    /**
+     * POST /determinations/stot — A12(b) / T4a. Sets the STOT target organs and
+     * route of a CAS: single exposure (H370/H371) and repeated exposure
+     * (H372/H373). Blank organs = the generic GHS statement, as before. A change
+     * is SDS content (Sections 2, 4, 11), so every RM carrying the CAS is bumped
+     * (bulk-publish staleness) and affected published SDSs are queued, like
+     * saveCasElementFlags().
+     */
+    public function saveCasStot(): void
+    {
+        $this->requirePageAccess('cas_determinations', 'full');
+        CSRF::validateRequest();
+        $db = Database::getInstance();
+
+        $cas = TSCAService::normaliseCas((string) ($_POST['cas_number'] ?? ''));
+        if ($cas === '' || !preg_match(TSCAService::CAS_PATTERN, $cas)) {
+            $_SESSION['_flash']['error'] = 'A valid CAS number is required.';
+            redirect('/determinations?tab=stot');
+            return;
+        }
+        foreach (['se' => 'single exposure', 're' => 'repeated exposure'] as $x => $label) {
+            $route  = \SDS\Services\StotTargetOrgans::normaliseRoute($_POST['stot_' . $x . '_route'] ?? null);
+            $organs = \SDS\Services\StotTargetOrgans::parseOrgans($_POST['stot_' . $x . '_organs'] ?? []);
+            if ($route !== null && $organs === []) {
+                $_SESSION['_flash']['error'] = "CAS {$cas}: choose the {$label} target organs before setting a {$label} route.";
+                redirect('/determinations?tab=stot');
+                return;
+            }
+        }
+        $new = \SDS\Services\StotTargetOrgans::columnValues($_POST);
+
+        $existing = $db->fetch(
+            "SELECT stot_se_organs, stot_se_route, stot_re_organs, stot_re_route FROM cas_master WHERE cas_number = ?",
+            [$cas]
+        );
+        $old = \SDS\Services\StotTargetOrgans::columnValues($existing ?? []);
+        if ($old === $new) {
+            $_SESSION['_flash']['success'] = "STOT target organs for CAS {$cas} unchanged.";
+            redirect('/determinations?tab=stot');
+            return;
+        }
+        if ($existing === null) {
+            // Same as saveTscaOverride(): create the registry row, named from the
+            // most common constituent description.
+            $nameRow = $db->fetch(
+                "SELECT chemical_name FROM raw_material_constituents
+                 WHERE cas_number = ? AND chemical_name <> ''
+                 GROUP BY chemical_name ORDER BY COUNT(*) DESC LIMIT 1",
+                [$cas]
+            );
+            $db->insert('cas_master', ['cas_number' => $cas, 'preferred_name' => (string) ($nameRow['chemical_name'] ?? '')]);
+        }
+        $db->update('cas_master', $new, 'cas_number = ?', [$cas]);
+
+        // Deliberate content change: Sections 2, 4 and 11 change for every product whose H370-H373 come from this CAS.
+        $bumped = \SDS\Services\RegulatoryListBumper::bumpByCas($cas);
+        $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByCas(
+            [$cas],
+            current_user_id(),
+            "STOT target organs updated for {$cas}"
+        );
+
+        AuditService::log('cas_stot', $cas, 'update', ['before' => $old, 'after' => $new]);
+        $_SESSION['_flash']['success'] = "STOT target organs for CAS {$cas} saved."
+            . self::bumpedTail($bumped) . self::queuedTail($queued);
+        redirect('/determinations?tab=stot');
+    }
+
+    /**
+     * GET /determinations/acrylate-flags — A12(a). Dry run of the acrylate-flag
+     * seed (CasAcrylateFlagSeeder::plan(); the same rows
+     * scripts/seed-cas-acrylate-flags.php prints without --confirm). Nothing
+     * is written. ?force=1 includes manual rows.
+     */
+    public function acrylateFlagsSeedPreview(): void
+    {
+        $this->requirePageAccess('cas_determinations', 'full');
+
+        $force = isset($_GET['force']) && (string) $_GET['force'] !== '0';
+        $plan  = (new \SDS\Services\CasAcrylateFlagSeeder(Database::getInstance()))->plan($force);
+
+        view('determinations/acrylate-flags', [
+            'pageTitle' => 'Seed Acrylate Flags — Preview',
+            'plan'      => $plan,
+            'force'     => $force,
+        ]);
+    }
+
+    /**
+     * POST /determinations/acrylate-flags/apply — A12(a). Applies the seed
+     * (re-planned live); bumps only the RMs whose acrylate detection changes
+     * and, unless "no_queue" is ticked, queues SDS-update rows for them.
+     */
+    public function applyAcrylateFlagsSeed(): void
+    {
+        $this->requirePageAccess('cas_determinations', 'full');
+        CSRF::validateRequest();
+
+        $force   = isset($_POST['force']);
+        $noQueue = isset($_POST['no_queue']);
+
+        set_time_limit(0);
+        ignore_user_abort(true);
+
+        $seeder = new \SDS\Services\CasAcrylateFlagSeeder(Database::getInstance());
+        try {
+            $r = $seeder->apply(['force' => $force, 'queue' => !$noQueue, 'userId' => current_user_id()]);
+        } catch (\RuntimeException $e) {
+            $_SESSION['_flash']['error'] = $e->getMessage();
+            redirect('/determinations/acrylate-flags');
+            return;
+        }
+
+        AuditService::log('cas_master', 'acrylate_flags', 'seed', \SDS\Services\CasAcrylateFlagSeeder::summary($r) + [
+            'changed_cas'       => $r['changedCas'],
+            'bump_cas'          => $r['bumpCas'],
+            'post_commit_error' => $r['postCommitError'],
+        ]);
+
+        if ($r['postCommitError'] !== null) {
+            $_SESSION['_flash']['error'] = sprintf(
+                'Acrylate flags were written (%d changed, %d raw material%s bumped) but %s '
+                . 'The affected CAS are listed in the audit log; run the SDS Updates scan to queue the affected products.',
+                $r['changed'], $r['rmsBumped'], $r['rmsBumped'] === 1 ? '' : 's', $r['postCommitError']
+            );
+            redirect('/determinations/acrylate-flags');
+            return;
+        }
+
+        $_SESSION['_flash']['success'] = sprintf(
+            'Acrylate flags seeded: %d changed (%d change sheet text), %d manual skipped; %d raw material%s bumped, %d SDS%s queued%s.',
+            $r['changed'], $r['textChanges'], $r['skippedManual'],
+            $r['rmsBumped'], $r['rmsBumped'] === 1 ? '' : 's',
+            $r['sdsQueued'], $r['sdsQueued'] === 1 ? '' : 's',
+            $noQueue ? ' (SDS-update queue skipped)' : ''
+        );
+        redirect('/determinations/acrylate-flags');
+    }
+
+    /**
+     * POST /determinations/acrylate — A12(a). Sets cas_master.is_acrylate by
+     * hand (CAS Descriptions, "Acrylate" column): ticked = 1, unticked = 0 (an
+     * explicit "not an acrylate" that beats the name rule and the legacy
+     * list); acrylate_source = 'manual'. Bump + queue only when the effective
+     * detection changes for any name a sheet tests (Prop 65 / registry name or a
+     * constituent name; CasAcrylateFlagSeeder::detectionChanges()) (a save that
+     * confirms what the sheets already detect
+     * is metadata only, raw_materials.updated_at untouched).
+     */
+    public function saveCasAcrylateFlag(): void
+    {
+        $this->requirePageAccess('cas_determinations', 'full');
+        CSRF::validateRequest();
+        $db = Database::getInstance();
+
+        $cas = trim($_POST['cas_number'] ?? '');
+        if ($cas === '') {
+            $_SESSION['_flash']['error'] = 'CAS number is required.';
+            redirect('/determinations?tab=descriptions');
+            return;
+        }
+
+        $existing = $db->fetch(
+            "SELECT cm.is_acrylate, cm.acrylate_source, cm.preferred_name,
+                    (SELECT p.chemical_name FROM prop65_list p
+                      WHERE p.cas_number = cm.cas_number AND p.chemical_name <> '' LIMIT 1) AS prop65_name
+             FROM cas_master cm
+             WHERE cm.cas_number = ?",
+            [$cas]
+        );
+        if ($existing === null) {
+            $_SESSION['_flash']['error'] = "CAS {$cas} is not in the registry.";
+            redirect('/determinations?tab=descriptions');
+            return;
+        }
+
+        $new     = isset($_POST['is_acrylate']) ? 1 : 0;
+        $oldBool = \SDS\Services\UVAcrylateRulePack::flagValue($existing['is_acrylate'] ?? null);
+        $old     = $oldBool === null ? null : (int) $oldBool;
+        if ($old === $new && ($existing['acrylate_source'] ?? null) === 'manual') {
+            $_SESSION['_flash']['success'] = "Acrylate flag for CAS {$cas} unchanged.";
+            redirect('/determinations?tab=descriptions');
+            return;
+        }
+
+        // The name a finished-good sheet prints for this CAS: Prop 65 name, then the
+        // registry description; resale sheets (and FG rows with both blank) test the
+        // constituent's own chemical_name, so every distinct one counts as well.
+        $sheetName = trim((string) ($existing['prop65_name'] ?? ''));
+        if ($sheetName === '') {
+            $sheetName = trim((string) ($existing['preferred_name'] ?? ''));
+        }
+        $sheetNames = [$sheetName];
+        foreach ($db->fetchAll(
+            "SELECT DISTINCT chemical_name FROM raw_material_constituents WHERE cas_number = ? AND chemical_name <> ''",
+            [$cas]
+        ) as $nr) {
+            $sheetNames[] = (string) $nr['chemical_name'];
+        }
+        $before = \SDS\Services\UVAcrylateRulePack::effectiveFlag($old, $cas, $sheetName);
+        $textChange = \SDS\Services\CasAcrylateFlagSeeder::detectionChanges($old, $new, $cas, $sheetNames);
+
+        $db->update('cas_master', ['is_acrylate' => $new, 'acrylate_source' => 'manual'], 'cas_number = ?', [$cas]);
+
+        $tail = ' No sheet text changes.';
+        if ($textChange) {
+            // Content change: the Section 4 acrylate names of UV products carrying this CAS.
+            $bumped = \SDS\Services\RegulatoryListBumper::bumpByCas($cas);
+            $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByCas(
+                [$cas],
+                current_user_id(),
+                "Acrylate flag updated for {$cas}"
+            );
+            $tail = self::bumpedTail($bumped) . self::queuedTail($queued);
+        }
+
+        AuditService::log('cas_acrylate_flag', $cas, 'update', ['before' => $old, 'after' => $new, 'detected_before' => $before]);
+        $_SESSION['_flash']['success'] = "Acrylate flag for CAS {$cas} saved." . $tail;
         redirect('/determinations?tab=descriptions');
     }
 

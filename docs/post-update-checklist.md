@@ -39,6 +39,7 @@ step is expanded in sections 1–4 below; the section number is in brackets.
 10. **Override cleanup**: pass 1 (`cleanup-default-overrides.php`) and pass 2 (`cleanup-legacy-overrides.php`), each a dry run then `--apply`; review pass 2's kept Section 9/14/15 rows with the owner [3.4].
 11. **Private label** — retire or freeze unwanted backfilled items; run `check-pl-duplicates.php` [3.6, 3.7].
 12. **Findings batch (migrations 056–059)** — migrations applied, override cleanup pass 2 done (step 10), carcinogen correction check, non-hazardous flag count, per-language legal disclaimers, full-republish bump [3.8c].
+12b. **Batch F (migrations 060–062)** — acrylate flag seed, family SDS profiles, STOT target organs, combustible-dust determinations on powder raws, Section 9 flash point edit review, then Bump ALL [3.8d, 3.2c].
 13. **Live-DB test suites** on the server [3.8].
 14. **Spot-check three sheets** (solvent ink, water-based, UV with acrylates) in EN and ES against the Section checklist [4.B].
 15. **Resume**: tick "Auto bulk publish" again and run one bulk publish; work through the failures it reports (each one is a publish gate from step 4 or 6) [3.9].
@@ -153,6 +154,23 @@ sudo -u www-data php /var/www/sds-system/scripts/seed-cas-tc-metals.php --confir
 - [ ] Apply reports the same "Changed" count; reloading the preview reports "Changed: 0".
 - [ ] Wrong or missing metals corrected in the **RCRA metals** box on CAS Descriptions (those rows become `manual`; later seed runs skip them unless forced).
 - [ ] Spot check: a sheet with a lead/chromium/barium pigment lists it in Section 13 with its D codes; a sheet with no metals ends "…no component has been identified as a toxicity characteristic constituent or a listed hazardous waste."
+
+### 3.2c Acrylate flags for UV sheets (A12a, migration 060)
+
+CAS Determinations → CAS Descriptions tab → **Seed acrylate flags (preview)** (`/determinations/acrylate-flags`). Same workflow as 3.2.
+
+The dry run lists every CAS whose acrylate flag would be written: CAS on the old 14-entry list, and CAS with any name that looks like a reactive acrylate or methacrylate ("…acrylate", "(meth)acrylic acid"; acrylic polymers and resins never count). Rows with "Sheet text: yes" change the Section 4 acrylate names on UV sheets and bump their raw materials. Rows with "no" only record what the sheets already detect, and bump nothing.
+
+```bash
+sudo -u www-data php /var/www/sds-system/scripts/seed-cas-acrylate-flags.php > ~/acrylate-flags-dryrun.txt   # dry run
+sudo -u www-data php /var/www/sds-system/scripts/seed-cas-acrylate-flags.php --confirm                      # apply
+```
+
+- [ ] Preview reviewed. Rows marked "check name" (on the old list, but no name looks like an acrylate) have their CAS description corrected on CAS Descriptions. Check 2223-82-7, 28961-43-5, 52408-84-1 and 55818-57-0 in particular: the old hard-coded labels for these four were wrong, and sheets print the registry description.
+- [ ] Apply reports the same "Changed" count; reloading the preview reports "Changed: 0".
+- [ ] "Legacy CAS not in registry" is empty, or those CAS have been added to the registry (the old list detects them for one more release only).
+- [ ] False positives unticked in the **Acrylate** column on CAS Descriptions. Those rows become `manual`, and later seed runs skip them unless forced.
+- [ ] Spot check: a UV sheet containing HDDA prints "…containing acrylate monomers/oligomers (1,6-Hexanediol Diacrylate (HDDA)): remove uncured product…" in Section 4 Skin.
 
 ### 3.3 TSCA inventory import (#29)
 
@@ -331,6 +349,43 @@ Only for the release that fixes `docs/sds-data-sources-findings.md`. Several of 
    - [ ] Trade-secret Prop 65 conflicts (Q4): SDS Creation Readiness shows no red "trade-secret constituent is on the California Prop 65 list" alert. Each one names the raw material; correct its constituent data with the vendor (policy: vendor trade secrets are never Prop 65 chemicals). Those products cannot publish until it is fixed.
    - [ ] Transport "Not determined" (Q2/Q3): only the 3 + 8 + 6.1 precedence case and unsupported classes (gases, aerosols, flammable solids, pyrophoric / self-heating / water-reactive, oxidizers, organic peroxides, explosives) block now. A product that used to block for "no flash point" publishes as "Not regulated" unless another class applies.
 
+### 3.8d Batch F — fixed-text review (owner approval 2026-10-12, migrations 060–062)
+
+Items A1–A12 of the fixed-text review. Do this after 3.8c and before 3.9. Most of this batch is wording that lives in code (Sections 2, 4, 5, 6, 8, 9, 10, 13, 14, 15, 16), and code changes do not bump `raw_materials.updated_at`, so item 8 is required.
+
+1. **Migrations.**
+   - [ ] `update.sh` shows "Applying …" for `060_fixed_text_track2`, `061_sds_text_batch_t3` and `062_sds_fixed_text_t4`, with no "Failed to apply" line. 062 prints `powder_solid_raws_not_assessed` and a count. Count: ________
+   - [ ] `sdsq 'SELECT version FROM schema_migrations WHERE version >= "060" ORDER BY version'` lists all three.
+   - [ ] `` sdsq 'SELECT `value` FROM settings WHERE `key` = "sds.water_based_threshold_pct"' `` prints `20` (Settings → Water-Based Threshold (%); 1–100).
+   - All three are DDL plus one settings seed. Nothing is bumped and sheets print as before until the steps below.
+2. **Acrylate flags (A12a).** Run 3.2c: preview, then Apply (or the CLI dry run, then `--confirm`).
+   - [ ] Done, and the four CAS with wrong old labels (2223-82-7, 28961-43-5, 52408-84-1, 55818-57-0) have correct registry descriptions.
+   - [ ] 42978-66-5: the registry description is checked by hand. The fresh-install seed CSV may label it DPGDA, and because the name still looks like an acrylate, the preview will not flag it.
+3. **Product-family SDS profiles (A11).** Product Families → Edit → **SDS profile** for each active family: storage temperature min/max (°C, both or neither), Water-based (auto / yes / no), Default physical state (e.g. offset and UV paste inks = Paste), typical pH min/max (water-based families only).
+   - [ ] Every active family reviewed: `sdsq 'SELECT name, storage_temp_min_c, storage_temp_max_c, water_based, default_physical_state, ph_min, ph_max FROM product_families WHERE is_active = 1 ORDER BY name'`.
+   - [ ] Each save that changes the profile reports raw materials bumped / SDSs queued (same as a default-text edit).
+   - [ ] Water-based families: leave "auto" unless the water rule (water CAS 7732-18-5 ≥ the threshold % of the formula) gets a family wrong. Only the "Protect from freezing" sentences (Section 7, Section 10) depend on it.
+   - [ ] Preview one member per family: a family default state that differs from the largest raw shows the preview note "Physical state: this product has no Physical State of its own, so the sheet uses its product family default …". Set Physical State on the product where the family default is wrong for it.
+4. **STOT target organs (A12b).** CAS Determinations → **STOT Target Organs** tab lists every CAS behind H370–H373. Fill organs and route from the vendor SDS or the EU CLP Annex VI entry (e.g. crystalline silica 14808-60-7: lungs, inhalation).
+   - [ ] Every listed CAS reviewed. A blank row keeps today's generic statement. When only some of the CAS behind a product's code have organs, the sheet stays generic and the preview shows a warning.
+   - [ ] Spot check: a product with H372 from that CAS prints "Causes damage to organs (lungs) through prolonged or repeated exposure by inhalation." in Section 2, and Section 11 names the organs.
+5. **Combustible dust (A12c).** Raw Materials → Edit → **Combustible Dust** (Not assessed / Yes / No) from the vendor SDS Section 2, for every Powder/Solid raw:
+   `sdsq 'SELECT internal_code, supplier_product_name, physical_state FROM raw_materials WHERE combustible_dust = "not_assessed" AND LOWER(TRIM(COALESCE(physical_state, ""))) IN ("powder", "solid") ORDER BY internal_code'`
+   - [ ] List worked through. Yes bumps the raw material. Not assessed ↔ No does not.
+   - [ ] A Powder/Solid product containing a Yes raw prints the "Combustible Dust: May form combustible dust concentrations in air." line in Section 2 (signal word at least Warning), plus the dust fragments in Sections 5 and 7. Products with unassessed powder raws only get a preview / SDS Creation Readiness warning; publishing is never blocked.
+6. **Section 9 flash point edits (A10).** The automatic flash point now prints rounded with "(calculated)". A kept Section 9 Flash Point edit is treated as a measured value and prints exactly as typed, without the marker.
+   `sdsq 'SELECT COALESCE(finished_goods.product_code, CONCAT("RM ", text_overrides.raw_material_id)), text_overrides.language, text_overrides.override_text FROM text_overrides LEFT JOIN finished_goods ON finished_goods.id = text_overrides.finished_good_id WHERE text_overrides.sds_version_id IS NULL AND text_overrides.section_number = 9 AND text_overrides.field_key = "flash_point" AND TRIM(text_overrides.override_text) <> ""'`
+   - [ ] Each row is a genuinely measured value. Otherwise "Reset to automatic" in the SDS editor.
+7. **Translation review (not a release blocker).** The new ES / FR / DE sentences are house translations unless they come from the GHS phrase source. Send them for native-speaker review: Section 5 combustion products, Section 6 / 2 French H410–H412 ("… entraîne des effets néfastes à long terme"), Section 8 skin notation and no-limits ventilation, Section 13 packaging and cure residue, the Section 14 special-precaution fragments, the Section 15 Prop 65 clauses, the UV polymerization sentences (Sections 2 and 10), the family-profile sentences (Sections 7, 9 and 10), STOT organ and route words, and the combustible-dust sentences.
+8. **Bump ALL.** After items 2–7, press Settings → Maintenance → **Bump ALL unblocked SDSs** once, so the bulk publish in 3.9 regenerates every sheet with the Batch F wording.
+   - [ ] Pressed after items 2–7. The 3.8c item 6 query shows `bumped` = `total` for a timestamp taken just before pressing it.
+9. **Live-DB suites.** Re-run 3.8. `HazardEngineGoldenTest` may report the two new result keys (`stot_details`, `stot_incomplete`). If that is the only difference, refresh its expected output; anything else is a regression.
+10. **Spot checks (EN + one other language, PDF and `?html=1` preview).**
+    - [ ] UV ink: Section 2 Other hazards "Uncured product may polymerize …"; the Section 2 and Section 8 glove and eyewear lines are the UV sentences alone (no nitrile-vs-butyl or glasses-then-goggles pair); Section 4 Notes "If exposed or concerned: Get medical advice/attention." when H340–H373 apply; Section 7 lists "peroxides and free-radical initiators" and, with a family storage range, "Store between X and Y °C (A–B °F)."; Section 10 "Hazardous polymerization may occur …" plus the inhibitor sentence only when acrylates are present; Section 13 "Small amounts of non-hazardous residue may be cured before disposal where permitted." (clean RCRA, complete composition only); Section 14 "UV/EB-curable product: protect from heat and direct sunlight …".
+    - [ ] Water-based ink: Section 7 "Protect from freezing."; Section 10 conditions include freezing and "temperatures above Y °C"; Section 9 pH "8.0 – 9.5 (typical)" when the family has one.
+    - [ ] Solvent ink: Section 5 "Combustion may produce carbon monoxide, carbon dioxide, [nitrogen oxides / sulfur oxides / hydrogen halides,] and other toxic gases." names the same elements as Section 10; Section 5 and Section 9 print the identical "NN °C (NNN °F) (calculated)" flash point; Section 14 adds the Class 3 (and marine pollutant) fragments.
+    - [ ] Every sheet: Section 13 "Contaminated Packaging" line; Section 6 aquatic sentence word-for-word equal to the Section 2 H400–H413 statement; Section 8 skin-notation line names the components whose limit Notes carry "Skin" (trade secrets by description); a product with no exposure-limit rows starts Engineering Controls with a sentence that does not mention exposure limits; Section 15 Prop 65 reads "… which is known …" / "… which are known …" by count, cancer clause first; Section 16 defines SDS/HDS/FDS, ASTM, ISEA and PBT where they appear.
+
 ### 3.9 Finish
 
 - [ ] Settings → CMS Sync Schedule: "Auto bulk publish" ticked again.
@@ -367,22 +422,22 @@ and DE for one of them. Check the PDF and the `?html=1` preview side by side.
 - [ ] No "Powered by TCPDF" link; PDF metadata Author = company name (or the private-label manufacturer); no blank band at the top of pages 2+; no repeating header (#41).
 - [ ] No exact percentages anywhere — only bands; no assumption notes ("assumed", "not provided", "default used") anywhere (#42).
 - [ ] Section 1: manufacturer block from company settings (standard) or from the private-label manufacturer (alias); emergency phone is the one that belongs to that block (#1, #2); Recommended Use / Restrictions fall back to the resolved product family default (#3); "Substance" prints only for a single-line formula whose raw is marked Substance or a resale raw marked Substance, otherwise "Mixture" (#6).
-- [ ] Section 2: "Other hazards: None known." unless a per-product override exists (#4); PPE sentences match Section 8 (#15); carcinogen P-statements present, P281 absent (#5).
+- [ ] Section 2: "Other hazards: None known." unless a per-product override exists (#4); UV/LED-family sheets print "Uncured product may polymerize when exposed to UV light, elevated temperatures or contaminants." instead (A9); PPE sentences match Section 8 (#15); carcinogen P-statements present, P281 absent (#5).
 - [ ] Section 3: the three notes print (hazardous-only note reads "Hazardous ingredients and ingredients with an occupational exposure limit are listed."), 0.1% cut-off, prescribed-range bands (#7, #8); Section 8 Conc% column uses the same bands.
 - [ ] Section 4: hazard fragments added, not substituted; 4(b) symptoms/effects line derived from the H-statements; notes to physician lead with H304 / H314 / H330-H331 fragments (#9, #10).
 - [ ] Section 5: media keyed off Flam. Liq. category + Section 9 flash point; water-reactive products list no water spray (#11).
 - [ ] Section 6: ignition-source / non-sparking wording only on flammables; containment wording matches the physical state (#12).
 - [ ] Section 7: flammable + corrosive fragments both appear when both apply; storage names the Section 10 incompatible materials; H251 self-heating wording correct (#13).
-- [ ] Section 8: engineering controls from fragments (powders → dust control; H224–226 → explosion-proof ventilation/bonding; H314/H318 → eyewash and safety shower) (#14); PPE unified with Section 2, "no special PPE" tier on unclassified products (#15); UV FG gets the UV PPE sentence only on PPE lines its hazard data drives (all four lines when it is H317); an unclassified UV FG prints the plain "No special …" lines; Section 2 shows the same text (#29). Products with no exposure-limit rows print "No occupational exposure limits apply …"; the dust sentence prints for Powder only (#64).
+- [ ] Section 8: engineering controls from fragments (powders → dust control; H224–226 → explosion-proof ventilation/bonding; H314/H318 → eyewash and safety shower) (#14); PPE unified with Section 2, "no special PPE" tier on unclassified products (#15); UV FG: the UV glove/eyewear sentence replaces the tier sentence (impervious gloves / goggles+face shield stand alone), the UV respiratory/clothing sentence is appended, only on lines its hazard data drives (all four when H317); an unclassified UV FG prints the plain "No special …" lines; Section 2 shows the same text (#29). Products with no exposure-limit rows print "No occupational exposure limits apply …"; the dust sentence prints for Powder only (#64). Skin-notation sentence under the limits table; no limit rows → ventilation sentence without exposure limits (A4).
 - [ ] Section 9 (#16, #17, #18, #37):
   - Initial boiling point = the lowest raw-material boiling point.
-  - Flash point = the wt%-weighted average of the raws that carry one ("> n" when any of them is ticked ">"); "Not determined" when none does. A Section 9 Flash Point or Initial Boiling Point edit must be a temperature with its unit (degree sign optional: "24 °C", "75 F"); other text is refused on save, and an older stored edit without one is ignored with a preview warning.
+  - Flash point = the wt%-weighted average of the raws that carry one ("> n" when any of them is ticked ">"); "Not determined" when none does. A Section 9 Flash Point or Initial Boiling Point edit must be a temperature with its unit (degree sign optional: "24 °C", "75 F"); other text is refused on save, and an older stored edit without one is ignored with a preview warning. The automatic value prints rounded to a whole degree with "(calculated)" (e.g. "74 °C (165 °F) (calculated)"), never up onto or across 23 / 60 / 93 °C and never down onto 60 / 93 °C (59.6 prints 59, 60.4 prints 61; 23.4 prints 23, as Category 3 starts at 23 °C); Section 5 prints the identical string; a kept Section 9 edit prints exactly as typed, without the marker (A10).
   - Odor comes from the dominant raw material; a product override wins.
   - Physical state comes from the highest-% raw material.
   - VOC lb/gal and VOC wt% print; "VOC less W&E" and solids vol% are gone.
   - The solubility sentence comes from the soluble fraction (Soluble / Partially / Negligible / Not soluble).
   - On ES/FR/DE sheets the standard physical-state and colour words are translated.
-- [ ] Section 10: "unstable" wording for reactive H-classes; decomposition products from the nitrogen/sulfur/halogen flags on the CAS master; "protect from UV light" on every UV product regardless of the rule-pack toggle (#19). Section 7 Storage prints "Store away from UV light sources …" under the same family condition (#65). Oxidizer / explosive / self-heating / unstable-gas fixtures get their own Reactivity/Stability wording; H240-H242 reads "self-reactive substance or organic peroxide" (#34).
+- [ ] Section 10: "unstable" wording for reactive H-classes; decomposition products from the nitrogen/sulfur/halogen flags on the CAS master; "protect from UV light" on every UV product regardless of the rule-pack toggle (#19). Section 7 Storage prints "Store away from UV light sources …" under the same family condition (#65). Oxidizer / explosive / self-heating / unstable-gas fixtures get their own Reactivity/Stability wording; H240-H242 reads "self-reactive substance or organic peroxide" (#34). UV/LED family (A9): Reactivity "Hazardous polymerization may occur ..."; incompatibles end with "peroxides and free-radical initiators" and Section 7 Storage repeats them; the inhibitor/oxygen Stability sentence prints only when acrylates are detected; all of this also with the rule-pack toggle off.
 - [ ] Section 11: per-route acute toxicity with category statement + ATE value, "Not classified based on available data" otherwise (#20); chronic effects from H317/H334/H372-H373/CMR fragments with "none known" fallback (#21); one carcinogenicity block, 0.1% threshold (#22); UV rule-pack sentence present/absent per toggle (#35).
 - [ ] Section 12: ecotoxicity echoes the aquatic H-statements + per-component aquatic table (#23); PBT line only from the SARA 313 PBT flag, otherwise "No data available" (#24).
 - [ ] Section 13: every applicable RCRA characteristic listed; D codes from the admin table inside the "as sold" sentence (at any concentration); F/K/P/U listings in a separate "for reference (do not apply as sold)" sentence; D001 only with Flam. Liq. 1–3 (H224–H226) in Section 2; the reason comes from the engine's product flash point (the Q1 weighted average), never from a Section 9 edit (Section 9 edits are display-only and are dropped with a preview warning when they contradict the classification): below 60 °C prints "flash point below 60 °C", a "> n" value with n < 60 prints "flash point reported only as a minimum value below 60 °C (140 °F)", exactly 60 °C is Class 3 but not D001, no flash point means no D001; H224–H226 from a finished-good override prints the hazard-based reason (#26).

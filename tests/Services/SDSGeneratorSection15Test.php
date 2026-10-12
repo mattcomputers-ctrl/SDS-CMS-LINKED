@@ -118,8 +118,8 @@ check($s15['hap']['hap_chemicals'][0]['concentration_range'] === '1 - 5%' && !is
 check(!array_key_exists('total_hap_pct', $s15['hap']) && $s15['hap']['total_hap_range'] !== '' && $s15['hap']['total_hap_range'] === $s15['hap']['hap_chemicals'][0]['concentration_range'], 'S15 HAP total printed as a band, exact total removed (finding #70)', $s15['hap']);
 check($s15['prop65']['listed_lines'] === ['Toluene (CAS 108-88-3) — developmental toxicity'] && !array_key_exists('listed_chemicals', $s15['prop65']), 'S15 Prop 65 lines built, raw listing dropped from the section copy', $s15['prop65']);
 // #37: the printed warning is rebuilt in the sheet language from the chemical
-// lists; in EN it is byte-identical to Prop65Service::WARNING_REPRO.
-check($s15['prop65']['warning_text'] === sprintf(\SDS\Services\Prop65Service::WARNING_REPRO, 'Toluene'), 'EN warning rebuilt = Prop65Service::WARNING_REPRO text', $s15['prop65']['warning_text']);
+// lists; A7: "is" for one name (Prop65Service::safeHarborWarning()).
+check($s15['prop65']['warning_text'] === 'WARNING: This product can expose you to chemicals including Toluene, which is known to the State of California to cause birth defects or other reproductive harm. For more information go to www.P65Warnings.ca.gov.', 'EN warning rebuilt, one name -> "is" (A7)', $s15['prop65']['warning_text']);
 $p65Gen = static function (string $lang, array $cancer, array $repro) use ($hz0) {
     $g = new \SDS\Services\SDSGenerator(new \SDS\Services\TranslationService($lang));
     $m = new ReflectionMethod($g, 'section15');
@@ -129,13 +129,13 @@ $p65Gen = static function (string $lang, array $cancer, array $repro) use ($hz0)
         ['has_haps' => false, 'total_hap_pct' => 0, 'hap_chemicals' => []], ['composition' => []], [])['prop65']['warning_text'];
 };
 $enCombined = $p65Gen('en', ['Lead (trace)'], ['Toluene']);
-check($enCombined === sprintf(\SDS\Services\Prop65Service::WARNING_COMBINED, 'Toluene', 'Lead (trace)'), 'EN combined warning = Prop65Service::WARNING_COMBINED (repro first, trace suffix kept)', $enCombined);
+check($enCombined === 'WARNING: This product can expose you to chemicals including Lead (trace), which is known to the State of California to cause cancer, and Toluene, which is known to the State of California to cause birth defects or other reproductive harm. For more information go to www.P65Warnings.ca.gov.', 'EN combined warning: cancer clause first, is/are by count, trace suffix kept (A7)', $enCombined);
 $esW = $p65Gen('es', ['Lead (trace)'], []);
 check(str_starts_with($esW, 'ADVERTENCIA:') && str_contains($esW, 'Lead (trazas)') && str_contains($esW, 'www.P65Warnings.ca.gov') && !str_contains($esW, 'English'), 'ES warning translated, trace suffix translated, URL kept', $esW);
 $frW = $p65Gen('fr', [], ['Toluene']);
 check(str_starts_with($frW, 'AVERTISSEMENT :') && str_contains($frW, 'Toluene'), 'FR repro warning translated', $frW);
 $deW = $p65Gen('de', ['Lead'], ['Toluene']);
-check(str_starts_with($deW, 'WARNUNG:') && strpos($deW, 'Toluene') < strpos($deW, 'Lead'), 'DE combined warning translated, repro before cancer', $deW);
+check(str_starts_with($deW, 'WARNUNG:') && strpos($deW, 'Lead') < strpos($deW, 'Toluene'), 'DE combined warning translated, cancer before repro (A7)', $deW);
 check($s15['snur'] === ['has_snur' => false, 'listed_chemicals' => []], 'empty composition -> no SNUR, no DB');
 check(substr_count(json_encode($s15), '4.5') === 0, 'no exact 4.5 anywhere in Section 15 (finding #70)', json_encode($s15));
 
@@ -168,12 +168,19 @@ foreach (['en', 'es', 'fr', 'de'] as $lang) {
         $v = $trFile['section15'][$k] ?? null;
         check(is_string($v) && $v !== '', "{$lang} section15.{$k}", $v);
     }
-    foreach (['prop65_warning_cancer' => ':cancer', 'prop65_warning_repro' => ':repro', 'prop65_trace_name' => ':name'] as $k => $ph) {   // #37
+    // A7: clause-composed Prop 65 warning (Prop65Service::safeHarborWarning()).
+    foreach (['prop65_clause_cancer_one', 'prop65_clause_cancer_many', 'prop65_clause_repro_one', 'prop65_clause_repro_many'] as $k) {
         $v = (string) ($trFile['section15'][$k] ?? '');
-        check($v !== '' && str_contains($v, $ph) && ($k === 'prop65_trace_name' || str_contains($v, 'www.P65Warnings.ca.gov')), "{$lang} section15.{$k} (placeholder {$ph})", $v);
+        check($v !== '' && str_contains($v, ':names'), "{$lang} section15.{$k} (placeholder :names)", $v);
     }
-    $v = (string) ($trFile['section15']['prop65_warning_combined'] ?? '');
-    check(str_contains($v, ':cancer') && str_contains($v, ':repro') && strpos($v, ':repro') < strpos($v, ':cancer'), "{$lang} section15.prop65_warning_combined (:repro before :cancer)", $v);
+    $v = (string) ($trFile['section15']['prop65_warning_one'] ?? '');
+    check(str_contains($v, ':clause') && str_contains($v, 'www.P65Warnings.ca.gov'), "{$lang} section15.prop65_warning_one (:clause, URL)", $v);
+    $v = (string) ($trFile['section15']['prop65_warning_both'] ?? '');
+    check(str_contains($v, ':cancer_part') && str_contains($v, ':repro_part') && strpos($v, ':cancer_part') < strpos($v, ':repro_part') && str_contains($v, 'www.P65Warnings.ca.gov'), "{$lang} section15.prop65_warning_both (:cancer_part before :repro_part)", $v);
+    $v = (string) ($trFile['section15']['prop65_trace_name'] ?? '');
+    check($v !== '' && str_contains($v, ':name'), "{$lang} section15.prop65_trace_name (placeholder :name)", $v);
+    $gone = array_intersect(['prop65_warning_cancer', 'prop65_warning_repro', 'prop65_warning_combined'], array_keys($trFile['section15'] ?? []));
+    check($gone === [], "{$lang} old prop65_warning_cancer/_repro/_combined keys removed (A7)", $gone);
     foreach (['prop65_listed', 'sara_313_range_note', 'sara_313_pbt_no_deminimis', 'sara_313_special_concern_no_deminimis'] as $k) {
         $v = $trFile['labels'][$k] ?? null;
         check(is_string($v) && $v !== '', "{$lang} labels.{$k}", $v);

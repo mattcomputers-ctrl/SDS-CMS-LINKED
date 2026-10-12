@@ -9,6 +9,11 @@ $oldRec  = $_SESSION['_flash']['_old_input']['recommended_use'] ?? [];
 $oldRes  = $_SESSION['_flash']['_old_input']['restrictions'] ?? [];
 $isUv    = (bool) old('is_uv', (string) (int) ($item['is_uv'] ?? 0));
 $isAct   = (bool) old('is_active', (string) (int) ($item['is_active'] ?? 1));
+$prof    = \SDS\Models\ProductFamily::profile($item);               // A11 SDS profile
+$pf      = static fn(?float $v): string => $v === null ? '' : rtrim(rtrim(number_format($v, 1, '.', ''), '0'), '.');
+$wbSel   = old('water_based', $prof['water_based']);
+$stSel   = old('default_physical_state', (string) ($prof['default_physical_state'] ?? ''));
+$wbThr   = rtrim(rtrim(number_format((float) ($waterThreshold ?? \SDS\Services\WaterBasedRule::DEFAULT_THRESHOLD_PCT), 2, '.', ''), '0'), '.');
 ?>
 
 <p><a href="/admin/product-families">&larr; Back to Product Families</a></p>
@@ -39,7 +44,7 @@ $isAct   = (bool) old('is_active', (string) (int) ($item['is_active'] ?? 1));
         <?php if ($isEdit && !empty($usage)): ?>
             <div class="alert alert-info">
                 <strong><?= (int) $usage['raw_materials'] ?></strong> raw material(s) and <strong><?= (int) $usage['finished_goods'] ?></strong> product(s) currently resolve to this family.
-                Saving a changed name, UV/LED flag or default text flags all of them (and the SDSs that contain them) for republish.
+                Saving a changed name, UV/LED flag, default text or SDS profile flags all of them (and the SDSs that contain them) for republish.
             </div>
         <?php endif; ?>
         <?php foreach ($langs as $lang): ?>
@@ -54,6 +59,48 @@ $isAct   = (bool) old('is_active', (string) (int) ($item['is_active'] ?? 1));
                 </div>
             </div>
         <?php endforeach; ?>
+
+        <h3>SDS profile</h3>
+        <p class="text-muted">Optional. Applies to every item resolved to this family (active families only). Blank fields print what the sheet prints today. Enter storage temperatures and pH only from verified QC ranges.</p>
+        <div class="form-grid-2col">
+            <div class="form-group">
+                <label for="storage_temp_min_c">Storage temperature, minimum (°C)</label>
+                <input type="number" id="storage_temp_min_c" name="storage_temp_min_c" step="0.1" min="-50" max="100" value="<?= e(old('storage_temp_min_c', $pf($prof['storage_temp_min_c']))) ?>">
+            </div>
+            <div class="form-group">
+                <label for="storage_temp_max_c">Storage temperature, maximum (°C)</label>
+                <input type="number" id="storage_temp_max_c" name="storage_temp_max_c" step="0.1" min="-50" max="100" value="<?= e(old('storage_temp_max_c', $pf($prof['storage_temp_max_c']))) ?>">
+                <small class="text-muted">Both or neither. Section 7 prints "Store between X and Y °C"; Section 10 lists temperatures above the maximum.</small>
+            </div>
+            <div class="form-group">
+                <label for="water_based">Water-based</label>
+                <select id="water_based" name="water_based">
+                    <?php foreach (\SDS\Models\ProductFamily::WATER_BASED as $k => $label): ?>
+                        <option value="<?= e($k) ?>" <?= $wbSel === $k ? 'selected' : '' ?>><?= e($label) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <small class="text-muted">Auto: water (CAS 7732-18-5, including inside intermediates) at or above <?= e($wbThr) ?>% of the formula (<a href="/admin/settings">Settings &rarr; SDS Configuration</a>). Water-based products print "Protect from freezing" (Sections 7 and 10).</small>
+            </div>
+            <div class="form-group">
+                <label for="default_physical_state">Default physical state</label>
+                <select id="default_physical_state" name="default_physical_state">
+                    <option value="" <?= $stSel === '' ? 'selected' : '' ?>>(none: largest raw material decides)</option>
+                    <?php foreach (\SDS\Models\ProductFamily::PHYSICAL_STATES as $s): ?>
+                        <option value="<?= e($s) ?>" <?= strcasecmp($stSel, $s) === 0 ? 'selected' : '' ?>><?= e($s) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <small class="text-muted">Used when the product has no Physical State of its own (Sections 6, 8, 9 and 14). Paste, Solid and Powder are not liquids, so no flammable-liquid category applies to them.</small>
+            </div>
+            <div class="form-group">
+                <label for="ph_min">Typical pH, minimum</label>
+                <input type="number" id="ph_min" name="ph_min" step="0.1" min="0" max="14" value="<?= e(old('ph_min', $prof['ph_min'] === null ? '' : number_format($prof['ph_min'], 1, '.', ''))) ?>">
+            </div>
+            <div class="form-group">
+                <label for="ph_max">Typical pH, maximum</label>
+                <input type="number" id="ph_max" name="ph_max" step="0.1" min="0" max="14" value="<?= e(old('ph_max', $prof['ph_max'] === null ? '' : number_format($prof['ph_max'], 1, '.', ''))) ?>">
+                <small class="text-muted">Both or neither. Section 9 prints "8.0 – 9.5 (typical)"; blank prints "Not determined".</small>
+            </div>
+        </div>
 
         <div class="form-actions">
             <button type="submit" class="btn btn-primary"><?= $isEdit ? 'Save Family' : 'Create Family' ?></button>

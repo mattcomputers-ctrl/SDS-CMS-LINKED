@@ -103,7 +103,7 @@ check($r['specific_hazards'] === $combustion, 'direct line fp 10 °C without H-c
 // ---------------------------------------------------------------------
 echo "c. Category 3 (H226) with fp 38 °C and Section 9 parity\n";
 $r = $s5->invoke($gen, $calc(38.0), $hz(['H226', 'H319']), []);
-$expected = $cat3 . ' Flash point: 38 °C (100.4 °F). ' . $combustion;
+$expected = $cat3 . ' Flash point: 38 °C (100 °F) (calculated). ' . $combustion;
 check($r['specific_hazards'] === $expected, 'specific_hazards = cat3 + flash point line + combustion', $r['specific_hazards']);
 check($r['suitable_media'] === $t->get('section5.suitable_flammable'), 'suitable_media flammable', $r['suitable_media']);
 check($r['unsuitable_media'] === $t->get('section5.unsuitable_flammable'), 'unsuitable_media flammable', $r['unsuitable_media']);
@@ -115,19 +115,19 @@ check(str_contains($r['specific_hazards'], 'Flash point: ' . $s9r['flash_point']
 echo "d. Category 2 from sub-FG only, '>' flag, Cat 1 without flash point, most severe wins\n";
 $r = $s5->invoke($gen, $calc(12.0), $hz(['H225']), []);
 check(str_starts_with($r['specific_hazards'], $cat2), 'H225 with empty direct lines starts with cat2 text', $r['specific_hazards']);
-check(str_contains($r['specific_hazards'], 'Flash point: 12 °C (53.6 °F).'), 'sub-FG flash point 12 °C embedded', $r['specific_hazards']);
+check(str_contains($r['specific_hazards'], 'Flash point: 12 °C (54 °F) (calculated).'), 'sub-FG flash point 12 °C embedded', $r['specific_hazards']);
 
 $r = $s5->invoke($gen, $calc(55.0, true), $hz(['H226']), []);
-check(str_contains($r['specific_hazards'], 'Flash point: > 55 °C (131 °F).'), '> flag honoured', $r['specific_hazards']);
+check(str_contains($r['specific_hazards'], 'Flash point: > 55 °C (131 °F) (calculated).'), '> flag honoured', $r['specific_hazards']);
 $s9r = $s9->invoke($gen, $fg, $calc(55.0, true), []);
-check($s9r['flash_point'] === '> 55 °C (131 °F)', 'Section 9 prints > 55 °C (131 °F)', $s9r['flash_point']);
+check($s9r['flash_point'] === '> 55 °C (131 °F) (calculated)', 'Section 9 prints > 55 °C (131 °F) (calculated)', $s9r['flash_point']);
 
 $r = $s5->invoke($gen, $calc(null), $hz(['H224']), []);
 check($r['specific_hazards'] === $cat1 . ' ' . $combustion, 'H224 with no flash point: cat1 sentence, no flash point line', $r['specific_hazards']);
 
 $r = $s5->invoke($gen, $calc(-4.0), $hz(['H226', 'H225', 'H224']), []);
 check(str_starts_with($r['specific_hazards'], $cat1), 'H226+H225+H224: cat1 wins', $r['specific_hazards']);
-check(str_contains($r['specific_hazards'], 'Flash point: -4 °C (24.8 °F).'), 'negative flash point formatted', $r['specific_hazards']);
+check(str_contains($r['specific_hazards'], 'Flash point: -4 °C (25 °F) (calculated).'), 'negative flash point formatted', $r['specific_hazards']);
 
 $s9r = $s9->invoke($gen, $fg, $calc(null), []);
 check($s9r['flash_point'] === $t->get('labels.not_determined'), 'Section 9 falls back to Not determined', $s9r['flash_point']);
@@ -143,7 +143,7 @@ check($r['firefighter_advice'] === $t->get('section5.firefighter_advice_water_re
 
 $r = $s5->invoke($gen, $calc(null), $hz(['H261', 'H272']), []);
 check($r['suitable_media'] === $t->get('section5.suitable_water_reactive'), 'H261+H272: water-reactive beats oxidizer for suitable media', $r['suitable_media']);
-check($r['specific_hazards'] === $t->get('section5.specific_hazards_water_reactive') . ' ' . $t->get('section5.specific_hazards_oxidizer'), 'H261+H272 specific_hazards = H261 fragment + oxidizer', $r['specific_hazards']);
+check($r['specific_hazards'] === $t->get('section5.specific_hazards_water_reactive') . ' ' . $t->get('section5.specific_hazards_oxidizer') . ' ' . $combustion, 'H261+H272 specific_hazards = H261 fragment + oxidizer + combustion (A1)',$r['specific_hazards']);
 
 $r = $s5->invoke($gen, $calc(20.0), $hz(['H225', 'H261']), []);
 check($r['suitable_media'] === $t->get('section5.suitable_water_reactive'), 'H225+H261 suitable_media water-reactive', $r['suitable_media']);
@@ -156,22 +156,22 @@ check(str_contains($r['specific_hazards'], $t->get('section5.specific_hazards_wa
 echo "f. Oxidizer / organic peroxide / explosive\n";
 $r = $s5->invoke($gen, $calc(null), $hz(['H272']), []);
 check($r['suitable_media'] === $t->get('section5.suitable_oxidizer'), 'H272 suitable_media oxidizer', $r['suitable_media']);
-check($r['specific_hazards'] === $t->get('section5.specific_hazards_oxidizer'), 'H272 specific_hazards oxidizer', $r['specific_hazards']);
+check($r['specific_hazards'] === $t->get('section5.specific_hazards_oxidizer') . ' ' . $combustion, 'H272 specific_hazards oxidizer + combustion (A1)',$r['specific_hazards']);
 check(substr_count(strtolower($r['specific_hazards']), 'intensify') === 1, 'oxidizer sentence not duplicated', $r['specific_hazards']);
 check(!str_contains($r['specific_hazards'], '; oxidizer.'), 'old duplicated fragment gone', $r['specific_hazards']);
 
 $r = $s5->invoke($gen, $calc(null), $hz(['H242']), []);
-check($r['specific_hazards'] === $t->get('section5.specific_hazards_organic_peroxide'), 'H242 specific_hazards organic peroxide', $r['specific_hazards']);
+check($r['specific_hazards'] === $t->get('section5.specific_hazards_organic_peroxide') . ' ' . $combustion, 'H242 specific_hazards organic peroxide + combustion (A1)',$r['specific_hazards']);
 
 $r = $s5->invoke($gen, $calc(0.0), $hz(['H201', 'H225']), []);
 check($r['firefighter_advice'] === $t->get('section5.firefighter_advice_explosive'), 'H201+H225: explosive advice wins', $r['firefighter_advice']);
-check(str_contains($r['specific_hazards'], 'Flash point: 0 °C (32 °F).'), 'fp 0.0 is printed (not treated as missing)', $r['specific_hazards']);
+check(str_contains($r['specific_hazards'], 'Flash point: 0 °C (32 °F) (calculated).'), 'fp 0.0 is printed (not treated as missing)', $r['specific_hazards']);
 
 // ---------------------------------------------------------------------
 echo "g. Overrides win\n";
 $ov = [5 => ['suitable_media' => 'A', 'unsuitable_media' => 'B', 'specific_hazards' => 'C', 'firefighter_advice' => 'D']];
 $r = $s5->invoke($gen, $calc(-4.0), $hz(['H224', 'H260']), $ov);
-check($r['suitable_media'] === 'A' && $r['unsuitable_media'] === 'B' && $r['specific_hazards'] === 'C Flash point: -4 °C (24.8 °F).' && $r['firefighter_advice'] === 'D', 'all four overrides applied; #35 the current flash point sentence is appended to the Specific Hazards edit', $r);
+check($r['suitable_media'] === 'A' && $r['unsuitable_media'] === 'B' && $r['specific_hazards'] === 'C Flash point: -4 °C (25 °F) (calculated).' && $r['firefighter_advice'] === 'D', 'all four overrides applied; #35 the current flash point sentence is appended to the Specific Hazards edit', $r);
 
 // ---------------------------------------------------------------------
 echo "g2. Section 9 flash_point override is the value Section 5 embeds\n";
@@ -186,7 +186,7 @@ $r = $s5->invoke($gen, $calc(null), $hz(['H226']), $ov9);
 check(str_contains($r['specific_hazards'], 'Flash point: 41 °C (105.8 °F).'), 'override prints even when formula_props has no flash point', $r['specific_hazards']);
 $r   = $s5->invoke($gen, $calc(38.0), $hz(['H226']), [9 => ['flash_point' => '']]);
 $s9r = $s9->invoke($gen, $fg, $calc(38.0), [9 => ['flash_point' => '']]);
-check(str_contains($r['specific_hazards'], 'Flash point: 38 °C (100.4 °F).') && $s9r['flash_point'] === '38 °C (100.4 °F)', 'empty override falls back to formula_props in both sections', ['s5' => $r['specific_hazards'], 's9' => $s9r['flash_point']]);
+check(str_contains($r['specific_hazards'], 'Flash point: 38 °C (100 °F) (calculated).') && $s9r['flash_point'] === '38 °C (100 °F) (calculated)', 'empty override falls back to formula_props in both sections', ['s5' => $r['specific_hazards'], 's9' => $s9r['flash_point']]);
 $r = $s5->invoke($gen, $calc(93.0, true), $hz([]), $ov9);
 check($r['specific_hazards'] === $combustion, 'override does not add a flash point line to a non-flammable product', $r['specific_hazards']);
 
@@ -194,7 +194,7 @@ check($r['specific_hazards'] === $combustion, 'override does not add a flash poi
 echo "g3. Flammable Liquids Category 4 (H227, combustible liquid)\n";
 $cat4 = $t->get('section5.specific_hazards_flammable_cat4');
 $r = $s5->invoke($gen, $calc(75.0), $hz(['H227']), []);
-check($r['specific_hazards'] === $cat4 . ' Flash point: 75 °C (167 °F). ' . $combustion, 'H227: cat4 sentence + flash point line + combustion', $r['specific_hazards']);
+check($r['specific_hazards'] === $cat4 . ' Flash point: 75 °C (167 °F) (calculated). ' . $combustion, 'H227: cat4 sentence + flash point line + combustion', $r['specific_hazards']);
 check($r['suitable_media'] === $t->get('section5.suitable_flammable') && $r['firefighter_advice'] === $t->get('section5.firefighter_advice_flammable'), 'H227 takes the flammable media/advice branches', [$r['suitable_media'], $r['firefighter_advice']]);
 $s9r = $s9->invoke($gen, $fg, $calc(75.0), []);
 check(str_contains($r['specific_hazards'], 'Flash point: ' . $s9r['flash_point'] . '.'), 'H227 Section 5/9 flash point parity', $s9r['flash_point']);

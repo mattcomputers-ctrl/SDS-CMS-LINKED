@@ -74,6 +74,11 @@
                 <small class="text-muted">Constituent concentration (0.01–100) at or above which missing federal hazard data blocks publishing (when the gate above is on).</small>
             </div>
             <div class="form-group">
+                <label>Water-Based Threshold (%)</label>
+                <input type="number" name="sds__water_based_threshold_pct" min="1" max="100" step="0.1" required value="<?= e($settings['sds.water_based_threshold_pct'] ?? '20') ?>">
+                <small class="text-muted">A product counts as water-based when water (CAS 7732-18-5, including inside intermediates) is at or above this share of the formula, unless its product family says Yes or No. Used for "Protect from freezing" (Sections 7 and 10). Default 20.</small>
+            </div>
+            <div class="form-group">
                 <label>Publishing CPU Workers</label>
                 <input type="number" name="sds__publish_workers" min="0" step="1" value="<?= e($settings['sds.publish_workers'] ?? '0') ?>">
                 <small class="text-muted">0 = auto (minimum 8 workers). Set a specific number to override.</small>

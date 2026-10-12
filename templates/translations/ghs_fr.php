@@ -100,9 +100,9 @@ return [
         'H400' => 'Très toxique pour les organismes aquatiques',
         'H401' => 'Toxique pour les organismes aquatiques',
         'H402' => 'Nocif pour les organismes aquatiques',
-        'H410' => 'Très toxique pour les organismes aquatiques, entraîne des effets à long terme',
-        'H411' => 'Toxique pour les organismes aquatiques, entraîne des effets à long terme',
-        'H412' => 'Nocif pour les organismes aquatiques, entraîne des effets à long terme',
+        'H410' => 'Très toxique pour les organismes aquatiques, entraîne des effets néfastes à long terme',
+        'H411' => 'Toxique pour les organismes aquatiques, entraîne des effets néfastes à long terme',
+        'H412' => 'Nocif pour les organismes aquatiques, entraîne des effets néfastes à long terme',
         'H413' => 'Peut être nocif à long terme pour les organismes aquatiques',
         'H420' => 'Nuit à la santé publique et à l\'environnement en détruisant l\'ozone dans la haute atmosphère',
 

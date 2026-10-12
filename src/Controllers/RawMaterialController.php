@@ -332,7 +332,17 @@ class RawMaterialController
             }
 
             $diff = AuditService::diff($item, $data);
+            // A12(c): not_assessed <-> no prints nothing -> metadata-only write (no bump);
+            // a change to or from 'yes' rides the normal update (ON UPDATE bump).
+            $dustMetadataOnly = RawMaterial::combustibleDustChangeIsMetadataOnly($item['combustible_dust'] ?? null, $data['combustible_dust'] ?? null);
+            $dustValue = $dustMetadataOnly ? RawMaterial::normalizeCombustibleDust($data['combustible_dust']) : null;
+            if ($dustMetadataOnly) {
+                unset($data['combustible_dust']);
+            }
             RawMaterial::update((int) $id, $data);
+            if ($dustValue !== null) {
+                RawMaterial::setCombustibleDustMetadataOnly((int) $id, $dustValue);
+            }
             AuditService::log('raw_material', $id, 'update', $diff);
 
             if ($data['hazardous_no_cas']) {

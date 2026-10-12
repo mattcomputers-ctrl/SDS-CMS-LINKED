@@ -155,10 +155,10 @@ foreach (['en', 'es', 'fr', 'de'] as $lang) {
 // ---------------------------------------------------------------------
 echo "9. Flash point unaffected\n";
 $r = $s9->invoke($gen, $fg, $calc(78.4, 38.0), []);
-check($r['flash_point'] === '38 °C (100.4 °F)', 'flash point still 38 °C (100.4 °F)', $r['flash_point']);
+check($r['flash_point'] === '38 °C (100 °F) (calculated)', 'flash point still 38 °C (100 °F) (calculated)', $r['flash_point']);
 check($r['boiling_point'] === '78.4 °C (173.1 °F)', 'boiling point alongside flash point', $r['boiling_point']);
 $r = $s9->invoke($gen, $fg, $calc(78.4, 55.0, true), [9 => ['boiling_point' => 'x']]);
-check($r['flash_point'] === '> 55 °C (131 °F)', 'boiling override does not touch the flash point', $r['flash_point']);
+check($r['flash_point'] === '> 55 °C (131 °F) (calculated)', 'boiling override does not touch the flash point', $r['flash_point']);
 
 restore_error_handler();
 

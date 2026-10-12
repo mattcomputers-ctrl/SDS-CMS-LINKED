@@ -131,7 +131,7 @@ class LabelPDFService
         $itemCode     = $fg['product_code'];
         $signalWord   = $section2['signal_word'] ?? $hazard['signal_word'] ?? null;
         $pictograms   = $section2['pictograms'] ?? $hazard['pictograms'] ?? [];
-        $hStatements  = $section2['h_statements'] ?? $hazard['h_statements'] ?? [];
+        $hStatements  = self::labelHazardStatements($section2, $hazard);
         $pStatements  = $section2['p_statements'] ?? $hazard['p_statements'] ?? [];
 
         $supplierName    = $section1['manufacturer_name'] ?? '';
@@ -686,7 +686,7 @@ class LabelPDFService
         $itemCode     = $fg['product_code'];
         $signalWord   = $section2['signal_word'] ?? $hazard['signal_word'] ?? null;
         $pictograms   = $section2['pictograms'] ?? $hazard['pictograms'] ?? [];
-        $hStatements  = $section2['h_statements'] ?? $hazard['h_statements'] ?? [];
+        $hStatements  = self::labelHazardStatements($section2, $hazard);
         $pStatements  = $section2['p_statements'] ?? $hazard['p_statements'] ?? [];
 
         $supplierName    = $section1['manufacturer_name'] ?? '';
@@ -894,6 +894,49 @@ class LabelPDFService
 
     // ── Shared helpers ───────────────────────────────────────────────────
 
+    /**
+     * Hazard statements printed on a label: the Section 2 H-statements plus, first, the
+     * statement of every Section 2 hazard class that has no H-code but carries a
+     * translated 'statement' (A12(c) OSHA Combustible Dust, set by
+     * SDSGenerator::localizeCombustibleDustClass()). Without it a dust product's label
+     * would print the signal word Warning with no hazard statement (29 CFR
+     * 1910.1200(f)(1)). Code-less entries go first and buildPrioritizedHStatements()
+     * keeps them in the priority group, so truncation never drops them. formatStatements()
+     * joins with '. ', so the trailing period is trimmed. Exact duplicate texts skipped.
+     *
+     * @return array<int,array{code:string,text:string}>
+     */
+    public static function labelHazardStatements(array $section2, array $hazard): array
+    {
+        $hStatements = $section2['h_statements'] ?? $hazard['h_statements'] ?? [];
+        if (!is_array($hStatements)) {
+            $hStatements = [];
+        }
+        $seen = [];
+        foreach ($hStatements as $stmt) {
+            if (is_array($stmt)) {
+                $seen[mb_strtolower(rtrim(trim((string) ($stmt['text'] ?? '')), '.'))] = true;
+            }
+        }
+        $classStatements = [];
+        foreach ((array) ($section2['hazard_classes'] ?? []) as $hc) {
+            if (!is_array($hc) || !empty($hc['h_codes'])) {
+                continue;
+            }
+            $text = rtrim(trim((string) ($hc['statement'] ?? '')), '.');
+            if ($text === '') {
+                continue;
+            }
+            $key = mb_strtolower($text);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $classStatements[] = ['code' => '', 'text' => $text];
+        }
+        return array_merge($classStatements, array_values($hStatements));
+    }
+
     private function formatStatements(array $statements): string
     {
         $parts = [];
@@ -946,8 +989,10 @@ class LabelPDFService
         foreach ($hStatements as $stmt) {
             $code = $stmt['code'] ?? '';
             $num = (int) substr($code, 1);
-            // Prioritize health hazards (H300-H399) and physical hazards (H200-H299)
-            if ($num >= 200 && $num < 400) {
+            // Prioritize health hazards (H300-H399) and physical hazards (H200-H299).
+            // A12(c): a code-less class statement (OSHA Combustible Dust) is a physical
+            // hazard too, so it is never the one cut behind the "See SDS" notice.
+            if (($num >= 200 && $num < 400) || ($code === '' && trim((string) ($stmt['text'] ?? '')) !== '')) {
                 $priority[] = $stmt;
             } else {
                 $secondary[] = $stmt;

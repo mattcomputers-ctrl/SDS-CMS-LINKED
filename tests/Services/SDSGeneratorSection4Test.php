@@ -116,8 +116,8 @@ check($s['skin'] === $tr('skin_corrosive'), 'skin corrosive exactly', $s['skin']
 check($s['eyes'] === $tr('eyes_corrosive') . ' ' . $tr('eyes_contact_lenses'), 'eyes corrosive + contact lenses', $s['eyes']);
 check($s['ingestion'] === $tr('ingestion_aspiration'), 'ingestion aspiration exactly', $s['ingestion']);
 check(
-    $s['notes'] === $tr('notes_aspiration') . ' ' . $tr('notes_corrosive') . ' ' . $tr('notes_inhalation_delayed') . ' ' . $tr('notes'),
-    'notes aspiration + corrosive + inhalation_delayed, then base (#9: fragments lead)',
+    $s['notes'] === $tr('notes_aspiration') . ' ' . $tr('notes_corrosive') . ' ' . $tr('notes_inhalation_delayed') . ' ' . $tr('exposed_medical_advice') . ' ' . $tr('notes'),
+    'notes aspiration + corrosive + inhalation_delayed + P308+P313 for H372 (A3), then base (#9: fragments lead)',
     $s['notes']
 );
 check(

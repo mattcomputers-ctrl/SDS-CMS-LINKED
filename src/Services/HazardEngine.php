@@ -1122,6 +1122,20 @@ class HazardEngine
         // lose its code in Section 3 and in the Section 14 technical names.
         $casHCodes = $this->buildCasHCodeMap($allHClasses);
 
+        // A12(b) / T4a: STOT target organs + route (cas_master.stot_*) for the
+        // H370-H373 this product prints. Language-free; SDSGenerator fills the
+        // statement text per sheet language. Needs the per-CAS map above and
+        // the UNconsolidated classes (override / trade-secret sources).
+        $stot = StotTargetOrgans::resolve(
+            array_keys($allHStmts),
+            $casHCodes,
+            $allHClasses,
+            StotTargetOrgans::loadByCas($db, StotTargetOrgans::casCarryingStot($casHCodes))
+        );
+        if ($stot['details'] !== [] || $stot['incomplete'] !== []) {
+            $this->traceStep('stot_target_organs', 'STOT target organs resolved from cas_master', $stot);
+        }
+
         // Consolidate hazard classes: keep only the most severe category per class,
         // then sort by GHS group order (physical > health > environmental) and severity
         $allHClasses = $this->consolidateHazardClasses($allHClasses);
@@ -1192,6 +1206,11 @@ class HazardEngine
             // #37 per-CAS H-codes recorded before consolidation; read through
             // TransportClassifier::casHCodeMap() (Section 3 cell, Section 14 names).
             'cas_h_codes'         => $casHCodes,
+            // A12(b) / T4a: H370-H373 => organs / route when every CAS behind the
+            // code has them (SDSGenerator::applyStotTargetOrgans fills the text);
+            // 'stot_incomplete' feeds an operator warning only.
+            'stot_details'        => $stot['details'],
+            'stot_incomplete'     => $stot['incomplete'],
             'ppe_recommendations' => $ppeRecommendations,
             // Per-component aquatic classification + M-factor, flattened
             // from the Phase 4 aquatic buffer so SDS Section 12 can print a
@@ -3351,6 +3370,7 @@ class HazardEngine
         'Gases Under Pressure'               => 1,
         'Corrosive to Metals'                => 1,
         'Substances which, in contact with water, emit flammable gases' => 1,
+        'Combustible Dust'                   => 1, // A12(c) OSHA-defined physical hazard (SDSGenerator::applyCombustibleDust)
 
         // Health hazards (Group 2)
         'Acute Toxicity (Oral)'              => 2,

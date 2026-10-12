@@ -5,7 +5,7 @@
  *
  *   #29  UV PPE sentence only on hazard-driven PPE tiers, or on every field
  *        when the mixture carries H317; Sections 2 and 8 print the same text;
- *        an override replaces the whole field.
+ *        an override replaces the whole field; gloves/eyewear UV sentence replaces the tier sentence (A4a)
  *   #50  generic UV text gated on the pack/family state (setUvState), never
  *        on acrylate detection; names only for acrylates >= 0.1 %, acrylic
  *        resins / copolymers / polyacrylates not matched; trade-secret
@@ -103,13 +103,14 @@ foreach (HazardEngine::PPE_FIELDS as $f) {
 }
 check(!str_contains($p8['respiratory'], 'NIOSH'), 'unclassified UV: no respirator sentence');
 $p8 = $s8->invoke($gen, $eyeOnly, [], [], $liq, true);
-check(str_ends_with($p8['eye_protection'], ' ' . $sup['eye_protection']), 'H319: eye gets UV sentence', $p8['eye_protection']);
+check($p8['eye_protection'] === $sup['eye_protection'], 'H319: UV eye sentence replaces the goggles tier (A4a)', $p8['eye_protection']);
 foreach (['respiratory', 'hand_protection', 'skin_protection'] as $f) {
     check(!str_contains($p8[$f], $sup[$f]), "H319: {$f} (baseline, no H317) no UV", $p8[$f]);
 }
 $p8 = $s8->invoke($gen, $sensInk, [], [], $liq, true);
 foreach (HazardEngine::PPE_FIELDS as $f) {
-    check(str_ends_with($p8[$f], ' ' . $sup[$f]), "H317 ink: {$f} gets UV", $p8[$f]);
+    $okUv = in_array($f, ['hand_protection', 'eye_protection'], true) ? $p8[$f] === $sup[$f] : str_ends_with($p8[$f], ' ' . $sup[$f]);
+    check($okUv, "H317 ink: {$f} gets UV (gloves/eyewear replace, others append)", $p8[$f]);
 }
 $p2 = $s2->invoke($gen, $sensInk, [])['ppe_recommendations'];
 check($p2['respiratory'] === null, 'S2 respiratory hidden (general tier)', $p2['respiratory']);

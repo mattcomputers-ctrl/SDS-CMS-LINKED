@@ -96,6 +96,7 @@ $selfId = $isEdit ? (int) $item['id'] : 0;
                         <option value="<?= e($ps) ?>" <?= (old('physical_state', $item['physical_state'] ?? '') === $ps) ? 'selected' : '' ?>><?= e($ps) ?></option>
                     <?php endforeach; ?>
                 </select>
+                <small class="text-muted">Blank: the product family's default physical state (SDS profile), else the physical state of the largest raw material, else Liquid. Used in Sections 6, 8, 9 and 14 and in the flammability classification.</small>
             </div>
             <div class="form-group">
                 <label for="color">Color</label>

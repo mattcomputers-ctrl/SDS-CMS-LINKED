@@ -213,7 +213,7 @@ $uvFlam = $run(['H226'], [], true)['conditions_avoid'];
 check($inOrder($uvFlam, [$tr('cond_heat'), $tr('cond_ignition'), $tr('cond_oxidizers'), $tr('cond_uv')]), 'UV item last after oxidizers', $uvFlam);
 $uvOx = $run(['H272'], [], true)['conditions_avoid'];
 check($inOrder($uvOx, [$tr('cond_combustibles'), $tr('cond_uv')]), 'UV item last after combustibles', $uvOx);
-check($run([], [], true)['reactivity'] === $tr('reactivity'), 'UV leaves reactivity alone');
+check($run([], [], true)['reactivity'] === $tr('reactivity_uv_polymerization'), 'A9: UV reactivity is the hazardous-polymerization sentence', $run([], [], true)['reactivity']);
 
 // ---------------------------------------------------------------------
 echo "k. Overrides win whole-field\n";

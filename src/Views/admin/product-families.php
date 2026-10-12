@@ -9,7 +9,7 @@
 </div>
 
 <p class="text-muted">
-    A family supplies the Section 1 Recommended Use / Restrictions on Use defaults (per language) and the UV/LED flag.
+    A family supplies the Section 1 Recommended Use / Restrictions on Use defaults (per language), the UV/LED flag and an optional SDS profile (storage temperatures, water-based, default physical state, typical pH).
     Items join a family by manual choice on the item form, by a rule (code prefix, description phrase, exact code — aliases are matched too),
     or, for products, by the family carrying the largest weight share of their formula (UV/LED families count together).
     Inactive families are ignored everywhere, manual picks included. Rule and family edits are applied by
@@ -43,13 +43,14 @@
             <th style="width: 70px;">Rules</th>
             <th style="width: 120px;">Raw materials</th>
             <th style="width: 110px;">Products</th>
+            <th>SDS profile</th>
             <th style="width: 80px;">Active</th>
             <th style="width: 150px;">Actions</th>
         </tr>
     </thead>
     <tbody>
     <?php if (empty($families)): ?>
-        <tr><td colspan="7" class="text-muted" style="text-align:center;">No product families yet.</td></tr>
+        <tr><td colspan="8" class="text-muted" style="text-align:center;">No product families yet.</td></tr>
     <?php endif; ?>
     <?php foreach ($families as $f): $u = $usage[(int) $f['id']] ?? ['raw_materials' => 0, 'finished_goods' => 0, 'manual_rm' => 0, 'manual_fg' => 0, 'rules' => 0]; ?>
         <tr>
@@ -58,6 +59,7 @@
             <td><?= (int) $u['rules'] ?></td>
             <td><?= (int) $u['raw_materials'] ?><?= $u['manual_rm'] > 0 ? ' <small class="text-muted">(' . (int) $u['manual_rm'] . ' manual)</small>' : '' ?></td>
             <td><?= (int) $u['finished_goods'] ?><?= $u['manual_fg'] > 0 ? ' <small class="text-muted">(' . (int) $u['manual_fg'] . ' manual)</small>' : '' ?></td>
+            <td><?php $ps = \SDS\Models\ProductFamily::profileSummary($f); ?><?= $ps !== '' ? '<small>' . e($ps) . '</small>' : '—' ?></td>
             <td><?= !empty($f['is_active']) ? 'Yes' : 'No' ?></td>
             <td>
                 <a href="/admin/product-families/<?= (int) $f['id'] ?>/edit" class="btn btn-sm">Edit</a>

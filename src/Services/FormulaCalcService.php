@@ -327,6 +327,8 @@ class FormulaCalcService
                     $buckets[$cas][$flag] = true;
                 }
             }
+            // A12(a): cas_master acrylate flag (null = not determined), parity with Formula::getExpandedComposition().
+            $buckets[$cas]['is_acrylate'] ??= UVAcrylateRulePack::flagValue($c['is_acrylate'] ?? null);
 
             $buckets[$cas]['contributing_materials'][] = [
                 'raw_material_id' => $rmId,
@@ -493,6 +495,7 @@ class FormulaCalcService
                 'flash_point_greater_than' => (int) ($rm['flash_point_greater_than'] ?? 0),
                 'boiling_point_c'          => $rm['boiling_point_c'] ?? null,
                 'physical_state'           => $rm['physical_state'] ?? null,
+                'combustible_dust'         => $rm['combustible_dust'] ?? 'not_assessed', // A12(c); pre-062 rows -> not assessed
                 'solubility'               => $rm['solubility'] ?? null,
                 'appearance'               => $rm['appearance'] ?? null,
                 'odor'                     => $rm['odor'] ?? null,

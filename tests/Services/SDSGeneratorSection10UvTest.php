@@ -10,6 +10,7 @@
  *   - water-reactive (H260) + UV: water item + UV item;
  *   - an operator override replaces the whole field (no UV append);
  *   - the UV sentence is translated in es/fr/de.
+ *   - A9: UV reactivity sentence; inhibitor sentence needs detected acrylates;
  *
  * Run: php tests/Services/SDSGeneratorSection10UvTest.php
  * Exit code: 0 = passed, 1 = failed.
@@ -68,7 +69,8 @@ echo "b. UV product\n";
 $s = $m->invoke($gen, $hz(['H315', 'H317', 'H319']), [], true);
 check($s['conditions_avoid'] === rtrim($base, '.') . ', ' . $uv . '.', '$isUv true -> base items + UV item', $s['conditions_avoid']);
 check(str_contains($uv, 'UV'), 'UV item mentions UV light');
-check($s['reactivity'] === $t->get('section10.reactivity'), 'other fields untouched');
+check($s['reactivity'] === $t->get('section10.reactivity_uv_polymerization'), 'A9: UV reactivity is the hazardous-polymerization sentence', $s['reactivity']);
+check($s['stability'] === $t->get('section10.stability'), 'A9: no composition passed -> no inhibitor sentence', $s['stability']);
 
 echo "c. Water-reactive + UV\n";
 $s = $m->invoke($gen, $hz(['H260']), [], true);

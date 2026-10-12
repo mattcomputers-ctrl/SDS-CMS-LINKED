@@ -116,9 +116,9 @@ echo "1. Q1 water-based ink: 30% raw @12 °C + 70% water @100 °C → 73.6 °C\n
 $c = $fromLines([$line(1, 30.0, 12.0), $line(2, 70.0, 100.0)]);
 check($c['formula_props']['flash_point_c'] === 73.6 && $c['formula_props']['flash_point_greater_than'] === false, 'formula_props 73.6, no ">"', $c['formula_props']);
 $r9 = $s9->invoke($gen, $fg, $c, []);
-check($r9['flash_point'] === '73.6 °C (164.5 °F)', 'Section 9 prints the weighted average', $r9['flash_point']);
+check($r9['flash_point'] === '74 °C (165 °F) (calculated)', 'Section 9 prints the weighted average, rounded, "(calculated)"', $r9['flash_point']);
 $r5 = $s5->invoke($gen, $c, $hz(['H227']), []);
-check($r5['specific_hazards'] === $cat4 . ' Flash point: 73.6 °C (164.5 °F). ' . $combustion, 'Section 5 embeds the same value', $r5['specific_hazards']);
+check($r5['specific_hazards'] === $cat4 . ' Flash point: 74 °C (165 °F) (calculated). ' . $combustion, 'Section 5 embeds the same value', $r5['specific_hazards']);
 check(!str_contains($s13Text($c, ['H227']), 'D001'), 'Section 13: no D001 at 73.6 °C', $s13Text($c, ['H227']));
 $r14 = $s14->invoke($gen, $fg, $c, $hz(['H227']), []);
 check($r14['status'] === 'not_regulated', 'Section 14 not regulated', $r14['status']);
@@ -134,7 +134,7 @@ check(str_contains($s13Text($c, ['H225']), $rcraFp), 'Section 13 D001 (flash poi
 $c = $fromLines([$line(1, 40.0, 30.0), $line(2, 60.0, 93.0, true)]);
 check($c['formula_props']['flash_point_c'] === 67.8 && $c['formula_props']['flash_point_greater_than'] === true, '> 67.8', $c['formula_props']);
 $r9 = $s9->invoke($gen, $fg, $c, []);
-check($r9['flash_point'] === '> 67.8 °C (154 °F)', 'Section 9 prints "> 67.8 °C (154 °F)"', $r9['flash_point']);
+check($r9['flash_point'] === '> 67 °C (152 °F) (calculated)', 'Section 9 prints "> 67 °C (152 °F) (calculated)"', $r9['flash_point']);
 $r14 = $s14->invoke($gen, $fg, $c, $hz([]), []);
 check($r14['status'] === 'not_regulated' && $r14['note'] === $carrier, 'not regulated, no combustible note for a "> n" value', $r14);
 check(!str_contains($s13Text($c, []), 'D001'), 'no D001', $s13Text($c, []));
@@ -180,9 +180,9 @@ foreach (['75 F', '75F', '75 °F', '75 deg F'] as $edit) {
 $ov = [9 => ['flash_point' => 'None — water based']];
 $c  = $calc(38.0);
 $r9 = $s9->invoke($gen, $fg, $c, $ov);
-check($r9['flash_point'] === '38 °C (100.4 °F)', 'non-temperature edit not printed; formula value instead', $r9['flash_point']);
+check($r9['flash_point'] === '38 °C (100 °F) (calculated)', 'non-temperature edit not printed; formula value instead', $r9['flash_point']);
 $r5 = $s5->invoke($gen, $c, $hz(['H226']), $ov);
-check(str_contains($r5['specific_hazards'], 'Flash point: 38 °C (100.4 °F).'), 'Section 5 uses the formula value', $r5['specific_hazards']);
+check(str_contains($r5['specific_hazards'], 'Flash point: 38 °C (100 °F) (calculated).'), 'Section 5 uses the formula value', $r5['specific_hazards']);
 $r14 = $s14->invoke($gen, $fg, $c, $hz(['H226']), $ov);
 check($r14['hazard_class'] === '3' && $r14['packing_group'] === 'III', 'Section 14 classifies from the formula value', $r14);
 $w = $warn($ov);
@@ -220,9 +220,9 @@ check(count($w) === 1 && str_contains($w[0], 'Initial Boiling Point'), 'one oper
 echo "6. #35 Section 5 Specific Hazards edit keeps a current flash point\n";
 $edit = 'Flammable liquid. Flash point: 12 °C (53.6 °F). Keep away from heat.';
 $r5 = $s5->invoke($gen, $calc(30.0), $hz(['H226']), [5 => ['specific_hazards' => $edit]]);
-check($r5['specific_hazards'] === 'Flammable liquid. Flash point: 30 °C (86 °F). Keep away from heat.', 'stale sentence replaced in place', $r5['specific_hazards']);
+check($r5['specific_hazards'] === 'Flammable liquid. Flash point: 30 °C (86 °F) (calculated). Keep away from heat.', 'stale sentence replaced in place', $r5['specific_hazards']);
 $r5 = $s5->invoke($gen, $calc(30.0), $hz(['H226']), [5 => ['specific_hazards' => 'Custom text.']]);
-check($r5['specific_hazards'] === 'Custom text. Flash point: 30 °C (86 °F).', 'missing sentence appended', $r5['specific_hazards']);
+check($r5['specific_hazards'] === 'Custom text. Flash point: 30 °C (86 °F) (calculated).', 'missing sentence appended', $r5['specific_hazards']);
 $r5 = $s5->invoke($gen, $calc(30.0), $hz(['H226']), [5 => ['specific_hazards' => 'Custom text.'], 9 => ['flash_point' => '41 °C (105.8 °F)']]);
 check($r5['specific_hazards'] === 'Custom text. Flash point: 41 °C (105.8 °F).', 'Section 9 edit used', $r5['specific_hazards']);
 $r5 = $s5->invoke($gen, $calc(93.0, true), $hz([]), [5 => ['specific_hazards' => $edit]]);
@@ -230,7 +230,7 @@ check($r5['specific_hazards'] === 'Flammable liquid. Keep away from heat.', 'sen
 $genEs = new \SDS\Services\SDSGenerator(new \SDS\Services\TranslationService('es'));
 $s5Es  = $method($genEs, 'section5');
 $r5 = $s5Es->invoke($genEs, $calc(30.0), $hz(['H226']), [5 => ['specific_hazards' => 'Líquido. Punto de inflamación: 12 °C (53.6 °F). Fin.']]);
-check($r5['specific_hazards'] === 'Líquido. Punto de inflamación: 30 °C (86 °F). Fin.', 'ES sentence refreshed', $r5['specific_hazards']);
+check($r5['specific_hazards'] === 'Líquido. Punto de inflamación: 30 °C (86 °F) (calculado). Fin.', 'ES sentence refreshed', $r5['specific_hazards']);
 
 echo "\n{$checks} checks, {$failures} failures\n";
 exit($failures === 0 ? 0 : 1);

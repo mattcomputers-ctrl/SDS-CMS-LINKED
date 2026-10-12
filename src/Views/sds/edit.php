@@ -131,7 +131,7 @@ $isResaleEdit = ($editTarget['kind'] ?? 'fg') === 'rm';
                 </div>
             <?php endif; ?>
 
-            <?= $field(2, 'other_hazards', 'Other Hazards', 'textarea', 2, 'Automatic: "None known." Type here only hazards not otherwise classified (e.g. static accumulation, dust explosion).') ?>
+            <?= $field(2, 'other_hazards', 'Other Hazards', 'textarea', 2, 'Automatic: "None known."; UV/LED families print the uncured-product polymerization sentence instead. Type here only hazards not otherwise classified (e.g. static accumulation, dust explosion); typed text replaces the automatic sentence, including the UV one.') ?>
 
         <?php elseif ($num === 3): ?>
             <p class="text-muted">Composition is auto-calculated from the formula. Components shown for reference only.</p>
@@ -185,11 +185,11 @@ $isResaleEdit = ($editTarget['kind'] ?? 'fg') === 'rm';
             <?= $field(9, 'appearance', 'Appearance', 'input', 1, 'Automatic: finished-good colour + physical state (the physical state alone when no colour is set). Resale sheets use the raw material\'s appearance.') ?>
             <?= $field(9, 'odor', 'Odor', 'input', 1, 'Automatic: the dominant (highest wt%) raw material\'s odor; "Not determined" prints when no raw material carries one.') ?>
             <?= $field(9, 'boiling_point', 'Initial Boiling Point', 'input', 1, 'Automatic: the lowest raw material boiling point in the formula; "Not determined" prints when no raw material carries one. An edit must be a temperature with its unit, degree sign optional (e.g. "> 150 °C", "300 F"). It is display only: the classification (Flammable Liquids Category 1 vs 2, Section 14 packing group I) always follows the formula value, and an edit that contradicts it is not printed (the preview shows a warning). Text without a temperature is not saved.') ?>
-            <?= $field(9, 'flash_point', 'Flash Point', 'input', 1, 'Automatic: the weight-averaged flash point of the raw materials that carry one ("> n" when any of them is a "greater than" value); "Not determined" when none does. An edit must be a temperature with its unit, degree sign optional (e.g. "24 °C", "75 F", "> 93 °C"); Sections 5 and 9 print it. The classification (Sections 2, 5, 7, 10, 13 D001 and 14) always follows the formula value; an edit that contradicts it is not printed and the preview shows a warning. Text without a temperature is not saved.') ?>
+            <?= $field(9, 'flash_point', 'Flash Point', 'input', 1, 'Automatic: the weight-averaged flash point of the raw materials that carry one ("> n" when any of them is a "greater than" value), rounded to a whole degree and marked "(calculated)" (a value just below 23, 60 or 93 °C, or just above 60 or 93 °C, is rounded away from the limit so it never contradicts the classification; 23.4 prints 23, since Category 3 starts at 23 °C); "Not determined" when none does. Enter a measured (tested) value here: an edit must be a temperature with its unit, degree sign optional (e.g. "24 °C", "75 F", "> 93 °C"), and Sections 5 and 9 print it exactly as typed, without "(calculated)". The classification (Sections 2, 5, 7, 10, 13 D001 and 14) always follows the formula value; an edit that contradicts it is not printed and the preview shows a warning. Text without a temperature is not saved.') ?>
             <?= $field(9, 'solubility', 'Solubility', 'input', 1, 'Automatic: derived from the formula\'s raw materials.') ?>
             <?php // #43 / Q8 Appendix D lines with no formula data (product-level value) ?>
             <?= $field(9, 'odor_threshold', 'Odor Threshold', 'input', 1, 'No formula data: the sheet prints "Not determined" unless a tested value is typed here.') ?>
-            <?= $field(9, 'ph', 'pH', 'input', 1, 'No formula data: the sheet prints "Not determined" unless a tested value is typed here.') ?>
+            <?= $field(9, 'ph', 'pH', 'input', 1, 'No formula data: the sheet prints the product family\'s typical pH range ("8.0 – 9.5 (typical)") when the family SDS profile sets one, otherwise "Not determined". A tested value typed here wins.') ?>
             <?= $field(9, 'melting_point', 'Melting Point / Freezing Point', 'input', 1, 'No formula data: the sheet prints "Not determined" unless a tested value is typed here.') ?>
             <?= $field(9, 'evaporation_rate', 'Evaporation Rate', 'input', 1, 'No formula data: the sheet prints "Not determined" unless a tested value is typed here.') ?>
             <?= $field(9, 'flammability_solid_gas', 'Flammability (Solid, Gas)', 'input', 1, 'Automatic: "Not applicable" for a Liquid, otherwise "Not determined".') ?>
@@ -234,6 +234,7 @@ $isResaleEdit = ($editTarget['kind'] ?? 'fg') === 'rm';
             <?= $field(14, 'hazard_class', 'Hazard Class', 'input', 1) ?>
             <?= $field(14, 'packing_group', 'Packing Group', 'input', 1) ?>
             <?= $field(14, 'environmental_hazards', 'Environmental Hazards', 'input', 1) ?>
+            <?= $field(14, 'special_precautions', 'Special Precautions for User', 'textarea', 3, 'Automatic: the standard transport sentence, plus a fragment for each that applies: flammable (Class 3 in the printed hazard class), corrosive (Class 8), marine pollutant (Environmental Hazards = Yes), and UV/EB-curable (UV family). Text typed here replaces the whole line on this language tab only. It does not change the transport classification or the publish gate.') ?>
 
         <?php elseif ($num === 15): ?>
             <p class="text-muted">SARA 313, Prop 65, and SNUR data are auto-populated from regulatory databases and raw material flags.</p>

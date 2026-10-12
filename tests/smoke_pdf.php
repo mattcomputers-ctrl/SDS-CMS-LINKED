@@ -138,6 +138,7 @@ $sdsData = [
             'exposure_limits' => [
                 ['cas_number' => '57472-68-1', 'chemical_name' => 'DPGDA', 'limit_type' => 'TWA', 'value' => '10', 'units' => 'mg/m3', 'concentration_pct' => 39.0, 'concentration_range' => '30 - 60%'],
             ],
+            'skin_notation_note' => 'Components with a skin notation (absorption through the skin can contribute significantly to overall exposure; avoid skin contact): DPGDA.', // batch F A4(b)
             'engineering'      => 'Use local exhaust ventilation.',
             'respiratory'      => 'NIOSH-approved respirator if needed.',
             'hand_protection'  => 'Chemical-resistant gloves (nitrile or neoprene).',

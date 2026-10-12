@@ -22,28 +22,29 @@ class Prop65Service
 {
     /*
      * #37: the SDS safe-harbor warning text now comes from
-     * templates/translations/{lang}.php — section15.prop65_warning_cancer /
-     * _repro / _combined (:cancer / :repro = chemical names) and
-     * section15.prop65_trace_name (':name (trace)'). The three WARNING_*
-     * constants below are the English reference wording only (EN keys carry
-     * the same text verbatim); no sheet text is built from them.
+     * templates/translations/{lang}.php (A7 keys below) and
+     * section15.prop65_trace_name (':name (trace)'). A7: the warning is built
+     * by safeHarborWarning() from section15.prop65_clause_* / prop65_warning_one /
+     * prop65_warning_both ("is"/"are" by count, cancer clause first). The three
+     * WARNING_* constants below are the legacy pre-A7 wording ("is/are", repro
+     * first), kept for reference only; no text is built from them.
      */
 
     /**
      * Standard Prop 65 cancer warning (short form, effective 8/30/2018).
-     * @deprecated #37 reference only — use section15.prop65_warning_cancer.
+     * @deprecated #37 reference only (legacy wording) — use safeHarborWarning() (A7).
      */
     public const WARNING_CANCER = 'WARNING: This product can expose you to chemicals including %s, which is/are known to the State of California to cause cancer. For more information go to www.P65Warnings.ca.gov.';
 
     /**
      * Standard Prop 65 reproductive toxicity warning.
-     * @deprecated #37 reference only — use section15.prop65_warning_repro.
+     * @deprecated #37 reference only (legacy wording) — use safeHarborWarning() (A7).
      */
     public const WARNING_REPRO = 'WARNING: This product can expose you to chemicals including %s, which is/are known to the State of California to cause birth defects or other reproductive harm. For more information go to www.P65Warnings.ca.gov.';
 
     /**
      * Standard Prop 65 combined warning (reproductive + cancer).
-     * @deprecated #37 reference only — use section15.prop65_warning_combined.
+     * @deprecated #37 reference only (legacy wording) — use safeHarborWarning() (A7).
      */
     public const WARNING_COMBINED = 'WARNING: This product can expose you to chemicals including %s, which is/are known to the State of California to cause birth defects or other reproductive harm and chemicals including %s, which is/are known to the State of California to cause cancer. For more information go to www.P65Warnings.ca.gov.';
 
@@ -473,26 +474,35 @@ class Prop65Service
 
     /**
      * Build the appropriate Prop 65 safe-harbor warning text in $t's language
-     * (#37: section15.prop65_warning_cancer / _repro / _combined; the
-     * combined text lists the reproductive toxicants first, as before).
+     * (#37; A7: delegates to safeHarborWarning(), cancer clause first).
      * Names are printed as given.
      */
     private static function buildWarningText(array $cancerChems, array $reproChems, TranslationService $t): string
     {
-        $hasCancer = !empty($cancerChems);
-        $hasRepro  = !empty($reproChems);
+        return self::safeHarborWarning($cancerChems, $reproChems, $t);
+    }
 
-        if ($hasCancer && $hasRepro) {
-            return $t->get('section15.prop65_warning_combined', [
-                'repro'  => implode(', ', $reproChems),
-                'cancer' => implode(', ', $cancerChems),
-            ]);
+    /**
+     * A7: Prop 65 safe-harbor warning in $t's language (27 CCR 25603(a) wording).
+     * The cancer clause comes first, then the reproductive clause. Each clause takes
+     * its _one / _many variant from the number of names it lists ("is" / "are" in EN;
+     * causante/causantes, reconnue/reconnues, verursacht/verursachen).
+     * Names print as given, comma-joined. '' when both lists are empty.
+     */
+    public static function safeHarborWarning(array $cancerChems, array $reproChems, TranslationService $t): string
+    {
+        $cancer = array_values(array_map('strval', $cancerChems));
+        $repro  = array_values(array_map('strval', $reproChems));
+        $clause = static fn (string $oneKey, string $manyKey, array $names): string =>
+            $t->get(count($names) === 1 ? $oneKey : $manyKey, ['names' => implode(', ', $names)]);
+        $cancerPart = $cancer === [] ? '' : $clause('section15.prop65_clause_cancer_one', 'section15.prop65_clause_cancer_many', $cancer);
+        $reproPart  = $repro === []  ? '' : $clause('section15.prop65_clause_repro_one', 'section15.prop65_clause_repro_many', $repro);
+        if ($cancerPart !== '' && $reproPart !== '') {
+            return $t->get('section15.prop65_warning_both', ['cancer_part' => $cancerPart, 'repro_part' => $reproPart]);
         }
-
-        if ($hasCancer) {
-            return $t->get('section15.prop65_warning_cancer', ['cancer' => implode(', ', $cancerChems)]);
+        if ($cancerPart !== '' || $reproPart !== '') {
+            return $t->get('section15.prop65_warning_one', ['clause' => $cancerPart !== '' ? $cancerPart : $reproPart]);
         }
-
-        return $t->get('section15.prop65_warning_repro', ['repro' => implode(', ', $reproChems)]);
+        return '';
     }
 }

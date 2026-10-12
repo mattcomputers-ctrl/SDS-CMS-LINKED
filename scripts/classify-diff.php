@@ -394,6 +394,9 @@ foreach ($idList as $sdsIdRaw) {
                 $fgId  = (int) $row['finished_good_id'];
                 $calc  = (new \SDS\Services\FormulaCalcService())->calculate($fgId);
                 $fgRow = \SDS\Models\FinishedGood::findById($fgId) ?? [];
+                // A11: family default physical state, as SDSGenerator::attachFamily() does
+                $famRow = !empty($fgRow['family_id']) ? \SDS\Models\ProductFamily::findById((int) $fgRow['family_id']) : null;
+                $fgRow  = array_merge($fgRow, \SDS\Services\SDSGenerator::familyFields($famRow, $fgRow['family'] ?? null));
                 $flamInputs = [
                     'flash_point_c'            => $calc['formula_props']['flash_point_c'] ?? null,
                     'flash_point_greater_than' => !empty($calc['formula_props']['flash_point_greater_than']),

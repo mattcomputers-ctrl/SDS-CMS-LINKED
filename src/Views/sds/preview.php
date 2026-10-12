@@ -163,6 +163,9 @@ $sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, '
                                 $hCodes   = is_array($hc['h_codes'] ?? null) ? $hc['h_codes'] : [];
                                 $hcPrefix = !empty($hCodes) ? implode(', ', $hCodes) . ' — ' : '';
                                 $stmtText = $lookupStatement($hCodes);
+                                if ($stmtText === '' && trim((string) ($hc['statement'] ?? '')) !== '') {
+                                    $stmtText = trim((string) $hc['statement']); // A12(c), same as PDFService::renderSection2
+                                }
                                 $line     = $hcPrefix . $classLabel . ($stmtText !== '' ? ': ' . $stmtText : '');
                                 if ($classLabel !== '' && !isset($seen[$line])):
                                     $seen[$line] = true;
@@ -299,6 +302,9 @@ $sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, '
                 <?php endforeach; ?>
                 </tbody>
             </table>
+            <?php if (!empty($section['skin_notation_note'])): // A4(b) — same sentence/position as PDFService::renderSection8() ?>
+            <p class="text-muted" style="font-size: 0.85rem; font-style: italic; margin: 0.25rem 0;"><?= e($section['skin_notation_note']) ?></p>
+            <?php endif; ?>
             <?php elseif (!empty($section['exposure_limits_none'])): // #64 — same sentence as PDFService::renderSection8() ?>
             <p class="text-muted" style="font-size: 0.85rem; font-style: italic; margin: 0.25rem 0;"><?= e($section['exposure_limits_none']) ?></p>
             <?php endif; ?>
@@ -313,7 +319,7 @@ $sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, '
                 ];
             ?>
             <?php foreach ($section as $key => $val): ?>
-                <?php if (!is_string($val) || $key === 'title' || $val === '' || $key === 'exposure_limits' || $key === 'exposure_limits_none' || $key === 'uv_acrylate_note') continue; // uv_acrylate_note: pre-#35 snapshots only; PDFService::renderSection8() never prints it ?>
+                <?php if (!is_string($val) || $key === 'title' || $val === '' || $key === 'exposure_limits' || $key === 'exposure_limits_none' || $key === 'skin_notation_note' || $key === 'uv_acrylate_note') continue; // uv_acrylate_note: pre-#35 snapshots only; PDFService::renderSection8() never prints it ?>
                 <?php $fieldLabel = isset($sec8LabelMap[$key]) ? $l($sec8LabelMap[$key]) : ucwords(str_replace('_', ' ', $key)); ?>
                 <p><strong><?= e($fieldLabel) ?>:</strong> <?= e($val) ?></p>
             <?php endforeach; ?>
@@ -626,6 +632,7 @@ $sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, '
                     'persistence'          => 'persistence',
                     'bioaccumulation'      => 'bioaccumulation',
                     'methods'              => 'disposal_methods',
+                    'packaging'            => 'contaminated_packaging', // A5
                     'rcra_classification'  => 'rcra_classification', // audit #26
                     'note'                 => 'note',
                     'version'              => 'version',

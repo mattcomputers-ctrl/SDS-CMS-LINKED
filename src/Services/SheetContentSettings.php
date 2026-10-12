@@ -15,6 +15,7 @@ final class SheetContentSettings
     public const KEYS = [
         'sds.show_ghs_section_note' => '1',
         'uv_acrylate_rule_pack'     => 'enabled',
+        'sds.water_based_threshold_pct' => '20', // A11: shared water-based rule (freezing sentences)
     ];
 
     /** Prefixes: Section 1 supplier block + logo (company.*), Section 16 disclaimer per language. */

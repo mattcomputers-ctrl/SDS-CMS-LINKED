@@ -294,6 +294,7 @@ class Formula
                     rmc.pct_exact, rmc.pct_min, rmc.pct_max,
                     rmc.is_trade_secret,
                     rmc.trade_secret_description, rmc.trade_secret_h_codes,
+                    cm.is_acrylate AS is_acrylate,
                     COALESCE(cm.has_nitrogen, 0) AS has_nitrogen,
                     COALESCE(cm.has_sulfur, 0)   AS has_sulfur,
                     COALESCE(cm.has_halogen, 0)  AS has_halogen
@@ -358,6 +359,8 @@ class Formula
                     'has_nitrogen'             => (int) ($row['has_nitrogen'] ?? 0) === 1,
                     'has_sulfur'               => (int) ($row['has_sulfur'] ?? 0) === 1,
                     'has_halogen'              => (int) ($row['has_halogen'] ?? 0) === 1,
+                    // A12(a): cas_master acrylate flag; null = not determined (UVAcrylateRulePack fallback)
+                    'is_acrylate'              => \SDS\Services\UVAcrylateRulePack::flagValue($row['is_acrylate'] ?? null),
                     'contributing_materials'    => [],
                 ];
             }
@@ -574,6 +577,7 @@ class Formula
                         'has_nitrogen'             => !empty($subEntry['has_nitrogen']),
                         'has_sulfur'               => !empty($subEntry['has_sulfur']),
                         'has_halogen'              => !empty($subEntry['has_halogen']),
+                        'is_acrylate'              => \SDS\Services\UVAcrylateRulePack::flagValue($subEntry['is_acrylate'] ?? null), // A12(a)
                         'contributing_materials'    => [],
                     ];
                 }
@@ -599,6 +603,9 @@ class Formula
                         $casBuckets[$cas][$flag] = true;
                     }
                 }
+
+                // A12(a): the acrylate flag is a per-CAS constant; fill it when the bucket has none yet.
+                $casBuckets[$cas]['is_acrylate'] ??= \SDS\Services\UVAcrylateRulePack::flagValue($subEntry['is_acrylate'] ?? null);
 
                 // Tag contributing materials as coming through the FG component
                 foreach ($subEntry['contributing_materials'] as $contrib) {

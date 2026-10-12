@@ -366,6 +366,15 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
                 </select>
             </div>
             <div class="form-group">
+                <label for="combustible_dust">Combustible Dust (vendor SDS Section 2)</label>
+                <select id="combustible_dust" name="combustible_dust">
+                    <?php foreach (['not_assessed' => 'Not assessed', 'yes' => 'Yes - combustible dust', 'no' => 'No - not a combustible dust'] as $cdVal => $cdLabel): // A12(c) ?>
+                        <option value="<?= e($cdVal) ?>" <?= (old('combustible_dust', $item['combustible_dust'] ?? 'not_assessed') === $cdVal) ? 'selected' : '' ?>><?= e($cdLabel) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <small class="text-muted">From the vendor SDS Section 2 ("May form combustible dust concentrations in air"). A Powder or Solid product containing a material marked Yes is classified as a combustible dust (SDS Sections 2, 5, 7 and 15); changing to or from Yes bumps the material so affected SDSs republish. Not assessed only adds a preview / readiness warning on Powder or Solid products and never blocks publishing.</small>
+            </div>
+            <div class="form-group">
                 <label for="solubility">Solubility</label>
                 <select id="solubility" name="solubility">
                     <option value="">—</option>

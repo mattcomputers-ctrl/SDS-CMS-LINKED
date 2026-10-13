@@ -28,6 +28,9 @@ use SDS\Core\Database;
  */
 class SDSReadinessService
 {
+    /** change_summary bulk publish writes on resale base sheets (scripts/publish-worker.php). */
+    public const BULK_RESALE_CHANGE_SUMMARY = 'Bulk publish (resale)';
+
     /**
      * Return the set of raw_material ids that count as "reviewed".
      *
@@ -459,6 +462,91 @@ class SDSReadinessService
         $code = trim((string) ($fg['product_code'] ?? ''));
         return 'Publishing blocked: finished good ' . ($code !== '' ? $code : '#' . (int) ($fg['id'] ?? 0))
             . ' is inactive. Set its Status to Active (Finished Goods > Edit), then publish again. Bulk publish skips inactive products too.';
+    }
+
+    /**
+     * Resale import (2026-10-13), DB-free core of resaleAutoPublishBlocks().
+     *
+     * The CMS sync now creates a raw material for every Resale GL item, most
+     * of them with no data yet. An empty composition renders a full sheet that
+     * says "Not a hazardous substance or mixture", so the AUTOMATIC paths
+     * (shipped-SDS export / send queue through AliasPublisher, bulk publish,
+     * GHS labels) may build a resale sheet only when a person has reviewed the
+     * raw material AND it either has constituent data or already has a resale
+     * SDS that someone published by hand. The manual "Publish Resale SDS"
+     * button stays the explicit route for a genuinely non-hazardous item.
+     */
+    public static function resaleAutoPublishBlock(string $code, bool $reviewed, bool $noComposition, bool $publishedBefore): ?string
+    {
+        $code = trim($code) !== '' ? trim($code) : 'this resale item';
+        if (!$reviewed) {
+            return "Resale raw material {$code} has not been reviewed: no one has saved its data or entered a CAS determination for it. "
+                . 'Enter its composition under Raw Materials, then publish it from the SDS Creation Readiness Check.';
+        }
+        if ($noComposition && !$publishedBefore) {
+            return "Resale raw material {$code} has no composition entered, so its sheet would say it is not hazardous. "
+                . 'Enter its constituents from the vendor SDS, or, if it really has no hazardous ingredients, publish its first resale SDS by hand from the SDS Creation Readiness Check.';
+        }
+        return null;
+    }
+
+    /**
+     * Batch form of resaleAutoPublishBlock() for raw material ids.
+     *
+     * @param int[] $rmIds
+     * @return array<int,string> rm id => blocking message (ids that pass are absent)
+     */
+    public static function resaleAutoPublishBlocks(array $rmIds, Database $db): array
+    {
+        $rmIds = array_values(array_unique(array_filter(array_map('intval', $rmIds), static fn(int $i): bool => $i > 0)));
+        if ($rmIds === []) {
+            return [];
+        }
+        $ph = implode(',', array_fill(0, count($rmIds), '?'));
+
+        $codes = [];
+        foreach ($db->fetchAll("SELECT id, internal_code FROM raw_materials WHERE id IN ({$ph})", $rmIds) as $r) {
+            $codes[(int) $r['id']] = (string) $r['internal_code'];
+        }
+        $reviewed = self::loadReviewedRmIds($db);
+        $empty = [];
+        foreach (TSCAService::incompleteRawMaterials($rmIds) as $row) {
+            if (in_array(TSCAService::REASON_NO_CONSTITUENTS, (array) ($row['reasons'] ?? []), true)) {
+                $empty[(int) $row['id']] = true;
+            }
+        }
+        // "Published by hand": a live resale base sheet that bulk publish did
+        // not write (scripts/publish-worker.php stamps 'Bulk publish (resale)').
+        // Older bulk runs only checked "reviewed", so their sheets for empty
+        // raw materials must not count as an owner's decision.
+        $published = [];
+        foreach ($db->fetchAll(
+            "SELECT DISTINCT raw_material_id FROM sds_versions
+             WHERE raw_material_id IN ({$ph}) AND alias_id IS NULL AND finished_good_id IS NULL
+               AND status = 'published' AND is_deleted = 0
+               AND COALESCE(change_summary, '') <> ?",
+            array_merge($rmIds, [self::BULK_RESALE_CHANGE_SUMMARY])
+        ) as $r) {
+            $published[(int) $r['raw_material_id']] = true;
+        }
+
+        $out = [];
+        foreach ($rmIds as $id) {
+            if (!isset($codes[$id])) {
+                continue; // deleted meanwhile: the caller's own lookup fails
+            }
+            $block = self::resaleAutoPublishBlock($codes[$id], isset($reviewed[$id]), isset($empty[$id]), isset($published[$id]));
+            if ($block !== null) {
+                $out[$id] = $block;
+            }
+        }
+        return $out;
+    }
+
+    /** Single-id form of resaleAutoPublishBlocks(). */
+    public static function resaleAutoPublishError(int $rmId, Database $db): ?string
+    {
+        return self::resaleAutoPublishBlocks([$rmId], $db)[$rmId] ?? null;
     }
 
     /** Audit #69 — settings-form check for the Missing Data Threshold (%). DB-free. */

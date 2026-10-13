@@ -941,6 +941,19 @@ class SDSController
             return;
         }
 
+        // Resale import (2026-10-13): the readiness page hides the Publish
+        // button for an unreviewed raw material; enforce it here as well.
+        // A reviewed item with no constituents may still be published here:
+        // this manual publish is the explicit route for a genuinely
+        // non-hazardous resale item (the automatic paths refuse it).
+        if (!isset(\SDS\Services\SDSReadinessService::loadReviewedRmIds($db)[$rmId])) {
+            $_SESSION['_flash']['error'] = \SDS\Services\SDSReadinessService::resaleAutoPublishBlock(
+                (string) ($rm['internal_code'] ?? ''), false, false, false
+            );
+            redirect('/sds-review?rm_id=' . $rmId);
+            return;
+        }
+
         try {
             $generator = new SDSGenerator();
             $baseData  = $generator->computeBaseForResaleRawMaterial($rmId);

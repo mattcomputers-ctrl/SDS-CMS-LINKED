@@ -137,6 +137,26 @@ class CMSImportService
 
         $existingRmCodes = $this->getExistingRawMaterialCodes();
 
+        // Raw Material + Resale GL rows, fetched once: the ingredient loop
+        // mirrors importRawMaterials()' resale pack-size mapping, and the GL
+        // section below plans Phase 2a from the same rows.
+        $cmsGlRMs = null;
+        try {
+            $cmsGlRMs = $this->cms->fetchAll(self::glGroupRawMaterialSql());
+        } catch (\Throwable $e) {
+            // Non-fatal — preview still works without GL group data
+        }
+        $previewResaleCodes = [];
+        foreach ($cmsGlRMs ?? [] as $glRow) {
+            if ((string) ($glRow['GLGroupName'] ?? '') === 'Resale') {
+                $previewResaleCodes[trim((string) $glRow['ItemCode'])] = true;
+            }
+        }
+        $previewBases = [];
+        foreach ($existingRmCodes as $existingCode) {
+            $previewBases[strip_pack_extension((string) $existingCode)] = true;
+        }
+
         foreach ($items as $item) {
             switch ($item['import_status']) {
                 case 'new':
@@ -187,44 +207,31 @@ class CMSImportService
                     continue;
                 }
 
-                if (in_array($code, $existingRmCodes, true)) {
+                if (in_array($code, $existingRmCodes, true)
+                    || (isset($previewResaleCodes[$code]) && isset($previewBases[$baseCode]))) {
                     $rmExisting[] = $code;
                 } else {
                     $rmToCreate[] = $code;
+                    $previewBases[$baseCode] = true;
                 }
             }
         }
 
-        // GL group raw materials not yet in the SDS system
+        // Raw Material and Resale GL group items not yet in the SDS system
         $rmGlToCreate = [];
         try {
-            $cmsGlRMs = $this->cms->fetchAll(
-                "SELECT i.ItemCode
-                 FROM CMS.dbo.Item i
-                 INNER JOIN CMS.dbo.GLGroup g ON g.GLGroup = i.GLGroup
-                 WHERE g.Description = 'Raw Material'
-                   AND i.ItemCode IS NOT NULL
-                   AND i.CostingRecipe IS NULL
-                 ORDER BY i.ItemCode"
-            );
-            $fgCodes = array_flip(array_column(
+            if ($cmsGlRMs === null) {
+                throw new \RuntimeException('GL group rows unavailable');
+            }
+            $fgCodes = array_fill_keys(array_column(
                 $this->db->fetchAll("SELECT product_code FROM finished_goods"),
                 'product_code'
-            ));
-            foreach ($cmsGlRMs as $r) {
-                $code = trim($r['ItemCode']);
-                if ($code === '' || in_array($code, $existingRmCodes, true)) {
-                    continue;
-                }
-                if (isset($seenRmCodes[$code])) {
-                    continue;
-                }
-                $baseCode = strip_pack_extension($code);
-                if (isset($fgCodes[$code]) || isset($fgCodes[$baseCode])) {
-                    continue;
-                }
-                $rmGlToCreate[] = $code;
-            }
+            ), true);
+            // Phase 2 runs first in import(): its new ingredient raw
+            // materials already exist when Phase 2a plans.
+            $knownCodes = array_fill_keys(array_merge($existingRmCodes, $rmToCreate), true);
+            $plan = self::planGlGroupRawMaterials($cmsGlRMs, $knownCodes, $fgCodes, $this->loadImportExclusions());
+            $rmGlToCreate = array_column($plan['create'], 'code');
         } catch (\Throwable $e) {
             // Non-fatal — preview still works without GL group data
         }
@@ -282,7 +289,7 @@ class CMSImportService
         // Phase 2: Collect and create all raw materials from formulas
         $rmMap = $this->importRawMaterials($items, $userId, $results);
 
-        // Phase 2a: Import all CMS items in the Raw Material GL group
+        // Phase 2a: Import all CMS items in the Raw Material and Resale GL groups
         $this->importRawMaterialsByGLGroup($userId, $results);
 
         // Phase 2b: Refresh RM metadata (description, preferred supplier, Their Code)
@@ -430,6 +437,34 @@ class CMSImportService
         foreach ($rmRows as $rmRow) {
             $existingRms[$rmRow['internal_code']] = (int) $rmRow['id'];
         }
+        $loggedRmIds = [];
+        foreach ($this->db->fetchAll("SELECT entity_id FROM cms_import_log WHERE entity_type = 'raw_material'") as $logRow) {
+            $loggedRmIds[(int) $logRow['entity_id']] = true;
+        }
+
+        // Pack sizes of one resale product share one raw material
+        // (planGlGroupRawMaterials). A recipe that uses another pack size of
+        // a resale product already in the system maps to that raw material
+        // (lowest id per base, the row AliasResolver uses) instead of
+        // creating an empty sibling.
+        $resaleCodes = [];
+        try {
+            foreach ($this->cms->fetchAll(self::glGroupRawMaterialSql()) as $glRow) {
+                if ((string) ($glRow['GLGroupName'] ?? '') === 'Resale') {
+                    $resaleCodes[trim((string) $glRow['ItemCode'])] = true;
+                }
+            }
+        } catch (\Throwable $e) {
+            $resaleCodes = [];
+        }
+        $baseRm = [];
+        foreach ($rmRows as $rmRow) {
+            $rowBase = strip_pack_extension((string) $rmRow['internal_code']);
+            $rowId   = (int) $rmRow['id'];
+            if (!isset($baseRm[$rowBase]) || $rowId < $baseRm[$rowBase]) {
+                $baseRm[$rowBase] = $rowId;
+            }
+        }
 
         // Collect all CMS recipe PKs to scan — top-level items AND FG sub-components
         $recipesToScan = [];
@@ -477,6 +512,13 @@ class CMSImportService
                 if (isset($existingRms[$code])) {
                     $rmMap[$code] = $existingRms[$code];
                     $results['rm_skipped'][] = $code;
+                    // A raw material created by the GL-group import (Phase 2a)
+                    // has no import-log row; once a recipe uses it, add one so
+                    // it is listed under Raw Materials Needing Details.
+                    if (!isset($loggedRmIds[$existingRms[$code]])) {
+                        $this->upsertImportLog($code, (int) $ing['ingredient_item_pk'], null, null, 'raw_material', $existingRms[$code], $userId);
+                        $loggedRmIds[$existingRms[$code]] = true;
+                    }
                     continue;
                 }
 
@@ -490,6 +532,16 @@ class CMSImportService
                     continue;
                 }
 
+                if (isset($resaleCodes[$code]) && isset($baseRm[$baseCode])) {
+                    $rmMap[$code] = $baseRm[$baseCode];
+                    $results['rm_skipped'][] = $code;
+                    if (!isset($loggedRmIds[$baseRm[$baseCode]])) {
+                        $this->upsertImportLog($code, (int) $ing['ingredient_item_pk'], null, null, 'raw_material', $baseRm[$baseCode], $userId);
+                        $loggedRmIds[$baseRm[$baseCode]] = true;
+                    }
+                    continue;
+                }
+
                 try {
                     $rmId = RawMaterial::create([
                         'internal_code'         => $code,
@@ -499,6 +551,7 @@ class CMSImportService
                     ]);
 
                     $rmMap[$code] = $rmId;
+                    $baseRm[$baseCode] ??= $rmId;
                     $results['rm_created'][] = $code;
 
                     $this->upsertImportLog(
@@ -520,26 +573,56 @@ class CMSImportService
     }
 
     /* ------------------------------------------------------------------
-     *  Phase 2a: Import all CMS items in the Raw Material GL group
+     *  Phase 2a: Import all CMS items in the Raw Material and Resale
+     *  GL groups
      *
-     *  Creates raw_materials for any CMS Item whose GLGroup description
-     *  is 'Raw Material' that doesn't already exist in the SDS system.
-     *  This lets operators enter RM data ahead of time, before the RM
-     *  appears in any finished good formula.
+     *  Creates raw_materials for any CMS Item in RM_GL_GROUPS that doesn't
+     *  already exist in the SDS system. Raw Material items: operators can
+     *  enter RM data ahead of time, before the RM appears in any finished
+     *  good formula. Resale items (2026-10-13): every resale product gets
+     *  a raw material row, so it can have a resale SDS and a product family
+     *  even when no formula uses it. Before this only resale items that
+     *  were recipe ingredients came in (232 of 324 were missing).
+     *
+     *  New rows have no audit_log entry, so they are unreviewed. The
+     *  automatic paths (bulk publish, shipped-SDS export / send queue,
+     *  GHS labels) refuse a resale sheet until the raw material is reviewed
+     *  AND has composition data or a resale SDS published by hand
+     *  (SDSReadinessService::resaleAutoPublishBlock). Pack sizes of one
+     *  resale product get one row (planGlGroupRawMaterials). A code an
+     *  admin deletes is recorded in cms_rm_import_exclusions (migration
+     *  063) and not recreated here.
      * ----------------------------------------------------------------*/
+
+    /** CMS GL groups whose items are imported as raw materials even when no formula uses them. */
+    public const RM_GL_GROUPS = ['Raw Material', 'Resale'];
+
+    /**
+     * CMS query for the GL-group raw material import and its preview.
+     * Skips items with a costing recipe (finished goods and pack variants,
+     * see aed5f67) and alias rows (ReplacedBy), which the alias import handles.
+     */
+    public static function glGroupRawMaterialSql(): string
+    {
+        $groups = implode(', ', array_map(
+            static fn(string $g): string => "'" . str_replace("'", "''", $g) . "'",
+            self::RM_GL_GROUPS
+        ));
+        return "SELECT i.ItemCode, i.Description, g.Description AS GLGroupName
+                 FROM CMS.dbo.Item i
+                 INNER JOIN CMS.dbo.GLGroup g ON g.GLGroup = i.GLGroup
+                 WHERE g.Description IN ({$groups})
+                   AND i.ItemCode IS NOT NULL
+                   AND i.CostingRecipe IS NULL
+                   AND i.ReplacedBy IS NULL
+                 ORDER BY CASE WHEN EXISTS (SELECT 1 FROM CMS.dbo.Item a WHERE a.ReplacedBy = i.Item) THEN 0 ELSE 1 END,
+                          i.ItemCode";
+    }
 
     private function importRawMaterialsByGLGroup(?int $userId, array &$results): void
     {
         try {
-            $cmsRMs = $this->cms->fetchAll(
-                "SELECT i.ItemCode, i.Description
-                 FROM CMS.dbo.Item i
-                 INNER JOIN CMS.dbo.GLGroup g ON g.GLGroup = i.GLGroup
-                 WHERE g.Description = 'Raw Material'
-                   AND i.ItemCode IS NOT NULL
-                   AND i.CostingRecipe IS NULL
-                 ORDER BY i.ItemCode"
-            );
+            $cmsRMs = $this->cms->fetchAll(self::glGroupRawMaterialSql());
         } catch (\Throwable $e) {
             $results['errors'][] = 'GL group RM import failed: ' . $e->getMessage();
             return;
@@ -559,27 +642,20 @@ class CMSImportService
             $fgCodes[$r['product_code']] = true;
         }
 
+        $plan = self::planGlGroupRawMaterials($cmsRMs, $existingCodes, $fgCodes, $this->loadImportExclusions());
+
         $created = 0;
-        foreach ($cmsRMs as $cmsRM) {
-            $code = trim($cmsRM['ItemCode']);
-            if ($code === '' || isset($existingCodes[$code])) {
-                continue;
-            }
-
-            $baseCode = strip_pack_extension($code);
-            if (isset($fgCodes[$code]) || isset($fgCodes[$baseCode])) {
-                continue;
-            }
-
+        foreach ($plan['create'] as $row) {
+            $code = $row['code'];
             try {
                 RawMaterial::create([
                     'internal_code'         => $code,
                     'supplier'              => '',
-                    'supplier_product_name' => $cmsRM['Description'] ?? '',
+                    'supplier_product_name' => $row['description'],
                     'created_by'            => $userId,
                 ]);
-                $existingCodes[$code] = true;
                 $results['rm_created'][] = $code;
+                $results['rm_gl_group_created_by_group'][$row['group']] = ($results['rm_gl_group_created_by_group'][$row['group']] ?? 0) + 1;
                 $created++;
             } catch (\Throwable $e) {
                 $results['errors'][] = "GL group RM create [{$code}]: " . $e->getMessage();
@@ -588,6 +664,92 @@ class CMSImportService
 
         if ($created > 0) {
             $results['rm_gl_group_created'] = $created;
+        }
+        if ($plan['skipped_siblings'] !== []) {
+            $results['rm_gl_group_skipped_siblings'] = count($plan['skipped_siblings']);
+        }
+    }
+
+    /**
+     * Pure (no DB): which GL-group CMS rows become new raw materials.
+     * Shared by importRawMaterialsByGLGroup() and preview() so they agree.
+     *
+     * A row is skipped when its code is blank, already a raw material,
+     * excluded (deleted by an admin, migration 063; for a Resale row any
+     * excluded pack size of the same product counts), or a finished good by
+     * code or pack-stripped base. A Resale row is also skipped when a raw
+     * material with the same pack-stripped base already exists or is
+     * planned earlier in this run: pack sizes of one resale product share
+     * one raw material, which is the row AliasResolver resolves the base to.
+     * glGroupRawMaterialSql() lists alias targets first, so the kept pack
+     * code is the one CMS aliases point at.
+     *
+     * @param list<array{ItemCode:?string,Description:?string,GLGroupName:?string}> $cmsRows
+     * @param array<string,true> $existingCodes raw_materials.internal_code (exact)
+     * @param array<string,true> $fgCodes       finished_goods.product_code
+     * @param array<string,true> $excluded      cms_rm_import_exclusions.item_code
+     * @return array{create: list<array{code:string,description:string,group:string}>,
+     *               skipped_siblings: list<array{code:string,base:string}>,
+     *               excluded: list<string>}
+     */
+    public static function planGlGroupRawMaterials(array $cmsRows, array $existingCodes, array $fgCodes, array $excluded): array
+    {
+        $bases = [];
+        foreach (array_keys($existingCodes) as $c) {
+            $bases[strip_pack_extension((string) $c)] = true;
+        }
+        // Deleting one pack size of a resale product removes the product:
+        // its other pack sizes must not come back as the base's new row.
+        $excludedBases = [];
+        foreach (array_keys($excluded) as $c) {
+            $excludedBases[strip_pack_extension((string) $c)] = true;
+        }
+        $out = ['create' => [], 'skipped_siblings' => [], 'excluded' => []];
+        $planned = [];
+        foreach ($cmsRows as $r) {
+            $code = trim((string) ($r['ItemCode'] ?? ''));
+            if ($code === '' || isset($existingCodes[$code]) || isset($planned[$code])) {
+                continue;
+            }
+            if (isset($excluded[$code])) {
+                $out['excluded'][] = $code;
+                continue;
+            }
+            $base = strip_pack_extension($code);
+            if (isset($fgCodes[$code]) || isset($fgCodes[$base])) {
+                continue;
+            }
+            $group = (string) ($r['GLGroupName'] ?? '');
+            if ($group === 'Resale' && isset($bases[$base])) {
+                $out['skipped_siblings'][] = ['code' => $code, 'base' => $base];
+                continue;
+            }
+            if ($group === 'Resale' && isset($excludedBases[$base])) {
+                $out['excluded'][] = $code;
+                continue;
+            }
+            $planned[$code] = true;
+            $bases[$base] = true;
+            $out['create'][] = ['code' => $code, 'description' => (string) ($r['Description'] ?? ''), 'group' => $group];
+        }
+        return $out;
+    }
+
+    /**
+     * Codes an admin deleted (migration 063). Empty when the table does not
+     * exist yet, so a sync between deploy and migration still runs.
+     *
+     * @return array<string,true>
+     */
+    private function loadImportExclusions(): array
+    {
+        try {
+            return array_fill_keys(array_column(
+                $this->db->fetchAll('SELECT item_code FROM cms_rm_import_exclusions'),
+                'item_code'
+            ), true);
+        } catch (\Throwable $e) {
+            return [];
         }
     }
 

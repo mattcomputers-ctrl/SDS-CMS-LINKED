@@ -173,6 +173,14 @@ final class AliasPublisher
             if ($inactiveError !== null) {
                 throw new \RuntimeException($inactiveError);
             }
+        } else {
+            // Resale import (2026-10-13): this path runs unattended (shipped-SDS
+            // export, send queue), so a resale alias needs a reviewed raw
+            // material with data, or one already published by hand.
+            $resaleBlock = SDSReadinessService::resaleAutoPublishError((int) $res['rm']['id'], $db);
+            if ($resaleBlock !== null) {
+                throw new \RuntimeException("Alias {$code}: {$resaleBlock}");
+            }
         }
         $phoneError = SDSReadinessService::companyEmergencyPhoneErrorFromDb($db);
         if ($phoneError !== null) {

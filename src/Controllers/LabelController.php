@@ -173,6 +173,16 @@ class LabelController
                     'Could not find a finished good, alias, or raw material matching "' . $resaleCode . '".';
                 redirect('/labels');
             }
+            // Resale import (2026-10-13): a resale label needs the same data as
+            // an automatic resale publish (reviewed, and composition entered or
+            // a sheet published by hand), or it would print with no hazards.
+            if (!empty($resolved['rm_id'])) {
+                $resaleBlock = \SDS\Services\SDSReadinessService::resaleAutoPublishError((int) $resolved['rm_id'], Database::getInstance());
+                if ($resaleBlock !== null) {
+                    $_SESSION['_flash']['error'] = 'No label printed for ' . $resolved['display_code'] . '. ' . $resaleBlock;
+                    redirect('/labels');
+                }
+            }
             $fg          = $resolved['fg'];
             $sdsData     = $resolved['sds_builder']();
             $productCode = $resolved['display_code'];
@@ -291,6 +301,7 @@ class LabelController
                 return [
                     'fg'           => self::buildResaleFg($alias['rm'], $displayCode, $aliasDesc),
                     'display_code' => $displayCode,
+                    'rm_id'        => $rmId,
                     'sds_builder'  => function () use ($rmId, $displayCode, $aliasDesc) {
                         $generator = new SDSGenerator();
                         $sds = $generator->generateForResaleRawMaterial($rmId, 'en');
@@ -311,6 +322,7 @@ class LabelController
             return [
                 'fg'           => self::buildResaleFg($rm, $displayCode, $description),
                 'display_code' => $displayCode,
+                'rm_id'        => $rmId,
                 'sds_builder'  => function () use ($rmId) {
                     $generator = new SDSGenerator();
                     return $generator->generateForResaleRawMaterial($rmId, 'en');

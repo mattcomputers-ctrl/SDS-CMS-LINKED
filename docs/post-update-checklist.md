@@ -40,6 +40,7 @@ step is expanded in sections 1–4 below; the section number is in brackets.
 11. **Private label** — retire or freeze unwanted backfilled items; run `check-pl-duplicates.php` [3.6, 3.7].
 12. **Findings batch (migrations 056–059)** — migrations applied, override cleanup pass 2 done (step 10), carcinogen correction check, non-hazardous flag count, per-language legal disclaimers, full-republish bump [3.8c].
 12b. **Batch F (migrations 060–062)** — acrylate flag seed, family SDS profiles, STOT target organs, combustible-dust determinations on powder raws, Section 9 flash point edit review, then Bump ALL [3.8d, 3.2c].
+12c. **Resale import (migration 063)** — first CMS sync creates a raw material for every Resale item; delete the non-chemicals, enter composition for the resale items you sell [3.8e].
 13. **Live-DB test suites** on the server [3.8].
 14. **Spot-check three sheets** (solvent ink, water-based, UV with acrylates) in EN and ES against the Section checklist [4.B].
 15. **Resume**: tick "Auto bulk publish" again and run one bulk publish; work through the failures it reports (each one is a publish gate from step 4 or 6) [3.9].
@@ -385,6 +386,28 @@ Items A1–A12 of the fixed-text review. Do this after 3.8c and before 3.9. Most
     - [ ] Water-based ink: Section 7 "Protect from freezing."; Section 10 conditions include freezing and "temperatures above Y °C"; Section 9 pH "8.0 – 9.5 (typical)" when the family has one.
     - [ ] Solvent ink: Section 5 "Combustion may produce carbon monoxide, carbon dioxide, [nitrogen oxides / sulfur oxides / hydrogen halides,] and other toxic gases." names the same elements as Section 10; Section 5 and Section 9 print the identical "NN °C (NNN °F) (calculated)" flash point; Section 14 adds the Class 3 (and marine pollutant) fragments.
     - [ ] Every sheet: Section 13 "Contaminated Packaging" line; Section 6 aquatic sentence word-for-word equal to the Section 2 H400–H413 statement; Section 8 skin-notation line names the components whose limit Notes carry "Skin" (trade secrets by description); a product with no exposure-limit rows starts Engineering Controls with a sentence that does not mention exposure limits; Section 15 Prop 65 reads "… which is known …" / "… which are known …" by count, cancer clause first; Section 16 defines SDS/HDS/FDS, ASTM, ISEA and PBT where they appear.
+
+### 3.8e Resale items imported from CMS (2026-10-13, migration 063)
+
+The CMS sync now creates a raw material for every item in the CMS **Resale** GL group, not only the ones a recipe uses, so product family rules can place them (e.g. every `CTA…` code in its family) and they can get a resale SDS. Pack sizes of one resale product share one raw material (the pack code CMS aliases point at), and a recipe that uses another pack size of it maps to that raw material too. Expect about 206 new raw materials on the first sync: 229 Resale codes, of which about 23 are extra pack sizes (the sync log reports them as "resale pack size(s) share an existing raw material"). Do this after 3.8d and before 3.9.
+
+1. **Migration.**
+   - [ ] `update.sh` shows "Applying …" for `063_cms_rm_import_exclusions` with no "Failed to apply" line.
+   - [ ] `sdsq 'SELECT COUNT(*) FROM cms_rm_import_exclusions'` prints `0`.
+2. **First sync.** CMS Import → Preview lists them under "New Raw Materials (from the CMS Raw Material and Resale GL groups)". Run the import, or wait for the hourly sync; its log line reads "RM (GL group): N new from CMS GL groups (… Resale)".
+   - [ ] New raw materials: ________
+   - [ ] Families: `sdsq 'SELECT rm.internal_code, COALESCE(pf.name, "(no family)"), COALESCE(rm.family_source, "-") FROM raw_materials rm LEFT JOIN product_families pf ON pf.id = rm.family_id WHERE rm.internal_code LIKE "CTA%" ORDER BY rm.internal_code'` lists every CTA code in its family.
+3. **Remove the non-chemicals.** The Resale group also holds items that never get an SDS: 5562 / 5563 (pails and lids), AL30005K, PINK PLASTIC INK KNIFE, GFI 4945, the Pantone guides (GG…, GP…, PAGPS207), IR DETECTOR, IR LASER PEN, WEDGEL and MISC. Delete them on Raw Materials (admin). A delete now sticks: the sync does not recreate the code (or, for a resale product, any of its other pack sizes) unless a formula uses it, and creating it again by hand lifts that.
+   - [ ] Done.
+4. **Enter data for the resale items you sell.** A new resale raw material is empty and unreviewed. Until it is reviewed AND has its composition (or a first resale SDS published by hand), the automatic paths refuse it: bulk publish counts it as blocked, the shipped-SDS ZIP lists its aliases in `_MISSING_ITEMS.csv` with the reason, and GHS Labels shows an error instead of printing a label with no hazards. Enter the constituents from the vendor SDS (Raw Materials → Edit), then publish from SDS Creation Readiness Check (`/sds-review?rm_id=…`). A reviewed item that really has no hazardous ingredients can be published there by hand once; after that, bulk publish keeps it current.
+   - [ ] Resale items shipped in the last year have data and a published sheet.
+5. **Existing resale raw materials.** The same rule now applies to resale raw materials that were already in the system. These reviewed-but-empty ones have never been published and are now blocked:
+   `sdsq 'SELECT rm.internal_code FROM raw_materials rm WHERE (rm.hazardous_no_cas IS NULL OR rm.hazardous_no_cas = 0) AND NOT EXISTS (SELECT 1 FROM raw_material_constituents c WHERE c.raw_material_id = rm.id) AND NOT EXISTS (SELECT 1 FROM sds_versions sv WHERE sv.raw_material_id = rm.id AND sv.alias_id IS NULL AND sv.finished_good_id IS NULL AND sv.status = "published" AND sv.is_deleted = 0) AND EXISTS (SELECT 1 FROM aliases a WHERE a.internal_code_base = SUBSTRING_INDEX(rm.internal_code, "-", 1)) ORDER BY rm.internal_code'`
+   - [ ] Each one has constituents entered, or was published by hand as non-hazardous.
+
+   Older bulk runs only checked "reviewed", so some empty resale raw materials may already carry an automatic "Not a hazardous substance or mixture" sheet. Only sheets published by hand now count, so these are blocked as well:
+   `sdsq 'SELECT rm.internal_code FROM raw_materials rm WHERE (rm.hazardous_no_cas IS NULL OR rm.hazardous_no_cas = 0) AND NOT EXISTS (SELECT 1 FROM raw_material_constituents c WHERE c.raw_material_id = rm.id) AND EXISTS (SELECT 1 FROM sds_versions sv WHERE sv.raw_material_id = rm.id AND sv.alias_id IS NULL AND sv.finished_good_id IS NULL AND sv.status = "published" AND sv.is_deleted = 0) AND NOT EXISTS (SELECT 1 FROM sds_versions sv WHERE sv.raw_material_id = rm.id AND sv.alias_id IS NULL AND sv.finished_good_id IS NULL AND sv.status = "published" AND sv.is_deleted = 0 AND COALESCE(sv.change_summary, "") <> "Bulk publish (resale)") ORDER BY rm.internal_code'`
+   - [ ] Each one has constituents entered, or was confirmed non-hazardous by publishing it by hand once. Its existing sheets stay published until then; delete them on the SDS page if they are wrong.
 
 ### 3.9 Finish
 

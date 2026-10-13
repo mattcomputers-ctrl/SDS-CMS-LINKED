@@ -32,7 +32,7 @@
             </tr>
             <?php if (!empty($preview['rm_gl_to_create'])): ?>
             <tr>
-                <td><strong>Raw materials from GL group (not in formulas)</strong></td>
+                <td><strong>Raw materials from the Raw Material and Resale GL groups (not in formulas)</strong></td>
                 <td><span class="badge badge-success"><?= count($preview['rm_gl_to_create']) ?></span></td>
             </tr>
             <?php endif; ?>
@@ -88,7 +88,7 @@
 
 <?php if (!empty($preview['rm_gl_to_create'])): ?>
 <details style="margin-bottom: 16px;">
-    <summary><strong><?= count($preview['rm_gl_to_create']) ?> New Raw Materials (from CMS Raw Material GL group)</strong></summary>
+    <summary><strong><?= count($preview['rm_gl_to_create']) ?> New Raw Materials (from the CMS Raw Material and Resale GL groups)</strong></summary>
     <ul style="margin-top: 8px; column-count: 3;">
         <?php foreach ($preview['rm_gl_to_create'] as $code): ?>
             <li><?= e($code) ?></li>

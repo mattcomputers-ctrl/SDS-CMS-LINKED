@@ -7,7 +7,7 @@
 
 <p class="text-muted mb-1">Generate and publish a new SDS version for every eligible finished good <em>and</em> resale item (all languages). An item is eligible only when:</p>
 <ul class="text-muted" style="margin-top: 0; margin-bottom: 0.75rem;">
-    <li><strong>Every</strong> raw material in its formula (or for a resale item, the source raw material itself) has been edited by a user at least once (any audit-log entry qualifies — even just adding a note). RMs that have only been imported from CMS and never reviewed block their item.</li>
+    <li><strong>Every</strong> raw material in its formula (or for a resale item, the source raw material itself) has been edited by a user at least once (any audit-log entry qualifies — even just adding a note). RMs that have only been imported from CMS and never reviewed block their item. A resale item also needs its composition entered, or a first resale SDS published by hand from the SDS Creation Readiness Check; otherwise its sheet would say it is not hazardous.</li>
     <li>The item <strong>doesn't already have an up-to-date SDS</strong>. If the latest published SDS was published after the most recent change to the formula, raws, constituents, or CAS determinations, there's nothing to republish and it's skipped.</li>
 </ul>
 
@@ -40,7 +40,7 @@
         <tr><td colspan="2" style="padding-top: 0.75rem; font-weight: 600;">Resale items (sold as-is, 100% of source RM):</td></tr>
         <tr><td><strong>&nbsp;&nbsp;Eligible resale RMs:</strong></td><td><?= (int) ($resaleCount ?? 0) ?></td></tr>
             <?php if (($resaleBlockedCount ?? 0) > 0): ?>
-        <tr><td><strong>&nbsp;&nbsp;Blocked resale RMs (unreviewed):</strong></td><td><?= (int) $resaleBlockedCount ?></td></tr>
+        <tr><td><strong>&nbsp;&nbsp;Blocked resale RMs (unreviewed, or no composition):</strong></td><td><?= (int) $resaleBlockedCount ?></td></tr>
             <?php endif; ?>
             <?php if (($resaleAliasCount ?? 0) > 0): ?>
         <tr><td><strong>&nbsp;&nbsp;Resale aliases:</strong></td><td><?= (int) $resaleAliasCount ?></td></tr>
@@ -50,8 +50,25 @@
         <tr><td><strong>Total PDFs to Generate:</strong></td><td><?= ($totalEligible + $totalAliases + $totalPlItems) * (int) $langCount ?></td></tr>
     </table>
 
+    <?php if (!empty($resaleBlocked)): ?>
+    <details style="margin-top: 0.5rem;">
+        <summary>Why the <?= (int) $resaleBlockedCount ?> resale item(s) are blocked</summary>
+        <table class="table table-sm" style="margin-top: 0.5rem;">
+            <?php foreach ($resaleBlocked as $b): ?>
+            <tr>
+                <td><a href="/sds-review?rm_id=<?= (int) $b['rm_id'] ?>"><?= e((string) $b['base_code']) ?></a></td>
+                <td class="text-muted"><?= e((string) ($b['reason'] ?? '')) ?></td>
+            </tr>
+            <?php endforeach; ?>
+        </table>
+        <?php if ((int) $resaleBlockedCount > count($resaleBlocked)): ?>
+        <p class="text-muted">First <?= count($resaleBlocked) ?> shown.</p>
+        <?php endif; ?>
+    </details>
+    <?php endif; ?>
+
     <?php if ($totalEligible === 0): ?>
-        <p class="text-muted">No eligible items. Edit the raw materials used in your formulas (any save counts) to make them eligible.</p>
+        <p class="text-muted">No eligible items. Edit the raw materials used in your formulas (any save counts) to make them eligible. Resale items also need their composition entered.</p>
     <?php else: ?>
 
         <form id="publish-form" style="margin-top: 1rem;">

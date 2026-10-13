@@ -141,7 +141,15 @@ try {
     echo "  Finished goods:  " . count($results['fg_created']) . " created, " . count($results['fg_skipped']) . " skipped\n";
     echo "  Raw materials:   " . count($results['rm_created']) . " created, " . count($results['rm_skipped']) . " skipped\n";
     if (($results['rm_gl_group_created'] ?? 0) > 0) {
-        echo "  RM (GL group):   " . $results['rm_gl_group_created'] . " new from CMS Raw Material group\n";
+        $byGroup = [];
+        foreach ($results['rm_gl_group_created_by_group'] ?? [] as $group => $n) {
+            $byGroup[] = "{$n} {$group}";
+        }
+        echo "  RM (GL group):   " . $results['rm_gl_group_created'] . " new from CMS GL groups"
+            . ($byGroup ? ' (' . implode(', ', $byGroup) . ')' : '') . "\n";
+    }
+    if (($results['rm_gl_group_skipped_siblings'] ?? 0) > 0) {
+        echo "  RM (GL group):   " . $results['rm_gl_group_skipped_siblings'] . " resale pack size(s) share an existing raw material\n";
     }
     echo "  RM metadata:     " . ($results['rm_refreshed'] ?? 0) . " refreshed\n";
     echo "  Formulas:        " . $results['formulas_created'] . " created, " . $results['formulas_updated'] . " updated, " . $results['formulas_skipped'] . " skipped\n";

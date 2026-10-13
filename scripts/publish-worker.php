@@ -195,6 +195,16 @@ foreach ($workItems as $i => $item) {
         // path caches by fg_id, resale path caches by rm_id, so the two
         // can't collide.
         if ($isResale) {
+            // Resale import (2026-10-13): re-check the resale rule at publish
+            // time (reviewed, and composition entered or a sheet already
+            // published by hand), cached per raw material like the gates below.
+            $resaleKey = 'resale' . $rmId;
+            if (!array_key_exists($resaleKey, $gateCache)) {
+                $gateCache[$resaleKey] = \SDS\Services\SDSReadinessService::resaleAutoPublishError($rmId, $db);
+            }
+            if ($gateCache[$resaleKey] !== null) {
+                throw new \RuntimeException($gateCache[$resaleKey]);
+            }
             if (!isset($resaleBaseDataCache[$rmId])) {
                 $resaleBaseDataCache[$rmId] = $generator->computeBaseForResaleRawMaterial($rmId);
             }
@@ -282,7 +292,7 @@ foreach ($workItems as $i => $item) {
             'published_at'     => $now,
             'snapshot_json'    => \SDS\Services\SDSGenerator::snapshotJson($sdsData),   // finding #70
             'pdf_path'         => $relativePath,
-            'change_summary'   => $isResale ? 'Bulk publish (resale)' : 'Bulk publish',
+            'change_summary'   => $isResale ? \SDS\Services\SDSReadinessService::BULK_RESALE_CHANGE_SUMMARY : 'Bulk publish',
             'created_by'       => $userId,
         ];
 

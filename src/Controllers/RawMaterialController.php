@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace SDS\Controllers;
 
 use SDS\Core\CSRF;
+use SDS\Core\Database;
 use SDS\Models\RawMaterial;
 use SDS\Services\AuditService;
 
@@ -124,6 +125,16 @@ class RawMaterialController
 
             $id = RawMaterial::create($data);
             AuditService::log('raw_material', $id, 'create', $data);
+            // Migration 063: creating a raw material by hand lifts a CMS
+            // import exclusion left by an earlier delete of the same code.
+            try {
+                Database::getInstance()->query(
+                    'DELETE FROM cms_rm_import_exclusions WHERE item_code = ?',
+                    [trim((string) $data['internal_code'])]
+                );
+            } catch (\Throwable $e) {
+                // Table missing (migration 063 not applied): nothing to lift.
+            }
 
             // Save SDS to history table if uploaded
             if ($sdsInfo !== null) {
@@ -384,9 +395,25 @@ class RawMaterialController
         CSRF::validateRequest();
 
         try {
+            $rm = RawMaterial::findById((int) $id);
             RawMaterial::delete((int) $id);
-            AuditService::log('raw_material', $id, 'delete');
+            AuditService::log('raw_material', $id, 'delete', ['internal_code' => $rm['internal_code'] ?? null]);
             $_SESSION['_flash']['success'] = 'Raw material deleted.';
+            // Migration 063: keep the CMS sync from re-creating it from the
+            // Raw Material / Resale GL groups. Creating it by hand lifts this.
+            $code = trim((string) ($rm['internal_code'] ?? ''));
+            if ($code !== '') {
+                try {
+                    Database::getInstance()->query(
+                        'INSERT IGNORE INTO cms_rm_import_exclusions (item_code, reason, created_by) VALUES (?, ?, ?)',
+                        [$code, 'Raw material deleted', current_user_id()]
+                    );
+                    $_SESSION['_flash']['success'] .= ' The CMS sync will not import ' . $code
+                        . ' again unless a formula uses it; to bring it back, create it here by hand.';
+                } catch (\Throwable $e) {
+                    // Table missing (migration 063 not applied): the delete still stands.
+                }
+            }
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = $e->getMessage();
         }

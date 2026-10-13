@@ -27,7 +27,14 @@
             </tr>
             <tr>
                 <td><strong>Raw materials created</strong></td>
-                <td><span class="badge badge-success"><?= count($results['rm_created']) ?></span></td>
+                <td><span class="badge badge-success"><?= count($results['rm_created']) ?></span>
+                    <?php if (!empty($results['rm_gl_group_created_by_group'])): ?><small class="text-muted"> &middot; not in formulas: <?php
+                        $parts = [];
+                        foreach ($results['rm_gl_group_created_by_group'] as $group => $n) {
+                            $parts[] = (int) $n . ' ' . e((string) $group);
+                        }
+                        echo implode(', ', $parts);
+                    ?></small><?php endif; ?></td>
             </tr>
             <tr>
                 <td><strong>Raw materials skipped (already existed)</strong></td>

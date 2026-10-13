@@ -130,8 +130,11 @@ class BulkPublishController
         $blockedResale     = $resaleEligibility['blocked'];
 
         $resaleAliasCount = 0;
-        if (!empty($eligibleResale)) {
-            $eligibleResaleBases = array_column($eligibleResale, 'base_code');
+        $eligibleResaleBases = array_values(array_unique(array_column(array_filter(
+            $eligibleResale,
+            static fn(array $r): bool => !empty($r['alias_representative'])
+        ), 'base_code')));
+        if (!empty($eligibleResaleBases)) {
             $placeholders = implode(',', array_fill(0, count($eligibleResaleBases), '?'));
             $resaleAliasStats = $db->fetch(
                 "SELECT COUNT(DISTINCT SUBSTRING_INDEX(customer_code, '-', 1)) AS cnt
@@ -168,6 +171,7 @@ class BulkPublishController
             'plItemCount'         => $plItemCount,
             'resaleCount'         => count($eligibleResale),
             'resaleBlockedCount'  => count($blockedResale),
+            'resaleBlocked'       => array_slice($blockedResale, 0, 200),
             'resaleAliasCount'    => $resaleAliasCount,
             'langCount'           => count($languages),
             'languages'           => $languages,
@@ -467,33 +471,56 @@ class BulkPublishController
         // one alias's internal_code_base AND whose base does NOT match
         // any finished_goods.product_code with a current formula. One
         // row per RM (we want to publish per RM, not per alias).
+        //
+        // Resale import (2026-10-13): a raw material that already has a
+        // resale SDS of its own is a candidate too, alias or not, so a sheet
+        // first published by hand is kept current. Only the alias
+        // representative (lowest id for the base, the row AliasResolver
+        // resolves aliases to) carries the alias sheets.
         $candidates = $db->fetchAll(
             "SELECT rm.id AS rm_id,
                     SUBSTRING_INDEX(rm.internal_code, '-', 1) AS base_code,
                     rm.updated_at,
-                    rm.supplier_product_name
+                    rm.supplier_product_name,
+                    (rep.rep_id IS NOT NULL) AS alias_representative
              FROM raw_materials rm
-             INNER JOIN (
-                 SELECT DISTINCT internal_code_base
-                 FROM aliases
-             ) al ON al.internal_code_base = SUBSTRING_INDEX(rm.internal_code, '-', 1)
-             WHERE NOT EXISTS (
+             LEFT JOIN (
+                 SELECT MIN(r2.id) AS rep_id
+                 FROM raw_materials r2
+                 INNER JOIN (
+                     SELECT DISTINCT internal_code_base
+                     FROM aliases
+                 ) al ON al.internal_code_base = SUBSTRING_INDEX(r2.internal_code, '-', 1)
+                 GROUP BY SUBSTRING_INDEX(r2.internal_code, '-', 1)
+             ) rep ON rep.rep_id = rm.id
+             WHERE (rep.rep_id IS NOT NULL
+                    OR EXISTS (
+                        SELECT 1 FROM sds_versions sv
+                        WHERE sv.raw_material_id = rm.id
+                          AND sv.alias_id IS NULL
+                          AND sv.finished_good_id IS NULL
+                          AND sv.status = 'published'
+                          AND sv.is_deleted = 0
+                    ))
+               AND NOT EXISTS (
                  SELECT 1 FROM finished_goods fg
                  INNER JOIN formulas f ON f.finished_good_id = fg.id AND f.is_current = 1
                  WHERE fg.product_code = SUBSTRING_INDEX(rm.internal_code, '-', 1)
              )
-             GROUP BY SUBSTRING_INDEX(rm.internal_code, '-', 1)"
+             ORDER BY rm.id"
         );
 
         if (empty($candidates)) {
             return ['eligible' => [], 'blocked' => []];
         }
 
-        // Shared reviewed-RM rule — identical to FG eligibility.
-        $reviewedRms = \SDS\Services\SDSReadinessService::loadReviewedRmIds($db);
-
         // Per-RM upstream timestamps for Rule 2.
         $rmIds = array_map(fn($c) => (int) $c['rm_id'], $candidates);
+
+        // Rule 1: the reviewed-RM rule shared with FG eligibility, plus the
+        // resale composition rule (no constituents and never published by
+        // hand = blocked; resale import 2026-10-13).
+        $resaleBlocks = \SDS\Services\SDSReadinessService::resaleAutoPublishBlocks($rmIds, $db);
         $placeholders = implode(',', array_fill(0, count($rmIds), '?'));
 
         $rmMaxUpstream = [];
@@ -564,13 +591,14 @@ class BulkPublishController
         foreach ($candidates as $c) {
             $rmId = (int) $c['rm_id'];
             $entry = [
-                'rm_id'       => $rmId,
-                'base_code'   => $c['base_code'],
-                'description' => (string) ($c['supplier_product_name'] ?? $c['base_code']),
+                'rm_id'                => $rmId,
+                'base_code'            => $c['base_code'],
+                'description'          => (string) ($c['supplier_product_name'] ?? $c['base_code']),
+                'alias_representative' => (bool) $c['alias_representative'],
             ];
 
-            if (!isset($reviewedRms[$rmId])) {
-                $blocked[] = $entry;
+            if (isset($resaleBlocks[$rmId])) {
+                $blocked[] = $entry + ['reason' => $resaleBlocks[$rmId]];
                 continue;
             }
 
@@ -699,12 +727,15 @@ class BulkPublishController
                 ];
             }
 
-            $resaleAliases = self::deduplicateAliasesByBaseCode($db->fetchAll(
+            // Aliases resolve to the base's lowest-id raw material only
+            // (AliasResolver::findRawMaterialByBase); a sibling that is a
+            // candidate for its own published sheet carries no alias items.
+            $resaleAliases = ($resale['alias_representative'] ?? true) ? self::deduplicateAliasesByBaseCode($db->fetchAll(
                 "SELECT id, customer_code, description FROM aliases
                  WHERE internal_code_base = ?
                  ORDER BY customer_code",
                 [$baseCode]
-            ));
+            )) : [];
 
             foreach ($resaleAliases as $alias) {
                 $aliasLastVersion = $db->fetch(

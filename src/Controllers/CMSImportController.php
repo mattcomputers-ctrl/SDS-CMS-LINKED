@@ -229,6 +229,16 @@ class CMSImportController
             $tradeSecret = [];
         }
 
+        // Migration 064: items marked "No SDS required" that a current
+        // formula still uses (their data still feeds those SDSs).
+        $flaggedInFormulas = [];
+        try {
+            $service = $service ?? new CMSImportService();
+            $flaggedInFormulas = $service->getFlaggedRawMaterialsInFormulas();
+        } catch (\Throwable $e) {
+            $flaggedInFormulas = [];
+        }
+
         // Inventory gaps need the live CMS connection — degrade gracefully
         // when it's unreachable rather than blanking the whole page.
         $inventoryGaps = [];
@@ -247,6 +257,7 @@ class CMSImportController
             'tradeSecret'    => $tradeSecret,
             'inventoryGaps'  => $inventoryGaps,
             'inventoryError' => $inventoryError,
+            'flaggedInFormulas' => $flaggedInFormulas,
         ]);
     }
 }

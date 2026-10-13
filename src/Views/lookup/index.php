@@ -42,6 +42,9 @@
                         <?php if (!empty($r['is_resale'])): ?>
                             <span class="badge badge-muted" title="Resale item — SDS derived from source raw material">Resale</span>
                         <?php endif; ?>
+                        <?php if (!empty($r['sds_not_required'])): ?>
+                            <span class="badge badge-muted" title="Its raw material is marked No SDS required (not a chemical): this sheet was published earlier, is no longer maintained and is not sent">No SDS required</span>
+                        <?php endif; ?>
                     </td>
                     <td><?= e($r['description']) ?></td>
                     <td><?= e($r['family'] ?? '—') ?></td>

@@ -72,6 +72,7 @@ class FormulaController
             $codes = $_POST['component_code'] ?? [];
             $pcts  = $_POST['pct'] ?? [];
             $lines = [];
+            $flaggedCodes = [];   // migration 064: items marked No SDS required
 
             foreach ($codes as $i => $code) {
                 $code = trim($code);
@@ -90,6 +91,9 @@ class FormulaController
                 if ($rm) {
                     $line['raw_material_id'] = (int) $rm['id'];
                     $lines[] = $line;
+                    if (RawMaterial::isSdsNotRequired($rm)) {
+                        $flaggedCodes[] = (string) $rm['internal_code'];
+                    }
                     continue;
                 }
 
@@ -133,6 +137,11 @@ class FormulaController
             }
 
             $_SESSION['_flash']['success'] = 'Formula saved (new version created).' . $familyTail;
+            if ($flaggedCodes !== []) {
+                $_SESSION['_flash']['warning'] = 'This formula uses item(s) marked No SDS required: '
+                    . implode(', ', array_unique($flaggedCodes))
+                    . '. Their data still feeds this SDS; check they belong in the formula.';
+            }
         } catch (\Throwable $e) {
             $_SESSION['_flash']['error'] = $e->getMessage();
         }

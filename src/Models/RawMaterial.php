@@ -91,6 +91,13 @@ class RawMaterial
             $params[] = $filters['supplier'];
         }
 
+        // Migration 064: 'not_required' = marked No SDS required, 'required' = the rest.
+        if (($filters['sds'] ?? '') === 'not_required') {
+            $where[] = 'rm.sds_not_required = 1';
+        } elseif (($filters['sds'] ?? '') === 'required') {
+            $where[] = 'rm.sds_not_required = 0';
+        }
+
         $allowedSorts = [
             'id', 'internal_code', 'supplier', 'supplier_product_name',
             'created_at', 'updated_at',
@@ -158,6 +165,12 @@ class RawMaterial
         if (!empty($filters['supplier'])) {
             $where[]  = 'supplier = ?';
             $params[] = $filters['supplier'];
+        }
+
+        if (($filters['sds'] ?? '') === 'not_required') {
+            $where[] = 'sds_not_required = 1';
+        } elseif (($filters['sds'] ?? '') === 'required') {
+            $where[] = 'sds_not_required = 0';
         }
 
         $whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
@@ -255,6 +268,11 @@ class RawMaterial
             'combustible_dust'      => self::normalizeCombustibleDust($data['combustible_dust'] ?? null),
             'created_by'            => $data['created_by'] ?? null,
         ];
+        // Migration 064: only written when set, so the CMS import's inserts
+        // (which never set it) keep working before the migration runs.
+        if (!empty($data['sds_not_required'])) {
+            $insertData['sds_not_required'] = 1;
+        }
 
         $id = $db->insert('raw_materials', $insertData);
         return (int) $id;
@@ -344,6 +362,8 @@ class RawMaterial
             'substance_mixture',
             'combustible_dust',   // A12(c)
             'family_id', 'family_source',
+            // sds_not_required (migration 064) is deliberately absent: it is
+            // metadata, written only by setSdsNotRequired() with updated_at = updated_at.
         ];
 
         // Numeric columns that must be null instead of empty string
@@ -585,6 +605,181 @@ class RawMaterial
             'UPDATE raw_materials SET combustible_dust = ?, updated_at = updated_at WHERE id = ?',
             [self::normalizeCombustibleDust($value), $id]
         );
+    }
+
+    /* ------------------------------------------------------------------
+     *  No SDS required (migration 064)
+     *
+     *  A flag for non-chemicals (pails, lids, colour guides, tools) that the
+     *  CMS sync imports from the Resale GL group. A flagged item gets no
+     *  resale SDS, alias sheet or GHS label, is not a bulk-publish resale
+     *  candidate, is not queued for SDS review when shipped, and drops out
+     *  of the resale / vendor-SDS / inventory / needs-details worklists.
+     *  Formula behaviour is unchanged: a recipe that uses it still reads
+     *  its data. Aliases, labels and sends resolve a pack-stripped base to
+     *  its lowest-id raw material (AliasResolver::findRawMaterialByBase),
+     *  so that row's flag governs the base (sdsNotRequiredBases()).
+     * ----------------------------------------------------------------*/
+
+    /** audit_log actions written by the flag; they are NOT a data review (SDSReadinessService::loadReviewedRmIds). */
+    public const SDS_NOT_REQUIRED_AUDIT_ACTIONS = ['sds_not_required_set', 'sds_not_required_cleared'];
+
+    /**
+     * Metadata-only write (updated_at = updated_at): the flag changes no
+     * printed content, so it never makes an SDS stale.
+     *
+     * @return bool true when the stored value changed
+     */
+    public static function setSdsNotRequired(int $id, bool $notRequired): bool
+    {
+        $v = $notRequired ? 1 : 0;
+        return Database::getInstance()->query(
+            'UPDATE raw_materials SET sds_not_required = ?, updated_at = updated_at WHERE id = ? AND sds_not_required <> ?',
+            [$v, $id, $v]
+        )->rowCount() > 0;
+    }
+
+    /**
+     * Does raw_materials.sds_not_required exist yet (migration 064)? Cached
+     * per request. update.sh copies code before it runs migrations, so
+     * cron-path SQL (CMS sync, bulk publish, auto-send) must not name the
+     * column until it exists: use sqlNeedsSds() / sqlNoSdsRequired().
+     */
+    public static function hasSdsNotRequiredColumn(?Database $db = null): bool
+    {
+        static $has = null;
+        if ($has === null) {
+            try {
+                $has = ($db ?? Database::getInstance())->fetch(
+                    "SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'raw_materials' AND COLUMN_NAME = 'sds_not_required'"
+                ) !== null;
+            } catch (\Throwable $e) {
+                $has = false;
+            }
+        }
+        return $has;
+    }
+
+    /** SQL condition "needs an SDS" (not flagged) for a raw_materials alias; '1=1' before migration 064. */
+    public static function sqlNeedsSds(string $alias = 'rm'): string
+    {
+        return self::hasSdsNotRequiredColumn() ? "{$alias}.sds_not_required = 0" : '1=1';
+    }
+
+    /** SQL condition "marked No SDS required" for a raw_materials alias; '1=0' before migration 064. */
+    public static function sqlNoSdsRequired(string $alias = 'rm'): string
+    {
+        return self::hasSdsNotRequiredColumn() ? "{$alias}.sds_not_required = 1" : '1=0';
+    }
+
+    /** DB-free: is this raw material row marked No SDS required? Missing column (pre-064) = no. */
+    public static function isSdsNotRequired(array $rm): bool
+    {
+        return (int) ($rm['sds_not_required'] ?? 0) === 1;
+    }
+
+    /** DB-free: the one message every refusal uses. */
+    public static function sdsNotRequiredMessage(string $code): string
+    {
+        $who = trim($code) !== '' ? 'Raw material ' . trim($code) : 'This raw material';
+        return $who . ' is marked "No SDS required" (not a chemical), so no resale SDS, alias SDS or GHS label is made for it'
+            . ' or for an alias that points at it, and its shipments are not queued for SDS review.'
+            . ' If it does need an SDS, clear "No SDS required" under Raw Materials > Edit.';
+    }
+
+    /** DB-free: normalised key for sdsNotRequiredBases() lookups (MySQL compares case- and trailing-space-insensitively). */
+    public static function baseKey(string $code): string
+    {
+        $code = trim($code);
+        $dash = strpos($code, '-');
+        return strtoupper(trim($dash === false ? $code : substr($code, 0, $dash)));
+    }
+
+    /**
+     * Pack-stripped bases (keys from baseKey()) whose representative raw
+     * material (lowest id for the base, the row aliases and labels resolve
+     * to) is marked No SDS required. A base that is a finished good with a
+     * current formula is never included, so the flag can never hide a
+     * formula product. [] before migration 064.
+     *
+     * @return array<string,true>
+     */
+    public static function sdsNotRequiredBases(?Database $db = null): array
+    {
+        $db = $db ?? Database::getInstance();
+        try {
+            $rows = $db->fetchAll(
+                "SELECT rm.internal_code
+                 FROM raw_materials rm
+                 JOIN (
+                     SELECT MIN(id) AS rep_id
+                     FROM raw_materials
+                     GROUP BY SUBSTRING_INDEX(internal_code, '-', 1)
+                 ) rep ON rep.rep_id = rm.id
+                 WHERE rm.sds_not_required = 1
+                   AND NOT EXISTS (
+                       SELECT 1 FROM finished_goods fg
+                       JOIN formulas f ON f.finished_good_id = fg.id AND f.is_current = 1
+                       WHERE fg.product_code = SUBSTRING_INDEX(rm.internal_code, '-', 1)
+                   )"
+            );
+        } catch (\Throwable $e) {
+            return [];
+        }
+        $out = [];
+        foreach ($rows as $r) {
+            $out[self::baseKey((string) $r['internal_code'])] = true;
+        }
+        return $out;
+    }
+
+    /**
+     * Finished goods whose CURRENT formula uses this raw material directly.
+     *
+     * @return list<array{id:int,product_code:string}>
+     */
+    public static function getCurrentFormulaProducts(int $id): array
+    {
+        return array_map(
+            static fn(array $r): array => ['id' => (int) $r['id'], 'product_code' => (string) $r['product_code']],
+            Database::getInstance()->fetchAll(
+                "SELECT DISTINCT fg.id, fg.product_code
+                 FROM formula_lines fl
+                 JOIN formulas f ON f.id = fl.formula_id AND f.is_current = 1
+                 JOIN finished_goods fg ON fg.id = f.finished_good_id
+                 WHERE fl.raw_material_id = ?
+                 ORDER BY fg.product_code",
+                [$id]
+            )
+        );
+    }
+
+    /**
+     * Other raw materials with the same pack-stripped base, plus the id of
+     * the base's representative (lowest id), for the flag card.
+     *
+     * @return array{base:string, representative_id:int, siblings:list<array{id:int,internal_code:string,sds_not_required:int}>}
+     */
+    public static function packSiblings(int $id): array
+    {
+        $db = Database::getInstance();
+        $row = $db->fetch('SELECT internal_code FROM raw_materials WHERE id = ?', [$id]);
+        $base = strip_pack_extension((string) ($row['internal_code'] ?? ''));
+        // SELECT *: also works before migration 064 (no sds_not_required column).
+        $rows = $db->fetchAll(
+            "SELECT * FROM raw_materials
+             WHERE SUBSTRING_INDEX(internal_code, '-', 1) = ? ORDER BY id",
+            [$base]
+        );
+        $repId = $rows !== [] ? (int) $rows[0]['id'] : $id;
+        $siblings = [];
+        foreach ($rows as $r) {
+            if ((int) $r['id'] !== $id) {
+                $siblings[] = ['id' => (int) $r['id'], 'internal_code' => (string) $r['internal_code'], 'sds_not_required' => self::isSdsNotRequired($r) ? 1 : 0];
+            }
+        }
+        return ['base' => $base, 'representative_id' => $repId, 'siblings' => $siblings];
     }
 
     /* ------------------------------------------------------------------

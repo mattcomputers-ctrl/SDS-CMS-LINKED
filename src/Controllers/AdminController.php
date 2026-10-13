@@ -2525,7 +2525,10 @@ class AdminController
         // not yet have an active determination, excluding trade-secret
         // entries. CAS numbers with federal data are included
         // so users can review and complete the determination; a flag
-        // indicates whether federal data is available.
+        // indicates whether federal data is available. Raw materials marked
+        // "No SDS required" (migration 064) are left out unless a current
+        // formula uses them (their data still feeds that finished good).
+        $rmNeedsSds = \SDS\Models\RawMaterial::sqlNeedsSds('rm');
         $needsDetermination = $db->fetchAll(
             "SELECT rmc.cas_number,
                     rmc.chemical_name,
@@ -2553,6 +2556,11 @@ class AdminController
                    SELECT 1 FROM competent_person_determinations cpd
                    WHERE cpd.cas_number = rmc.cas_number AND cpd.is_active = 1
                )
+               AND ({$rmNeedsSds} OR EXISTS (
+                   SELECT 1 FROM formula_lines fl2
+                   JOIN formulas f2 ON f2.id = fl2.formula_id AND f2.is_current = 1
+                   WHERE fl2.raw_material_id = rm.id
+               ))
              GROUP BY rmc.cas_number, rmc.chemical_name
              ORDER BY in_formula DESC, has_federal_data ASC, raw_material_count DESC, rmc.chemical_name ASC"
         );
@@ -3824,24 +3832,34 @@ class AdminController
 
         $db = Database::getInstance();
 
-        $sql = "SELECT sv.*, fg.product_code, fg.description,
+        // Resale and resale-alias sheets (finished_good_id NULL, raw_material_id
+        // set) are listed too, so an admin can retire old sheets of an item
+        // later marked No SDS required (migration 064).
+        $sql = "SELECT sv.*,
+                       COALESCE(fg.product_code, SUBSTRING_INDEX(rm.internal_code, '-', 1)) AS product_code,
+                       COALESCE(fg.description, rm.supplier_product_name)                     AS description,
+                       (" . \SDS\Models\RawMaterial::sqlNoSdsRequired('rm') . ") AS rm_sds_not_required,
                        u.display_name AS published_by_name,
                        a.customer_code AS alias_customer_code,
                        a.description   AS alias_description
                 FROM sds_versions sv
-                JOIN finished_goods fg ON fg.id = sv.finished_good_id
+                LEFT JOIN finished_goods fg ON fg.id = sv.finished_good_id
+                LEFT JOIN raw_materials rm ON rm.id = sv.raw_material_id AND sv.finished_good_id IS NULL
                 LEFT JOIN users u ON u.id = sv.published_by
-                LEFT JOIN aliases a ON a.id = sv.alias_id";
+                LEFT JOIN aliases a ON a.id = sv.alias_id
+                WHERE (fg.id IS NOT NULL OR rm.id IS NOT NULL)";
 
         $params = [];
 
         if ($search !== '') {
             $like = '%' . $search . '%';
-            $sql .= " WHERE (fg.product_code LIKE ?
+            $sql .= " AND (fg.product_code LIKE ?
                          OR fg.description LIKE ?
+                         OR rm.internal_code LIKE ?
+                         OR rm.supplier_product_name LIKE ?
                          OR a.customer_code LIKE ?
                          OR a.description LIKE ?)";
-            $params = [$like, $like, $like, $like];
+            $params = [$like, $like, $like, $like, $like, $like];
         }
 
         $sql .= " ORDER BY sv.created_at DESC LIMIT 200";

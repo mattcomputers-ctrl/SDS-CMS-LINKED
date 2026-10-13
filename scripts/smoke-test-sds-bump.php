@@ -12,14 +12,18 @@
  *   B. RawMaterial::markSdsConfirmed() — Supplier Confirmed Current
  *   C. RawMaterial::update() with voc_wt change
  *   D. addSds + update() with voc_wt change (combined)
+ *   E. RawMaterial::setSdsNotRequired() — "No SDS required" toggled and
+ *      toggled back (migration 064; skipped before the migration)
  *
- * Expected: A and B leave updated_at unchanged; C and D bump it.
+ * Expected: A, B and E leave updated_at unchanged; C and D bump it.
  *
  * Mutates a single RM. Restores its original supplier_sds_path,
- * sds_last_confirmed_at, voc_wt, and updated_at at the end, and
- * removes the two raw_material_sds rows it creates (matched by
- * notes). The RM should be byte-identical to its starting state
- * after the script exits successfully.
+ * sds_last_confirmed_at, voc_wt, sds_not_required and updated_at at
+ * the end, and removes the two raw_material_sds rows it creates
+ * (matched by notes). The RM should be byte-identical to its starting
+ * state after the script exits successfully. Test E calls the model
+ * directly, so it writes no audit_log row; for the few seconds the
+ * flag is flipped, bulk publish and auto-send treat the RM accordingly.
  *
  * Usage:
  *   php scripts/smoke-test-sds-bump.php [<raw_material_id>]
@@ -45,8 +49,12 @@ if ($rmId === 0) {
     $rmId = (int) $row['id'];
 }
 
+// Migration 064 adds raw_materials.sds_not_required; Test E needs it.
+$hasNrCol = RawMaterial::hasSdsNotRequiredColumn($db);
+$nrSelect = $hasNrCol ? ', sds_not_required' : '';
+
 $rm = $db->fetch(
-    "SELECT id, internal_code, updated_at, sds_last_confirmed_at, supplier_sds_path, voc_wt
+    "SELECT id, internal_code, updated_at, sds_last_confirmed_at, supplier_sds_path, voc_wt{$nrSelect}
      FROM raw_materials WHERE id = ?",
     [$rmId]
 );
@@ -58,6 +66,9 @@ $orig = [
     'supplier_sds_path'     => $rm['supplier_sds_path'],
     'voc_wt'                => $rm['voc_wt'],
 ];
+if ($hasNrCol) {
+    $orig['sds_not_required'] = (int) $rm['sds_not_required'];
+}
 
 echo "=== Smoke test: SDS bump suppression ===\n";
 echo "RM #{$rm['id']} ({$rm['internal_code']})\n";
@@ -71,8 +82,9 @@ function pass(string $msg): void { global $passCount; echo "  PASS: {$msg}\n"; $
 function fail(string $msg): void { global $failCount; echo "  FAIL: {$msg}\n"; $failCount++; }
 
 function reload(int $rmId): array {
+    global $nrSelect;
     return Database::getInstance()->fetch(
-        "SELECT updated_at, sds_last_confirmed_at, voc_wt FROM raw_materials WHERE id = ?",
+        "SELECT updated_at, sds_last_confirmed_at, voc_wt{$nrSelect} FROM raw_materials WHERE id = ?",
         [$rmId]
     );
 }
@@ -164,23 +176,61 @@ try {
     else                                                  fail('updated_at NOT bumped');
     echo "\n";
 
+    // ── Test E ────────────────────────────────────────────────────
+    echo "Test E: setSdsNotRequired toggle (expect NO bump)\n";
+    if (!$hasNrCol) {
+        echo "  SKIP: raw_materials.sds_not_required missing (migration 064 not applied)\n\n";
+    } else {
+        sleep(1);
+        $target = $orig['sds_not_required'] !== 1;   // flip it
+        $before = reload($rmId);
+        $changed = RawMaterial::setSdsNotRequired($rmId, $target);
+        $after = reload($rmId);
+        echo "  sds_not_required:  {$before['sds_not_required']} -> {$after['sds_not_required']}\n";
+        echo "  updated_at before: {$before['updated_at']}\n";
+        echo "  updated_at after:  {$after['updated_at']}\n";
+        if ($changed) pass('setSdsNotRequired reported a change');
+        else          fail('setSdsNotRequired reported no change');
+        if ((int) $after['sds_not_required'] === ($target ? 1 : 0)) pass('flag set to ' . ($target ? 1 : 0));
+        else                                                          fail('flag not toggled');
+        if ($before['updated_at'] === $after['updated_at']) pass('updated_at preserved');
+        else                                                  fail('updated_at was bumped');
+
+        sleep(1);
+        $before = reload($rmId);
+        $changed = RawMaterial::setSdsNotRequired($rmId, !$target);   // toggle back
+        $after = reload($rmId);
+        if ($changed && (int) $after['sds_not_required'] === $orig['sds_not_required']) pass('flag toggled back');
+        else                                                                              fail('flag not toggled back');
+        if ($before['updated_at'] === $after['updated_at']) pass('updated_at preserved on the way back');
+        else                                                  fail('updated_at was bumped on the way back');
+        if (!RawMaterial::setSdsNotRequired($rmId, !$target)) pass('setting the same value again reports no change');
+        else                                                   fail('setting the same value again reported a change');
+        echo "\n";
+    }
+
 } finally {
     // ── Restore ──────────────────────────────────────────────────
     echo "Restoring RM to original state...\n";
+    $nrRestoreSql = $hasNrCol ? ",\n             sds_not_required      = ?" : '';
+    $restoreParams = [
+        $orig['supplier_sds_path'],
+        $orig['sds_last_confirmed_at'],
+        $orig['voc_wt'],
+    ];
+    if ($hasNrCol) {
+        $restoreParams[] = $orig['sds_not_required'];
+    }
+    $restoreParams[] = $orig['updated_at'];
+    $restoreParams[] = $rmId;
     $db->query(
         "UPDATE raw_materials
          SET supplier_sds_path     = ?,
              sds_last_confirmed_at = ?,
-             voc_wt                = ?,
+             voc_wt                = ?{$nrRestoreSql},
              updated_at            = ?
          WHERE id = ?",
-        [
-            $orig['supplier_sds_path'],
-            $orig['sds_last_confirmed_at'],
-            $orig['voc_wt'],
-            $orig['updated_at'],
-            $rmId,
-        ]
+        $restoreParams
     );
     $db->query(
         "DELETE FROM raw_material_sds WHERE raw_material_id = ? AND notes LIKE ?",
@@ -188,6 +238,9 @@ try {
     );
     $final = reload($rmId);
     echo "  Final updated_at: {$final['updated_at']} (original was {$orig['updated_at']})\n";
+    if ($hasNrCol) {
+        echo "  Final sds_not_required: {$final['sds_not_required']} (original was {$orig['sds_not_required']})\n";
+    }
     echo "\n";
 }
 

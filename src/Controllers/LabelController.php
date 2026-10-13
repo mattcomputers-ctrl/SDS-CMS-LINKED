@@ -51,6 +51,13 @@ class LabelController
 
         $products = [];
 
+        // Migration 064: bases whose representative raw material is marked
+        // "No SDS required" (non-chemicals) get no GHS label, so neither the
+        // aliases that resolve to them nor the raw materials themselves are
+        // offered. Keys from RawMaterial::baseKey(); a finished good with a
+        // current formula is never in the set. generate() refuses them too.
+        $noSdsBases = \SDS\Models\RawMaterial::sdsNotRequiredBases($db);
+
         foreach ($finishedGoods as $fg) {
             $products[] = [
                 'type'        => 'fg',
@@ -67,7 +74,8 @@ class LabelController
         $seenAlias = [];
         foreach ($aliasRows as $a) {
             $base = AliasResolver::stripPack((string) $a['customer_code']);
-            if ($base === '' || isset($seenAlias[$base])) {
+            if ($base === '' || isset($seenAlias[$base])
+                || isset($noSdsBases[\SDS\Models\RawMaterial::baseKey((string) $a['internal_code_base'])])) {
                 continue;
             }
             $seenAlias[$base] = true;
@@ -86,7 +94,7 @@ class LabelController
         $seenRm = [];
         foreach ($rawMaterials as $rm) {
             $code = AliasResolver::stripPack((string) $rm['internal_code']);
-            if ($code === '' || isset($seenRm[$code])) {
+            if ($code === '' || isset($seenRm[$code]) || isset($noSdsBases[\SDS\Models\RawMaterial::baseKey($code)])) {
                 continue;
             }
             $seenRm[$code] = true;

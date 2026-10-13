@@ -30,7 +30,7 @@
 <!-- Generate Report -->
 <div class="card" style="margin-bottom: 1rem;">
     <h2 class="card-title">Generate HAP / VOC Report</h2>
-    <p class="text-muted" style="margin-bottom: 0.75rem;">SDS exports will use aliases to match item names. A list of missing items (not yet in the SDS system) will be included when applicable.</p>
+    <p class="text-muted" style="margin-bottom: 0.75rem;">SDS exports will use aliases to match item names. A list of missing items (not yet in the SDS system) will be included when applicable. Items marked No SDS required (not chemicals) are left out of the shipped-SDS export and the HAP/VOC, Prop 65 and Ross reports.</p>
     <form id="reportForm">
         <input type="hidden" name="_csrf_token" value="<?= e(\SDS\Core\CSRF::token()) ?>">
         <div class="grid-2col">

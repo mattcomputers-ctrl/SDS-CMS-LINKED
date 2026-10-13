@@ -25,6 +25,8 @@ class PermissionService
     public const PAGE_KEYS = [
         'dashboard'        => 'Dashboard',
         'raw_materials'    => 'Raw Materials',
+        // Capability, not a page (precedent: hazard_override). Admins by default.
+        'rm_sds_not_required' => 'Raw Materials: mark "No SDS required" (non-chemicals)',
         'finished_goods'   => 'Finished Goods',
         'labels'           => 'GHS Labels',
         'label_templates'  => 'Label Templates',

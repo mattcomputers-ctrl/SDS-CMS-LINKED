@@ -10,15 +10,35 @@ use SDS\Models\Customer;
 use SDS\Models\FinishedGood;
 use SDS\Services\AliasPublisher;
 use SDS\Services\MailService;
+use SDS\Services\SDSAutoSendService;
+use SDS\Services\SdsNotRequiredException;
 
 class SDSSendQueueController
 {
     /** Why findPublishedSds() returned null for an alias (audit #53 / Q9). */
     private ?string $aliasError = null;
 
+    /** findPublishedSds() returned null because the alias resolves to a raw material marked No SDS required (migration 064). */
+    private bool $aliasNotRequired = false;
+
+    /** RawMaterial::sdsNotRequiredBases() for this request (migration 064). */
+    private ?array $noSdsBases = null;
+
     public function index(): void
     {
         $db = Database::getInstance();
+
+        // Migration 064: pending rows for items marked No SDS required (non-
+        // chemicals) are dismissed before the list is shown. This also runs
+        // without mail configured, when the cron auto-send never retries.
+        try {
+            $dismissed = SDSAutoSendService::dismissNotRequiredPending($db);
+            if ($dismissed > 0) {
+                $_SESSION['_flash']['info'] = "{$dismissed} pending item(s) dismissed: they are marked No SDS required (not a chemical).";
+            }
+        } catch (\Throwable $e) {
+            // Never break the queue page over the clean-up.
+        }
 
         $items = $db->fetchAll(
             "SELECT q.*, c.ship_to_name AS customer_name, c.regulatory_email
@@ -74,6 +94,7 @@ class SDSSendQueueController
             : $itemIdentifier;
 
         $fg = FinishedGood::findByProductCode($stripped);
+        $alias = null;
         if (!$fg) {
             $alias = $db->fetch("SELECT internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1", [$itemIdentifier])
                 ?? $db->fetch("SELECT internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1", [$stripped]);
@@ -83,12 +104,19 @@ class SDSSendQueueController
         }
 
         if (!$fg) {
+            // Migration 064: a non-chemical is dismissed, not failed.
+            if ($this->isNoSdsBase((string) ($alias['internal_code_base'] ?? $stripped), $db)) {
+                $this->dismissNoSds($item, $itemIdentifier, $db);
+            }
             $_SESSION['_flash']['error'] = "Could not resolve product code for '{$itemIdentifier}'.";
             redirect('/sds-send-queue');
         }
 
         // Find published SDS
         $sdsVersion = $this->findPublishedSds((int) $fg['id'], $itemIdentifier, $db);
+        if (!$sdsVersion && $this->aliasNotRequired) {
+            $this->dismissNoSds($item, $itemIdentifier, $db);
+        }
         if (!$sdsVersion) {
             $_SESSION['_flash']['error'] = $this->aliasError !== null
                 ? "Alias SDS for '{$itemIdentifier}' could not be published: {$this->aliasError}"
@@ -139,6 +167,7 @@ class SDSSendQueueController
 
         $sent = 0;
         $failed = 0;
+        $notRequired = 0;
 
         foreach ($items as $item) {
             $itemIdentifier = (!empty($item['item_name']) && $item['item_name'] !== $item['item_code'])
@@ -149,6 +178,7 @@ class SDSSendQueueController
                 : $itemIdentifier;
 
             $fg = FinishedGood::findByProductCode($stripped);
+            $alias = null;
             if (!$fg) {
                 $alias = $db->fetch("SELECT internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1", [$itemIdentifier])
                     ?? $db->fetch("SELECT internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1", [$stripped]);
@@ -158,12 +188,25 @@ class SDSSendQueueController
             }
 
             if (!$fg) {
+                // Migration 064: a non-chemical is dismissed, not counted as failed.
+                if ($this->isNoSdsBase((string) ($alias['internal_code_base'] ?? $stripped), $db)) {
+                    if (SDSAutoSendService::dismissQueueItemNoSds($db, (int) $item['id'], (string) ($item['reason'] ?? ''), current_user_id())) {
+                        $notRequired++;
+                    }
+                    continue;
+                }
                 $failed++;
                 continue;
             }
 
             $sdsVersion = $this->findPublishedSds((int) $fg['id'], $itemIdentifier, $db);
             if (!$sdsVersion) {
+                if ($this->aliasNotRequired) {
+                    if (SDSAutoSendService::dismissQueueItemNoSds($db, (int) $item['id'], (string) ($item['reason'] ?? ''), current_user_id())) {
+                        $notRequired++;
+                    }
+                    continue;
+                }
                 $failed++;
                 continue;
             }
@@ -182,7 +225,8 @@ class SDSSendQueueController
         }
 
         $_SESSION['_flash']['success'] = "{$sent} SDS sent to {$customer['regulatory_email']}."
-            . ($failed > 0 ? " {$failed} could not be sent." : '');
+            . ($failed > 0 ? " {$failed} could not be sent." : '')
+            . ($notRequired > 0 ? " {$notRequired} dismissed: marked No SDS required (not a chemical)." : '');
         redirect('/sds-send-queue');
     }
 
@@ -209,9 +253,29 @@ class SDSSendQueueController
      *  Helpers
      * ----------------------------------------------------------------*/
 
+    /**
+     * Migration 064: is $base (the code this controller's own resolution
+     * produced when it found no finished good) a base whose representative
+     * raw material is marked No SDS required? Loaded once per request.
+     */
+    private function isNoSdsBase(string $base, Database $db): bool
+    {
+        $this->noSdsBases ??= \SDS\Models\RawMaterial::sdsNotRequiredBases($db);
+        return isset($this->noSdsBases[\SDS\Models\RawMaterial::baseKey($base)]);
+    }
+
+    /** Migration 064: dismiss one queue row whose item needs no SDS, flash why, back to the queue. */
+    private function dismissNoSds(array $item, string $itemIdentifier, Database $db): never
+    {
+        SDSAutoSendService::dismissQueueItemNoSds($db, (int) $item['id'], (string) ($item['reason'] ?? ''), current_user_id());
+        $_SESSION['_flash']['success'] = "Nothing to send for '{$itemIdentifier}': it is marked No SDS required (not a chemical). The queue item was dismissed.";
+        redirect('/sds-send-queue');
+    }
+
     private function findPublishedSds(int $fgId, string $itemIdentifier, Database $db): ?array
     {
         $this->aliasError = null;
+        $this->aliasNotRequired = false;
         $alias = $db->fetch("SELECT id FROM aliases WHERE customer_code = ? LIMIT 1", [$itemIdentifier]);
 
         if ($alias) {
@@ -221,6 +285,11 @@ class SDSSendQueueController
             try {
                 $rows = AliasPublisher::ensurePublished((int) $alias['id'], current_user_id(), 'Published for the SDS send queue', $db, ['en']);
                 return $rows['en'] ?? null;
+            } catch (SdsNotRequiredException $e) {
+                // Migration 064: the alias resolves to a non-chemical.
+                $this->aliasNotRequired = true;
+                $this->aliasError = $e->getMessage();
+                return null;
             } catch (\Throwable $e) {
                 $this->aliasError = $e->getMessage();
                 return null;

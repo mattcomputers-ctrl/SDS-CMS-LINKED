@@ -113,6 +113,19 @@ class SDSController
     }
 
     /**
+     * Migration 064: a raw material marked "No SDS required" (a non-chemical)
+     * gets no resale SDS preview, text edit or publish. Flash the shared
+     * message and go back to its readiness page, which explains why.
+     */
+    private static function refuseIfSdsNotRequired(array $rm): void
+    {
+        if (\SDS\Models\RawMaterial::isSdsNotRequired($rm)) {
+            $_SESSION['_flash']['error'] = \SDS\Models\RawMaterial::sdsNotRequiredMessage((string) ($rm['internal_code'] ?? ''));
+            redirect('/sds-review?rm_id=' . (int) $rm['id']);
+        }
+    }
+
+    /**
      * Preview an SDS for a resale raw material (no formula — sold as-is).
      *
      * The SDS is derived 100 % from the RM's own constituents. If an
@@ -128,6 +141,7 @@ class SDSController
             $_SESSION['_flash']['error'] = 'Raw material not found.';
             redirect('/sds-review');
         }
+        self::refuseIfSdsNotRequired($rm);
 
         $language = $_GET['lang'] ?? 'en';
         $aliasId  = isset($_GET['alias_id']) ? (int) $_GET['alias_id'] : 0;
@@ -347,6 +361,7 @@ class SDSController
             $_SESSION['_flash']['error'] = 'Raw material not found.';
             redirect('/sds-review');
         }
+        self::refuseIfSdsNotRequired($rm);
         $language = $this->editorLanguage($_GET['lang'] ?? 'en');
         try {
             $generator = new SDSGenerator();
@@ -377,10 +392,12 @@ class SDSController
             redirect('/sds-review?rm_id=' . $rmId);
         }
         CSRF::validateRequest();
-        if (\SDS\Models\RawMaterial::findById($rmId) === null) {
+        $rm = \SDS\Models\RawMaterial::findById($rmId);
+        if ($rm === null) {
             $_SESSION['_flash']['error'] = 'Raw material not found.';
             redirect('/sds-review');
         }
+        self::refuseIfSdsNotRequired($rm);
         $this->saveEditorPost('rm', $rmId, static fn (SDSGenerator $g): array => $g->computeBaseForResaleRawMaterial($rmId));
     }
 
@@ -928,6 +945,8 @@ class SDSController
             $_SESSION['_flash']['error'] = 'Raw material not found.';
             redirect('/sds-review');
         }
+        // Migration 064: a non-chemical gets no resale SDS (shared message).
+        self::refuseIfSdsNotRequired($rm);
 
         $changeSummary = trim($_POST['change_summary'] ?? '');
         $languages = \SDS\Core\App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
@@ -1135,9 +1154,12 @@ class SDSController
         foreach ($aliases as $alias) {
             // Re-verify resolution — if an FG with this base code has
             // been created since the candidate query ran, the alias now
-            // belongs on the formula path, not the resale path.
+            // belongs on the formula path, not the resale path. It must also
+            // resolve to THIS raw material: a pack sibling that is not the
+            // base's representative (lowest id) does not own the alias sheets,
+            // and the representative's own flag (migration 064) governs them.
             $resolution = \SDS\Services\AliasResolver::resolveByAliasId((int) $alias['id']);
-            if ($resolution === null || $resolution['type'] !== 'resale') {
+            if ($resolution === null || $resolution['type'] !== 'resale' || (int) $resolution['rm']['id'] !== $rmId) {
                 continue;
             }
 

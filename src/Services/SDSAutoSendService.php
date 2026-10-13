@@ -32,6 +32,13 @@ use SDS\Models\FinishedGood;
  * AliasPublisher::ensurePublished() publishes it first, through the same gates. The old
  * autoPublishReady()/canAutoPublish()/publishSds() path was dead code and
  * was removed (audit #69).
+ *
+ * Migration 064: an item whose base resolves to a raw material marked "No
+ * SDS required" (a non-chemical) is skipped, never queued for review, and
+ * pending queue rows for such items are dismissed (dismissNotRequiredPending).
+ * The flag is checked only where this service's own resolver found no
+ * finished good, on the base that resolver produced, so a finished good with
+ * a current formula is never affected.
  */
 class SDSAutoSendService
 {
@@ -39,6 +46,15 @@ class SDSAutoSendService
 
     /** Why getLatestPublishedSds() returned null for an alias (audit #53 / Q9). */
     private ?string $aliasPublishError = null;
+
+    /** getLatestPublishedSds() returned null because the alias resolves to a raw material marked No SDS required (migration 064). */
+    private bool $aliasNotRequired = false;
+
+    /** RawMaterial::sdsNotRequiredBases(), loaded once per run (migration 064). */
+    private ?array $noSdsBases = null;
+
+    /** @var array<string,bool> item code + resolved base => base marked No SDS required (per run). */
+    private array $noSdsItemCache = [];
 
     public function __construct()
     {
@@ -69,6 +85,7 @@ class SDSAutoSendService
             'errors'      => [],
             'retried'     => 0,
         ];
+        $this->resetNoSdsCache();
 
         // Phase A: Process shipments not yet examined by auto-send
         $this->processUnsentShipments($results);
@@ -141,6 +158,11 @@ class SDSAutoSendService
             // Resolve to finished good
             $fgProductCode = $this->resolveToProductCode($itemName);
             if ($fgProductCode === null) {
+                // Migration 064: a non-chemical (No SDS required) is skipped, not queued.
+                if ($this->isNoSdsItem($itemName, null)) {
+                    $results['skipped']++;
+                    continue;
+                }
                 $this->queueForReview($customer, $row, "Product not found in system — '{$itemName}' could not be resolved to a finished good");
                 $results['queued']++;
                 continue;
@@ -151,6 +173,10 @@ class SDSAutoSendService
             }
             $fg = $fgCache[$fgProductCode];
             if ($fg === null) {
+                if ($this->isNoSdsItem($itemName, $fgProductCode)) {
+                    $results['skipped']++;
+                    continue;
+                }
                 $this->queueForReview($customer, $row, "Finished good '{$fgProductCode}' not found in database");
                 $results['queued']++;
                 continue;
@@ -161,6 +187,10 @@ class SDSAutoSendService
             $sdsVersion = $this->getLatestPublishedSds((int) $fg['id'], $itemName);
 
             if ($sdsVersion === null) {
+                if ($this->aliasNotRequired) {
+                    $results['skipped']++;
+                    continue;
+                }
                 $this->queueForReview($customer, $row, $this->sdsUnavailableReason());
                 $results['queued']++;
                 continue;
@@ -325,6 +355,7 @@ class SDSAutoSendService
         );
 
         $this->aliasPublishError = null;
+        $this->aliasNotRequired  = false;
         if ($alias) {
             // Audit #53 / Q9: an alias is always sent as its OWN published
             // sheet (alias base code + description); published first when it
@@ -333,6 +364,11 @@ class SDSAutoSendService
                 $rows = AliasPublisher::ensurePublished((int) $alias['id'], null, 'Auto-published for shipment SDS send', $this->db);
                 $default = strtolower((string) App::config('sds.default_language', 'en'));
                 return $rows[$default] ?? (reset($rows) ?: null);
+            } catch (SdsNotRequiredException $e) {
+                // Migration 064: the alias resolves to a non-chemical; callers skip it.
+                $this->aliasNotRequired  = true;
+                $this->aliasPublishError = $e->getMessage();
+                return null;
             } catch (\Throwable $e) {
                 $this->aliasPublishError = $e->getMessage();
                 return null;
@@ -512,6 +548,14 @@ class SDSAutoSendService
      */
     private function retryPendingQueue(array &$results): void
     {
+        // Migration 064: pending rows for items marked No SDS required are
+        // dismissed, not retried forever. Never breaks the retry.
+        try {
+            self::dismissNotRequiredPending($this->db);
+        } catch (\Throwable $e) {
+            $results['errors'][] = 'Queue clean-up (No SDS required): ' . $e->getMessage();
+        }
+
         $pending = $this->db->fetchAll(
             "SELECT q.*, c.regulatory_email, c.sds_send_mode, c.sds_languages, c.sds_send_active_since
              FROM sds_send_queue q
@@ -649,6 +693,7 @@ class SDSAutoSendService
         $results = ['emails_sent' => 0, 'queued' => 0, 'skipped' => 0, 'errors' => []];
         $fgCache = [];
         $orders = [];
+        $this->resetNoSdsCache();
 
         foreach ($shipments as $row) {
             $itemName = (!empty($row['item_name']) && $row['item_name'] !== $row['item_code'])
@@ -657,6 +702,11 @@ class SDSAutoSendService
 
             $fgProductCode = $this->resolveToProductCode($itemName);
             if ($fgProductCode === null) {
+                // Migration 064: a non-chemical (No SDS required) is skipped, not queued.
+                if ($this->isNoSdsItem($itemName, null)) {
+                    $results['skipped']++;
+                    continue;
+                }
                 $this->queueForReview($customer, $row, "Product not found in system — '{$itemName}' could not be resolved to a finished good");
                 $results['queued']++;
                 continue;
@@ -667,6 +717,10 @@ class SDSAutoSendService
             }
             $fg = $fgCache[$fgProductCode];
             if ($fg === null) {
+                if ($this->isNoSdsItem($itemName, $fgProductCode)) {
+                    $results['skipped']++;
+                    continue;
+                }
                 $this->queueForReview($customer, $row, "Finished good '{$fgProductCode}' not found in database");
                 $results['queued']++;
                 continue;
@@ -674,6 +728,10 @@ class SDSAutoSendService
 
             $sdsVersion = $this->getLatestPublishedSds((int) $fg['id'], $itemName);
             if ($sdsVersion === null) {
+                if ($this->aliasNotRequired) {
+                    $results['skipped']++;
+                    continue;
+                }
                 $this->queueForReview($customer, $row, $this->sdsUnavailableReason());
                 $results['queued']++;
                 continue;
@@ -791,6 +849,87 @@ class SDSAutoSendService
         return mb_substr($reason, 0, $max - 1, 'UTF-8') . '…';
     }
 
+    /* ------------------------------------------------------------------
+     *  No SDS required (migration 064)
+     * ----------------------------------------------------------------*/
+
+    /**
+     * Dismiss pending sds_send_queue rows whose item resolves to a base
+     * marked No SDS required (RawMaterial::sdsNotRequiredBases()). The item
+     * is resolved with this service's own order (resolveProductCode), falling
+     * back to the pack-stripped item code when nothing resolves. A finished
+     * good with a current formula is never in the set. Called by the auto-send
+     * retry, the send queue page and the raw-material flag endpoint.
+     *
+     * @return int rows dismissed
+     */
+    public static function dismissNotRequiredPending(Database $db): int
+    {
+        $bases = \SDS\Models\RawMaterial::sdsNotRequiredBases($db);
+        if ($bases === []) {
+            return 0;
+        }
+        $pending = $db->fetchAll(
+            "SELECT id, item_code, item_name, reason FROM sds_send_queue WHERE status = 'pending'"
+        );
+        $cache = [];
+        $n = 0;
+        foreach ($pending as $q) {
+            $itemId = (string) ((!empty($q['item_name']) && $q['item_name'] !== $q['item_code']) ? $q['item_name'] : $q['item_code']);
+            if (!array_key_exists($itemId, $cache)) {
+                $base = self::resolveProductCode($db, $itemId) ?? AliasResolver::stripPack(trim($itemId));
+                $cache[$itemId] = isset($bases[\SDS\Models\RawMaterial::baseKey($base)]);
+            }
+            if ($cache[$itemId] && self::dismissQueueItemNoSds($db, (int) $q['id'], (string) ($q['reason'] ?? ''))) {
+                $n++;
+            }
+        }
+        return $n;
+    }
+
+    /**
+     * Dismiss one pending queue row because its item needs no SDS, keeping
+     * the old reason after the new one. Shared with SDSSendQueueController.
+     *
+     * @return bool true when a pending row was dismissed
+     */
+    public static function dismissQueueItemNoSds(Database $db, int $queueId, string $oldReason, ?int $userId = null): bool
+    {
+        $data = [
+            'status'      => 'dismissed',
+            'resolved_at' => date('Y-m-d H:i:s'),
+            'reason'      => self::clampReason('Dismissed: no SDS required. Was: ' . $oldReason),
+        ];
+        if ($userId !== null) {
+            $data['resolved_by'] = $userId;
+        }
+        return $db->update('sds_send_queue', $data, "id = ? AND status = 'pending'", [$queueId]) > 0;
+    }
+
+    /** Forget the per-run No SDS required caches (flags may change between runs). */
+    private function resetNoSdsCache(): void
+    {
+        $this->noSdsBases     = null;
+        $this->noSdsItemCache = [];
+    }
+
+    /**
+     * Is this shipped item a non-chemical? Called only where resolveToProductCode()
+     * found no finished good: $resolvedBase is the code it produced (an alias's
+     * internal_code_base), or null when it found nothing, in which case the
+     * pack-stripped item code is checked. Cached per item code.
+     */
+    private function isNoSdsItem(string $itemCode, ?string $resolvedBase): bool
+    {
+        $key = $itemCode . '|' . ($resolvedBase ?? '');
+        if (!array_key_exists($key, $this->noSdsItemCache)) {
+            $this->noSdsBases ??= \SDS\Models\RawMaterial::sdsNotRequiredBases($this->db);
+            $base = $resolvedBase ?? AliasResolver::stripPack(trim($itemCode));
+            $this->noSdsItemCache[$key] = isset($this->noSdsBases[\SDS\Models\RawMaterial::baseKey($base)]);
+        }
+        return $this->noSdsItemCache[$key];
+    }
+
     private function notifyRegulatoryStaff(int $queuedCount): void
     {
         if (!MailService::isConfigured()) {
@@ -822,8 +961,14 @@ class SDSAutoSendService
 
     private function resolveToProductCode(string $code): ?string
     {
+        return self::resolveProductCode($this->db, $code);
+    }
+
+    /** This service's resolution order (static so dismissNotRequiredPending() uses the same one). */
+    private static function resolveProductCode(Database $db, string $code): ?string
+    {
         // Try full code as an alias first (aliases store the pack extension)
-        $alias = $this->db->fetch("SELECT internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1", [$code]);
+        $alias = $db->fetch("SELECT internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1", [$code]);
         if ($alias) {
             return $alias['internal_code_base'];
         }
@@ -831,14 +976,14 @@ class SDSAutoSendService
         // Strip pack extension (e.g. R1055-84 → R1055) and try as product code
         $stripped = str_contains($code, '-') ? substr($code, 0, strpos($code, '-')) : $code;
 
-        $fg = $this->db->fetch("SELECT product_code FROM finished_goods WHERE product_code = ?", [$stripped]);
+        $fg = $db->fetch("SELECT product_code FROM finished_goods WHERE product_code = ?", [$stripped]);
         if ($fg) {
             return $fg['product_code'];
         }
 
         // Try stripped code as alias too
         if ($stripped !== $code) {
-            $alias = $this->db->fetch("SELECT internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1", [$stripped]);
+            $alias = $db->fetch("SELECT internal_code_base FROM aliases WHERE customer_code = ? LIMIT 1", [$stripped]);
             if ($alias) {
                 return $alias['internal_code_base'];
             }
@@ -873,6 +1018,7 @@ class SDSAutoSendService
         $fgCache = [];
         $orders  = [];
         $skipReasons = [];
+        $this->resetNoSdsCache();
 
         foreach ($shipments as $row) {
             $key = ($row['order_number'] ?? '') . '::' . ($row['date_shipped'] ?? '');
@@ -886,6 +1032,12 @@ class SDSAutoSendService
 
             $fgProductCode = $this->resolveToProductCode($itemName);
             if ($fgProductCode === null) {
+                // Migration 064: a non-chemical (No SDS required) is skipped.
+                if ($this->isNoSdsItem($itemName, null)) {
+                    $skipReasons[] = "{$itemName}: no SDS required (not a chemical)";
+                    $results['skipped']++;
+                    continue;
+                }
                 $stripped = str_contains($itemName, '-') ? substr($itemName, 0, strpos($itemName, '-')) : $itemName;
                 $skipReasons[] = "{$itemName} (looked up '{$stripped}' from item_name='{$row['item_name']}', item_code='{$row['item_code']}'): no matching product";
                 $results['skipped']++;
@@ -897,7 +1049,9 @@ class SDSAutoSendService
             }
             $fg = $fgCache[$fgProductCode];
             if ($fg === null) {
-                $skipReasons[] = "{$itemName} ({$fgProductCode}): product not in database";
+                $skipReasons[] = $this->isNoSdsItem($itemName, $fgProductCode)
+                    ? "{$itemName} ({$fgProductCode}): no SDS required (not a chemical)"
+                    : "{$itemName} ({$fgProductCode}): product not in database";
                 $results['skipped']++;
                 continue;
             }
@@ -905,6 +1059,11 @@ class SDSAutoSendService
             $sdsVersion = $this->getLatestPublishedSds((int) $fg['id'], $itemName);
 
             if ($sdsVersion === null) {
+                if ($this->aliasNotRequired) {
+                    $skipReasons[] = "{$itemName} ({$fgProductCode}): no SDS required (not a chemical)";
+                    $results['skipped']++;
+                    continue;
+                }
                 $this->queueForReview($customer, $row, $this->sdsUnavailableReason());
                 $results['queued']++;
                 continue;

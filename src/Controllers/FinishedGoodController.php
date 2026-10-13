@@ -327,6 +327,8 @@ class FinishedGoodController
                 'id'          => (int) $rm['id'],
                 'code'        => $rm['internal_code'],
                 'description' => $rm['supplier_product_name'] ?: $rm['supplier'] ?: '',
+                // Migration 064: the editor warns that its data still feeds this SDS.
+                'sds_not_required' => RawMaterial::isSdsNotRequired($rm),
             ]);
             return;
         }

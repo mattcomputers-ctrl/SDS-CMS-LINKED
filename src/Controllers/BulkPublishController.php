@@ -462,6 +462,14 @@ class BulkPublishController
      *      upstream change (RM updated_at, constituent updated_at, or CPD
      *      updated_at) — or no SDS exists yet.
      *
+     * A raw material marked "No SDS required" (migration 064, a non-chemical)
+     * is not a candidate at all, so it is neither eligible nor blocked. The
+     * filter sits in the outer WHERE, not in the alias-representative
+     * subquery: a flagged representative keeps the whole base's alias sheets
+     * suppressed, and no unflagged sibling inherits them (AliasResolver still
+     * resolves the base to the lowest id). RawMaterial::sqlNeedsSds() keeps
+     * this cron-path query working before migration 064 runs.
+     *
      * @return array{eligible: array<int,array{rm_id:int,base_code:string,description:string}>,
      *               blocked:  array<int,array{rm_id:int,base_code:string,description:string}>}
      */
@@ -493,7 +501,8 @@ class BulkPublishController
                  ) al ON al.internal_code_base = SUBSTRING_INDEX(r2.internal_code, '-', 1)
                  GROUP BY SUBSTRING_INDEX(r2.internal_code, '-', 1)
              ) rep ON rep.rep_id = rm.id
-             WHERE (rep.rep_id IS NOT NULL
+             WHERE " . \SDS\Models\RawMaterial::sqlNeedsSds('rm') . "
+               AND (rep.rep_id IS NOT NULL
                     OR EXISTS (
                         SELECT 1 FROM sds_versions sv
                         WHERE sv.raw_material_id = rm.id

@@ -20,6 +20,8 @@ class RawMaterialController
             'per_page' => 25,
             'sort'     => $_GET['sort'] ?? 'internal_code',
             'dir'      => $_GET['dir'] ?? 'asc',
+            // Migration 064: '' = all, 'required', 'not_required'
+            'sds'      => in_array($_GET['sds'] ?? '', ['required', 'not_required'], true) ? (string) $_GET['sds'] : '',
         ];
 
         $items = RawMaterial::all($filters);
@@ -79,6 +81,8 @@ class RawMaterialController
         $data['voc_less_than_one'] = !empty($data['voc_less_than_one']) ? 1 : 0;
         $data['flash_point_greater_than'] = !empty($data['flash_point_greater_than']) ? 1 : 0;
         $data['hazardous_no_cas'] = !empty($data['hazardous_no_cas']) && (int) $data['hazardous_no_cas'] === 1 ? 1 : 0;
+        // Migration 064: only users with the capability may create an item already marked No SDS required.
+        $data['sds_not_required'] = can_edit('rm_sds_not_required') && (int) ($data['sds_not_required'] ?? 0) === 1 ? 1 : 0;
 
         // Build HAPs data JSON from form arrays
         $data['haps_data'] = $this->buildHapsJson();
@@ -226,7 +230,215 @@ class RawMaterialController
             'sdsHistory'             => $sdsHistory,
             'tradeSecretDescriptions' => $this->loadTradeSecretDescriptions(),
             'families'               => \SDS\Models\ProductFamily::all(false),   // audit #3 picker
+            'sdsFlagInfo'            => $this->sdsFlagInfo($item),               // migration 064 card
         ]);
+    }
+
+    /* ------------------------------------------------------------------
+     *  No SDS required (migration 064)
+     * ----------------------------------------------------------------*/
+
+    /**
+     * POST /raw-materials/{id}/sds-requirement
+     *
+     * Sets or clears "No SDS required" for one raw material. A metadata
+     * write (no staleness bump); audited with its own actions, which do not
+     * count as a data review. Used by the edit-page card and the worklist
+     * "Not a chemical" buttons (validated same-site return_to).
+     */
+    public function setSdsRequirement(string $id): void
+    {
+        $back = self::safeReturnTo($_POST['return_to'] ?? null, '/raw-materials/' . (int) $id . '/edit');
+        if (!can_edit('rm_sds_not_required')) {
+            $_SESSION['_flash']['error'] = 'You do not have permission to mark raw materials as not needing an SDS.';
+            redirect($back);
+        }
+        CSRF::validateRequest();
+
+        $rm = RawMaterial::findById((int) $id);
+        if ($rm === null) {
+            $_SESSION['_flash']['error'] = 'Raw material not found.';
+            redirect('/raw-materials');
+        }
+
+        $flag = (int) ($_POST['sds_not_required'] ?? 0) === 1;
+        $r = $this->applySdsRequirement($rm, $flag, trim((string) ($_POST['note'] ?? '')));
+        $code = (string) $rm['internal_code'];
+        if (!$r['changed']) {
+            $_SESSION['_flash']['success'] = $code . ($flag ? ' is already marked No SDS required.' : ' already needs an SDS.');
+        } elseif ($flag) {
+            $_SESSION['_flash']['success'] = $code . ' marked No SDS required. It is left off SDS publishing, GHS labels, the SDS send queue and the SDS worklists.'
+                . ($r['dismissed'] > 0 ? " {$r['dismissed']} pending send-queue item(s) dismissed." : '');
+        } else {
+            $_SESSION['_flash']['success'] = $code . ' needs an SDS again. Enter its composition, then publish it from the SDS Creation Readiness Check.';
+        }
+        $warnings = [];
+        if ($flag && $r['formula_products'] !== []) {
+            $warnings[] = $code . ' is still used in the current formula of: ' . implode(', ', $r['formula_products'])
+                . '. Its data still feeds those SDSs; check it belongs in those formulas.';
+        }
+        if ($flag && ($repNote = $this->representativeNote($rm)) !== null) {
+            $warnings[] = $repNote;
+        }
+        if ($warnings !== []) {
+            $_SESSION['_flash']['warning'] = implode(' ', $warnings);
+        }
+        redirect($back);
+    }
+
+    /**
+     * POST /raw-materials/sds-requirement/bulk — the Raw Materials list's
+     * "Mark selected" action: ids[] + sds_not_required (1 = mark, 0 = clear).
+     */
+    public function bulkSetSdsRequirement(): void
+    {
+        $back = self::safeReturnTo($_POST['return_to'] ?? null, '/raw-materials');
+        if (!can_edit('rm_sds_not_required')) {
+            $_SESSION['_flash']['error'] = 'You do not have permission to mark raw materials as not needing an SDS.';
+            redirect($back);
+        }
+        CSRF::validateRequest();
+
+        $ids = array_values(array_unique(array_filter(array_map('intval', (array) ($_POST['ids'] ?? [])), static fn(int $i): bool => $i > 0)));
+        if ($ids === []) {
+            $_SESSION['_flash']['error'] = 'Tick at least one raw material first.';
+            redirect($back);
+        }
+        $flag = (int) ($_POST['sds_not_required'] ?? 0) === 1;
+
+        $changed = [];
+        $inFormulas = [];
+        $repNotes = [];
+        $dismissed = 0;
+        foreach ($ids as $rmId) {
+            $rm = RawMaterial::findById($rmId);
+            if ($rm === null) {
+                continue;
+            }
+            $r = $this->applySdsRequirement($rm, $flag, '', false);
+            if ($r['changed']) {
+                $changed[] = (string) $rm['internal_code'];
+            }
+            if ($flag && $r['formula_products'] !== []) {
+                $inFormulas[] = $rm['internal_code'] . ' (' . implode(', ', $r['formula_products']) . ')';
+            }
+            if ($flag && ($repNote = $this->representativeNote($rm)) !== null) {
+                $repNotes[] = $repNote;
+            }
+        }
+        if ($flag && $changed !== []) {
+            $dismissed = $this->dismissNotRequiredSends();
+        }
+
+        $_SESSION['_flash']['success'] = $changed === []
+            ? 'Nothing changed.'
+            : count($changed) . ' raw material(s) ' . ($flag ? 'marked No SDS required' : 'set back to needing an SDS') . ': ' . implode(', ', $changed) . '.'
+                . ($dismissed > 0 ? " {$dismissed} pending send-queue item(s) dismissed." : '');
+        $warnings = [];
+        if ($inFormulas !== []) {
+            $warnings[] = 'Still used in current formulas (their data still feeds those SDSs): ' . implode('; ', $inFormulas) . '.';
+        }
+        if ($repNotes !== []) {
+            $warnings[] = implode(' ', array_unique($repNotes));
+        }
+        if ($warnings !== []) {
+            $_SESSION['_flash']['warning'] = implode(' ', $warnings);
+        }
+        redirect($back);
+    }
+
+    /**
+     * Write the flag, audit it with its own action, and (when set) dismiss
+     * pending send-queue rows for items that no longer need an SDS.
+     *
+     * @return array{changed:bool, formula_products:list<string>, dismissed:int}
+     */
+    private function applySdsRequirement(array $rm, bool $flag, string $note, bool $dismissSends = true): array
+    {
+        $rmId = (int) $rm['id'];
+        $formulaProducts = array_column(RawMaterial::getCurrentFormulaProducts($rmId), 'product_code');
+        $changed = RawMaterial::setSdsNotRequired($rmId, $flag);
+        $dismissed = 0;
+        if ($changed) {
+            AuditService::log('raw_material', (string) $rmId, $flag ? 'sds_not_required_set' : 'sds_not_required_cleared', [
+                'internal_code'            => $rm['internal_code'],
+                'sds_not_required'         => ['old' => $flag ? 0 : 1, 'new' => $flag ? 1 : 0],
+                'note'                     => $note !== '' ? mb_substr($note, 0, 255) : null,
+                'current_formula_products' => $formulaProducts,
+            ]);
+            if ($flag && $dismissSends) {
+                $dismissed = $this->dismissNotRequiredSends();
+            }
+        }
+        return ['changed' => $changed, 'formula_products' => $formulaProducts, 'dismissed' => $dismissed];
+    }
+
+    /**
+     * When $rm is not the first raw material of its pack-stripped base, aliases,
+     * labels and shipments of that base follow the first one, so flagging this
+     * row only stops its own resale SDS and its worklist rows. Null when $rm is
+     * the representative or the representative is flagged too.
+     */
+    private function representativeNote(array $rm): ?string
+    {
+        $pack = RawMaterial::packSiblings((int) $rm['id']);
+        if ($pack['representative_id'] === (int) $rm['id']) {
+            return null;
+        }
+        $rep = Database::getInstance()->fetch('SELECT * FROM raw_materials WHERE id = ?', [$pack['representative_id']]);
+        if ($rep === null || RawMaterial::isSdsNotRequired($rep)) {
+            return null;
+        }
+        return 'Aliases, GHS labels and shipments of ' . $pack['base'] . ' follow ' . $rep['internal_code']
+            . ' (the first raw material with that base code), which still needs an SDS; mark ' . $rep['internal_code'] . ' too for them to be ignored.';
+    }
+
+    /** Dismiss pending SDS send-queue rows whose item is now marked No SDS required. Never breaks the save. */
+    private function dismissNotRequiredSends(): int
+    {
+        try {
+            return \SDS\Services\SDSAutoSendService::dismissNotRequiredPending(Database::getInstance());
+        } catch (\Throwable $e) {
+            return 0;
+        }
+    }
+
+    /** Data for the edit page's "No SDS required" card. */
+    private function sdsFlagInfo(array $item): array
+    {
+        $rmId = (int) $item['id'];
+        $db = Database::getInstance();
+        $pack = RawMaterial::packSiblings($rmId);
+        return [
+            'flagged'          => RawMaterial::isSdsNotRequired($item),
+            'can_set'          => can_edit('rm_sds_not_required'),
+            'formula_products' => RawMaterial::getCurrentFormulaProducts($rmId),
+            'base'             => $pack['base'],
+            'is_representative'=> $pack['representative_id'] === $rmId,
+            'representative'   => $pack['representative_id'] === $rmId ? null : $db->fetch('SELECT id, internal_code FROM raw_materials WHERE id = ?', [$pack['representative_id']]),
+            'siblings'         => $pack['siblings'],
+            'aliases'          => array_column($db->fetchAll(
+                'SELECT DISTINCT customer_code FROM aliases WHERE internal_code_base = ? ORDER BY customer_code',
+                [$pack['base']]
+            ), 'customer_code'),
+            'published_count'  => (int) ($db->fetch(
+                "SELECT COUNT(*) AS n FROM sds_versions WHERE raw_material_id = ? AND finished_good_id IS NULL AND status = 'published' AND is_deleted = 0",
+                [$rmId]
+            )['n'] ?? 0),
+            'has_composition'  => !empty($item['constituents']) || (int) ($item['hazardous_no_cas'] ?? 0) === 1,
+        ];
+    }
+
+    /** A same-site path to go back to, else $default (no scheme, no //host, no backslashes). */
+    private static function safeReturnTo(mixed $value, string $default): string
+    {
+        $v = is_string($value) ? trim($value) : '';
+        // Any control character or space is refused: browsers drop tabs and
+        // newlines from URLs, so "/<TAB>/evil.example" would become "//evil.example".
+        if ($v === '' || !str_starts_with($v, '/') || str_starts_with($v, '//') || str_contains($v, '\\') || preg_match('/[\x00-\x20\x7F]/', $v)) {
+            return $default;
+        }
+        return $v;
     }
 
     public function update(string $id): void
@@ -253,6 +465,9 @@ class RawMaterialController
 
         $data = $_POST;
         $data['expected_updated_at'] = $data['updated_at'] ?? null;
+        // Migration 064: the flag has its own endpoint (setSdsRequirement): this
+        // save re-writes the constituents, which would make every product stale.
+        unset($data['sds_not_required']);
 
         // Audit #3: family picker — a chosen family is a manual override; blank = Auto (rule match).
         // A changed family_id bumps updated_at (ON UPDATE): that is the intended content-change signal.

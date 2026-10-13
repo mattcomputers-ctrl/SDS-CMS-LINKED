@@ -80,6 +80,16 @@
 </div>
 <?php endif; ?>
 
+<?php if (!empty($results['rm_flagged_in_formula'])): ?>
+<!-- Migration 064: recipes that use raw materials marked No SDS required -->
+<div class="alert alert-warning" style="margin-bottom: 20px;">
+    <strong>CMS recipes use <?= count($results['rm_flagged_in_formula']) ?> item(s) marked No SDS required:</strong>
+    <?= e(implode(', ', $results['rm_flagged_in_formula'])) ?>.
+    Formulas are not changed by the mark, so their data still feeds those finished goods' SDSs. Check that each one belongs in the recipe
+    (<a href="/cms-import/incomplete">Incomplete Raw Materials</a> lists the products).
+</div>
+<?php endif; ?>
+
 <?php if (!empty($results['incomplete_materials'])): ?>
 <div class="card">
     <h3>Raw Materials Needing Details</h3>
@@ -99,7 +109,10 @@
         <tbody>
         <?php foreach ($results['incomplete_materials'] as $rm): ?>
             <tr>
-                <td><strong><?= e($rm['internal_code']) ?></strong></td>
+                <td><strong><?= e($rm['internal_code']) ?></strong>
+                    <?php if (!empty($rm['sds_not_required'])): ?>
+                        <span class="badge badge-muted" title="Marked No SDS required, but a current formula uses it: its data still feeds that finished good's SDS">No SDS required</span>
+                    <?php endif; ?></td>
                 <td><?= e($rm['supplier_product_name'] ?? '—') ?></td>
                 <td><strong><?= (int) ($rm['fg_total_count'] ?? 0) ?></strong></td>
                 <td><span class="text-muted"><?= (int) ($rm['fg_direct_count'] ?? 0) ?></span></td>

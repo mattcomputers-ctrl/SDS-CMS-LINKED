@@ -7,6 +7,7 @@ namespace SDS\Controllers;
 use SDS\Core\CSRF;
 use SDS\Core\Database;
 use SDS\Models\FinishedGood;
+use SDS\Models\RawMaterial;
 use SDS\Services\FormulaCalcService;
 use SDS\Services\HAPService;
 use SDS\Services\SARA313Service;
@@ -195,15 +196,27 @@ class ReportController
         // percentages whose CAS is on the EPA HAP list).
         $hapCas = array_flip(array_column($db->fetchAll("SELECT cas_number FROM hap_list"), 'cas_number'));
         $rmData = [];
-        foreach ($db->fetchAll("SELECT id, internal_code, voc_wt, voc_less_than_one FROM raw_materials") as $rm) {
+        foreach ($db->fetchAll(
+            "SELECT rm.id, rm.internal_code, rm.voc_wt, rm.voc_less_than_one,
+                    (" . RawMaterial::sqlNoSdsRequired('rm') . ") AS no_sds
+             FROM raw_materials rm"
+        ) as $rm) {
             // The "<1% VOC" checkbox counts as data — use 0.99% for this
             // calculation when no explicit VOC percentage was entered.
             $voc = $rm['voc_wt'];
             if ($voc === null && (int) ($rm['voc_less_than_one'] ?? 0) === 1) {
                 $voc = 0.99;
             }
-            $rmData[$rm['internal_code']] = ['voc' => $voc, 'hap' => 0.0, 'has_cons' => false, 'id' => (int) $rm['id']];
+            $rmData[$rm['internal_code']] = [
+                'voc' => $voc, 'hap' => 0.0, 'has_cons' => false, 'id' => (int) $rm['id'],
+                'no_sds' => (int) ($rm['no_sds'] ?? 0) === 1,   // migration 064: marked No SDS required
+            ];
         }
+
+        // Migration 064: consumed items whose base is marked "No SDS
+        // required" (pails, lids, guides; Qty is usually EA, not lbs) are
+        // left out of the lines and the totals.
+        $noSdsBases = RawMaterial::sdsNotRequiredBases($db);
         $consRows = $db->fetchAll(
             "SELECT rm.internal_code, rmc.cas_number, rmc.pct_exact, rmc.pct_min, rmc.pct_max
              FROM raw_material_constituents rmc
@@ -238,6 +251,9 @@ class ReportController
             $lbs  = (float) $row['lbs'];
             if ($code === '' || $lbs <= 0) {
                 continue;
+            }
+            if (isset($noSdsBases[RawMaterial::baseKey($code)])) {
+                continue; // marked No SDS required: not production chemistry
             }
             $totalLbs += $lbs;
 
@@ -276,6 +292,12 @@ class ReportController
         foreach ($rmConsumption as $code => $lbs) {
             $rm = $rmData[$code] ?? null;
             if ($rm === null || ($rm['voc'] === null && !$rm['has_cons'])) {
+                // Migration 064: a formula ingredient marked No SDS required
+                // with no data adds nothing and is not "missing data"; leave
+                // it out. (One with data still counts: formulas unchanged.)
+                if ($rm !== null && $rm['no_sds']) {
+                    continue;
+                }
                 $missing[$code] = (string) ($rmDesc[$code] ?? '');
                 continue;
             }
@@ -649,6 +671,9 @@ class ReportController
         $reportRows    = [];
         $unevaluated   = [];
         $chemSummary   = [];
+        // Migration 064: items whose base is marked "No SDS required" have no
+        // chemistry to evaluate, so they are not listed as "could not be evaluated".
+        $noSdsBases    = RawMaterial::sdsNotRequiredBases($db);
 
         // Merge shipment lines by item with the pack extension stripped —
         // pack variants (Y1011-50, Y1011-84) are the same product, so they
@@ -677,15 +702,18 @@ class ReportController
         ksort($items);
 
         foreach ($items as $itemCode => $info) {
+            // PHP turns an all-digit array key (e.g. pail "5562") into an int;
+            // the resolvers and baseKey() take strings (strict_types).
+            $itemCode = (string) $itemCode;
             $description = $info['description'];
 
             // Resolve from the original code — aliases store the pack
             // extension, so the unstripped form matches more reliably.
             if (!isset($resolvedCodes[$itemCode])) {
-                $resolvedCodes[$itemCode] = $this->resolveToProductCode($info['raw_code'], $db)
+                $resolvedCodes[$itemCode] = $this->resolveToProductCode((string) $info['raw_code'], $db)
                     ?? $itemCode;
             }
-            $productCode = $resolvedCodes[$itemCode];
+            $productCode = (string) $resolvedCodes[$itemCode];
 
             if (!array_key_exists($productCode, $triggerCache)) {
                 $triggerCache[$productCode] = null;
@@ -735,6 +763,9 @@ class ReportController
             $triggers = $triggerCache[$productCode];
 
             if ($triggers === null) {
+                if (isset($noSdsBases[RawMaterial::baseKey($productCode)])) {
+                    continue; // marked No SDS required: nothing to evaluate
+                }
                 $unevaluated[$itemCode] = $description;
                 continue;
             }
@@ -921,13 +952,25 @@ class ReportController
         $productCodes = [];
         $reportItemsByProduct = [];
         $unresolvedCodes = [];
+        // Migration 064: items whose base is marked "No SDS required" are
+        // skipped silently (no PDF, no _MISSING_ITEMS.csv row). The base is
+        // this export's own resolution, else the pack-stripped code; finished
+        // goods with a current formula are never in the set.
+        $noSdsBases   = RawMaterial::sdsNotRequiredBases($db);
+        $allItemNames = [];
+        $ignoredNoSds = [];
         foreach ($filtered as $row) {
             // Use item_name (alias code) if present, otherwise item_code.
             // Key by the FULL code including pack extension — that's what
             // appears on the invoice / packing slip and what the customer
             // recognizes, so the ZIP filename should match it.
             $itemName = trim(!empty($row['item_name']) ? $row['item_name'] : $row['item_code']);
+            $allItemNames[$itemName] = true;
             $resolved = $this->resolveToProductCode($itemName, $db);
+            if (isset($noSdsBases[RawMaterial::baseKey($resolved ?? $this->stripPackExtension($itemName))])) {
+                $ignoredNoSds[$itemName] = true;
+                continue;
+            }
             if ($resolved !== null) {
                 $productCodes[$resolved] = true;
                 $reportItemsByProduct[$resolved][$itemName] = true;
@@ -995,11 +1038,17 @@ class ReportController
                         $aliasPdfCache[$aliasId] = \SDS\Services\AliasPublisher::ensurePublished(
                             $aliasId, current_user_id(), 'Published for the shipped-SDS export', $db, $exportLangs
                         );
+                    } catch (\SDS\Services\SdsNotRequiredException $e) {
+                        $aliasPdfCache[$aliasId] = false;   // migration 064: skipped silently
                     } catch (\Throwable $e) {
                         $aliasPdfCache[$aliasId] = $e->getMessage();
                     }
                 }
                 $rows = $aliasPdfCache[$aliasId];
+                if ($rows === false) {
+                    $ignoredNoSds[$itemCode] = true;
+                    continue;
+                }
                 if (is_string($rows)) {
                     $missingItems[$itemCode] = 'Alias SDS could not be published: ' . $rows;
                     continue;
@@ -1096,7 +1145,9 @@ class ReportController
             $cleanupTempPdfs();
             @unlink($tempZip);
             $langLabel = $exportLang === 'all' ? '' : ' (' . strtoupper($exportLang) . ')';
-            $_SESSION['_flash']['warning'] = 'No published SDS PDFs' . $langLabel . ' found for the shipped items.';
+            $_SESSION['_flash']['warning'] = ($ignoredNoSds !== [] && count($ignoredNoSds) >= count($allItemNames))
+                ? 'Every item shipped to this customer in this date range is marked No SDS required (not a chemical), so there are no SDSs to export.'
+                : 'No published SDS PDFs' . $langLabel . ' found for the shipped items.';
             redirect('/reports');
         }
 
@@ -1166,6 +1217,10 @@ class ReportController
         $resolvedCodes = [];
         $hapBreakdown  = [];
         $saraBreakdown = [];
+        // Migration 064: items whose base is marked "No SDS required"
+        // (pails, lids, guides; Qty is not lbs of product) are left out of
+        // the lines and the totals.
+        $noSdsBases    = RawMaterial::sdsNotRequiredBases($db);
 
         foreach ($filtered as $row) {
             // Use item_name (alias) if present, otherwise item_code
@@ -1190,6 +1245,9 @@ class ReportController
                     ?? $this->stripPackExtension($itemCode);
             }
             $productCode = $resolvedCodes[$itemCode];
+            if (isset($noSdsBases[RawMaterial::baseKey($productCode)])) {
+                continue; // marked No SDS required: not a chemical
+            }
 
             // Lookup VOC/HAP
             $vocWtPct = null;

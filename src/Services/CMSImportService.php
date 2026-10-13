@@ -278,6 +278,7 @@ class CMSImportService
             'customers_created'     => 0,
             'errors'                => [],
             'incomplete_materials'  => [],
+            'rm_flagged_in_formula' => [],   // migration 064: recipe ingredients marked No SDS required
             'families_changed'      => 0,
             'families_bumped_rms'   => 0,
             'families_queued'       => 0,
@@ -458,13 +459,36 @@ class CMSImportService
             $resaleCodes = [];
         }
         $baseRm = [];
+        $rmCodeById = [];
         foreach ($rmRows as $rmRow) {
             $rowBase = strip_pack_extension((string) $rmRow['internal_code']);
             $rowId   = (int) $rmRow['id'];
+            $rmCodeById[$rowId] = (string) $rmRow['internal_code'];
             if (!isset($baseRm[$rowBase]) || $rowId < $baseRm[$rowBase]) {
                 $baseRm[$rowBase] = $rowId;
             }
         }
+
+        // Migration 064: raw materials marked "No SDS required". A recipe
+        // that uses one still maps to it (formula behaviour is unchanged);
+        // the sync lists it so someone checks it belongs in the recipe.
+        // Guarded condition ('1=0' before the migration runs): this is the
+        // cron path.
+        $flaggedRmIds = [];
+        try {
+            foreach ($this->db->fetchAll('SELECT rm.id FROM raw_materials rm WHERE ' . RawMaterial::sqlNoSdsRequired('rm')) as $flagRow) {
+                $flaggedRmIds[(int) $flagRow['id']] = true;
+            }
+        } catch (\Throwable $e) {
+            $flaggedRmIds = [];
+        }
+        $noteFlagged = static function (string $code, int $rmId) use (&$results, $flaggedRmIds, $rmCodeById): void {
+            if (!isset($flaggedRmIds[$rmId])) {
+                return;
+            }
+            $rmCode = $rmCodeById[$rmId] ?? $code;
+            $results['rm_flagged_in_formula'][] = $rmCode === $code ? $code : "{$code} (raw material {$rmCode})";
+        };
 
         // Collect all CMS recipe PKs to scan — top-level items AND FG sub-components
         $recipesToScan = [];
@@ -512,6 +536,7 @@ class CMSImportService
                 if (isset($existingRms[$code])) {
                     $rmMap[$code] = $existingRms[$code];
                     $results['rm_skipped'][] = $code;
+                    $noteFlagged($code, $existingRms[$code]);
                     // A raw material created by the GL-group import (Phase 2a)
                     // has no import-log row; once a recipe uses it, add one so
                     // it is listed under Raw Materials Needing Details.
@@ -535,6 +560,7 @@ class CMSImportService
                 if (isset($resaleCodes[$code]) && isset($baseRm[$baseCode])) {
                     $rmMap[$code] = $baseRm[$baseCode];
                     $results['rm_skipped'][] = $code;
+                    $noteFlagged($code, $baseRm[$baseCode]);
                     if (!isset($loggedRmIds[$baseRm[$baseCode]])) {
                         $this->upsertImportLog($code, (int) $ing['ingredient_item_pk'], null, null, 'raw_material', $baseRm[$baseCode], $userId);
                         $loggedRmIds[$baseRm[$baseCode]] = true;
@@ -1056,9 +1082,16 @@ class CMSImportService
         //     "needs info" list. Strip the pack extension (everything after
         //     the first '-') and exclude rows whose base code matches any
         //     finished_goods.product_code.
+        // Migration 064: an item marked "No SDS required" is left off,
+        // unless a current formula uses it (formula behaviour is unchanged:
+        // its data still feeds that finished good, so it keeps a badge
+        // here). Marking it is not a data review, so the flag's own audit
+        // actions do not count as "saved by a user". This runs on the cron
+        // path (import()), so the flag conditions are the guarded helpers.
         $rows = $this->db->fetchAll(
             "SELECT rm.id, rm.internal_code, rm.supplier_product_name, rm.created_at,
-                    cil.cms_item_code
+                    cil.cms_item_code,
+                    (" . RawMaterial::sqlNoSdsRequired('rm') . ") AS sds_not_required
              FROM raw_materials rm
              INNER JOIN cms_import_log cil ON cil.entity_type = 'raw_material' AND cil.entity_id = rm.id
              LEFT JOIN raw_material_constituents rmc ON rmc.raw_material_id = rm.id
@@ -1069,17 +1102,23 @@ class CMSImportService
                     WHERE a.entity_type = 'raw_material'
                       AND a.entity_id   = rm.id
                       AND a.user_id IS NOT NULL
+                      AND a.action NOT IN (" . self::sdsNotRequiredAuditActionsSql() . ")
                )
                AND NOT EXISTS (
                    SELECT 1 FROM finished_goods fg
                     WHERE fg.product_code = SUBSTRING_INDEX(rm.internal_code, '-', 1)
                )
+               AND (" . RawMaterial::sqlNeedsSds('rm') . " OR " . self::sqlUsedInCurrentFormula('rm') . ")
              ORDER BY rm.internal_code"
         );
 
         if (empty($rows)) {
             return $rows;
         }
+        foreach ($rows as &$row) {
+            $row['sds_not_required'] = (int) ($row['sds_not_required'] ?? 0);
+        }
+        unset($row);
 
         // ── Direct usage: count distinct current formulas that reference each RM ──
         $directCounts = [];
@@ -1182,6 +1221,56 @@ class CMSImportService
             return strcmp($a['internal_code'], $b['internal_code']);
         });
 
+        return $rows;
+    }
+
+    /**
+     * SQL list of the audit_log actions written by the "No SDS required"
+     * flag (migration 064). Marking an item is not a data review, so these
+     * never count as "saved by a user". Constants only: safe to inline.
+     */
+    private static function sdsNotRequiredAuditActionsSql(): string
+    {
+        return "'" . implode("','", RawMaterial::SDS_NOT_REQUIRED_AUDIT_ACTIONS) . "'";
+    }
+
+    /** SQL condition: a current formula uses this raw material directly. */
+    private static function sqlUsedInCurrentFormula(string $alias = 'rm'): string
+    {
+        return "EXISTS (SELECT 1 FROM formula_lines fl_nr
+                         JOIN formulas f_nr ON f_nr.id = fl_nr.formula_id AND f_nr.is_current = 1
+                        WHERE fl_nr.raw_material_id = {$alias}.id)";
+    }
+
+    /**
+     * Raw materials marked "No SDS required" (migration 064) that a current
+     * formula still uses. Formula behaviour is unchanged, so their data
+     * (usually none) still feeds those finished goods' SDSs; the Incomplete
+     * Raw Materials page lists them so someone checks each one belongs in
+     * the formula. [] before the migration runs.
+     *
+     * @return list<array{id:int, internal_code:string, supplier_product_name:?string, fg_direct_count:int, fg_codes:string}>
+     */
+    public function getFlaggedRawMaterialsInFormulas(): array
+    {
+        $rows = $this->db->fetchAll(
+            "SELECT rm.id, rm.internal_code, rm.supplier_product_name,
+                    COUNT(DISTINCT f.finished_good_id) AS fg_direct_count,
+                    GROUP_CONCAT(DISTINCT fg.product_code ORDER BY fg.product_code SEPARATOR ', ') AS fg_codes
+             FROM raw_materials rm
+             JOIN formula_lines fl ON fl.raw_material_id = rm.id
+             JOIN formulas f ON f.id = fl.formula_id AND f.is_current = 1
+             JOIN finished_goods fg ON fg.id = f.finished_good_id
+             WHERE " . RawMaterial::sqlNoSdsRequired('rm') . "
+             GROUP BY rm.id, rm.internal_code, rm.supplier_product_name
+             ORDER BY fg_direct_count DESC, rm.internal_code"
+        );
+        foreach ($rows as &$row) {
+            $row['id']              = (int) $row['id'];
+            $row['fg_direct_count'] = (int) $row['fg_direct_count'];
+            $row['fg_codes']        = (string) ($row['fg_codes'] ?? '');
+        }
+        unset($row);
         return $rows;
     }
 
@@ -1317,9 +1406,12 @@ class CMSImportService
         // cms_import_log join pattern so CMS codes appear when available.
         $rmIds = array_keys($blockerImpact);
         $placeholders = implode(',', array_fill(0, count($rmIds), '?'));
+        // sds_not_required (migration 064) is display-only here: a marked
+        // item in a formula still blocks until someone reviews its data.
         $rmsMeta = $this->db->fetchAll(
             "SELECT rm.id, rm.internal_code, rm.supplier, rm.supplier_product_name, rm.created_at,
-                    cil.cms_item_code
+                    cil.cms_item_code,
+                    (" . RawMaterial::sqlNoSdsRequired('rm') . ") AS sds_not_required
              FROM raw_materials rm
              LEFT JOIN cms_import_log cil
                     ON cil.entity_type = 'raw_material' AND cil.entity_id = rm.id
@@ -1332,6 +1424,7 @@ class CMSImportService
             $rmId = (int) $row['id'];
             $fgs  = $blockerImpact[$rmId]['fgs'] ?? [];
             sort($fgs);
+            $row['sds_not_required'] = (int) ($row['sds_not_required'] ?? 0);
             $row['unblock_count'] = count($fgs);
             $row['example_fgs']   = array_slice($fgs, 0, 5);
             $row['all_fgs']       = $fgs;
@@ -1373,10 +1466,15 @@ class CMSImportService
      */
     public function getTradeSecretRawMaterials(): array
     {
+        // Migration 064: items marked "No SDS required" are dropped below
+        // unless a current formula uses them (badged then).
+        $nrExpr = RawMaterial::sqlNoSdsRequired('rm');
+
         // Whole-RM trade secret: hazardous_no_cas flag set.
         $whole = $this->db->fetchAll(
             "SELECT rm.id, rm.internal_code, rm.supplier, rm.supplier_product_name,
-                    rm.supplier_product_code, rm.created_at, cil.cms_item_code
+                    rm.supplier_product_code, rm.created_at, cil.cms_item_code,
+                    ({$nrExpr}) AS sds_not_required
              FROM raw_materials rm
              LEFT JOIN cms_import_log cil
                     ON cil.entity_type = 'raw_material' AND cil.entity_id = rm.id
@@ -1392,7 +1490,8 @@ class CMSImportService
                     rm.supplier_product_code, rm.created_at, cil.cms_item_code,
                     rm.hazardous_no_cas,
                     COUNT(rmc.id) AS ts_count,
-                    SUM(COALESCE(rmc.pct_exact, rmc.pct_max, rmc.pct_min, 0)) AS ts_pct
+                    SUM(COALESCE(rmc.pct_exact, rmc.pct_max, rmc.pct_min, 0)) AS ts_pct,
+                    MAX({$nrExpr}) AS sds_not_required
              FROM raw_materials rm
              INNER JOIN raw_material_constituents rmc
                      ON rmc.raw_material_id = rm.id AND rmc.is_trade_secret = 1
@@ -1419,6 +1518,7 @@ class CMSImportService
                 'ts_type'               => 'whole_rm',
                 'ts_pct'                => 100.0,
                 'ts_count'              => 0,
+                'sds_not_required'      => (int) ($row['sds_not_required'] ?? 0),
             ];
         }
         foreach ($constRows as $row) {
@@ -1440,6 +1540,7 @@ class CMSImportService
                     'ts_type'               => 'constituents',
                     'ts_pct'                => round((float) $row['ts_pct'], 4),
                     'ts_count'              => (int) $row['ts_count'],
+                    'sds_not_required'      => (int) ($row['sds_not_required'] ?? 0),
                 ];
             }
         }
@@ -1495,11 +1596,29 @@ class CMSImportService
             }
         }
 
+        // Raw materials a current formula uses directly.
+        $inCurrentFormula = [];
+        foreach ($fgToFormulaId as $currentFormulaId) {
+            foreach ($linesByFormula[$currentFormulaId] ?? [] as $line) {
+                if ($line['rm'] !== null) {
+                    $inCurrentFormula[$line['rm']] = true;
+                }
+            }
+        }
+
         $rows = array_values($byId);
         foreach ($rows as &$row) {
             $row['fg_total_count'] = $totalCounts[(int) $row['id']] ?? 0;
         }
         unset($row);
+
+        // Migration 064: a vendor chase list, so items marked "No SDS
+        // required" are dropped, unless a current formula uses them (their
+        // data still feeds that finished good; the view badges them).
+        $rows = array_values(array_filter(
+            $rows,
+            static fn(array $r): bool => $r['sds_not_required'] === 0 || isset($inCurrentFormula[(int) $r['id']])
+        ));
 
         usort($rows, function (array $a, array $b): int {
             if ($a['fg_total_count'] !== $b['fg_total_count']) {
@@ -1851,16 +1970,22 @@ class CMSImportService
             return [];
         }
 
+        // Migration 064: items marked "No SDS required" (pails, lids, colour
+        // guides) never get a vendor SDS, so they are left off this
+        // inventory chase list. Marking an item is not a data review, so
+        // the flag's own audit actions do not count as user_reviewed.
         $rms = $this->db->fetchAll(
             "SELECT rm.id, rm.internal_code, rm.supplier, rm.supplier_product_name, rm.hazardous_no_cas,
                     (SELECT COUNT(*) FROM raw_material_constituents rmc WHERE rmc.raw_material_id = rm.id) AS constituent_count,
                     (SELECT COUNT(*) FROM raw_material_sds rs WHERE rs.raw_material_id = rm.id) AS sds_count,
                     EXISTS(SELECT 1 FROM audit_log a
                            WHERE a.entity_type = 'raw_material' AND a.entity_id = rm.id
-                             AND a.user_id IS NOT NULL) AS user_reviewed,
+                             AND a.user_id IS NOT NULL
+                             AND a.action NOT IN (" . self::sdsNotRequiredAuditActionsSql() . ")) AS user_reviewed,
                     EXISTS(SELECT 1 FROM finished_goods fg
                            WHERE fg.product_code = SUBSTRING_INDEX(rm.internal_code, '-', 1)) AS is_fg_variant
-             FROM raw_materials rm"
+             FROM raw_materials rm
+             WHERE " . RawMaterial::sqlNeedsSds('rm')
         );
 
         $gaps = [];

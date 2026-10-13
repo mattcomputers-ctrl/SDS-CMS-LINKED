@@ -6,7 +6,10 @@
  *
  * Shows the item's GL group, costing recipe, which recipes use it as
  * an ingredient, and how the import classifies it under the current
- * dot-rule versus a tightened "has any costing recipe" rule.
+ * dot-rule versus a tightened "has any costing recipe" rule. Locally it
+ * also shows the "No SDS required" flag (migration 064), whether the
+ * item's base is ignored by aliases / labels / sends, and any CMS import
+ * exclusion left by a delete (migration 063).
  *
  * Usage:
  *   php scripts/cms-check-item.php 5545-1GT
@@ -18,6 +21,7 @@ require __DIR__ . '/../vendor/autoload.php';
 
 use SDS\Core\App;
 use SDS\Core\Database;
+use SDS\Models\RawMaterial;
 use SDS\Services\CMSDatabase;
 
 $code = trim($argv[1] ?? '');
@@ -103,7 +107,8 @@ if (!$dotRule && $hasRecipe) {
 }
 
 // ── 4. Local SDS system state ──
-$rm = $db->fetch("SELECT id, created_at FROM raw_materials WHERE internal_code = ?", [$code]);
+// SELECT *: also works before migration 064 (no sds_not_required column).
+$rm = $db->fetch("SELECT * FROM raw_materials WHERE internal_code = ?", [$code]);
 $baseCode = strip_pack_extension($code);
 $fg = $db->fetch("SELECT id, product_code FROM finished_goods WHERE product_code IN (?, ?)", [$code, $baseCode]);
 $lineCount = 0;
@@ -111,10 +116,75 @@ if ($rm) {
     $row = $db->fetch("SELECT COUNT(*) AS cnt FROM formula_lines WHERE raw_material_id = ?", [(int) $rm['id']]);
     $lineCount = (int) ($row['cnt'] ?? 0);
 }
+$hasNrCol = RawMaterial::hasSdsNotRequiredColumn($db);
+$flagged  = $rm ? RawMaterial::isSdsNotRequired($rm) : false;
+$currentFormulaProducts = $rm ? array_column(RawMaterial::getCurrentFormulaProducts((int) $rm['id']), 'product_code') : [];
+
+// Base-level decisions (aliases, labels, sends, reports) follow the base's
+// first raw material (lowest id); a finished good with a current formula
+// is never ignored.
+$baseIgnored = isset(RawMaterial::sdsNotRequiredBases($db)[RawMaterial::baseKey($code)]);
+$rep = $db->fetch(
+    "SELECT * FROM raw_materials WHERE SUBSTRING_INDEX(internal_code, '-', 1) = ? ORDER BY id LIMIT 1",
+    [$baseCode]
+);
+
+// Migration 063: a delete records the code; for a Resale item every pack
+// size of the same product stays out of the GL-group import.
+$exclusions = null;
+try {
+    $exclusions = $db->fetchAll(
+        "SELECT item_code, reason, created_by, created_at FROM cms_rm_import_exclusions
+          WHERE item_code = ? OR SUBSTRING_INDEX(item_code, '-', 1) = ?
+          ORDER BY item_code",
+        [$code, $baseCode]
+    );
+} catch (\Throwable $e) {
+    $exclusions = null;   // table missing: migration 063 not applied
+}
+$exactExcluded = false;
+$siblingExcluded = [];
+foreach ($exclusions ?? [] as $ex) {
+    if ((string) $ex['item_code'] === $code) {
+        $exactExcluded = true;
+    } else {
+        $siblingExcluded[] = (string) $ex['item_code'];
+    }
+}
+$isResale = ($item['gl_group'] ?? '') === 'Resale';
 
 echo "Local SDS system:\n";
 echo "  raw_materials row:  " . ($rm ? "id {$rm['id']} (created {$rm['created_at']}, referenced by {$lineCount} formula line(s))" : 'none') . "\n";
-echo "  finished_goods:     " . ($fg ? "'{$fg['product_code']}' (id {$fg['id']})" : "no match for '{$code}' or '{$baseCode}'") . "\n\n";
+echo "  finished_goods:     " . ($fg ? "'{$fg['product_code']}' (id {$fg['id']})" : "no match for '{$code}' or '{$baseCode}'") . "\n";
+if (!$hasNrCol) {
+    echo "  No SDS required:    (column missing: migration 064 not applied)\n";
+} elseif ($rm) {
+    echo "  No SDS required:    " . ($flagged ? 'YES (not a chemical: no resale/alias SDS or label, left off worklists and sends)' : 'no') . "\n";
+    if ($flagged && $currentFormulaProducts !== []) {
+        echo "                      still used in the current formula of: " . implode(', ', $currentFormulaProducts) . " (its data feeds those SDSs)\n";
+    }
+}
+if ($hasNrCol && $rep) {
+    $repNote = ($rm && (int) $rep['id'] === (int) $rm['id']) ? 'this row' : "{$rep['internal_code']} (id {$rep['id']})";
+    echo "  base '{$baseCode}':" . str_repeat(' ', max(1, 12 - strlen($baseCode))) . "follows {$repNote}; aliases, labels and sends "
+        . ($baseIgnored ? 'IGNORE it (No SDS required)' : 'treat it normally') . "\n";
+}
+if ($exclusions === null) {
+    echo "  import exclusion:   (table missing: migration 063 not applied)\n";
+} else {
+    echo "  import exclusion:   ";
+    if ($exactExcluded) {
+        $ex = array_values(array_filter($exclusions, static fn(array $e): bool => (string) $e['item_code'] === $code))[0];
+        echo "yes, deleted " . $ex['created_at'] . ($ex['reason'] !== '' ? " ({$ex['reason']})" : '') . " — the GL-group sync will not recreate it\n";
+    } elseif ($siblingExcluded !== [] && $isResale) {
+        echo "yes, via deleted pack size(s) " . implode(', ', $siblingExcluded) . " — the GL-group sync will not recreate this Resale product\n";
+    } elseif ($siblingExcluded !== []) {
+        echo "no (pack size(s) " . implode(', ', $siblingExcluded) . " deleted; that only excludes Resale items)\n";
+    } else {
+        echo "no\n";
+    }
+}
+echo "\n";
 
 if ($rm && $fg) {
     echo "  → This RM matches finished good '{$fg['product_code']}'.\n";
@@ -122,6 +192,12 @@ if ($rm && $fg) {
     echo "    (dry run first; add --confirm to apply)\n";
 } elseif ($rm) {
     echo "  → RM exists but no finished good match — cleanup script will\n";
-    echo "    not remove it. Import the base finished good first, or\n";
-    echo "    delete the RM manually if it is bogus.\n";
+    echo "    not remove it. Import the base finished good first. If it is\n";
+    echo "    not a chemical (pail, lid, colour guide, tool), mark it\n";
+    echo "    No SDS required (Raw Materials → Edit → SDS requirement);\n";
+    echo "    delete it only if the code should not exist at all.\n";
+} elseif ($exactExcluded || ($isResale && $siblingExcluded !== [])) {
+    echo "  → Deleted by an admin, so the sync does not recreate it. To keep\n";
+    echo "    it as a non-chemical instead, create it by hand with\n";
+    echo "    No SDS required ticked; that lifts the exclusion.\n";
 }

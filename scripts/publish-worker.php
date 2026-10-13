@@ -190,6 +190,22 @@ foreach ($workItems as $i => $item) {
         continue;
     }
 
+    // Migration 064: a resale raw material marked "No SDS required" since
+    // the work list was built is skipped quietly (progress advances, not
+    // counted as failed), like a retired private label item above. SELECT *
+    // so this also runs before the migration adds the column; cached per RM.
+    if ($isResale) {
+        $nrKey = 'nr' . $rmId;
+        if (!array_key_exists($nrKey, $gateCache)) {
+            $nrRow = $db->fetch('SELECT * FROM raw_materials WHERE id = ?', [$rmId]);
+            $gateCache[$nrKey] = $nrRow !== null && \SDS\Models\RawMaterial::isSdsNotRequired($nrRow);
+        }
+        if ($gateCache[$nrKey]) {
+            writeWorkerProgress($progressFile, $total, $i + 1, $published, $failed, $errors, false);
+            continue;
+        }
+    }
+
     try {
         // Compute language-independent data once per source — formula
         // path caches by fg_id, resale path caches by rm_id, so the two

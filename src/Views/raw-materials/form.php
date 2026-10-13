@@ -40,6 +40,56 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
 }
 ?>
 
+<?php if ($isEdit && !empty($sdsFlagInfo)): $nr = $sdsFlagInfo; ?>
+<!-- Migration 064: "No SDS required" (its own form: the main save re-writes constituents) -->
+<div class="card" id="sds-requirement" style="margin-bottom: 16px;<?= $nr['flagged'] ? ' border-left: 4px solid #6c757d;' : '' ?>">
+    <h3 style="margin-top: 0;">SDS requirement</h3>
+    <?php if ($nr['flagged']): ?>
+        <p><span class="badge badge-muted">No SDS required</span>
+        This item is treated as a non-chemical: no resale SDS, alias SDS or GHS label is made for it or for an alias that points at it,
+        bulk publish skips it, its shipments are not queued for SDS review, and it is left off the SDS worklists.</p>
+    <?php else: ?>
+        <p class="text-muted" style="margin-top: 0;">Tick this for items that are not chemicals (pails, lids, colour guides, tools).
+        They stay in the system but are ignored by resale SDS publishing, GHS labels, the SDS send queue and the SDS worklists.
+        It does not change any finished-good SDS.</p>
+    <?php endif; ?>
+
+    <?php if (!empty($nr['formula_products'])): ?>
+        <div class="alert alert-warning">Used in the current formula of:
+            <?php foreach ($nr['formula_products'] as $i => $fp): ?><?= $i > 0 ? ', ' : '' ?><a href="/finished-goods/<?= (int) $fp['id'] ?>/edit"><?= e($fp['product_code']) ?></a><?php endforeach; ?>.
+            Its data still feeds those SDSs whatever this setting says.</div>
+    <?php endif; ?>
+    <?php if (!$nr['flagged'] && $nr['has_composition']): ?>
+        <div class="alert alert-warning">This item has composition data entered. Check that it really is not a chemical before marking it.</div>
+    <?php endif; ?>
+    <?php if (!$nr['is_representative'] && !empty($nr['representative'])): ?>
+        <div class="alert alert-info">Aliases, labels and shipments of <?= e($nr['base']) ?> follow
+            <a href="/raw-materials/<?= (int) $nr['representative']['id'] ?>/edit"><?= e($nr['representative']['internal_code']) ?></a>
+            (the first raw material with this base code), so set it there for those to be ignored.</div>
+    <?php endif; ?>
+    <?php if ($nr['is_representative'] && !empty($nr['aliases'])): ?>
+        <p class="text-muted">Aliases that resolve to this item<?= $nr['flagged'] ? ' (also ignored)' : '' ?>: <?= e(implode(', ', $nr['aliases'])) ?></p>
+    <?php endif; ?>
+    <?php if ($nr['flagged'] && $nr['published_count'] > 0): ?>
+        <p class="text-muted"><?= (int) $nr['published_count'] ?> resale SDS version(s) published earlier stay on file
+            (<a href="/sds-review?rm_id=<?= (int) $item['id'] ?>">SDS Creation Readiness Check</a>); they are not sent.</p>
+    <?php endif; ?>
+
+    <?php if ($nr['can_set']): ?>
+        <form method="POST" action="/raw-materials/<?= (int) $item['id'] ?>/sds-requirement" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <?= csrf_field() ?>
+            <input type="hidden" name="sds_not_required" value="0">
+            <label style="margin: 0;"><input type="checkbox" name="sds_not_required" value="1" <?= $nr['flagged'] ? 'checked' : '' ?>>
+                <strong>No SDS required</strong> (not a chemical)</label>
+            <input type="text" name="note" maxlength="255" placeholder="Note (optional), e.g. 5-gallon pail" style="min-width: 260px;">
+            <button type="submit" class="btn btn-sm btn-primary">Save SDS requirement</button>
+        </form>
+    <?php else: ?>
+        <p class="text-muted" style="margin-bottom: 0;">Only users with the "Raw Materials: mark No SDS required" permission can change this.</p>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
+
 <div class="card">
     <form method="POST" action="<?= $action ?>" enctype="multipart/form-data" id="rawMaterialForm">
         <?= csrf_field() ?>
@@ -49,6 +99,13 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
 
         <!-- Basic Information -->
         <h3>Basic Information</h3>
+        <?php if (!$isEdit && can_edit('rm_sds_not_required')): ?>
+            <!-- Migration 064: create an item already marked No SDS required -->
+            <div class="form-group">
+                <label><input type="checkbox" name="sds_not_required" value="1" <?= $oldCheck('sds_not_required') ? 'checked' : '' ?>>
+                    <strong>No SDS required</strong> (not a chemical: pail, lid, colour guide, tool)</label>
+            </div>
+        <?php endif; ?>
         <div class="form-grid-2col">
             <div class="form-group">
                 <label for="internal_code">Internal Code *</label>
@@ -1020,7 +1077,7 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
 <?php if ($isEdit && can_manage_users()): ?>
 <div class="card card-danger">
     <h3>Danger Zone</h3>
-    <form method="POST" action="/raw-materials/<?= (int) $item['id'] ?>/delete" onsubmit="return confirm('Delete this raw material? This cannot be undone.');">
+    <form method="POST" action="/raw-materials/<?= (int) $item['id'] ?>/delete" onsubmit="return confirm('Delete this raw material? This cannot be undone. For a non-chemical, use No SDS required at the top of the page instead.');">
         <?= csrf_field() ?>
         <button type="submit" class="btn btn-danger">Delete Raw Material</button>
     </form>

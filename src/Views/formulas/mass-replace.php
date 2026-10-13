@@ -25,7 +25,7 @@
                 <optgroup label="Raw Materials">
                     <?php foreach ($rawMaterials as $rm): ?>
                         <option value="rm_<?= (int) $rm['id'] ?>" data-type="raw_material" data-id="<?= (int) $rm['id'] ?>">
-                            <?= e($rm['internal_code']) ?> — <?= e($rm['supplier_product_name']) ?>
+                            <?= e($rm['internal_code']) ?> — <?= e($rm['supplier_product_name']) ?><?= !empty($rm['sds_not_required']) ? ' (No SDS required)' : '' ?>
                         </option>
                     <?php endforeach; ?>
                 </optgroup>
@@ -46,7 +46,7 @@
                 <optgroup label="Raw Materials">
                     <?php foreach ($rawMaterials as $rm): ?>
                         <option value="rm_<?= (int) $rm['id'] ?>" data-type="raw_material" data-id="<?= (int) $rm['id'] ?>">
-                            <?= e($rm['internal_code']) ?> — <?= e($rm['supplier_product_name']) ?>
+                            <?= e($rm['internal_code']) ?> — <?= e($rm['supplier_product_name']) ?><?= !empty($rm['sds_not_required']) ? ' (No SDS required)' : '' ?>
                         </option>
                     <?php endforeach; ?>
                 </optgroup>

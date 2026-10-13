@@ -44,10 +44,15 @@ class SDSReadinessService
     {
         $reviewed = [];
 
+        // Marking an item "No SDS required" (migration 064) is not a data
+        // review: those audit actions do not count, so a flagged item inside
+        // a current formula still needs a normal save before it stops
+        // blocking that finished good.
         foreach ($db->fetchAll(
             "SELECT DISTINCT entity_id
              FROM audit_log
-             WHERE entity_type = 'raw_material' AND user_id IS NOT NULL"
+             WHERE entity_type = 'raw_material' AND user_id IS NOT NULL
+               AND action NOT IN ('" . implode("','", \SDS\Models\RawMaterial::SDS_NOT_REQUIRED_AUDIT_ACTIONS) . "')"
         ) as $r) {
             $reviewed[(int) $r['entity_id']] = true;
         }
@@ -131,8 +136,9 @@ class SDSReadinessService
         if ($total > 0) {
             $rmIds        = array_keys($rmContext);
             $placeholders = implode(',', array_fill(0, count($rmIds), '?'));
+            // SELECT *: also carries sds_not_required (migration 064) when it exists.
             $rmRows       = $db->fetchAll(
-                "SELECT id, internal_code, supplier, supplier_product_name
+                "SELECT *
                  FROM raw_materials
                  WHERE id IN ({$placeholders})
                  ORDER BY internal_code ASC",
@@ -154,6 +160,8 @@ class SDSReadinessService
                     'supplier_product_name' => $row['supplier_product_name'],
                     'is_direct'             => $ctx['is_direct'],
                     'via_fg_codes'          => array_values(array_unique($ctx['via_fg_codes'])),
+                    // Migration 064: still a formula input, so still needs a normal save.
+                    'sds_not_required'      => \SDS\Models\RawMaterial::isSdsNotRequired($row),
                 ];
             }
         }
@@ -189,8 +197,9 @@ class SDSReadinessService
     {
         $db = Database::getInstance();
 
+        // SELECT *: also works before migration 064 (no sds_not_required column).
         $rm = $db->fetch(
-            "SELECT id, internal_code, supplier, supplier_product_name
+            "SELECT *
              FROM raw_materials
              WHERE id = ?",
             [$rmId]
@@ -201,6 +210,9 @@ class SDSReadinessService
 
         $reviewedRms = self::loadReviewedRmIds($db);
         $isReviewed  = isset($reviewedRms[$rmId]);
+        // Migration 064: a flagged item gets no resale SDS; the page shows why
+        // and hides the review / publish steps.
+        $notRequired = \SDS\Models\RawMaterial::isSdsNotRequired($rm);
 
         // Shape this like an FG review so the view can render one table.
         // Fake an FG-shaped row using the RM's details so existing
@@ -241,10 +253,13 @@ class SDSReadinessService
                 'base_code'             => $baseCode,
                 'supplier'              => $rm['supplier'],
                 'supplier_product_name' => $rm['supplier_product_name'],
+                'sds_not_required'      => $notRequired,
             ],
+            'sds_not_required'         => $notRequired,
+            'sds_not_required_message' => $notRequired ? \SDS\Models\RawMaterial::sdsNotRequiredMessage((string) $rm['internal_code']) : null,
             'total_rms'       => 1,
             'reviewed_count'  => $isReviewed ? 1 : 0,
-            'unreviewed'      => $isReviewed ? [] : [[
+            'unreviewed'      => ($isReviewed || $notRequired) ? [] : [[
                 'id'                    => $rmId,
                 'internal_code'         => $rm['internal_code'],
                 'supplier'              => $rm['supplier'],
@@ -254,7 +269,7 @@ class SDSReadinessService
             ]],
             'published_versions' => $publishedVersions,
             'tsca_warning'    => self::tscaWarningForRawMaterialIds([$rmId], $db),
-            'incomplete_composition' => TSCAService::incompleteRawMaterials([$rmId]),   // finding #27
+            'incomplete_composition' => $notRequired ? [] : TSCAService::incompleteRawMaterials([$rmId]),   // finding #27
             'combustible_dust_warning' => self::combustibleDustWarningForRawMaterial($rmId, $db), // A12(c) warning only
             'trade_secret_prop65_error' => self::tradeSecretProp65ForRawMaterialIds([$rmId], $db), // Q4
             'company_emergency_phone_error' => self::companyEmergencyPhoneErrorFromDb($db),
@@ -476,8 +491,13 @@ class SDSReadinessService
      * SDS that someone published by hand. The manual "Publish Resale SDS"
      * button stays the explicit route for a genuinely non-hazardous item.
      */
-    public static function resaleAutoPublishBlock(string $code, bool $reviewed, bool $noComposition, bool $publishedBefore): ?string
+    public static function resaleAutoPublishBlock(string $code, bool $reviewed, bool $noComposition, bool $publishedBefore, bool $sdsNotRequired = false): ?string
     {
+        // Migration 064: a raw material marked No SDS required gets no resale
+        // sheet, alias sheet or label on any path. Checked first.
+        if ($sdsNotRequired) {
+            return \SDS\Models\RawMaterial::sdsNotRequiredMessage($code);
+        }
         $code = trim($code) !== '' ? trim($code) : 'this resale item';
         if (!$reviewed) {
             return "Resale raw material {$code} has not been reviewed: no one has saved its data or entered a CAS determination for it. "
@@ -505,8 +525,13 @@ class SDSReadinessService
         $ph = implode(',', array_fill(0, count($rmIds), '?'));
 
         $codes = [];
-        foreach ($db->fetchAll("SELECT id, internal_code FROM raw_materials WHERE id IN ({$ph})", $rmIds) as $r) {
+        $notRequired = [];
+        // SELECT *: also works before migration 064 (no sds_not_required column).
+        foreach ($db->fetchAll("SELECT * FROM raw_materials WHERE id IN ({$ph})", $rmIds) as $r) {
             $codes[(int) $r['id']] = (string) $r['internal_code'];
+            if (\SDS\Models\RawMaterial::isSdsNotRequired($r)) {
+                $notRequired[(int) $r['id']] = true;
+            }
         }
         $reviewed = self::loadReviewedRmIds($db);
         $empty = [];
@@ -535,7 +560,7 @@ class SDSReadinessService
             if (!isset($codes[$id])) {
                 continue; // deleted meanwhile: the caller's own lookup fails
             }
-            $block = self::resaleAutoPublishBlock($codes[$id], isset($reviewed[$id]), isset($empty[$id]), isset($published[$id]));
+            $block = self::resaleAutoPublishBlock($codes[$id], isset($reviewed[$id]), isset($empty[$id]), isset($published[$id]), isset($notRequired[$id]));
             if ($block !== null) {
                 $out[$id] = $block;
             }

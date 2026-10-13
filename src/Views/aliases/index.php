@@ -19,6 +19,7 @@
     </form>
 </div>
 
+<?php $noSdsBases = $noSdsBases ?? []; ?>
 <?php if (!empty($items)): ?>
 <table class="table">
     <thead>
@@ -32,6 +33,7 @@
     </thead>
     <tbody>
     <?php foreach ($items as $item): ?>
+        <?php $aliasNoSds = isset($noSdsBases[\SDS\Models\RawMaterial::baseKey((string) ($item['internal_code_base'] ?? ''))]); ?>
         <tr>
             <td><strong><?= e($item['customer_code']) ?></strong></td>
             <td><?= e($item['description']) ?: '<span class="text-muted">—</span>' ?></td>
@@ -41,8 +43,11 @@
                 <?php if ($item['fg_id']): ?>
                     <a href="/finished-goods/<?= (int) $item['fg_id'] ?>/edit"><?= e($item['fg_product_code']) ?></a>
                     <small class="text-muted"><?= e($item['fg_description']) ?></small>
-                <?php else: ?>
+                <?php elseif (!$aliasNoSds): ?>
                     <span class="text-muted">Not in system</span>
+                <?php endif; ?>
+                <?php if ($aliasNoSds): ?>
+                    <span class="badge badge-muted" title="Resolves to a raw material marked No SDS required (not a chemical): no SDS is made or sent for this alias">No SDS required</span>
                 <?php endif; ?>
             </td>
         </tr>

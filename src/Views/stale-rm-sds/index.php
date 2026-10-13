@@ -6,7 +6,13 @@
     a material sourced from two vendors appears under each. Grouped by
     supplier so one email per vendor can cover all their stale SDSs. Change
     the threshold in <a href="/admin/settings">Admin &gt; Settings</a>.
+    Items marked No SDS required (not chemicals) are not listed.
 </p>
+<?php
+// Migration 064: quick "Not a chemical" button (POST to the flag endpoint,
+// which checks the capability and CSRF, then comes back here).
+$canFlagNoSds = can_edit('rm_sds_not_required');
+?>
 
 <?php if ($total === 0): ?>
     <div class="alert alert-success"><strong>All caught up.</strong> No raw materials currently exceed the staleness threshold.</div>
@@ -77,6 +83,19 @@
                               onsubmit="return confirm('Confirm the <?= e($supplier) ?> SDS for <?= e($rm['internal_code']) ?> is still current?');">
                             <?= csrf_field() ?>
                             <button type="submit" class="btn btn-sm btn-outline">Mark Current</button>
+                        </form>
+                        <?php endif; ?>
+                        <?php if ($canFlagNoSds): ?>
+                        <?php $noSdsMsg = 'Mark ' . (string) $rm['internal_code'] . ' as not a chemical (No SDS required)? It stays in the system, but it is left off'
+                                        . ' SDS publishing, GHS labels, the SDS send queue and the SDS worklists, including this list.'; ?>
+                        <form method="POST"
+                              action="/raw-materials/<?= (int) $rm['id'] ?>/sds-requirement"
+                              style="display: inline;"
+                              onsubmit="return confirm(<?= e((string) json_encode($noSdsMsg, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE)) ?>);">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="sds_not_required" value="1">
+                            <input type="hidden" name="return_to" value="/stale-rm-sds">
+                            <button type="submit" class="btn btn-sm btn-outline" title="Mark No SDS required: pails, lids, colour guides, tools">Not a chemical</button>
                         </form>
                         <?php endif; ?>
                     </td>

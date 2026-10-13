@@ -497,6 +497,7 @@ class FinishedGood
         };
 
         $sql = "SELECT a.id AS alias_id, a.customer_code, a.description AS alias_description,
+                       a.internal_code_base,
                        fg.id AS fg_id, fg.family, fg.is_active,
                        sv_en.version AS ver_en, sv_en.published_at AS date_en, sv_en.sds_id AS sds_id_en,
                        sv_es.version AS ver_es, sv_es.published_at AS date_es, sv_es.sds_id AS sds_id_es,
@@ -513,6 +514,11 @@ class FinishedGood
 
         $rows = $db->fetchAll($sql, $params2);
 
+        // Migration 064: alias bases that resolve to a raw material marked
+        // "No SDS required". Their sheets (published before the mark) stay
+        // downloadable as history; the view badges them.
+        $noSdsBases = RawMaterial::sdsNotRequiredBases($db);
+
         foreach ($rows as &$row) {
             $baseCode = strpos($row['customer_code'], '-') !== false
                 ? substr($row['customer_code'], 0, strpos($row['customer_code'], '-'))
@@ -523,6 +529,7 @@ class FinishedGood
             if ($row['is_resale']) {
                 $row['is_active'] = 1;
             }
+            $row['sds_not_required'] = isset($noSdsBases[RawMaterial::baseKey((string) ($row['internal_code_base'] ?? ''))]);
             $row['has_en'] = $row['ver_en'] !== null;
             $row['has_es'] = $row['ver_es'] !== null;
             $row['has_fr'] = $row['ver_fr'] !== null;
@@ -575,6 +582,7 @@ class FinishedGood
 
             foreach ($fgRows as &$row) {
                 $row['is_resale']       = false;
+                $row['sds_not_required'] = false;
                 $row['has_en']          = $row['ver_en'] !== null;
                 $row['has_es']          = $row['ver_es'] !== null;
                 $row['has_fr']          = $row['ver_fr'] !== null;

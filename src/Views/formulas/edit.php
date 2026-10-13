@@ -89,8 +89,9 @@ function lookupComponent(input) {
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.found) {
-                    descSpan.textContent = data.description;
-                    descSpan.style.color = '';
+                    // Migration 064: an item marked No SDS required still feeds this SDS.
+                    descSpan.textContent = data.description + (data.sds_not_required ? ' (marked No SDS required; its data still feeds this SDS)' : '');
+                    descSpan.style.color = data.sds_not_required ? '#b36b00' : '';
                     input.style.borderColor = '';
                 } else {
                     descSpan.textContent = 'Not found';

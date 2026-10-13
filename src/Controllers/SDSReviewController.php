@@ -137,8 +137,10 @@ class SDSReviewController
         // search, OR whose supplier_product_name/internal_code LIKE, that
         // don't also have a finished_goods row (that would make them
         // formula-based, which the FG query already covers).
+        // Migration 064: sds_not_required feeds the 'No SDS required' badge
+        // (page-load only; this page needs migration 064).
         $rmRows = $db->fetchAll(
-            "SELECT DISTINCT rm.id, rm.internal_code, rm.supplier, rm.supplier_product_name
+            "SELECT DISTINCT rm.id, rm.internal_code, rm.supplier, rm.supplier_product_name, rm.sds_not_required
              FROM raw_materials rm
              LEFT JOIN aliases a
                  ON SUBSTRING_INDEX(a.internal_code, '-', 1) = SUBSTRING_INDEX(rm.internal_code, '-', 1)
@@ -170,6 +172,7 @@ class SDSReviewController
             $r['description']  = $r['supplier_product_name'];
             $r['family']       = null;
             $r['is_active']    = 1;
+            $r['sds_not_required'] = \SDS\Models\RawMaterial::isSdsNotRequired($r);
             $rows[] = $r;
         }
         return $rows;

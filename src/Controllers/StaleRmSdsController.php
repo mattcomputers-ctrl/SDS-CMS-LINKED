@@ -43,6 +43,11 @@ class StaleRmSdsController
         // sourced from two vendors therefore shows under each vendor with
         // its own age. RMs with no SDS on file at all are appended (never
         // recorded — the most stale case) under the RM's CMS supplier.
+        // Migration 064: items marked "No SDS required" (pails, lids,
+        // colour guides) never get a vendor SDS, so neither branch lists
+        // them. Branch (a) filters in the JOIN because its WHERE is an
+        // unparenthesised OR.
+        $needsSds = \SDS\Models\RawMaterial::sqlNeedsSds('rm');
         $rows = $db->fetchAll(
             "SELECT rm.id,
                     rm.internal_code,
@@ -60,7 +65,7 @@ class StaleRmSdsController
                       FROM raw_material_sds
                   GROUP BY raw_material_id, supplier
                     ) latest ON latest.max_id = cur.id
-               JOIN raw_materials rm ON rm.id = cur.raw_material_id
+               JOIN raw_materials rm ON rm.id = cur.raw_material_id AND {$needsSds}
               WHERE cur.sds_last_confirmed_at IS NULL
                  OR DATEDIFF(?, cur.sds_last_confirmed_at) >= ?
           UNION ALL
@@ -70,7 +75,8 @@ class StaleRmSdsController
                     rm.supplier_product_code,
                     NULL, rm.supplier, NULL, NULL, NULL, NULL
                FROM raw_materials rm
-              WHERE NOT EXISTS (SELECT 1 FROM raw_material_sds s WHERE s.raw_material_id = rm.id)
+              WHERE {$needsSds}
+                AND NOT EXISTS (SELECT 1 FROM raw_material_sds s WHERE s.raw_material_id = rm.id)
            ORDER BY supplier ASC,
                     sds_last_confirmed_at ASC,
                     internal_code ASC",

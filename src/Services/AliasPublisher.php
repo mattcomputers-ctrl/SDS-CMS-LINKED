@@ -107,6 +107,7 @@ final class AliasPublisher
      * language is missing or its PDF is gone from disk.
      *
      * @return array<string,array> lang => sds_versions row (PDF exists)
+     * @throws SdsNotRequiredException the alias resolves to a resale raw material marked No SDS required (migration 064)
      * @throws \RuntimeException alias unknown / unresolvable / publish refused (message says why)
      */
     public static function ensurePublished(int $aliasId, ?int $userId, string $reason, Database $db, ?array $languages = null): array
@@ -114,6 +115,15 @@ final class AliasPublisher
         $alias = $db->fetch('SELECT id, customer_code, description, internal_code_base FROM aliases WHERE id = ?', [$aliasId]);
         if ($alias === null) {
             throw new \RuntimeException('Alias #' . $aliasId . ' not found.');
+        }
+        // Migration 064: an alias that resolves to a resale raw material marked
+        // "No SDS required" is never sent or zipped, not even a sheet published
+        // before the flag was set, so this runs before the existing rows are
+        // returned. A formula alias is never affected (the formula path wins).
+        $res = AliasResolver::resolveByAliasId($aliasId);
+        if ($res !== null && $res['type'] === 'resale' && \SDS\Models\RawMaterial::isSdsNotRequired((array) $res['rm'])) {
+            throw new SdsNotRequiredException('Alias ' . AliasResolver::stripPack((string) $alias['customer_code']) . ': '
+                . \SDS\Models\RawMaterial::sdsNotRequiredMessage((string) $res['rm']['internal_code']));
         }
         $configured = self::languages();
         $wanted = $languages === null

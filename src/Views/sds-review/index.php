@@ -25,11 +25,15 @@
 
 <?php if ($review !== null): ?>
     <?php $fg = $review['fg']; ?>
+    <?php $noSds = !empty($review['sds_not_required']); // migration 064: resale RM marked No SDS required ?>
     <div class="card" style="margin-bottom: 1rem;">
         <h2 style="margin-top: 0;">
             <?= e($fg['product_code']) ?>
             <?php if (!(int) $fg['is_active']): ?>
                 <span class="badge badge-muted">Inactive</span>
+            <?php endif; ?>
+            <?php if ($noSds): ?>
+                <span class="badge badge-muted" title="Not a chemical: no resale SDS, alias SDS or GHS label is made">No SDS required</span>
             <?php endif; ?>
         </h2>
         <p class="text-muted" style="margin: 0.25rem 0 1rem;">
@@ -39,14 +43,22 @@
             <?php endif; ?>
             <?php if (!empty($review['is_resale'])): ?>
                 &middot; Resale of raw material <strong><?= e($review['resale_rm']['internal_code']) ?></strong>
+                <?php if (!$noSds): ?>
                 &middot; <?= (int) $review['reviewed_count'] ?> of <?= (int) $review['total_rms'] ?> raw material ready
+                <?php endif; ?>
             <?php elseif (!empty($review['formula_version'])): ?>
                 &middot; Formula v<?= (int) $review['formula_version'] ?>
                 &middot; <?= (int) $review['reviewed_count'] ?> of <?= (int) $review['total_rms'] ?> raw material<?= $review['total_rms'] === 1 ? '' : 's' ?> ready
             <?php endif; ?>
         </p>
 
-        <?php if (!empty($review['is_resale'])): ?>
+        <?php if ($noSds): ?>
+            <div class="alert alert-info">
+                <strong>No SDS required.</strong>
+                <?= e((string) ($review['sds_not_required_message'] ?? '')) ?>
+                <a href="/raw-materials/<?= (int) $review['resale_rm']['id'] ?>/edit#sds-requirement">Open raw material &rarr;</a>
+            </div>
+        <?php elseif (!empty($review['is_resale'])): ?>
             <div class="alert alert-muted" style="background:#eef; border-left:3px solid #99c;">
                 <strong>Resale item.</strong> This product has no formula — it's sold
                 as-is under the alias. The SDS will be derived 100 % from the source
@@ -54,6 +66,7 @@
             </div>
         <?php endif; ?>
 
+        <?php if (!$noSds): // migration 064: no publish checks for an item that gets no SDS ?>
         <?php if (!empty($review['company_emergency_phone_error'])): ?>
             <div class="alert alert-warning">
                 <strong>Company emergency phone missing.</strong>
@@ -116,8 +129,11 @@
                 <?= e($review['trade_secret_prop65_error']) ?>
             </div>
         <?php endif; ?>
+        <?php endif; // !$noSds warnings ?>
 
-        <?php if (!$review['has_formula']): ?>
+        <?php if ($noSds): ?>
+            <?php /* Banner above; no review steps for an item that gets no SDS. */ ?>
+        <?php elseif (!$review['has_formula']): ?>
             <div class="alert alert-warning">
                 <strong>No formula entered.</strong>
                 Before this finished good can be published, it needs a formula.
@@ -155,7 +171,7 @@
                 <tbody>
                 <?php foreach ($review['unreviewed'] as $rm): ?>
                     <tr>
-                        <td><strong><?= e($rm['internal_code']) ?></strong></td>
+                        <td><strong><?= e($rm['internal_code']) ?></strong><?php if (!empty($rm['sds_not_required'])): ?> <span class="badge badge-muted" title="Marked No SDS required (not a chemical), but this formula uses it, so it still needs a normal save on Raw Materials > Edit">No SDS required</span><?php endif; ?></td>
                         <td><?= e($rm['supplier'] ?? '') ?: '<span class="text-muted">&mdash;</span>' ?></td>
                         <td><?= e($rm['supplier_product_name'] ?? '') ?: '<span class="text-muted">&mdash;</span>' ?></td>
                         <td>
@@ -179,7 +195,7 @@
         <p class="text-muted" style="margin-top: 1rem; margin-bottom: 0; font-size: 0.85rem;">
             <?php if (!empty($review['is_resale'])): ?>
                 <a href="/raw-materials/<?= (int) $review['resale_rm']['id'] ?>/edit">Open source raw material</a>
-                <?php if (empty($review['unreviewed'])): ?>
+                <?php if (empty($review['unreviewed']) && !$noSds): ?>
                     &middot; <a href="/sds/resale/<?= (int) $review['resale_rm']['id'] ?>/preview">Preview SDS</a>
                     <?php if (can_edit('sds')): ?>
                         &middot; Edit SDS text:
@@ -196,7 +212,7 @@
             <?php endif; ?>
         </p>
 
-        <?php if (!empty($review['is_resale']) && empty($review['unreviewed']) && empty($review['company_emergency_phone_error']) && can_edit('sds')): ?>
+        <?php if (!empty($review['is_resale']) && empty($review['unreviewed']) && !$noSds && empty($review['company_emergency_phone_error']) && can_edit('sds')): ?>
             <form method="POST" action="/sds/resale/<?= (int) $review['resale_rm']['id'] ?>/publish"
                   style="margin-top: 1rem;"
                   onsubmit="return confirm('Publish SDS for <?= e($review['resale_rm']['base_code']) ?> and all resale aliases pointing at it?');">
@@ -213,6 +229,9 @@
 
         <?php if (!empty($review['is_resale']) && !empty($review['published_versions'])): ?>
             <h3 style="margin-top: 1.5rem; margin-bottom: 0.5rem; font-size: 1rem;">Published SDSs for this resale item</h3>
+            <?php if ($noSds): ?>
+                <p class="text-muted" style="margin-top: 0;">Published before the item was marked No SDS required. They stay on file as history and are not sent.</p>
+            <?php endif; ?>
             <table class="table table-sm">
                 <thead>
                     <tr>
@@ -270,6 +289,9 @@
                     <strong><?= e($m['display_code'] ?? ($m['product_code'] ?? '')) ?></strong>
                     <?php if ($kind === 'rm'): ?>
                         <span class="badge badge-muted" title="Resale raw material (no formula)">Resale</span>
+                        <?php if (!empty($m['sds_not_required'])): ?>
+                            <span class="badge badge-muted" title="Not a chemical: no resale SDS, alias SDS or GHS label is made">No SDS required</span>
+                        <?php endif; ?>
                     <?php endif; ?>
                 </td>
                 <td><?= e($m['description']) ?></td>

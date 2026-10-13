@@ -432,11 +432,14 @@ class TSCAService
 
     /**
      * TSCA Review list: every constituent CAS in use that is not on the
-     * inventory and has no override.
+     * inventory and has no override. Raw materials marked "No SDS required"
+     * (migration 064) are left out unless a current formula uses them
+     * (their data still feeds that finished good).
      */
     public static function reviewCandidates(): array
     {
         $db = Database::getInstance();
+        $needsSds = \SDS\Models\RawMaterial::sqlNeedsSds('rm');
         return $db->fetchAll(
             "SELECT rmc.cas_number,
                     COALESCE(NULLIF(cm.preferred_name, ''), MAX(rmc.chemical_name)) AS chemical_name,
@@ -454,6 +457,11 @@ class TSCAService
              WHERE rmc.cas_number <> ''
                AND ti.cas_number IS NULL
                AND (cm.tsca_status IS NULL OR cm.tsca_status = 'auto')
+               AND ({$needsSds} OR EXISTS (
+                   SELECT 1 FROM formula_lines fl2
+                   JOIN formulas f2 ON f2.id = fl2.formula_id AND f2.is_current = 1
+                   WHERE fl2.raw_material_id = rm.id
+               ))
              GROUP BY rmc.cas_number, cm.preferred_name
              ORDER BY in_formula DESC, raw_material_count DESC, rmc.cas_number ASC"
         );

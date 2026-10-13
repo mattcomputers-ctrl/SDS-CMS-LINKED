@@ -1,4 +1,22 @@
 <?php include dirname(__DIR__) . '/layouts/main.php'; ?>
+<?php
+// Migration 064: quick "Not a chemical" button. Posts to the flag endpoint,
+// which checks the capability and CSRF and comes back to the given tab.
+$canFlagNoSds = can_edit('rm_sds_not_required');
+$noSdsButton  = static function (array $rm, string $returnTo): string {
+    $code = (string) ($rm['internal_code'] ?? '');
+    $msg  = 'Mark ' . $code . ' as not a chemical (No SDS required)? It stays in the system, but it is left off'
+          . ' SDS publishing, GHS labels, the SDS send queue and these worklists.';
+    return '<form method="POST" action="/raw-materials/' . (int) $rm['id'] . '/sds-requirement" style="display: inline;"'
+         . ' onsubmit="return confirm(' . e((string) json_encode($msg, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE)) . ');">'
+         . csrf_field()
+         . '<input type="hidden" name="sds_not_required" value="1">'
+         . '<input type="hidden" name="return_to" value="' . e($returnTo) . '">'
+         . '<button type="submit" class="btn btn-sm btn-outline" title="Mark No SDS required: pails, lids, colour guides, tools">Not a chemical</button>'
+         . '</form>';
+};
+$flaggedInFormulas = $flaggedInFormulas ?? [];
+?>
 
 <!-- Tab Navigation -->
 <div class="tab-nav" style="display: flex; gap: 0; border-bottom: 2px solid #003366; margin-bottom: 1rem;">
@@ -30,12 +48,41 @@
 
 <!-- Tab: Needs Details (existing) -->
 <div class="tab-panel" id="tab-incomplete">
+    <?php if (!empty($flaggedInFormulas)): ?>
+        <!-- Migration 064: marked No SDS required, but a current formula uses it -->
+        <div class="alert alert-warning">
+            <strong><?= count($flaggedInFormulas) ?> raw material(s) marked No SDS required are used in a current formula.</strong>
+            Formulas are not changed by the mark, so their data (usually none) still feeds these finished goods' SDSs.
+            Check that each one belongs in the formula.
+            <table class="table table-sm" style="margin: 8px 0 0; background: transparent;">
+                <thead>
+                    <tr>
+                        <th>Internal Code</th>
+                        <th>Product Name</th>
+                        <th title="Finished goods whose current formula uses this raw material directly">Used in</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($flaggedInFormulas as $frm): ?>
+                    <tr>
+                        <td><strong><a href="/raw-materials/<?= (int) $frm['id'] ?>/edit"><?= e($frm['internal_code']) ?></a></strong>
+                            <span class="badge badge-muted">No SDS required</span></td>
+                        <td><?= e($frm['supplier_product_name'] ?? '') ?: '<span class="text-muted">—</span>' ?></td>
+                        <td><?= e($frm['fg_codes']) ?> <small class="text-muted">(<?= (int) $frm['fg_direct_count'] ?>)</small></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
+
     <?php if (empty($incomplete)): ?>
         <div class="alert alert-success">
             All imported raw materials have their details saved. Nothing to do here.
         </div>
     <?php else: ?>
-        <p class="text-muted"><?= count($incomplete) ?> raw material(s) imported from CMS still need constituents and SDS details. Sorted by the number of finished goods that depend on them — highest impact first.</p>
+        <p class="text-muted"><?= count($incomplete) ?> raw material(s) imported from CMS still need constituents and SDS details. Sorted by the number of finished goods that depend on them — highest impact first.
+            Items marked No SDS required are left off unless a current formula uses them.</p>
 
         <table class="table">
             <thead>
@@ -52,15 +99,21 @@
             <tbody>
             <?php foreach ($incomplete as $rm): ?>
                 <tr>
-                    <td><strong><?= e($rm['internal_code']) ?></strong></td>
+                    <td><strong><?= e($rm['internal_code']) ?></strong>
+                        <?php if (!empty($rm['sds_not_required'])): ?>
+                            <span class="badge badge-muted" title="Marked No SDS required, but a current formula uses it: its data still feeds that finished good's SDS">No SDS required</span>
+                        <?php endif; ?></td>
                     <td><?= e($rm['supplier_product_name'] ?? '—') ?></td>
                     <td><strong><?= (int) ($rm['fg_total_count'] ?? 0) ?></strong></td>
                     <td><span class="text-muted"><?= (int) ($rm['fg_direct_count'] ?? 0) ?></span></td>
                     <td><?= e($rm['cms_item_code'] ?? '—') ?></td>
                     <td><?= e(\SDS\Services\PublishClock::display($rm['created_at'] ?? null, 'Y-m-d H:i:s')) ?></td>
-                    <td>
+                    <td style="white-space: nowrap;">
                         <a href="/raw-materials/<?= (int) $rm['id'] ?>/edit" class="btn btn-sm btn-primary">Add Details</a>
                         <a href="/raw-materials/<?= (int) $rm['id'] ?>/constituents" class="btn btn-sm btn-outline">Constituents</a>
+                        <?php if ($canFlagNoSds && empty($rm['sds_not_required'])): ?>
+                            <?= $noSdsButton($rm, '/cms-import/incomplete') ?>
+                        <?php endif; ?>
                     </td>
                 </tr>
             <?php endforeach; ?>
@@ -98,7 +151,10 @@
                     $extra    = count($all) - count($examples);
                 ?>
                 <tr>
-                    <td><strong><?= e($rm['internal_code']) ?></strong></td>
+                    <td><strong><?= e($rm['internal_code']) ?></strong>
+                        <?php if (!empty($rm['sds_not_required'])): ?>
+                            <span class="badge badge-muted" title="Marked No SDS required, but a current formula uses it, so its data still has to be reviewed for that finished good">No SDS required</span>
+                        <?php endif; ?></td>
                     <td><?= e($rm['supplier'] ?? '') ?: '<span class="text-muted">—</span>' ?></td>
                     <td><?= e($rm['supplier_product_name'] ?? '') ?: '<span class="text-muted">—</span>' ?></td>
                     <td><strong><?= (int) $rm['unblock_count'] ?></strong></td>
@@ -159,7 +215,10 @@
                     ][$type] ?? e($type);
                 ?>
                 <tr>
-                    <td><strong><?= e($rm['internal_code']) ?></strong></td>
+                    <td><strong><?= e($rm['internal_code']) ?></strong>
+                        <?php if (!empty($rm['sds_not_required'])): ?>
+                            <span class="badge badge-muted" title="Marked No SDS required, but a current formula uses it: its data still feeds that finished good's SDS">No SDS required</span>
+                        <?php endif; ?></td>
                     <td><?= e($rm['supplier'] ?? '') ?: '<span class="text-muted">—</span>' ?></td>
                     <td>
                         <?= e($rm['supplier_product_name'] ?? '') ?: '<span class="text-muted">—</span>' ?>
@@ -195,6 +254,7 @@
             Raw materials with stock on hand in CMS that are missing constituent data
             and/or a vendor SDS upload (required to appear in the RM SDS Book).
             Sorted by quantity on hand — the biggest piles first.
+            Items marked No SDS required (not chemicals) are not listed.
         </p>
 
         <table class="table">
@@ -223,10 +283,13 @@
                             <span class="badge badge-warning" title="No vendor SDS PDF uploaded — cannot appear in RM SDS Book">Vendor SDS</span>
                         <?php endif; ?>
                     </td>
-                    <td>
+                    <td style="white-space: nowrap;">
                         <a href="/raw-materials/<?= (int) $rm['id'] ?>/edit" class="btn btn-sm btn-primary">Edit RM</a>
                         <?php if ($rm['missing_data']): ?>
                             <a href="/raw-materials/<?= (int) $rm['id'] ?>/constituents" class="btn btn-sm btn-outline">Constituents</a>
+                        <?php endif; ?>
+                        <?php if ($canFlagNoSds): ?>
+                            <?= $noSdsButton($rm, '/cms-import/incomplete#inventory') ?>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -258,6 +321,15 @@ document.querySelectorAll('.tab-btn').forEach(function (btn) {
         document.getElementById('tab-' + btn.dataset.tab).style.display = 'block';
     });
 });
+// Open the tab named in the URL hash (e.g. #inventory after a "Not a chemical" click).
+(function () {
+    var want = (window.location.hash || '').replace('#', '');
+    document.querySelectorAll('.tab-btn').forEach(function (btn) {
+        if (want !== '' && btn.dataset.tab === want) {
+            btn.click();
+        }
+    });
+})();
 </script>
 
 <?php include dirname(__DIR__) . '/layouts/footer.php'; ?>

@@ -169,6 +169,14 @@ try {
         echo "  Incomplete RMs:  " . count($results['incomplete_materials']) . " need details\n";
     }
 
+    // Migration 064: recipe ingredients marked "No SDS required" (formulas
+    // still use their data; check they belong in the recipe).
+    if (!empty($results['rm_flagged_in_formula'])) {
+        $nrCodes = $results['rm_flagged_in_formula'];
+        echo "  No-SDS in recipes: " . count($nrCodes) . " ingredient(s) marked No SDS required: "
+            . implode(', ', array_slice($nrCodes, 0, 20)) . (count($nrCodes) > 20 ? ', ...' : '') . "\n";
+    }
+
     // ── Bulk SDS Publish ───────────────────────────────────────────
     // Replaces the old loose auto-publish inside SDSAutoSendService.
     // Uses the Bulk SDS Publish admin page's eligibility rules, so

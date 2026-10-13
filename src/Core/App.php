@@ -176,6 +176,9 @@ class App
         $router->get('/raw-materials',                       'RawMaterialController@index');
         $router->get('/raw-materials/create',                'RawMaterialController@create');
         $router->post('/raw-materials',                      'RawMaterialController@store');
+        // Migration 064: "No SDS required" flag (single item, and the list's bulk action).
+        $router->post('/raw-materials/sds-requirement/bulk', 'RawMaterialController@bulkSetSdsRequirement');
+        $router->post('/raw-materials/{id}/sds-requirement', 'RawMaterialController@setSdsRequirement');
         $router->get('/raw-materials/cas-lookup',            'RawMaterialController@casLookup');
         $router->get('/raw-materials/{id}/edit',             'RawMaterialController@edit');
         $router->post('/raw-materials/{id}',                 'RawMaterialController@update');

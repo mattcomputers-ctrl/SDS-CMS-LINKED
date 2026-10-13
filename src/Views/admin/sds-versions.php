@@ -15,7 +15,15 @@
     <tbody>
     <?php foreach ($versions as $v): ?>
         <tr class="<?= (int) $v['is_deleted'] ? 'row-deleted' : '' ?>">
-            <td><a href="/sds/<?= (int) $v['finished_good_id'] ?>"><?= e($v['product_code']) ?></a></td>
+            <td>
+                <?php if (!empty($v['finished_good_id'])): ?>
+                    <a href="/sds/<?= (int) $v['finished_good_id'] ?>"><?= e($v['product_code']) ?></a>
+                <?php else: ?>
+                    <a href="/sds-review?rm_id=<?= (int) $v['raw_material_id'] ?>"><?= e($v['product_code']) ?></a>
+                    <span class="badge badge-muted" title="Resale SDS made from a raw material">Resale</span>
+                    <?php if (!empty($v['rm_sds_not_required'])): ?><span class="badge badge-muted" title="The raw material is marked No SDS required: this sheet is not sent; retire it if it should not be downloadable">No SDS required</span><?php endif; ?>
+                <?php endif; ?>
+            </td>
             <td><?= !empty($v['alias_customer_code']) ? e($v['alias_customer_code']) : '<span class="text-muted">—</span>' ?></td>
             <td>v<?= (int) $v['version'] ?></td>
             <td><?= e(strtoupper($v['language'])) ?></td>

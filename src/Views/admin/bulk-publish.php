@@ -10,6 +10,7 @@
     <li><strong>Every</strong> raw material in its formula (or for a resale item, the source raw material itself) has been edited by a user at least once (any audit-log entry qualifies — even just adding a note). RMs that have only been imported from CMS and never reviewed block their item. A resale item also needs its composition entered, or a first resale SDS published by hand from the SDS Creation Readiness Check; otherwise its sheet would say it is not hazardous.</li>
     <li>The item <strong>doesn't already have an up-to-date SDS</strong>. If the latest published SDS was published after the most recent change to the formula, raws, constituents, or CAS determinations, there's nothing to republish and it's skipped.</li>
 </ul>
+<p class="text-muted" style="margin-top: 0; margin-bottom: 0.75rem;">Resale raw materials marked <strong>No SDS required</strong> (non-chemicals such as pails, lids and colour guides) are skipped: they are never published here and are not listed as blocked.</p>
 
 <?php $totalEligible = (int) $fgCount + (int) ($resaleCount ?? 0); ?>
 <?php $totalAliases  = (int) ($aliasCount ?? 0) + (int) ($resaleAliasCount ?? 0); ?>
@@ -54,10 +55,23 @@
     <details style="margin-top: 0.5rem;">
         <summary>Why the <?= (int) $resaleBlockedCount ?> resale item(s) are blocked</summary>
         <table class="table table-sm" style="margin-top: 0.5rem;">
+            <?php $canFlagNoSds = can_edit('rm_sds_not_required'); ?>
             <?php foreach ($resaleBlocked as $b): ?>
             <tr>
                 <td><a href="/sds-review?rm_id=<?= (int) $b['rm_id'] ?>"><?= e((string) $b['base_code']) ?></a></td>
                 <td class="text-muted"><?= e((string) ($b['reason'] ?? '')) ?></td>
+                <?php if ($canFlagNoSds): ?>
+                <td style="white-space: nowrap;">
+                    <!-- Migration 064: quick "No SDS required" for a non-chemical -->
+                    <form method="POST" action="/raw-materials/<?= (int) $b['rm_id'] ?>/sds-requirement" style="display: inline;"
+                          onsubmit="return confirm(<?= e(json_encode('Mark ' . $b['base_code'] . ' as No SDS required (not a chemical)? It will be left off resale SDS publishing, GHS labels, the SDS send queue and the SDS worklists.')) ?>);">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="sds_not_required" value="1">
+                        <input type="hidden" name="return_to" value="/bulk-publish">
+                        <button type="submit" class="btn btn-sm btn-outline" title="Mark this item No SDS required">Not a chemical</button>
+                    </form>
+                </td>
+                <?php endif; ?>
             </tr>
             <?php endforeach; ?>
         </table>

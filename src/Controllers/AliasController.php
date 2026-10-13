@@ -53,6 +53,11 @@ class AliasController
 
         $pages = (int) ceil($total / $perPage);
 
+        // Migration 064: alias bases that resolve to a raw material marked
+        // "No SDS required" (keys from RawMaterial::baseKey()); no SDS is
+        // made or sent for those aliases.
+        $noSdsBases = \SDS\Models\RawMaterial::sdsNotRequiredBases($db);
+
         // Last sync time
         $lastSync = $db->fetch(
             "SELECT MAX(imported_at) AS last_sync FROM cms_import_log WHERE entity_type = 'finished_good'"
@@ -65,6 +70,7 @@ class AliasController
             'filters'   => ['search' => $search, 'page' => $page, 'per_page' => $perPage],
             'pages'     => $pages,
             'lastSync'  => $lastSync['last_sync'] ?? null,
+            'noSdsBases' => $noSdsBases,
         ]);
     }
 }

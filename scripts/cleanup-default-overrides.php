@@ -234,7 +234,13 @@ foreach (array_keys($changed['fg']) as $fgId) {
     }
 }
 $out("Queued {$queued} finished good(s) on SDS Updates.");
-if ($changed['rm'] !== []) {
-    $out('Republish these resale SDSs from the SDS Creation Readiness Check: raw material #' . implode(', #', array_keys($changed['rm'])));
+// Migration 064: raw materials marked No SDS required are never republished.
+$noSdsRm = array_fill_keys(array_map('intval', array_column($db->fetchAll('SELECT rm.id FROM raw_materials rm WHERE ' . \SDS\Models\RawMaterial::sqlNoSdsRequired('rm')), 'id')), true);
+$republishRm = array_diff_key($changed['rm'], $noSdsRm);
+if ($republishRm !== []) {
+    $out('Republish these resale SDSs from the SDS Creation Readiness Check: raw material #' . implode(', #', array_keys($republishRm)));
+}
+if (count($republishRm) !== count($changed['rm'])) {
+    $out('Not listed: ' . (count($changed['rm']) - count($republishRm)) . ' raw material(s) marked No SDS required.');
 }
 exit(0);

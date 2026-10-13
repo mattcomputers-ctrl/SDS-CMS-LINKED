@@ -37,8 +37,10 @@
                 <td><?= e($r['filename'] ?? '—') ?></td>
                 <td><?= $r['date'] ? e(\SDS\Services\PublishClock::display($r['date'], 'm/d/Y')) : '<span class="text-muted">—</span>' ?></td>
                 <td>
-                    <?php if ($r['sds_count'] > 1): ?>
+                    <?php if ($r['sds_count'] > 1 && can_read('raw_materials') && !is_sds_book_only()): ?>
                         <a href="<?= e($r['edit_url']) ?>" class="text-muted"><?= (int) $r['sds_count'] ?> version(s)</a>
+                    <?php elseif ($r['sds_count'] > 1): ?>
+                        <span class="text-muted"><?= (int) $r['sds_count'] ?> version(s)</span>
                     <?php else: ?>
                         <span class="text-muted">1 version</span>
                     <?php endif; ?>

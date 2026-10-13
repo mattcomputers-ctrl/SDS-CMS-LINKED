@@ -35,7 +35,20 @@ class AuthMiddleware
         '/fonts',
         '/favicon.ico',
         '/rm-sds-book',
-        '/raw-materials',  // needed for /raw-materials/{id}/sds (supplier SDS view)
+    ];
+
+    /**
+     * Exact public routes (GET/HEAD only): the supplier SDS PDFs that the
+     * public RM SDS Book (/rm-sds-book) links to. Everything else under
+     * /raw-materials (list, edit pages with compositions, CAS lookup,
+     * constituents, saves) needs a login and the raw_materials permission.
+     * Until 2026-10-13 the whole '/raw-materials' prefix was public.
+     *
+     * @var list<string>
+     */
+    private const PUBLIC_PATTERNS = [
+        '#^/raw-materials/\d+/sds$#',
+        '#^/raw-materials/sds-version/\d+$#',
     ];
 
     /**
@@ -45,8 +58,9 @@ class AuthMiddleware
      */
     private const SDS_BOOK_PATHS = [
         '/sds-book',
-        '/raw-materials', // needed for /raw-materials/{id}/sds (supplier SDS view)
         '/sds/version',   // needed for finished good SDS download
+        // Supplier SDS PDFs (/raw-materials/{id}/sds, /raw-materials/sds-version/{id})
+        // are reached through PUBLIC_PATTERNS, not a /raw-materials prefix.
         '/logout',
     ];
 
@@ -213,6 +227,15 @@ class AuthMiddleware
         foreach (self::PUBLIC_PATHS as $prefix) {
             if ($uri === $prefix || str_starts_with($uri, $prefix . '/') || str_starts_with($uri, $prefix . '?')) {
                 return true;
+            }
+        }
+
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        if ($method === 'GET' || $method === 'HEAD') {
+            foreach (self::PUBLIC_PATTERNS as $pattern) {
+                if (preg_match($pattern, $uri) === 1) {
+                    return true;
+                }
             }
         }
 

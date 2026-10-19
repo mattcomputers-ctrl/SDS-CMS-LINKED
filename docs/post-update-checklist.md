@@ -43,6 +43,7 @@ step is expanded in sections 1–4 below; the section number is in brackets.
 12c. **Resale import (migrations 063–064)** — deploy with `update.sh` (064 adds a column); the first CMS sync creates a raw material for every Resale item; mark the non-chemicals **No SDS required** (Raw Materials list, admins only until a group is given the permission) instead of deleting them, then enter composition for the resale items you sell [3.8e].
 12d. **Tables and label layout (code only, 2026-10-19)** — Section 11 carcinogenicity and component toxicological data, and Section 15 SARA 313, print as tables; long labels keep their value on the same line; Section 2 prints "Signal Word:"; table cells no longer drop their last wrapped line or overprint across a page break. Press **Bump ALL** so every sheet republishes, then spot-check [3.8f].
 12e. **Housekeeping and scheduled backups (code only, 2026-10-19)** — neither cron script had ever run (both used the database before starting the app). Check for SDS Archive ZIPs you still need, run housekeeping once with `--dry-run`, confirm the cron lines, and check the log the next morning [3.8g].
+12f. **Bulk publish language order (code only, 2026-10-19)** — every bulk publish now does English first, then Spanish, German, French; an interrupted run's missing languages are completed by the next run at the same version. Check the first run's log [3.8h].
 13. **Live-DB test suites** on the server [3.8].
 14. **Spot-check three sheets** (solvent ink, water-based, UV with acrylates) in EN and ES against the Section checklist [4.B].
 15. **Resume**: tick "Auto bulk publish" again and run one bulk publish; work through the failures it reports (each one is a publish gate from step 4 or 6) [3.9].
@@ -291,13 +292,13 @@ Migration 056 normalised bare PubChem categories, corrected two carcinogen rows 
 ### 3.8 Live-DB test suites (server)
 
 ```bash
-for t in HazardEngineGoldenTest HazardClassAliasesTest CarbonBlackProp65Test SubFgProp65PropagationTest; do
+for t in HazardEngineGoldenTest HazardClassAliasesTest CarbonBlackProp65Test SubFgProp65PropagationTest BulkPublishCompletionLiveTest; do
   sudo -u www-data php /var/www/sds-system/tests/Services/$t.php > /tmp/$t.log 2>&1 \
     && echo "PASS $t" || echo "FAIL $t (see /tmp/$t.log)"
 done
 ```
 
-- [ ] All four print PASS. HazardEngineGoldenTest creates and removes its own fixtures. The two Prop 65 suites exit 0 with a SKIP line when the data they need is absent.
+- [ ] All five print PASS. HazardEngineGoldenTest creates and removes its own fixtures; BulkPublishCompletionLiveTest works inside one transaction that it always rolls back. The two Prop 65 suites exit 0 with a SKIP line when the data they need is absent.
 - [ ] Optional, on the server's PHP build: `tests/smoke_pdf.php` and every DB-free suite (including `TranslationCompletenessTest`) pass too:
   `for f in /var/www/sds-system/tests/smoke_pdf.php /var/www/sds-system/tests/Services/*Test.php; do sudo -u www-data php "$f" > /dev/null 2>&1 && echo "PASS $(basename $f)" || echo "FAIL $(basename $f)"; done`
 
@@ -462,6 +463,14 @@ No migration. Code changes do not mark sheets out of date, so this needs a full 
    Then `sudo crontab -u www-data -l | grep -c 'cms-sync\|housekeeping'` should print 2.
 4. - [ ] **Next morning** — `sudo tail -n 20 /var/www/sds-system/storage/logs/cron-housekeeping.log` ends with "Housekeeping complete." ("finished with errors" names the failed step.)
 5. - [ ] **Scheduled backups** — only if "Enable Scheduled Backups" is ticked on Admin → Backups. Check the hourly line exists: `sudo crontab -u www-data -l | grep scheduled_backup` (the page shows the line to add; neither the installers nor `update.sh` add it). The first scheduled backup is made in the hour after the scheduled time, so check free space for a full backup first: `df -h /tmp /var/www/sds-system`. A :30 schedule now runs once, not twice, schedules from 23:31 to 23:59 now run (just after midnight), the daylight-saving days make exactly one backup, and a second run never starts while a backup is still being made.
+
+### 3.8h Bulk publish language order (2026-10-19, code only)
+
+No migration, no setting. Every bulk publish (Start button, the run after Bump ALL, the hourly CMS-sync run) publishes English first, then Spanish, German and French. Each worker keeps a product's items together and does all its English sheets before its Spanish ones, so English is out well before the run ends (the English pass is a bit longer than a quarter of the run: it also computes each product's data and publishes the private-label documents). If a run is stopped or killed part-way, the next run (the hourly CMS sync, or Publish All on the Bulk SDS Publish page) publishes just the languages each product is missing, at the same version. Until then the customer auto-send holds shipment lines for those products whose customers use one of the missing languages ("Waiting for languages" in the log), at most 24 hours. A product is up to date only from its current version's first sheet, so a raw material changed while a run was writing a product's other languages still gets that product a full new version.
+
+1. - [ ] **Bulk SDS Publish page** — "Languages (publish order)" shows EN, ES, DE, FR. On the first visit after deploying, "Products missing languages of their current version" may show a one-time count: products an earlier run left with only some languages (for example job 2235, killed at 06:34 UTC). The next run completes them.
+2. - [ ] **First run's log** — `grep -E 'Publish order|pass complete|Missing languages' /var/www/sds-system/storage/logs/cms-sync.log | tail -n 8` shows `Publish order: EN, ES, DE, FR` and an "English pass complete after …" line well before the job ends.
+3. - [ ] **Spot-check** — while a full run is on its Spanish pass, open a product it has already done: its English sheet is the new version, the other languages follow later in the run. After the run every language shows the same version.
 
 ### 3.9 Finish
 

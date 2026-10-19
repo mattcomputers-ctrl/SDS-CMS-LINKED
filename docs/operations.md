@@ -43,14 +43,18 @@ sudo bash /var/www/sds-system/update.sh
 
 ```bash
 # Is bulk publish running right now? How many workers?
-pgrep -af 'publish-worker\.php' | wc -l        # 0 = idle, 1-20 = active
+pgrep -af 'publish-worker\.php' | wc -l        # 0 = idle, otherwise the number of workers
 
 # More detail — elapsed time per worker + recent log lines
 ps -eo pid,etime,cmd | grep -E 'publish-worker|bulk-publish' | grep -v grep | sort -k2 -r
 tail -n 30 /var/www/sds-system/storage/logs/cms-sync.log
 
-# Stop all workers gracefully (each finishes its current item, then exits)
+# Stop all workers (SIGTERM ends each worker at once, mid-item; sheets already
+# written stay, and the next run publishes any languages a product is missing)
 sudo pkill -SIGTERM -f 'scripts/publish-worker.php'
+
+# Which language pass is the run on? ("English pass complete after 1h 05m ...")
+grep -E 'Publish order|pass complete|Missing languages' /var/www/sds-system/storage/logs/cms-sync.log | tail -n 8
 
 # Check the job queue (last 10 jobs)
 sudo -u www-data php -r '
@@ -70,6 +74,31 @@ foreach ($pdo->query("SELECT id, status, triggered_by, queued_at, started_at, co
 
 Admin UI for the queue: <https://sds-live/bulk-publish/queue> — Dismiss for
 pending rows, Force fail for stuck running rows.
+
+**Language order (2026-10-19).** Every bulk publish (Start button, the run
+after Bump ALL, the hourly CMS-sync run) publishes English first, then
+Spanish, German and French (`BulkPublishController::PUBLISH_LANGUAGE_ORDER`;
+any other configured language after those). Each product stays on one worker,
+and every worker does all its English sheets before its Spanish ones, so the
+English sheets are out well before the run ends. Private-label documents are
+published with their product's English sheets. The log prints
+`Publish order: EN, ES, DE, FR` and one `… pass complete after …` line per
+language. If a run is stopped, stalls or is killed (Apache restart), products
+that already got some languages of their new version keep them, and the next
+run publishes the missing languages, with their alias and private-label
+sheets, at the SAME version (`Missing languages to complete: …` in the log,
+"Products missing languages" on the Bulk SDS Publish page, where Publish All
+starts such a run). A language retired on Admin → SDS Versions is not brought
+back. A product counts as up to date only from its current version's FIRST
+sheet, so a change made while the run was writing its other languages still
+gets a full new version next time. The customer auto-send holds a shipment
+line while its product's sheet in one of the customer's languages is older
+than the English sheet it would send (`Waiting for languages: N` in the log),
+at most 24 hours, so customers do not get a new English sheet with an old one
+in their language; the line is sent once the languages are complete. The work
+list is built once per job; a sheet (or private-label document) that a manual
+publish replaced during the run is skipped, never overwritten from the older
+version.
 
 ---
 

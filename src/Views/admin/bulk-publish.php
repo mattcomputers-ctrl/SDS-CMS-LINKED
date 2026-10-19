@@ -5,11 +5,12 @@
     <a href="/bulk-publish/queue" class="btn btn-outline">View Queue</a>
 </div>
 
-<p class="text-muted mb-1">Generate and publish a new SDS version for every eligible finished good <em>and</em> resale item (all languages). An item is eligible only when:</p>
+<p class="text-muted mb-1">Generate and publish a new SDS version for every eligible finished good <em>and</em> resale item (all languages, English first: every worker publishes its English sheets before Spanish, German and French). An item is eligible only when:</p>
 <ul class="text-muted" style="margin-top: 0; margin-bottom: 0.75rem;">
     <li><strong>Every</strong> raw material in its formula (or for a resale item, the source raw material itself) has been edited by a user at least once (any audit-log entry qualifies — even just adding a note). RMs that have only been imported from CMS and never reviewed block their item. A resale item also needs its composition entered, or a first resale SDS published by hand from the SDS Creation Readiness Check; otherwise its sheet would say it is not hazardous.</li>
     <li>The item <strong>doesn't already have an up-to-date SDS</strong>. If the latest published SDS was published after the most recent change to the formula, raws, constituents, or CAS determinations, there's nothing to republish and it's skipped.</li>
 </ul>
+<p class="text-muted" style="margin-top: 0; margin-bottom: 0.75rem;">If a publish run is stopped or interrupted, products that already got their new English (or Spanish, German) sheets get the remaining languages at the same version on the next run.</p>
 <p class="text-muted" style="margin-top: 0; margin-bottom: 0.75rem;">Resale raw materials marked <strong>No SDS required</strong> (non-chemicals such as pails, lids and colour guides) are skipped: they are never published here and are not listed as blocked.</p>
 
 <?php $totalEligible = (int) $fgCount + (int) ($resaleCount ?? 0); ?>
@@ -47,8 +48,11 @@
         <tr><td><strong>&nbsp;&nbsp;Resale aliases:</strong></td><td><?= (int) $resaleAliasCount ?></td></tr>
             <?php endif; ?>
         <?php endif; ?>
-        <tr><td><strong>Languages:</strong></td><td><?= (int) $langCount ?> (<?= e(strtoupper(implode(', ', $languages))) ?>)</td></tr>
-        <tr><td><strong>Total PDFs to Generate:</strong></td><td><?= ($totalEligible + $totalAliases + $totalPlItems) * (int) $langCount ?></td></tr>
+        <tr><td><strong>Languages (publish order):</strong></td><td><?= (int) $langCount ?> (<?= e(strtoupper(implode(', ', $publishOrder ?? $languages))) ?>)</td></tr>
+        <?php if (($incompleteCount ?? 0) > 0): ?>
+        <tr><td><strong>Products missing languages of their current version (completed at that version):</strong></td><td><?= (int) $incompleteCount ?></td></tr>
+        <?php endif; ?>
+        <tr><td><strong>Total PDFs to Generate:</strong></td><td><?= ($totalEligible + $totalAliases + $totalPlItems) * (int) $langCount ?><?= ($incompleteCount ?? 0) > 0 ? ' + missing languages' : '' ?></td></tr>
     </table>
 
     <?php if (!empty($resaleBlocked)): ?>
@@ -81,7 +85,7 @@
     </details>
     <?php endif; ?>
 
-    <?php if ($totalEligible === 0): ?>
+    <?php if ($totalEligible === 0 && (int) ($incompleteCount ?? 0) === 0): ?>
         <p class="text-muted">No eligible items. Edit the raw materials used in your formulas (any save counts) to make them eligible. Resale items also need their composition entered.</p>
     <?php else: ?>
 

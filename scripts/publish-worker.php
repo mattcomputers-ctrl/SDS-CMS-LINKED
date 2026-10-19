@@ -71,14 +71,19 @@ $db         = Database::getInstance();
 // date and base, alias and private-label copies agree.
 $languages   = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
 $plPublisher = new \SDS\Services\PrivateLabelPublisher();
+// UTC, like private_label_sds.published_at: rows written after this were
+// written during the run (the superseded checks below).
+$workerStartedAt = \SDS\Services\PublishClock::nowUtc();
 
 $total     = count($workItems);
 $published = 0;
 $failed    = 0;
 $errors    = [];
 
-// Cache computeBase() results — multiple languages for the same FG may
-// land in the same worker batch, no need to recompute. Separate cache
+// Cache computeBase() results — every item of a source (all languages,
+// aliases, private label) is in this worker's batch (planWorkerBatches,
+// 2026-10-19), sorted by language, English first; the source's first item
+// computes the base, the later languages reuse it. Separate cache
 // keys for FG vs resale so a resale RM id can't collide with an FG id.
 $baseDataCache       = [];
 $resaleBaseDataCache = [];
@@ -145,6 +150,27 @@ foreach ($workItems as $i => $item) {
                 writeWorkerProgress($progressFile, $total, $i + 1, $published, $failed, $errors, false);
                 continue;
             }
+            // A manual publish since the work list was built made a newer base
+            // version (and republished the private-label copies from it): skip
+            // quietly rather than publish this item from the older base.
+            // Also skip when, since this worker started, the item was already
+            // published from this base version in every configured language (a
+            // manual publish of the same version number before this worker
+            // reached it). Older rows from that version do not count: a run
+            // with a blank company phone republishes private labels from the
+            // latest base version on purpose, with current data.
+            $plFgLatest = (int) (\SDS\Models\PrivateLabelItem::fgLatestBaseVersions([$fgId])[$fgId] ?? 0);
+            $plFresh    = 0;
+            foreach (array_intersect_key(\SDS\Models\PrivateLabelItem::latestByItem([(int) $item['pl_item_id']])[(int) $item['pl_item_id']] ?? [], array_flip($languages)) as $plRow) {
+                if ((int) ($plRow['source_fg_version'] ?? 0) >= (int) $item['source_fg_version'] && (string) ($plRow['published_at'] ?? '') >= $workerStartedAt) {
+                    $plFresh++;
+                }
+            }
+            $plCurrent = $plFresh === count($languages);
+            if ((int) $item['source_fg_version'] > 0 && ($plFgLatest > (int) $item['source_fg_version'] || $plCurrent)) {
+                writeWorkerProgress($progressFile, $total, $i + 1, $published, $failed, $errors, false);
+                continue;
+            }
             if (!isset($baseDataCache[$fgId])) {
                 $baseDataCache[$fgId] = $generator->computeBase($fgId);
             }
@@ -207,6 +233,20 @@ foreach ($workItems as $i => $item) {
     }
 
     try {
+        // Batches run language by language (English first, 2026-10-19), so a
+        // source's later languages publish hours after its first. A manual
+        // publish in between already wrote a newer version for this sheet:
+        // skip quietly (progress advances, not failed), never write an older one.
+        $supRow = $aliasId !== null
+            ? $db->fetch("SELECT MAX(version) AS v FROM sds_versions WHERE alias_id = ? AND language = ? AND status = 'published'", [$aliasId, $lang])
+            : ($isResale
+                ? $db->fetch("SELECT MAX(version) AS v FROM sds_versions WHERE raw_material_id = ? AND alias_id IS NULL AND language = ? AND status = 'published'", [$rmId, $lang])
+                : $db->fetch("SELECT MAX(version) AS v FROM sds_versions WHERE finished_good_id = ? AND alias_id IS NULL AND language = ? AND status = 'published'", [$fgId, $lang]));
+        if ((int) ($supRow['v'] ?? 0) >= $version) {
+            writeWorkerProgress($progressFile, $total, $i + 1, $published, $failed, $errors, false);
+            continue;
+        }
+
         // Compute language-independent data once per source — formula
         // path caches by fg_id, resale path caches by rm_id, so the two
         // can't collide.
@@ -271,6 +311,14 @@ foreach ($workItems as $i => $item) {
         }
         if ($gateCache[$txKey] !== null) {
             throw new \RuntimeException($gateCache[$txKey]);
+        }
+        // The gate above is cached from the source's first item, which may
+        // be hours old by the time a later language runs (batches are
+        // ordered by language): re-check this item's own Section 14, read
+        // with this language's overrides as they are now. Renders nothing extra.
+        $itemTxError = \SDS\Services\SDSReadinessService::transportNotDeterminedError($sdsData);
+        if ($itemTxError !== null) {
+            throw new \RuntimeException($itemTxError);
         }
 
         // For alias items, replace product code/description in section 1

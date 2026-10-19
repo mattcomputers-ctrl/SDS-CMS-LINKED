@@ -205,6 +205,11 @@ try {
         echo "  Emails sent:     " . ($sendResults['emails_sent'] ?? 0) . "\n";
         echo "  Queued:          " . ($sendResults['queued'] ?? 0) . "\n";
         echo "  Skipped:         " . ($sendResults['skipped'] ?? 0) . "\n";
+        if (($sendResults['held'] ?? 0) > 0) {
+            // Product still missing the customer's language at its new
+            // version (a stopped bulk publish); sent once completed, or after a day.
+            echo "  Waiting for languages: " . $sendResults['held'] . "\n";
+        }
         if (($sendResults['retried'] ?? 0) > 0) {
             echo "  Queue retried:   " . $sendResults['retried'] . "\n";
         }

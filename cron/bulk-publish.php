@@ -18,6 +18,14 @@
  *      poll cycle, mark completed/failed with stats. RELEASE_LOCK on
  *      exit.
  *
+ * Language order (owner request 2026-10-19): the work list is built once
+ * per job, each source stays on one worker, and every worker publishes its
+ * English sheets first, then Spanish, German and French
+ * (BulkPublishController::planWorkerBatches). The log says when each
+ * language pass is complete. A run stopped part-way leaves some sources'
+ * current version in some languages only; the next run publishes the rest
+ * at the same version (BulkPublishController::missingLanguages).
+ *
  * The `cms_sync.auto_bulk_publish` admin toggle gates the CRON-driven
  * path (when this script is `require`d from cms-sync.php) but does
  * NOT affect standalone invocations — so the admin button always
@@ -60,6 +68,21 @@ function bp_countWorkerProcesses(string $token): int
     return is_string($out) ? (int) trim($out) : 0;
 }
 
+/** English name of a publish language for the log ("Spanish"); other codes upper-cased. */
+function bp_languageName(string $lang): string
+{
+    return ['en' => 'English', 'es' => 'Spanish', 'de' => 'German', 'fr' => 'French'][$lang] ?? strtoupper($lang);
+}
+
+/** "1h 05m" / "12m 30s" for the log. */
+function bp_elapsed(float $seconds): string
+{
+    $s = (int) round($seconds);
+    return $s >= 3600
+        ? sprintf('%dh %02dm', intdiv($s, 3600), intdiv($s % 3600, 60))
+        : sprintf('%dm %02ds', intdiv($s, 60), $s % 60);
+}
+
 /**
  * Execute a single bulk publish cycle: compute eligibility, fan work
  * items out to parallel workers, poll until complete, clean up. All
@@ -89,8 +112,17 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
     $fgs    = $eligibility['eligible'];
     $resale = $resaleEligibility['eligible'];
 
+    // Fresh sources whose current version is missing languages (a stopped or
+    // killed run): those languages are published at the same version.
+    $incompleteFgs    = $eligibility['incomplete'] ?? [];
+    $incompleteResale = $resaleEligibility['incomplete'] ?? [];
+
     echo "  Eligible finished goods: " . count($fgs) . " (blocked: " . count($eligibility['blocked']) . ")\n";
     echo "  Eligible resale items:   " . count($resale) . " (blocked: " . count($resaleEligibility['blocked']) . ")\n";
+    if ($incompleteFgs !== [] || $incompleteResale !== []) {
+        echo "  Missing languages to complete: " . count($incompleteFgs) . " finished goods, "
+            . count($incompleteResale) . " resale items\n";
+    }
 
     $stats = [
         'eligible_fg_count'     => count($fgs),
@@ -101,14 +133,17 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
     ];
     BulkPublishQueue::updateProgress($jobId, $stats);
 
-    if (empty($fgs) && empty($resale)) {
+    if (empty($fgs) && empty($resale) && $incompleteFgs === [] && $incompleteResale === []) {
         echo "  Nothing to publish.\n";
         return $stats;
     }
 
     // ── Work items ───────────────────────────────────────────────
-    $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
-    $workItems = BulkPublishController::buildWorkItems($db, $fgs, $resale, $languages);
+    // Built once per job, never per language: a list rebuilt after the
+    // English sheets landed would see those sources as current.
+    $languages     = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
+    $publishOrder  = BulkPublishController::publishLanguageOrder($languages);
+    $workItems     = BulkPublishController::buildWorkItems($db, $fgs, $resale, $languages, $incompleteFgs, $incompleteResale);
 
     $totalItems  = count($workItems);
     $workerCount = BulkPublishController::getWorkerCount($totalItems);
@@ -123,9 +158,30 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
         return $stats;
     }
 
-    echo "  Work items:       {$totalItems} (" . count($languages) . " languages × "
-        . (count($fgs) + count($resale)) . " items + alias and private label variants)\n";
-    echo "  Worker processes: {$workerCount}\n";
+    // Owner request 2026-10-19: each source stays on one worker and every
+    // worker publishes its English sheets first, then Spanish, German, French.
+    $batches = BulkPublishController::planWorkerBatches($workItems, $workerCount, $publishOrder);
+
+    $perLanguage = [];
+    $completion  = 0;
+    foreach ($workItems as $item) {
+        $lang = (string) ($item['language'] ?? '');
+        $perLanguage[$lang] = ($perLanguage[$lang] ?? 0) + 1;
+        if (!empty($item['completion'])) {
+            $completion++;
+        }
+    }
+    $langSummary = [];
+    foreach (array_merge($publishOrder, array_diff(array_keys($perLanguage), $publishOrder)) as $lang) {
+        if (isset($perLanguage[$lang])) {
+            $langSummary[] = ($lang === 'all' ? 'private label' : strtoupper($lang)) . ' ' . $perLanguage[$lang];
+        }
+    }
+
+    echo "  Work items:       {$totalItems} (" . implode(', ', $langSummary) . ")"
+        . ($completion > 0 ? ", {$completion} completing missing languages" : '') . "\n";
+    echo "  Publish order:    " . strtoupper(implode(', ', $publishOrder)) . " (private label documents with English)\n";
+    echo "  Worker processes: " . count($batches) . "\n";
 
     // ── Spawn workers ────────────────────────────────────────────
     $progressDir = $basePath . '/storage/exports';
@@ -133,8 +189,26 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
     $logDir = $basePath . '/storage/logs';
     if (!is_dir($logDir)) { mkdir($logDir, 0755, true); }
 
-    $token   = bin2hex(random_bytes(8));
-    $batches = array_chunk($workItems, (int) ceil($totalItems / $workerCount));
+    $token = bin2hex(random_bytes(8));
+
+    // Per batch, how many of its items belong to each language pass and the
+    // ones before it (batches are sorted by language), so the poll loop can
+    // tell when every worker has finished, e.g., its English items.
+    $passEnds = [];
+    foreach ($batches as $i => $batch) {
+        foreach ($publishOrder as $rank => $lang) {
+            $passEnds[$i][$lang] = 0;
+        }
+        foreach ($batch as $pos => $item) {
+            $rank = BulkPublishController::languageRank($item, $publishOrder);
+            foreach ($publishOrder as $r => $lang) {
+                if ($rank <= $r) {
+                    $passEnds[$i][$lang] = $pos + 1;
+                }
+            }
+        }
+    }
+    $passDone = [];
 
     $progressFiles = [];
     $batchFiles    = [];
@@ -194,8 +268,9 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
         $totalProcessed = 0;
         $totalTotal     = 0;
         $errors         = [];
+        $processedBy    = [];
 
-        foreach ($progressFiles as $pf) {
+        foreach ($progressFiles as $idx => $pf) {
             $content = @file_get_contents($pf);
             if ($content === false) { $allComplete = false; continue; }
             $progress = json_decode($content, true);
@@ -208,6 +283,38 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
                 $errors = array_merge($errors, $progress['errors']);
             }
             if (empty($progress['complete'])) { $allComplete = false; }
+            // A worker that stopped early also writes complete=true; only a
+            // full count says its items of a language pass were all processed.
+            $processedBy[$idx] = (int) ($progress['processed'] ?? 0);
+        }
+
+        // Log each language pass once every worker has processed its items
+        // of that language (and of the languages before it).
+        $currentPass = null;
+        foreach ($publishOrder as $lang) {
+            if (isset($passDone[$lang])) {
+                continue;
+            }
+            $done = true;
+            foreach ($passEnds as $idx => $ends) {
+                if (($processedBy[$idx] ?? 0) < $ends[$lang]) {
+                    $done = false;
+                    break;
+                }
+            }
+            if (!$done) {
+                $currentPass ??= $lang;
+                continue;
+            }
+            if ($currentPass === null) {
+                $passDone[$lang] = true;
+                if (($perLanguage[$lang] ?? 0) === 0) {
+                    continue;   // no items in this language (e.g. a private-label-only run)
+                }
+                echo "  [" . date('H:i:s') . "] " . bp_languageName($lang) . " pass complete after "
+                    . bp_elapsed(microtime(true) - $start) . " ({$totalProcessed}/{$totalTotal} items processed, "
+                    . "{$totalPublished} published, {$totalFailed} failed so far)\n";
+            }
         }
 
         // Live push to the job row so the admin queue view + progress
@@ -257,7 +364,8 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
 
         if (time() - $lastReportAt >= 30) {
             echo "  [" . date('H:i:s') . "] Progress: {$totalProcessed}/{$totalTotal} "
-                . "({$totalPublished} published, {$totalFailed} failed)\n";
+                . "({$totalPublished} published, {$totalFailed} failed)"
+                . ($currentPass !== null ? ', ' . bp_languageName($currentPass) . ' pass' : '') . "\n";
             $lastReportAt = time();
         }
         sleep(2);
@@ -312,9 +420,11 @@ function bp_runPostJobSteps(Database $db): void
         $sent    = (int) ($r['emails_sent'] ?? 0);
         $queued  = (int) ($r['queued']      ?? 0);
         $skipped = (int) ($r['skipped']     ?? 0);
+        $held    = (int) ($r['held']        ?? 0);
         $errors  = (int) count($r['errors'] ?? []);
         $errTail = $errors > 0 ? ", {$errors} errors" : '';
-        echo "  Auto-send: {$sent} sent, {$queued} queued, {$skipped} skipped{$errTail}\n";
+        $heldTail = $held > 0 ? ", {$held} waiting for languages" : '';
+        echo "  Auto-send: {$sent} sent, {$queued} queued, {$skipped} skipped{$heldTail}{$errTail}\n";
     } catch (\Throwable $e) {
         echo "  Auto-send failed (non-fatal): " . $e->getMessage() . "\n";
     }
@@ -411,6 +521,10 @@ try {
             echo "  Job #{$jobId} failed: " . $e->getMessage() . "\n";
             // Keep draining — a single failure shouldn't block the queue.
         }
+
+        // Shipment lines whose product is still missing some of the
+        // customer's languages at its English version (a stopped run) wait
+        // in SDSAutoSendService, at most a day; see languagesCatchingUp().
 
         // Post-job auto-send only when bulk-publish runs standalone
         // (admin button). When require'd from cms-sync.php, the parent

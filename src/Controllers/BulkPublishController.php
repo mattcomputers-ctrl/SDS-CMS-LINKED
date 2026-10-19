@@ -13,8 +13,10 @@ use SDS\Services\BulkPublishQueue;
 /**
  * BulkPublishController — Publish new SDS versions for all finished goods (admin only).
  *
- * Spawns parallel PHP CLI worker processes (one per CPU core) to generate
+ * Spawns parallel PHP CLI worker processes (getWorkerCount()) to generate
  * SDS data and PDFs across all supported languages with progress tracking.
+ * Each worker publishes its English sheets first, then Spanish, German and
+ * French (planWorkerBatches(), owner request 2026-10-19).
  */
 class BulkPublishController
 {
@@ -75,6 +77,291 @@ class BulkPublishController
         $workers = max(8, self::getCpuCount() * 4);
 
         return min($workers, $totalItems);
+    }
+
+    /**
+     * Bulk publish language order (owner, 2026-10-19): English first, the
+     * sheets needed most often, then Spanish, German and French. Any other
+     * configured language follows in config order.
+     */
+    public const PUBLISH_LANGUAGE_ORDER = ['en', 'es', 'de', 'fr'];
+
+    /**
+     * The configured languages in bulk publish order (PUBLISH_LANGUAGE_ORDER
+     * first, then the rest in config order). Only bulk publish uses this
+     * order; sds.supported_languages keeps its own order everywhere else.
+     */
+    public static function publishLanguageOrder(array $configured): array
+    {
+        $configured = array_values(array_unique(array_map('strval', $configured)));
+        $first      = array_values(array_intersect(self::PUBLISH_LANGUAGE_ORDER, $configured));
+        return array_merge($first, array_values(array_diff($configured, $first)));
+    }
+
+    /**
+     * Split the work items into at most $workers batches, one per worker, so
+     * that English lands first. DB-free.
+     *
+     *  - All items of one source (FG: base, alias and private-label items;
+     *    resale RM: base and alias items) stay in one batch, so the worker
+     *    computes the source's data and gates once and reuses them for every
+     *    language. Only a run with fewer sources than workers splits sources
+     *    by language, so no worker sits idle.
+     *  - Exactly min($workers, sources) batches, balanced by item count
+     *    (largest source first onto the least-loaded batch).
+     *  - Each batch is then sorted by language in $languageOrder, a stable
+     *    sort: every worker does all its English items, then Spanish, and so
+     *    on. Within a language a source's base item is still followed by its
+     *    alias items, and a private-label item ('all' languages) sorts with
+     *    the first language, right after its FG's English items.
+     *
+     * @return array<int, array<int, array>>
+     */
+    public static function planWorkerBatches(array $items, int $workers, array $languageOrder): array
+    {
+        if ($items === []) {
+            return [];
+        }
+
+        $groups = [];
+        foreach ($items as $item) {
+            $key = (($item['type'] ?? '') === 'resale') ? 'rm' . (int) $item['rm_id'] : 'fg' . (int) $item['id'];
+            $groups[$key][] = $item;
+        }
+
+        $workers = max(1, $workers);
+
+        // A small run (fewer sources than workers, e.g. an hourly CMS-sync
+        // run) would leave workers idle: split each source by language
+        // instead (private-label items with English), as the old split did.
+        // The parts then compute the source's data once each.
+        if (count($groups) < $workers) {
+            $parts = [];
+            foreach ($groups as $key => $group) {
+                foreach ($group as $item) {
+                    $parts[$key . '|' . self::languageRank($item, $languageOrder)][] = $item;
+                }
+            }
+            $groups = $parts;
+        }
+
+        // Longest group first onto the least-loaded batch (LPT), so every
+        // worker gets work and the batches stay even; then each batch keeps
+        // its groups in the original (product code) order.
+        $batchCount = min($workers, count($groups));
+        $keys       = array_keys($groups);
+        $firstSeen  = array_flip($keys);
+        usort($keys, static fn (string $a, string $b): int =>
+            (count($groups[$b]) <=> count($groups[$a])) ?: ($firstSeen[$a] <=> $firstSeen[$b]));
+        $loads  = array_fill(0, $batchCount, 0);
+        $assign = array_fill(0, $batchCount, []);
+        foreach ($keys as $key) {
+            $least = 0;
+            for ($b = 1; $b < $batchCount; $b++) {
+                if ($loads[$b] < $loads[$least]) {
+                    $least = $b;
+                }
+            }
+            $assign[$least][] = $key;
+            $loads[$least]   += count($groups[$key]);
+        }
+
+        $batches = [];
+        foreach ($assign as $keysInBatch) {
+            usort($keysInBatch, static fn (string $a, string $b): int => $firstSeen[$a] <=> $firstSeen[$b]);
+            $batch = [];
+            foreach ($keysInBatch as $key) {
+                foreach ($groups[$key] as $item) {
+                    $batch[] = $item;
+                }
+            }
+            usort($batch, static fn (array $x, array $y): int =>
+                self::languageRank($x, $languageOrder) <=> self::languageRank($y, $languageOrder));
+            $batches[] = $batch;
+        }
+
+        return $batches;
+    }
+
+    /**
+     * Position of an item's language in the publish order. Private-label items
+     * ('all') rank with the first language; unknown languages go last.
+     */
+    public static function languageRank(array $item, array $languageOrder): int
+    {
+        $lang = (string) ($item['language'] ?? '');
+        if ($lang === 'all') {
+            return 0;
+        }
+        $pos = array_search($lang, $languageOrder, true);
+        return $pos === false ? count($languageOrder) : (int) $pos;
+    }
+
+    /**
+     * Languages missing from a source's current version. DB-free.
+     *
+     * A run that is stopped or killed part-way leaves sources whose newest
+     * version exists in some languages only; the all-language staleness rule
+     * then sees them as current, so nothing would ever publish the rest.
+     * Those languages are published at the SAME version by the next run
+     * (buildWorkItems), never as a new version, so a language that keeps
+     * failing is retried without new versions of the others.
+     *
+     * @param array<string, array{live: ?int, any: ?int}> $byLanguage per language: the highest
+     *        published version that is not deleted (live) and including retired rows (any).
+     *        A language retired on purpose (Admin → SDS Versions) is not "missing".
+     * @return array{version: int, missing: string[]}|null null when complete or never published
+     */
+    public static function missingLanguages(array $byLanguage, array $languages): ?array
+    {
+        $current = self::currentVersion($byLanguage, $languages);
+        if ($current === 0) {
+            return null;
+        }
+
+        $missing = [];
+        foreach ($languages as $lang) {
+            if ((int) ($byLanguage[$lang]['any'] ?? 0) < $current) {
+                $missing[] = $lang;
+            }
+        }
+
+        return $missing === [] ? null : ['version' => $current, 'missing' => $missing];
+    }
+
+    /** A source's current version: its highest live version in the configured languages (0 = none). DB-free. */
+    public static function currentVersion(array $byLanguage, array $languages): int
+    {
+        $current = 0;
+        foreach ($languages as $lang) {
+            $current = max($current, (int) ($byLanguage[$lang]['live'] ?? 0));
+        }
+        return $current;
+    }
+
+    /**
+     * When the source's current version was FIRST published: the earliest
+     * sheet time among the configured languages at that version, retired
+     * sheets included. Rule 2 compares this, not the latest sheet, with the
+     * newest upstream change (2026-10-19): a worker computes a source's data
+     * once, at its first (English) sheet, and writes the other languages later
+     * in the run, so a change made after the first sheet must still make the
+     * source stale (otherwise the later sheets' times would hide it). The same
+     * time is where the alias and completion checks start ('since'), so
+     * retiring the first sheet moves none of them. Languages at an older
+     * version (still to be completed) do not count. DB-free.
+     *
+     * @param array<string, array{live: ?int, any?: ?int, last?: ?string, last_any?: ?string}> $byLanguage
+     *        last: newest live sheet; last_any: newest sheet including retired ones
+     */
+    public static function currentVersionPublishedAt(array $byLanguage, array $languages): ?string
+    {
+        $current = self::currentVersion($byLanguage, $languages);
+        if ($current === 0) {
+            return null;
+        }
+        $first = null;
+        foreach ($languages as $lang) {
+            $row = $byLanguage[$lang] ?? null;
+            if ($row === null) {
+                continue;
+            }
+            // The newest sheet of a language whose highest version (retired
+            // included) is the current one IS its current-version sheet.
+            $at = (int) ($row['any'] ?? 0) === $current ? ($row['last_any'] ?? $row['last'] ?? null)
+                : ((int) ($row['live'] ?? 0) === $current ? ($row['last'] ?? null) : null);
+            if ($at !== null && ($first === null || $at < $first)) {
+                $first = (string) $at;
+            }
+        }
+        return $first;
+    }
+
+    /**
+     * True when one of a source's aliases got a sheet from the source's
+     * current-version run (published at or after $since) but is not at that
+     * alias version in every configured language: a run stopped part-way
+     * through an alias's languages, e.g. during the last (French) pass.
+     * Judged by version, as the worker's superseded check is: a language whose
+     * newest sheet (retired included) is at or above the alias's run version
+     * is done, whenever it was written, so nothing is flagged that the worker
+     * would then skip. An alias with no sheet from that run (added later) is
+     * left to on-demand alias publishing, as before. DB-free.
+     *
+     * @param array<int, array<string, array{v: int, last: string}>> $aliasSheets
+     *        alias id => [language => highest version, newest sheet time]
+     */
+    public static function aliasesIncomplete(array $aliasSheets, string $since, array $languages): bool
+    {
+        foreach ($aliasSheets as $langs) {
+            if (self::aliasMissingLanguages($langs, $since, $languages) !== []) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The languages one alias still needs at its run version (aliasesIncomplete),
+     * with that version; [] when it is complete or has no sheet from the run.
+     * DB-free.
+     *
+     * @param array<string, array{v: int, last: string}> $langs
+     * @return string[]
+     */
+    public static function aliasMissingLanguages(array $langs, string $since, array $languages, ?int &$runVersion = null): array
+    {
+        $runVersion = 0;
+        foreach ($langs as $p) {
+            if ((string) $p['last'] >= $since) {
+                $runVersion = max($runVersion, (int) $p['v']);
+            }
+        }
+        if ($runVersion === 0) {
+            return [];
+        }
+        $missing = [];
+        foreach ($languages as $lang) {
+            if ((int) ($langs[$lang]['v'] ?? 0) < $runVersion) {
+                $missing[] = $lang;
+            }
+        }
+        return $missing;
+    }
+
+    /**
+     * Per alias base code (aliases.internal_code_base): the aliases bulk
+     * publish uses (deduplicateAliasesByBaseCode, in buildWorkItems' order),
+     * each with, per language, its highest version and newest sheet time
+     * (retired sheets included, so a sheet retired on purpose counts as done).
+     *
+     * @return array<string, array<int, array<string, array{v: int, last: string}>>>
+     */
+    private static function aliasSheetTimes(Database $db): array
+    {
+        $byAlias = [];
+        foreach ($db->fetchAll(
+            "SELECT alias_id, language, MAX(version) AS v, MAX(published_at) AS last
+             FROM sds_versions
+             WHERE status = 'published' AND alias_id IS NOT NULL
+             GROUP BY alias_id, language"
+        ) as $r) {
+            if ($r['last'] !== null) {
+                $byAlias[(int) $r['alias_id']][(string) $r['language']] = ['v' => (int) $r['v'], 'last' => (string) $r['last']];
+            }
+        }
+
+        $groups = [];
+        foreach ($db->fetchAll("SELECT id, customer_code, description, internal_code_base FROM aliases ORDER BY customer_code") as $a) {
+            $groups[(string) $a['internal_code_base']][] = $a;
+        }
+        $out = [];
+        foreach ($groups as $base => $rows) {
+            foreach (self::deduplicateAliasesByBaseCode($rows) as $rep) {
+                $out[$base][(int) $rep['id']] = $byAlias[(int) $rep['id']] ?? [];
+            }
+        }
+        return $out;
     }
 
     /**
@@ -161,10 +448,14 @@ class BulkPublishController
         }
 
         $languages = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
+        // A blank company phone blocks completing missing languages too (buildWorkItems).
+        $companyPhoneError = \SDS\Services\SDSReadinessService::companyEmergencyPhoneErrorFromDb($db);
+        $incompleteCount   = $companyPhoneError !== null ? 0
+            : count($eligibility['incomplete'] ?? []) + count($resaleEligibility['incomplete'] ?? []);
 
         view('admin/bulk-publish', [
             'pageTitle'           => 'Bulk SDS Publish',
-            'companyPhoneError'   => \SDS\Services\SDSReadinessService::companyEmergencyPhoneErrorFromDb($db),
+            'companyPhoneError'   => $companyPhoneError,
             'fgCount'             => count($eligibleFgs),
             'blockedCount'        => count($blockedFgs),
             'aliasCount'          => $aliasCount,
@@ -175,6 +466,8 @@ class BulkPublishController
             'resaleAliasCount'    => $resaleAliasCount,
             'langCount'           => count($languages),
             'languages'           => $languages,
+            'publishOrder'        => self::publishLanguageOrder($languages),
+            'incompleteCount'     => $incompleteCount,
         ]);
     }
 
@@ -200,8 +493,13 @@ class BulkPublishController
      * All data is batch-loaded up front; recursion runs in memory with
      * cycle detection and per-formula memoization.
      *
-     * @return array{eligible: array<int,array{id:int,product_code:string}>,
-     *               blocked:  array<int,array{id:int,product_code:string}>}
+     * 'incomplete' lists FGs that pass both rules' gates and are fresh, but
+     * whose current version is missing languages (missingLanguages()); the
+     * run publishes just those languages at that version.
+     *
+     * @return array{eligible:   array<int,array{id:int,product_code:string}>,
+     *               blocked:    array<int,array{id:int,product_code:string}>,
+     *               incomplete: array<int,array{id:int,product_code:string,version:int,missing:string[]}>}
      */
     public static function computeEligibleFinishedGoods(Database $db): array
     {
@@ -278,16 +576,34 @@ class BulkPublishController
             }
         }
 
-        // Last published SDS timestamp per FG (non-alias, published, not deleted)
+        // Last published SDS timestamp per FG (non-alias, published, not
+        // deleted), and per language the highest version (not deleted /
+        // including retired rows) for the missing-language check (2026-10-19).
         $lastPublishedByFg = [];
+        $versionsByFg      = [];
         foreach ($db->fetchAll(
-            "SELECT finished_good_id, MAX(published_at) AS last
+            "SELECT finished_good_id, language,
+                    MAX(CASE WHEN is_deleted = 0 THEN published_at END) AS last,
+                    MAX(published_at)                                   AS last_any,
+                    MAX(CASE WHEN is_deleted = 0 THEN version END)      AS live_ver,
+                    MAX(version)                                        AS any_ver
              FROM sds_versions
-             WHERE status = 'published' AND is_deleted = 0 AND alias_id IS NULL
-             GROUP BY finished_good_id"
+             WHERE status = 'published' AND alias_id IS NULL AND finished_good_id IS NOT NULL
+             GROUP BY finished_good_id, language"
         ) as $r) {
-            $lastPublishedByFg[(int) $r['finished_good_id']] = $r['last'];
+            $fgId = (int) $r['finished_good_id'];
+            if ($r['last'] !== null && (!isset($lastPublishedByFg[$fgId]) || $r['last'] > $lastPublishedByFg[$fgId])) {
+                $lastPublishedByFg[$fgId] = $r['last'];
+            }
+            $versionsByFg[$fgId][(string) $r['language']] = [
+                'live' => $r['live_ver'] !== null ? (int) $r['live_ver'] : null,
+                'any'  => $r['any_ver'] !== null ? (int) $r['any_ver'] : null,
+                'last' => $r['last'],
+                'last_any' => $r['last_any'],
+            ];
         }
+        $languages  = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
+        $aliasTimes = self::aliasSheetTimes($db);
 
         // RM code lookup — re-check ingredients that were stored as raw
         // materials but actually match a finished good (with pack extension).
@@ -360,8 +676,9 @@ class BulkPublishController
         };
 
         // ── Evaluate each FG against the two rules ──
-        $eligible = [];
-        $blocked  = [];
+        $eligible   = [];
+        $blocked    = [];
+        $incomplete = [];
 
         foreach ($fgs as $fg) {
             $result      = $walk((int) $fg['formula_id'], []);
@@ -392,9 +709,21 @@ class BulkPublishController
                 continue;
             }
 
-            // Rule 2: skip FGs whose SDS is still fresh
-            $lastPub = $lastPublishedByFg[(int) $fg['id']] ?? null;
+            // Rule 2: skip FGs whose SDS is still fresh — judged by when the
+            // current version was FIRST published (currentVersionPublishedAt)
+            // — unless the current version is missing languages or alias
+            // sheets (a stopped or killed run), which the next run completes
+            // at the same version.
+            $byLang  = $versionsByFg[(int) $fg['id']] ?? [];
+            $lastPub = self::currentVersionPublishedAt($byLang, $languages);
             if ($lastPub !== null && $maxTs !== null && $lastPub >= $maxTs) {
+                $gap = self::missingLanguages($byLang, $languages);
+                if ($gap === null && self::aliasesIncomplete($aliasTimes[(string) $fg['product_code']] ?? [], $lastPub, $languages)) {
+                    $gap = ['version' => self::currentVersion($byLang, $languages), 'missing' => []];
+                }
+                if ($gap !== null) {
+                    $incomplete[] = $entry + $gap + ['since' => $lastPub];
+                }
                 continue;
             }
 
@@ -444,7 +773,24 @@ class BulkPublishController
             }
         }
 
-        return ['eligible' => $eligible, 'blocked' => $blocked];
+        // Missing languages are completed under the same Rule 3: every
+        // upstream FG component must be published or eligible. One that is
+        // not waits for a later run (it is already published, so not blocked).
+        $eligibleIds = array_flip(array_column($eligible, 'id'));
+        $incomplete  = array_values(array_filter($incomplete, function (array $entry) use ($fgToFormulaId, $walk, $lastPublishedByFg, $eligibleIds): bool {
+            $formulaId = $fgToFormulaId[$entry['id']] ?? null;
+            if ($formulaId === null) {
+                return false;
+            }
+            foreach ($walk($formulaId, [])['fg_deps'] as $depFgId => $_) {
+                if (!isset($lastPublishedByFg[$depFgId]) && !isset($eligibleIds[$depFgId])) {
+                    return false;
+                }
+            }
+            return true;
+        }));
+
+        return ['eligible' => $eligible, 'blocked' => $blocked, 'incomplete' => $incomplete];
     }
 
     /**
@@ -470,8 +816,12 @@ class BulkPublishController
      * resolves the base to the lowest id). RawMaterial::sqlNeedsSds() keeps
      * this cron-path query working before migration 064 runs.
      *
-     * @return array{eligible: array<int,array{rm_id:int,base_code:string,description:string}>,
-     *               blocked:  array<int,array{rm_id:int,base_code:string,description:string}>}
+     * 'incomplete': fresh RMs whose current version is missing languages, as
+     * in computeEligibleFinishedGoods().
+     *
+     * @return array{eligible:   array<int,array{rm_id:int,base_code:string,description:string}>,
+     *               blocked:    array<int,array{rm_id:int,base_code:string,description:string}>,
+     *               incomplete: array<int,array{rm_id:int,base_code:string,description:string,version:int,missing:string[]}>}
      */
     public static function computeEligibleResaleItems(Database $db): array
     {
@@ -578,24 +928,37 @@ class BulkPublishController
             }
         }
 
-        // Latest non-alias resale SDS per RM (raw_material_id set,
-        // alias_id NULL).
-        $lastPublished = [];
+        // Per RM and language (raw_material_id set, alias_id NULL): the last
+        // published time and the highest version, for Rule 2 and the
+        // missing-language check (2026-10-19), as for finished goods.
+        $versionsByRm = [];
         foreach ($db->fetchAll(
-            "SELECT raw_material_id, MAX(published_at) AS last
+            "SELECT raw_material_id, language,
+                    MAX(CASE WHEN is_deleted = 0 THEN published_at END) AS last,
+                    MAX(published_at)                                   AS last_any,
+                    MAX(CASE WHEN is_deleted = 0 THEN version END)      AS live_ver,
+                    MAX(version)                                        AS any_ver
              FROM sds_versions
              WHERE status = 'published'
-               AND is_deleted = 0
                AND alias_id IS NULL
                AND raw_material_id IN ({$placeholders})
-             GROUP BY raw_material_id",
+             GROUP BY raw_material_id, language",
             $rmIds
         ) as $r) {
-            $lastPublished[(int) $r['raw_material_id']] = $r['last'];
+            $rmId = (int) $r['raw_material_id'];
+            $versionsByRm[$rmId][(string) $r['language']] = [
+                'live' => $r['live_ver'] !== null ? (int) $r['live_ver'] : null,
+                'any'  => $r['any_ver'] !== null ? (int) $r['any_ver'] : null,
+                'last' => $r['last'],
+                'last_any' => $r['last_any'],
+            ];
         }
+        $languages  = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
+        $aliasTimes = self::aliasSheetTimes($db);
 
-        $eligible = [];
-        $blocked  = [];
+        $eligible   = [];
+        $blocked    = [];
+        $incomplete = [];
 
         foreach ($candidates as $c) {
             $rmId = (int) $c['rm_id'];
@@ -611,17 +974,29 @@ class BulkPublishController
                 continue;
             }
 
-            // Rule 2 freshness check.
+            // Rule 2 freshness check, by when the current version was first
+            // published (as for finished goods).
             $maxTs   = $rmMaxUpstream[$rmId] ?? null;
-            $lastPub = $lastPublished[$rmId] ?? null;
+            $byLang  = $versionsByRm[$rmId] ?? [];
+            $lastPub = self::currentVersionPublishedAt($byLang, $languages);
             if ($lastPub !== null && $maxTs !== null && $lastPub >= $maxTs) {
-                continue; // SDS is already up to date — skip, not blocked.
+                // Up to date — skip, not blocked — unless its current version
+                // is missing languages or alias sheets (completed at that version).
+                $gap = self::missingLanguages($byLang, $languages);
+                if ($gap === null && $entry['alias_representative']
+                    && self::aliasesIncomplete($aliasTimes[(string) $c['base_code']] ?? [], $lastPub, $languages)) {
+                    $gap = ['version' => self::currentVersion($byLang, $languages), 'missing' => []];
+                }
+                if ($gap !== null) {
+                    $incomplete[] = $entry + $gap + ['since' => $lastPub];
+                }
+                continue;
             }
 
             $eligible[] = $entry;
         }
 
-        return ['eligible' => $eligible, 'blocked' => $blocked];
+        return ['eligible' => $eligible, 'blocked' => $blocked, 'incomplete' => $incomplete];
     }
 
     /**
@@ -642,12 +1017,19 @@ class BulkPublishController
      * Kept public + static so the CMS sync cron can reuse the same
      * item shape without duplicating the build logic — both callers
      * feed the output straight into publish-worker.php.
+     *
+     * $incompleteFgs / $incompleteResale (computeEligible*()['incomplete'])
+     * add the items that complete a current version in its missing
+     * languages (completionItems()). The list is built once per job; the
+     * order of items here does not matter, planWorkerBatches() sets it.
      */
     public static function buildWorkItems(
         Database $db,
         array $eligibleFgs,
         array $eligibleResaleItems,
-        array $languages
+        array $languages,
+        array $incompleteFgs = [],
+        array $incompleteResale = []
     ): array {
         $workItems = [];
         // Audit #68 — a blank company emergency phone blocks every standard,
@@ -768,7 +1150,117 @@ class BulkPublishController
             }
         }
 
+        // Missing languages of current versions (a stopped or killed run).
+        // A blank company phone blocks these sheets like every other base sheet.
+        if ($companyPhoneError === null) {
+            foreach ($incompleteFgs as $fg) {
+                array_push($workItems, ...self::completionItems($db, $fg, false, $languages));
+            }
+            foreach ($incompleteResale as $resale) {
+                array_push($workItems, ...self::completionItems($db, $resale, true, $languages));
+            }
+        }
+
         return $workItems;
+    }
+
+    /**
+     * Work items that complete one source's current version (an 'incomplete'
+     * entry: version + missing languages):
+     *  - base items for the missing languages, at that version;
+     *  - alias items for every language in which the alias has no sheet from
+     *    that version's run (published since the version's first sheet), at
+     *    the alias version that run gave it, or the next one if it gave none;
+     *  - for an FG, its active auto-republish private-label items that are
+     *    not yet derived from this version in every configured language
+     *    (including items never published, as a normal run would emit them).
+     * Items carry 'completion' => true (counted in the runner's log).
+     */
+    private static function completionItems(Database $db, array $entry, bool $isResale, array $languages): array
+    {
+        $version = (int) $entry['version'];
+        if ($isResale) {
+            $srcId  = (int) $entry['rm_id'];
+            $code   = (string) $entry['base_code'];
+            $srcSql = 'raw_material_id = ? AND alias_id IS NULL';
+            $base   = ['type' => 'resale', 'rm_id' => $srcId, 'product_code' => $code];
+        } else {
+            $srcId  = (int) $entry['id'];
+            $code   = (string) $entry['product_code'];
+            $srcSql = 'finished_good_id = ? AND alias_id IS NULL';
+            $base   = ['id' => $srcId, 'product_code' => $code];
+        }
+
+        $items = [];
+        foreach ($entry['missing'] as $lang) {
+            $items[] = $base + ['language' => $lang, 'version' => $version, 'completion' => true];
+        }
+
+        // When this version's run began (currentVersionPublishedAt), the same
+        // time the eligibility checks used.
+        $since = $entry['since'] ?? $db->fetch(
+            "SELECT MIN(published_at) AS t FROM sds_versions WHERE {$srcSql} AND version = ? AND status = 'published'",
+            [$srcId, $version]
+        )['t'] ?? null;
+
+        $aliases = ($isResale && !($entry['alias_representative'] ?? true)) ? [] : self::deduplicateAliasesByBaseCode($db->fetchAll(
+            "SELECT id, customer_code, description FROM aliases WHERE internal_code_base = ? ORDER BY customer_code",
+            [$code]
+        ));
+        foreach ($aliases as $alias) {
+            $aliasId = (int) $alias['id'];
+            // Per language: highest version and newest sheet (retired included,
+            // so a sheet retired on purpose counts as done).
+            $langs = [];
+            foreach ($db->fetchAll(
+                "SELECT language, MAX(version) AS v, MAX(published_at) AS last FROM sds_versions
+                 WHERE alias_id = ? AND status = 'published'
+                 GROUP BY language",
+                [$aliasId]
+            ) as $r) {
+                if ($r['last'] !== null) {
+                    $langs[(string) $r['language']] = ['v' => (int) $r['v'], 'last' => (string) $r['last']];
+                }
+            }
+            // By version, as the worker's superseded check: languages below the
+            // version the run gave this alias; if it gave none, the next one.
+            $runVersion = 0;
+            $todo = $since !== null ? self::aliasMissingLanguages($langs, (string) $since, $languages, $runVersion) : [];
+            if ($runVersion === 0) {
+                $runVersion = ((int) ($db->fetch("SELECT MAX(version) AS v FROM sds_versions WHERE alias_id = ?", [$aliasId])['v'] ?? 0)) + 1;
+                $todo       = $languages;
+            }
+            foreach ($todo as $lang) {
+                $items[] = $base + [
+                    'language'          => $lang,
+                    'version'           => $runVersion,
+                    'alias_id'          => $aliasId,
+                    'alias_code'        => $alias['customer_code'],
+                    'alias_description' => $alias['description'],
+                    'completion'        => true,
+                ];
+            }
+        }
+
+        if (!$isResale) {
+            $plItems = \SDS\Models\PrivateLabelItem::forFinishedGood($srcId, true);
+            $latest  = $plItems === [] ? [] : \SDS\Models\PrivateLabelItem::latestByItem(array_column($plItems, 'id'));
+            foreach ($plItems as $pli) {
+                // Only configured languages count; an item with none yet (the
+                // stopped run never reached it) is published too, as a normal
+                // run would have.
+                $sources = [];
+                foreach (array_intersect_key($latest[(int) $pli['id']] ?? [], array_flip($languages)) as $row) {
+                    $sources[] = $row['source_fg_version'] ?? 0;
+                }
+                if ($sources === [] || min($sources) < $version) {
+                    $items[] = self::privateLabelWorkItem(['id' => $srcId, 'product_code' => $code], $pli, $version, null)
+                        + ['completion' => true];
+                }
+            }
+        }
+
+        return $items;
     }
 
     /**
@@ -797,8 +1289,9 @@ class BulkPublishController
     /**
      * POST /admin/bulk-publish/start — Begin bulk publish with parallel workers.
      *
-     * Work is split by (finished-good, language) pairs so that each PDF can
-     * be generated in its own worker, maximising parallelism.
+     * The work list has one item per (source, language) PDF; planWorkerBatches()
+     * keeps each source on one worker and orders every worker's batch by
+     * language, English first.
      */
     public function start(): void
     {

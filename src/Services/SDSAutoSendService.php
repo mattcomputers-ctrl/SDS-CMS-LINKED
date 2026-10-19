@@ -50,6 +50,15 @@ class SDSAutoSendService
     /** getLatestPublishedSds() returned null because the alias resolves to a raw material marked No SDS required (migration 064). */
     private bool $aliasNotRequired = false;
 
+    /** Rows per language from the last getLatestPublishedSds() for an alias (null for a finished good). */
+    private ?array $lastAliasRows = null;
+
+    /**
+     * How long a shipment line may wait for its product's other languages
+     * (languagesCatchingUp), counted from the English sheet being sent.
+     */
+    public const LANGUAGE_CATCH_UP_HOURS = 24;
+
     /** RawMaterial::sdsNotRequiredBases(), loaded once per run (migration 064). */
     private ?array $noSdsBases = null;
 
@@ -84,6 +93,7 @@ class SDSAutoSendService
             'skipped'     => 0,
             'errors'      => [],
             'retried'     => 0,
+            'held'        => 0,
         ];
         $this->resetNoSdsCache();
 
@@ -136,6 +146,7 @@ class SDSAutoSendService
         // Each order collects its items that need SDS sent
         $orders = [];
         $orderQueued = []; // track orders with queued items
+        $heldIds = [];     // lines waiting for their product's other languages (stay unprocessed)
 
         foreach ($shipments as $row) {
             $shipTo = $row['ship_to'] ?? '';
@@ -193,6 +204,19 @@ class SDSAutoSendService
                 }
                 $this->queueForReview($customer, $row, $this->sdsUnavailableReason());
                 $results['queued']++;
+                continue;
+            }
+
+            // Bulk publish runs English first (2026-10-19). A run stopped
+            // part-way leaves products whose newest English sheet is a version
+            // the customer's other languages do not have yet, and the send
+            // decision below is keyed on the English sheet: the customer would
+            // get the old sheet in their language and never the completed one.
+            // Such a line waits (sds_processed_at stays NULL) until the next
+            // run completes those languages, at most LANGUAGE_CATCH_UP_HOURS.
+            if ($this->languagesCatchingUp($customer, (int) $fg['id'], $sdsVersion)) {
+                $heldIds[(int) $row['id']] = true;
+                $results['held']++;
                 continue;
             }
 
@@ -268,7 +292,8 @@ class SDSAutoSendService
         // shouldSend() keeps re-scanned rows from emailing twice.
         // Failed sends are queued above, so the retry phase owns them.
         $now = date('Y-m-d H:i:s');
-        foreach (array_chunk(array_column($shipments, 'id'), 500) as $chunk) {
+        $examined = array_values(array_filter(array_column($shipments, 'id'), static fn ($id): bool => !isset($heldIds[(int) $id])));
+        foreach (array_chunk($examined, 500) as $chunk) {
             $placeholders = implode(',', array_fill(0, count($chunk), '?'));
             $this->db->update(
                 'shipment_detail',
@@ -356,12 +381,14 @@ class SDSAutoSendService
 
         $this->aliasPublishError = null;
         $this->aliasNotRequired  = false;
+        $this->lastAliasRows     = null;
         if ($alias) {
             // Audit #53 / Q9: an alias is always sent as its OWN published
             // sheet (alias base code + description); published first when it
             // has none. Never the base sheet, never another alias's sheet.
             try {
                 $rows = AliasPublisher::ensurePublished((int) $alias['id'], null, 'Auto-published for shipment SDS send', $this->db);
+                $this->lastAliasRows = $rows;
                 $default = strtolower((string) App::config('sds.default_language', 'en'));
                 return $rows[$default] ?? (reset($rows) ?: null);
             } catch (SdsNotRequiredException $e) {
@@ -382,6 +409,61 @@ class SDSAutoSendService
              ORDER BY version DESC LIMIT 1",
             [$fgId]
         );
+    }
+
+    /**
+     * True when a shipment line should wait for its product's other languages:
+     * the sheet about to be sent ($sdsVersion, the English / default-language
+     * row from getLatestPublishedSds) is newer than the newest sheet in one of
+     * the customer's languages, and was published within
+     * LANGUAGE_CATCH_UP_HOURS. Uses the alias rows of the last
+     * getLatestPublishedSds() call for an alias, else the FG's base rows.
+     */
+    private function languagesCatchingUp(array $customer, int $fgId, array $sdsVersion): bool
+    {
+        $byLang = [];
+        if ($this->lastAliasRows !== null) {
+            foreach ($this->lastAliasRows as $lang => $r) {
+                $byLang[(string) $lang] = (int) ($r['version'] ?? 0);
+            }
+        } else {
+            foreach ($this->db->fetchAll(
+                "SELECT language, MAX(version) AS v FROM sds_versions
+                 WHERE finished_good_id = ? AND alias_id IS NULL AND status = 'published' AND is_deleted = 0
+                 GROUP BY language",
+                [$fgId]
+            ) as $r) {
+                $byLang[(string) $r['language']] = (int) $r['v'];
+            }
+        }
+
+        return self::languagesBehind(
+            $byLang,
+            (int) ($sdsVersion['version'] ?? 0),
+            (string) ($sdsVersion['published_at'] ?? ''),
+            Customer::getLanguages($customer),
+            PublishClock::nowUtc(time() - self::LANGUAGE_CATCH_UP_HOURS * 3600)
+        );
+    }
+
+    /**
+     * DB-free core of languagesCatchingUp(): one of $customerLanguages is
+     * below $sentVersion (or has no sheet) while the sent sheet was published
+     * at or after $holdSince (UTC, like sds_versions.published_at).
+     *
+     * @param array<string,int> $versionByLanguage newest live version per language
+     */
+    public static function languagesBehind(array $versionByLanguage, int $sentVersion, string $sentPublishedAt, array $customerLanguages, string $holdSince): bool
+    {
+        if ($sentVersion <= 0 || $sentPublishedAt === '' || $sentPublishedAt < $holdSince) {
+            return false;
+        }
+        foreach ($customerLanguages as $lang) {
+            if ((int) ($versionByLanguage[$lang] ?? 0) < $sentVersion) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

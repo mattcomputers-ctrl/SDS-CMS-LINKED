@@ -18,64 +18,70 @@
  */
 
 require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/cron-helpers.php';
 
 use SDS\Core\App;
 use SDS\Core\Database;
 use SDS\Services\BackupService;
 
-echo "[" . date('Y-m-d H:i:s') . "] Scheduled backup check...\n";
-
-$config = BackupService::getFtpConfig();
-
-// Check if scheduled backups are enabled
-if (($config['schedule_enabled'] ?? '') !== '1') {
-    echo "Scheduled backups are disabled. Exiting.\n";
-    exit(0);
-}
-
-require_once __DIR__ . '/cron-helpers.php';
-$db = Database::getInstance();
-if (cron_in_blackout($db)) {
-    echo "[" . date('Y-m-d H:i:s') . "] In blackout window — skipping.\n";
-    exit(0);
-}
-
-$force = in_array('--force', $argv ?? [], true);
-
-// Check if it's time to run based on schedule_frequency
-if (!$force) {
-    $frequency = $config['schedule_frequency'] ?? 'daily';
-    $scheduleTime = $config['schedule_time'] ?? '02:00';
-    $currentHour = (int) date('H');
-    $currentMinute = (int) date('i');
-    $scheduleParts = explode(':', $scheduleTime);
-    $scheduleHour = (int) ($scheduleParts[0] ?? 2);
-    $scheduleMinute = (int) ($scheduleParts[1] ?? 0);
-
-    // Only run if current time matches schedule time (within 30-minute window)
-    $currentMinutes = $currentHour * 60 + $currentMinute;
-    $scheduleMinutes = $scheduleHour * 60 + $scheduleMinute;
-    if (abs($currentMinutes - $scheduleMinutes) > 30) {
-        echo "Not scheduled to run at this time (schedule: {$scheduleTime}, current: " . date('H:i') . "). Exiting.\n";
-        exit(0);
-    }
-
-    // For weekly, only run on Sunday
-    if ($frequency === 'weekly' && (int) date('w') !== 0) {
-        echo "Weekly backup only runs on Sunday. Exiting.\n";
-        exit(0);
-    }
-
-    // For monthly, only run on the 1st
-    if ($frequency === 'monthly' && (int) date('j') !== 1) {
-        echo "Monthly backup only runs on the 1st. Exiting.\n";
-        exit(0);
-    }
-}
-
-echo "Running scheduled backup...\n";
-
+// Before 2026-10-19 this script used the database without bootstrapping App,
+// so every run died on its first line and no scheduled backup was ever made.
+// App sets error_reporting(0) on production, so every failure is caught and
+// echoed below.
 try {
+    new App();
+
+    echo "[" . date('Y-m-d H:i:s') . "] Scheduled backup check...\n";
+
+    $config = BackupService::getFtpConfig();
+
+    // Check if scheduled backups are enabled
+    if (($config['schedule_enabled'] ?? '') !== '1') {
+        echo "Scheduled backups are disabled. Exiting.\n";
+        exit(0);
+    }
+
+    $db = Database::getInstance();
+    if (cron_in_blackout($db)) {
+        echo "[" . date('Y-m-d H:i:s') . "] In blackout window — skipping.\n";
+        exit(0);
+    }
+
+    $force = in_array('--force', $argv ?? [], true);
+
+    // Check if it's time to run based on schedule_frequency / schedule_time
+    if (!$force) {
+        $skip = BackupService::scheduleSkipReason(
+            (string) (($config['schedule_frequency'] ?? '') ?: 'daily'),
+            (string) (($config['schedule_time'] ?? '') ?: '02:00'),
+            time()
+        );
+        if ($skip !== null) {
+            echo $skip . " Exiting.\n";
+            exit(0);
+        }
+
+        // A cron installed more often than hourly would hit the same hour
+        // twice; one scheduled backup per window is enough. The lock covers a
+        // backup still running (its backups row is written at the end); the
+        // row check covers one that has finished.
+        $lock = fopen(App::basePath() . '/storage/scheduled_backup.lock', 'c');
+        if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
+            echo "A scheduled backup is already running. Exiting.\n";
+            exit(0);
+        }
+        $recent = $db->fetch(
+            "SELECT COUNT(*) AS n FROM backups
+             WHERE notes = 'Scheduled backup' AND created_at > UTC_TIMESTAMP() - INTERVAL 2 HOUR"
+        );
+        if ((int) ($recent['n'] ?? 0) > 0) {
+            echo "A scheduled backup was already made in the last 2 hours. Exiting.\n";
+            exit(0);
+        }
+    }
+
+    echo "Running scheduled backup...\n";
+
     $result = BackupService::runScheduledBackup();
 
     $backup = $result['backup'];
@@ -88,7 +94,6 @@ try {
         } else {
             echo "FTP upload FAILED: {$result['ftp']['message']}\n";
             // Log the failure
-            $db = Database::getInstance();
             $db->insert('audit_log', [
                 'entity_type' => 'backup',
                 'entity_id'   => (string) $backup['id'],
@@ -100,6 +105,6 @@ try {
 
     echo "[" . date('Y-m-d H:i:s') . "] Scheduled backup complete.\n";
 } catch (\Throwable $e) {
-    echo "ERROR: " . $e->getMessage() . "\n";
+    echo "[" . date('Y-m-d H:i:s') . "] Scheduled backup FAILED: " . get_class($e) . ': ' . $e->getMessage() . "\n";
     exit(1);
 }

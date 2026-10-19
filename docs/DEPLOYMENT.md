@@ -515,13 +515,15 @@ All five checks should print "OK".
 
 ## 8. Cron Job Configuration
 
-The SDS System includes three cron scripts for automated maintenance:
+The installers set up the `cms-sync.php` and `housekeeping.php` lines for the `www-data` user, and `update.sh` adds either one if it is missing. `scheduled_backup.php` is optional and is never added for you: add its line (below, also shown on Admin → Backups) if you enable scheduled backups.
 
-| Script                | Purpose                                             | Recommended Schedule        |
-|-----------------------|-----------------------------------------------------|-----------------------------|
-| `refresh-federal.php` | Refreshes PubChem and NIOSH hazard data for all CAS numbers | Weekly, Sundays at 2:00 AM  |
-| `refresh-sara.php`    | Imports/updates SARA 313 TRI chemical list from CSV | Weekly, Sundays at 3:00 AM  |
-| `housekeeping.php`    | Purges old audit logs, refresh logs, and temp files  | Daily at 4:00 AM            |
+| Script                 | Purpose                                             | Schedule                    |
+|------------------------|-----------------------------------------------------|-----------------------------|
+| `cms-sync.php`         | Imports items, formulas, aliases and shipments from CMS; runs the automatic bulk publish | Hourly, at :07 |
+| `housekeeping.php`     | Purges routine audit rows (bulk publish, downloads, logins) past `cron.log_retention_days`, old refresh logs, temp files, expired bulk exports, and files left by killed bulk publish runs. Review records and other history are never purged. | Daily at 4:00 AM (server time) |
+| `scheduled_backup.php` | Optional: scheduled backups and FTP upload, set on Admin → Backups | Hourly (the script decides when to run) |
+
+(`refresh-federal.php` and `refresh-sara.php` were removed in March 2026; delete any crontab lines that still call them.)
 
 ### Install the Crontab
 
@@ -534,14 +536,12 @@ crontab -u www-data -e
 Add the following entries:
 
 ```cron
-# SDS System - Federal hazard data refresh (weekly, Sunday 2:00 AM)
-0 2 * * 0 /usr/bin/php /var/www/sds-system/cron/refresh-federal.php >> /var/www/sds-system/storage/logs/cron-federal.log 2>&1
-
-# SDS System - SARA 313 list refresh (weekly, Sunday 3:00 AM)
-0 3 * * 0 /usr/bin/php /var/www/sds-system/cron/refresh-sara.php >> /var/www/sds-system/storage/logs/cron-sara.log 2>&1
-
-# SDS System - Housekeeping (daily, 4:00 AM)
-0 4 * * * /usr/bin/php /var/www/sds-system/cron/housekeeping.php >> /var/www/sds-system/storage/logs/cron-housekeeping.log 2>&1
+# Housekeeping (daily, 4:00 AM server time)
+0 4 * * * cd /var/www/sds-system && /usr/bin/php cron/housekeeping.php >> storage/logs/cron-housekeeping.log 2>&1
+# CMS Sync (hourly)
+7 * * * * cd /var/www/sds-system && /usr/bin/php cron/cms-sync.php >> storage/logs/cms-sync.log 2>&1
+# Optional: scheduled backups (hourly; only if enabled on Admin -> Backups)
+0 * * * * cd /var/www/sds-system && /usr/bin/php cron/scheduled_backup.php >> storage/logs/cron-backup.log 2>&1
 ```
 
 ### Verify Crontab Installation
@@ -552,14 +552,11 @@ crontab -u www-data -l
 
 ### Test Each Cron Script Manually
 
-Run each script once to confirm it works:
+Run housekeeping once as a dry run to confirm it starts. `--dry-run` lists what each step would delete and deletes nothing; without it the script deletes files straight away:
 
 ```bash
-sudo -u www-data /usr/bin/php /var/www/sds-system/cron/refresh-federal.php
-sudo -u www-data /usr/bin/php /var/www/sds-system/cron/housekeeping.php
+cd /var/www/sds-system && sudo -u www-data /usr/bin/php cron/housekeeping.php --dry-run
 ```
-
-> **Note for `refresh-sara.php`:** This script requires the EPA TRI chemical list CSV to be placed at `/var/www/sds-system/storage/data/sara313.csv` before running. Download it from https://www.epa.gov/toxics-release-inventory-tri-program/tri-listed-chemicals.
 
 ### Log Rotation (Optional but Recommended)
 
@@ -848,8 +845,8 @@ systemctl status cron
 # Check for cron execution in syslog
 grep CRON /var/log/syslog | tail -20
 
-# Test manually
-sudo -u www-data /usr/bin/php /var/www/sds-system/cron/housekeeping.php
+# Test manually (dry run: reports, deletes nothing)
+cd /var/www/sds-system && sudo -u www-data /usr/bin/php cron/housekeeping.php --dry-run
 ```
 
 ### "Class not found" Errors

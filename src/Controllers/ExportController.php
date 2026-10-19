@@ -24,6 +24,15 @@ class ExportController
     /** Export files older than this are auto-deleted (seconds). */
     public const EXPORT_TTL_SECONDS = 7200; // 2 hours
 
+    /**
+     * Files this export writes in storage/exports: the ZIPs (export-worker.php),
+     * progress_{token}_{lang}.json (and the legacy progress_{token}.json),
+     * manifest_{token}.json and worker_{token}_{lang}.log. Only these expire.
+     * The ZIP alternative includes libzip's temp file (.zip.XXXXXX[.part]),
+     * left behind when a worker is killed during close().
+     */
+    private const OWNED_FILE_PATTERN = '/^(?:SDS_Export_[\w-]+\.zip(?:\.[A-Za-z0-9]{6}(?:\.part)?)?|progress_[a-f0-9]{16}(?:_[A-Za-z-]+)?\.json|manifest_[a-f0-9]{16}\.json|worker_[a-f0-9]{16}_[A-Za-z-]+\.log)$/';
+
     /** Page size for paginated export queries. */
     private const EXPORT_QUERY_PAGE_SIZE = 500;
 
@@ -463,22 +472,42 @@ class ExportController
      */
     public static function cleanupExpiredExports(?string $exportDir = null): int
     {
-        $exportDir = $exportDir ?? App::basePath() . self::EXPORT_DIR;
-        if (!is_dir($exportDir)) {
-            return 0;
-        }
-
         $count = 0;
-        $cutoff = time() - self::EXPORT_TTL_SECONDS;
-
-        foreach (glob($exportDir . '/*') as $file) {
-            if (is_file($file) && filemtime($file) < $cutoff) {
-                unlink($file);
+        foreach (self::expiredExportFiles($exportDir) as $file) {
+            if (@unlink($file)) {
                 $count++;
             }
         }
 
         return $count;
+    }
+
+    /**
+     * Bulk export files older than the TTL. Only the files this export writes
+     * (OWNED_FILE_PATTERN) qualify: storage/exports also holds the SDS
+     * Archive's sds-archive-*.zip files, which are kept until an admin deletes
+     * them, and the bulk publish runner's publish_* files, which a long run
+     * still needs (2026-10-19; before this, every file older than 2 h went).
+     *
+     * @return string[]
+     */
+    public static function expiredExportFiles(?string $exportDir = null, ?int $now = null): array
+    {
+        $exportDir = $exportDir ?? App::basePath() . self::EXPORT_DIR;
+        if (!is_dir($exportDir)) {
+            return [];
+        }
+
+        $cutoff = ($now ?? time()) - self::EXPORT_TTL_SECONDS;
+        $out    = [];
+        foreach (glob($exportDir . '/*') ?: [] as $file) {
+            if (is_file($file) && preg_match(self::OWNED_FILE_PATTERN, basename($file))
+                && (int) @filemtime($file) < $cutoff) {
+                $out[] = $file;
+            }
+        }
+
+        return $out;
     }
 
     private static function formatBytes(int $bytes): string

@@ -654,6 +654,21 @@ else
 fi
 
 # ============================================================
+# Step 11c: Ensure housekeeping cron job exists
+# ============================================================
+# Only the installers (since 2026-03-07) added this line, so older servers may
+# not have it. The script itself only works from 2026-10-19 (it never
+# bootstrapped the app before), so adding it here is safe.
+print_step "Checking housekeeping cron job..."
+if crontab -u www-data -l 2>/dev/null | grep -q 'cron/housekeeping.php'; then
+    print_success "Housekeeping cron job already installed."
+else
+    print_step "Installing housekeeping cron job (daily, 04:00 server time)..."
+    ( crontab -u www-data -l 2>/dev/null; echo "# Housekeeping: purge routine audit rows, temp files, expired exports, killed-run leftovers (daily)"; echo "0 4 * * * cd $INSTALL_DIR && /usr/bin/php cron/housekeeping.php >> storage/logs/cron-housekeeping.log 2>&1" ) | crontab -u www-data - 2>/dev/null
+    print_success "Housekeeping cron job installed."
+fi
+
+# ============================================================
 # Step 12: Verification
 # ============================================================
 print_header "Step 12: Post-Update Verification"

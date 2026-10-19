@@ -75,7 +75,7 @@
                         <?= ($ftpConfig['schedule_enabled'] ?? '') === '1' ? 'checked' : '' ?>>
                     Enable Scheduled Backups
                 </label>
-                <small class="text-muted">Requires cron job: <code style="font-size: 0.8rem;">0 * * * * /usr/bin/php <?= e(dirname(dirname(dirname(__DIR__)))) ?>/cron/scheduled_backup.php</code></small>
+                <small class="text-muted">Requires an hourly cron job for www-data: <code style="font-size: 0.8rem;">0 * * * * cd <?= e(dirname(dirname(dirname(__DIR__)))) ?> &amp;&amp; /usr/bin/php cron/scheduled_backup.php &gt;&gt; storage/logs/cron-backup.log 2&gt;&amp;1</code></small>
             </div>
         </div>
 

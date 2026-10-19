@@ -704,6 +704,50 @@ class BackupService
     }
 
     /**
+     * Why a cron run at $now should NOT make the scheduled backup, or null
+     * when it is due. The cron runs hourly (see admin/backups.php), so a
+     * backup is due in the hour that starts at the scheduled time, wrapping
+     * past midnight (a 23:45 schedule runs at 00:00). Weekly (Sunday) and
+     * monthly (1st) are judged by the scheduled moment, not the run time.
+     * The schedule is a wall-clock time in the app time zone, compared as an
+     * instant: on the spring-forward day a missing 02:00 counts as 03:00, and
+     * on the fall-back day a repeated 01:30 counts once (its first time).
+     * Before 2026-10-19 a ±30 minute window ran :30 schedules twice and
+     * 23:31-23:59 schedules never.
+     */
+    public static function scheduleSkipReason(string $frequency, string $scheduleTime, int $now): ?string
+    {
+        $parts  = explode(':', $scheduleTime);
+        $hour   = max(0, min(23, (int) ($parts[0] ?? 2)));
+        $minute = max(0, min(59, (int) ($parts[1] ?? 0)));
+        $tz     = new \DateTimeZone(date_default_timezone_get());
+        $today  = (new \DateTimeImmutable('@' . $now))->setTimezone($tz);
+
+        // Today's slot, or yesterday's for a run just after midnight.
+        $slot = null;
+        foreach ([$today, $today->modify('-1 day')] as $day) {
+            $candidate = new \DateTimeImmutable($day->format('Y-m-d') . sprintf(' %02d:%02d:00', $hour, $minute), $tz);
+            $since     = $now - $candidate->getTimestamp();
+            if ($since >= 0 && $since < 3600) {
+                $slot = $candidate;
+                break;
+            }
+        }
+
+        if ($slot === null) {
+            return "Not scheduled to run at this time (schedule: {$scheduleTime}, current: " . $today->format('H:i') . ').';
+        }
+        if ($frequency === 'weekly' && (int) $slot->format('w') !== 0) {
+            return 'Weekly backup only runs on Sunday.';
+        }
+        if ($frequency === 'monthly' && (int) $slot->format('j') !== 1) {
+            return 'Monthly backup only runs on the 1st.';
+        }
+
+        return null;
+    }
+
+    /**
      * Run a scheduled backup: create the backup and optionally upload to FTP.
      *
      * @return array{backup: array, ftp: array|null}

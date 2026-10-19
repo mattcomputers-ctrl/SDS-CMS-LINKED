@@ -42,6 +42,7 @@ step is expanded in sections 1–4 below; the section number is in brackets.
 12b. **Batch F (migrations 060–062)** — acrylate flag seed, family SDS profiles, STOT target organs, combustible-dust determinations on powder raws, Section 9 flash point edit review, then Bump ALL [3.8d, 3.2c].
 12c. **Resale import (migrations 063–064)** — deploy with `update.sh` (064 adds a column); the first CMS sync creates a raw material for every Resale item; mark the non-chemicals **No SDS required** (Raw Materials list, admins only until a group is given the permission) instead of deleting them, then enter composition for the resale items you sell [3.8e].
 12d. **Tables and label layout (code only, 2026-10-19)** — Section 11 carcinogenicity and component toxicological data, and Section 15 SARA 313, print as tables; long labels keep their value on the same line; Section 2 prints "Signal Word:"; table cells no longer drop their last wrapped line or overprint across a page break. Press **Bump ALL** so every sheet republishes, then spot-check [3.8f].
+12e. **Housekeeping and scheduled backups (code only, 2026-10-19)** — neither cron script had ever run (both used the database before starting the app). Check for SDS Archive ZIPs you still need, run housekeeping once with `--dry-run`, confirm the cron lines, and check the log the next morning [3.8g].
 13. **Live-DB test suites** on the server [3.8].
 14. **Spot-check three sheets** (solvent ink, water-based, UV with acrylates) in EN and ES against the Section checklist [4.B].
 15. **Resume**: tick "Auto bulk publish" again and run one bulk publish; work through the failures it reports (each one is a publish gate from step 4 or 6) [3.9].
@@ -441,6 +442,26 @@ No migration. Code changes do not mark sheets out of date, so this needs a full 
    - [ ] Section 11: Carcinogenicity table (IARC / NTP / OSHA columns) for a product with a listed carcinogen; Component Toxicological Data table with every exposure limit line; "*" footnote for titanium dioxide / carbon black (inhalable dust); an operator Carcinogenicity edit still prints as text.
    - [ ] Section 15: SARA 313 table with the De Minimis Threshold column.
    - [ ] Sections 3, 8 and 12: a long chemical name prints in full (before this release the last wrapped line could be missing), and a table that crosses a page repeats its header with no overprinted row.
+
+### 3.8g Housekeeping and scheduled backups (2026-10-19, code only)
+
+`cron/housekeeping.php` and `cron/scheduled_backup.php` used the database without starting the app, so every run stopped with "Database has not been initialised". Housekeeping has never cleaned anything, and no scheduled backup has ever been made. From this release both work. What housekeeping now deletes each night:
+
+- Routine audit rows older than the retention: bulk publish rows, SDS and private-label downloads, logins and logouts. The retention is the longer of "Audit Log Retention (days)" on Settings → Maintenance and `cron.log_retention_days` in `config/config.php` (365), so the page can only make it longer; the purge is skipped below 90 days. Review records (a raw material counts as reviewed only through its audit rows), determinations, hazard and regulatory-list edits, permissions and settings history are never purged. Nothing is old enough until about February 2027.
+- Dataset refresh log rows beyond the newest 100.
+- Files in `storage/temp` older than a day (e.g. `classify-diff` reports: copy any you want to keep). If `paths.temp` in `config/config.php` points anywhere else, the sweep is skipped and the log says so.
+- Bulk SDS Export files older than 2 hours. Only the export's own files: SDS Archive ZIPs (`sds-archive-*.zip`) stay until deleted on Admin → SDS Archive, and a running bulk publish's files are never touched. Half-written ZIPs left by a killed export or archive build also go. Until this release, starting a bulk export deleted every file in `storage/exports` older than 2 hours, archive ZIPs included.
+- Files left by killed bulk publish runs (such as job 2235) after 3 days; empty worker logs after 3 days, all worker logs after 30. Never while a bulk publish is running.
+
+1. - [ ] **SDS Archive ZIPs** still on the server (any made more than 2 hours before a bulk export was started have already gone):
+   `ls -la /var/www/sds-system/storage/exports/sds-archive-*.zip`
+2. - [ ] **Dry run** — lists what each step would delete, deletes nothing; it should end with "Housekeeping complete.":
+   `cd /var/www/sds-system && sudo -u www-data php cron/housekeeping.php --dry-run`
+3. - [ ] **Cron line** — `sudo crontab -u www-data -l | grep housekeeping`. If nothing prints, the next `sudo bash update.sh` adds it (step 11c), or add it now (one `sudo`, so the existing lines are kept):
+   `sudo sh -c '( crontab -u www-data -l 2>/dev/null; echo "0 4 * * * cd /var/www/sds-system && /usr/bin/php cron/housekeeping.php >> storage/logs/cron-housekeeping.log 2>&1" ) | crontab -u www-data -'`
+   Then `sudo crontab -u www-data -l | grep -c 'cms-sync\|housekeeping'` should print 2.
+4. - [ ] **Next morning** — `sudo tail -n 20 /var/www/sds-system/storage/logs/cron-housekeeping.log` ends with "Housekeeping complete." ("finished with errors" names the failed step.)
+5. - [ ] **Scheduled backups** — only if "Enable Scheduled Backups" is ticked on Admin → Backups. Check the hourly line exists: `sudo crontab -u www-data -l | grep scheduled_backup` (the page shows the line to add; neither the installers nor `update.sh` add it). The first scheduled backup is made in the hour after the scheduled time, so check free space for a full backup first: `df -h /tmp /var/www/sds-system`. A :30 schedule now runs once, not twice, schedules from 23:31 to 23:59 now run (just after midnight), the daylight-saving days make exactly one backup, and a second run never starts while a backup is still being made.
 
 ### 3.9 Finish
 

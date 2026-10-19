@@ -281,6 +281,44 @@ check(AS_::languagesBehind(['en' => 5], 5, '2026-10-19 08:00:00', ['en', 'de'], 
 check(!AS_::languagesBehind(['en' => 5, 'es' => 4], 5, '2026-10-17 08:00:00', ['es'], $holdSince), 'after a day: send what there is (never held for good)');
 check(AS_::LANGUAGE_CATCH_UP_HOURS === 24, 'the wait is at most 24 hours');
 
+echo "\nc4. Language passes for the queue page (migration 065)\n";
+$lp = [
+    [['language' => 'en'], ['language' => 'all'], ['language' => 'es'], ['language' => 'de'], ['language' => 'fr']],
+    [['language' => 'en'], ['language' => 'en'], ['language' => 'es'], ['language' => 'es'], ['language' => 'de'], ['language' => 'fr']],
+];
+$ends = BP::passEnds($lp, $order);
+check($ends === [['en' => 2, 'es' => 3, 'de' => 4, 'fr' => 5], ['en' => 2, 'es' => 4, 'de' => 5, 'fr' => 6]], 'pass boundaries per worker (private label in the English pass)', $ends);
+$pp = BP::passProgress($ends, [0 => 2, 1 => 3], $order);
+check($pp['en'] === ['items' => 4, 'processed' => 4] && $pp['es'] === ['items' => 3, 'processed' => 1] && $pp['fr'] === ['items' => 2, 'processed' => 0], 'English 4/4 done, Spanish 1/3 under way', $pp);
+check(BP::passProgress($ends, [], $order)['en'] === ['items' => 4, 'processed' => 0], 'nothing processed yet');
+$json = json_encode(['order' => ['en', 'es', 'de'], 'passes' => [
+    'en' => ['items' => 4, 'processed' => 4, 'done_at' => '2026-10-20 14:05:00'],
+    'es' => ['items' => 3, 'processed' => 1, 'done_at' => null],
+    'de' => ['items' => 0, 'processed' => 0, 'done_at' => null],
+]]);
+$rows = BP::languageProgressRows($json);
+check(count($rows) === 2 && $rows[0]['name'] === 'English' && $rows[0]['done_at'] === '2026-10-20 14:05:00' && $rows[1]['name'] === 'Spanish' && $rows[1]['done_at'] === null,
+    'queue rows: English done at 14:05 UTC, Spanish under way, a language without items left out', $rows);
+check(BP::languageProgressRows(null) === [] && BP::languageProgressRows('') === [] && BP::languageProgressRows('{bad') === [], 'older jobs / bad data: no rows');
+// A small run split by language: Spanish, German and French workers can all
+// finish while one English worker is still busy; each language counts on its own.
+$splitBatches = BP::planWorkerBatches(sample_items($languages, 3, 0), 8, $order);
+$splitEnds    = BP::passEnds($splitBatches, $order);
+$enBusy       = null;
+$procSplit    = [];
+foreach ($splitBatches as $bi => $b) {
+    $isEn = $b[0]['language'] === 'en';
+    if ($isEn && $enBusy === null) {
+        $enBusy = $bi;
+        $procSplit[$bi] = 0;   // still on its first English item
+    } else {
+        $procSplit[$bi] = count($b);
+    }
+}
+$sp = BP::passProgress($splitEnds, $procSplit, $order);
+check($sp['en']['processed'] < $sp['en']['items'] && $sp['es']['processed'] === $sp['es']['items'] && $sp['fr']['processed'] === $sp['fr']['items'],
+    'split run: Spanish and French complete on their own while English is still running', $sp);
+
 // ---------------------------------------------------------------------
 echo "\nd. Wiring\n";
 $src = static fn (string $rel): string => (string) file_get_contents($basePath . '/' . $rel);
@@ -326,6 +364,23 @@ $view = $src('src/Views/admin/bulk-publish.php');
 check(str_contains($view, '<?php if ($totalEligible === 0 && (int) ($incompleteCount ?? 0) === 0): ?>'), 'Publish All is offered when only missing languages are due');
 $checklist = $src('docs/post-update-checklist.md');
 check(str_contains($checklist, 'BulkPublishCompletionLiveTest'), 'the live-DB completion test is in the server checklist');
+
+$mig = $src('migrations/065_bulk_publish_language_progress.sql');
+check(str_contains($mig, "COLUMN_NAME = 'language_progress'") && str_contains($mig, 'ADD COLUMN `language_progress` TEXT NULL')
+    && str_contains($mig, "INSERT IGNORE INTO `schema_migrations` (`version`) VALUES ('065_bulk_publish_language_progress');"), 'migration 065: re-runnable language_progress column');
+$queueSvc = $src('src/Services/BulkPublishQueue.php');
+check(str_contains($queueSvc, "AND COLUMN_NAME = 'language_progress'") && str_contains($queueSvc, 'if (!self::$hasLanguageProgress) {'), 'progress is written only once the column exists (cron safe before 065)');
+check(str_contains($queueSvc, 'if (self::$hasLanguageProgress !== true && time() - self::$languageProgressCheckedAt >= 60) {'), 'a missing column is checked again each minute (065 applied while a runner is busy)');
+check(str_contains($runner, 'foreach (BulkPublishController::passProgress($passEnds, $processedBy, $publishOrder) as $lang => $p) {')
+    && str_contains($runner, "if (\$p['processed'] < \$p['items']) {"), 'runner marks each language done on its own count');
+check(str_contains($runner, '$processedBy        = array_fill_keys(array_keys($progressFiles), 0);') && !str_contains($runner, "\$errors         = [];\n        \$processedBy    = [];"), 'a torn progress-file read keeps the last good count');
+check(str_contains($runner, '$passEnds = BulkPublishController::passEnds($batches, $publishOrder);') && substr_count($runner, '$recordLanguages($processedBy, true);') === 3
+    && str_contains($runner, "\$langProgress['passes'][\$lang]['done_at'] = \\SDS\\Services\\PublishClock::nowUtc();"), 'runner records each pass (start, every 15 s, on completion, at the end and on abort)');
+check(str_contains($runner, 'BulkPublishQueue::updateLanguageProgress($jobId, $langProgress);') && !preg_match('/\$stats\[\'language_progress\'\]/', $runner), 'never through markCompleted\'s $stats');
+$queueView = $src('src/Views/admin/bulk-publish-queue.php');
+check(str_contains($queueView, 'BulkPublishController::languageProgressRows($job[\'language_progress\'] ?? null)') && str_contains($queueView, ' done</span>')
+    && str_contains($queueView, "PublishClock::display(\$lr['done_at'], 'm/d H:i')"), 'queue page shows "English done" with the local time');
+check(str_contains($view, 'function doneLanguages(job)') && str_contains($view, "langsDone.join(', ') + ' done.'"), 'Bulk SDS Publish page shows "English done." while the run continues');
 
 echo "\n{$checks} checks, {$failures} failures\n";
 exit($failures === 0 ? 0 : 1);

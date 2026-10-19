@@ -184,6 +184,90 @@ class BulkPublishController
     }
 
     /**
+     * Per batch, how many of its items belong to each language pass and the
+     * passes before it (batches are sorted by language), i.e. how far a
+     * worker must get to have finished, say, its English items. DB-free.
+     *
+     * @return array<int, array<string, int>> batch index => [language => prefix length]
+     */
+    public static function passEnds(array $batches, array $languageOrder): array
+    {
+        $ends = [];
+        foreach ($batches as $i => $batch) {
+            foreach ($languageOrder as $lang) {
+                $ends[$i][$lang] = 0;
+            }
+            foreach ($batch as $pos => $item) {
+                $rank = self::languageRank($item, $languageOrder);
+                foreach ($languageOrder as $r => $lang) {
+                    if ($rank <= $r) {
+                        $ends[$i][$lang] = $pos + 1;
+                    }
+                }
+            }
+        }
+        return $ends;
+    }
+
+    /**
+     * Items and processed items per language pass, from passEnds() and each
+     * worker's processed count (workers process their batch in order).
+     * Private-label items count in the first language's pass. DB-free.
+     *
+     * @param array<int, int> $processedBy batch index => items processed
+     * @return array<string, array{items: int, processed: int}>
+     */
+    public static function passProgress(array $passEnds, array $processedBy, array $languageOrder): array
+    {
+        $out = [];
+        foreach ($languageOrder as $lang) {
+            $out[$lang] = ['items' => 0, 'processed' => 0];
+        }
+        foreach ($passEnds as $i => $ends) {
+            $start = 0;
+            $done  = (int) ($processedBy[$i] ?? 0);
+            foreach ($languageOrder as $lang) {
+                $end = (int) ($ends[$lang] ?? $start);
+                $out[$lang]['items']     += $end - $start;
+                $out[$lang]['processed'] += max(0, min($done, $end) - $start);
+                $start = $end;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * The language passes of a job for display (queue and publish pages),
+     * from bulk_publish_jobs.language_progress (migration 065): in publish
+     * order, passes with items only. [] for older jobs or bad JSON. DB-free.
+     *
+     * @return array<int, array{lang: string, name: string, items: int, processed: int, done_at: ?string}>
+     */
+    public static function languageProgressRows(?string $json): array
+    {
+        $data = is_string($json) && $json !== '' ? json_decode($json, true) : null;
+        if (!is_array($data) || !is_array($data['order'] ?? null) || !is_array($data['passes'] ?? null)) {
+            return [];
+        }
+        $names = ['en' => 'English', 'es' => 'Spanish', 'de' => 'German', 'fr' => 'French'];
+        $rows  = [];
+        foreach ($data['order'] as $lang) {
+            $p = $data['passes'][$lang] ?? null;
+            if (!is_array($p) || (int) ($p['items'] ?? 0) <= 0) {
+                continue;
+            }
+            $rows[] = [
+                'lang'      => (string) $lang,
+                'name'      => $names[$lang] ?? strtoupper((string) $lang),
+                'items'     => (int) $p['items'],
+                'processed' => (int) ($p['processed'] ?? 0),
+                'done_at'   => isset($p['done_at']) && $p['done_at'] !== '' ? (string) $p['done_at'] : null,
+            ];
+        }
+        return $rows;
+    }
+
+    /**
      * Position of an item's language in the publish order. Private-label items
      * ('all') rank with the first language; unknown languages go last.
      */

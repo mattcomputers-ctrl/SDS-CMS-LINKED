@@ -14,6 +14,11 @@
     shown as <strong>running</strong> with <strong>0 active workers</strong> is stuck — use
     <em>Force fail</em> to clear it.
 </p>
+<p class="text-muted" style="margin-top:-0.25rem;">
+    Each job publishes English first, then Spanish, German and French. <strong>Languages</strong>
+    shows when each language was finished; English sheets are ready to use from that time, while
+    the run carries on with the other languages.
+</p>
 
 <p class="text-muted" style="margin-top:-0.25rem;">
     <strong>Active worker processes right now:</strong> <?= (int) ($activeWorkers ?? 0) ?>
@@ -32,6 +37,7 @@
             <th style="width:130px;">Started / Completed</th>
             <th style="width:120px;">Duration</th>
             <th style="width:220px;">Counts</th>
+            <th style="width:190px;">Languages</th>
             <th>Error</th>
             <th style="width:140px;">Actions</th>
         </tr>
@@ -79,6 +85,9 @@
             $countsText .= "pub: " . ($pub ?? '—') . " · fail: " . ($fai ?? '—');
 
             $err = trim((string) ($job['error_message'] ?? ''));
+
+            // Migration 065: language passes ("English done 10/20 14:05"); none for older jobs.
+            $langRows = \SDS\Controllers\BulkPublishController::languageProgressRows($job['language_progress'] ?? null);
         ?>
         <tr>
             <td><strong>#<?= (int) $job['id'] ?></strong></td>
@@ -102,6 +111,23 @@
             </td>
             <td><?= $duration !== '' ? e($duration) : '<span class="text-muted">—</span>' ?></td>
             <td style="font-size:0.85rem;"><?= e($countsText) ?></td>
+            <td style="font-size:0.85rem;">
+                <?php if ($langRows === []): ?>
+                    <span class="text-muted">—</span>
+                <?php endif; ?>
+                <?php foreach ($langRows as $lr): ?>
+                    <div<?= $lr['lang'] === 'en' ? ' title="Includes the private-label documents"' : '' ?>>
+                        <?php if ($lr['done_at'] !== null): ?>
+                            <span style="color:#28a745; font-weight:600;">&#10003; <?= e($lr['name']) ?> done</span>
+                            <span class="text-muted"><?= e(\SDS\Services\PublishClock::display($lr['done_at'], 'm/d H:i')) ?></span>
+                        <?php elseif ($status === 'running'): ?>
+                            <?= e($lr['name']) ?>: <?= $lr['processed'] > 0 ? number_format($lr['processed']) . ' / ' . number_format($lr['items']) : '<span class="text-muted">waiting</span>' ?>
+                        <?php else: ?>
+                            <span class="text-muted"><?= e($lr['name']) ?>: not finished (<?= number_format($lr['processed']) ?> / <?= number_format($lr['items']) ?>)</span>
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+            </td>
             <td style="font-size:0.8rem; color:#6b7280;"><?= $err !== '' ? e(mb_strimwidth($err, 0, 120, '…')) : '' ?></td>
             <td>
                 <?php if ($status === 'pending'): ?>

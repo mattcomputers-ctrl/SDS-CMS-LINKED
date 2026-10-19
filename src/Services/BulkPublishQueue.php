@@ -160,6 +160,41 @@ class BulkPublishQueue
         }
     }
 
+    /**
+     * Whether bulk_publish_jobs.language_progress exists (migration 065). A
+     * yes is kept for the process; a no is checked again after a minute, so a
+     * long runner started before update.sh applied 065 picks the column up.
+     */
+    private static ?bool $hasLanguageProgress = null;
+    private static int $languageProgressCheckedAt = 0;
+
+    /**
+     * Record the language passes of a running job (migration 065) for the
+     * queue and publish pages. A no-op before the migration has run, so the
+     * cron path never fails on the missing column. Never pass this through
+     * markCompleted()'s $stats (that update has no column allowlist).
+     *
+     * @param array{order: string[], passes: array<string, array{items: int, processed: int, done_at: ?string}>} $progress
+     */
+    public static function updateLanguageProgress(int $jobId, array $progress): void
+    {
+        $db = Database::getInstance();
+        if (self::$hasLanguageProgress !== true && time() - self::$languageProgressCheckedAt >= 60) {
+            $row = $db->fetch(
+                "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bulk_publish_jobs' AND COLUMN_NAME = 'language_progress'"
+            );
+            self::$hasLanguageProgress       = (int) ($row['n'] ?? 0) > 0;
+            self::$languageProgressCheckedAt = time();
+        }
+        if (!self::$hasLanguageProgress) {
+            return;
+        }
+        $db->update('bulk_publish_jobs', [
+            'language_progress' => json_encode($progress, JSON_UNESCAPED_UNICODE),
+        ], 'id = ?', [$jobId]);
+    }
+
     public static function markCompleted(int $jobId, array $stats): void
     {
         Database::getInstance()->update('bulk_publish_jobs', array_merge($stats, [

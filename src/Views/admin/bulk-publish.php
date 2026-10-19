@@ -285,14 +285,33 @@
         }
         if (status === 'running') {
             if (total > 0) {
+                var langsDone = doneLanguages(job);
                 return 'Running job #' + job.id + ': ' + done + ' / ' + total + ' items ('
-                    + pub + ' published, ' + failed + ' failed).';
+                    + pub + ' published, ' + failed + ' failed).'
+                    + (langsDone.length ? ' ' + langsDone.join(', ') + ' done.' : '');
             }
             return 'Running job #' + job.id + ': computing eligibility...';
         }
         if (status === 'completed') return 'Job #' + job.id + ' completed.';
         if (status === 'failed')    return 'Job #' + job.id + ' failed: ' + (job.error_message || 'see logs');
         return 'Job #' + job.id + ' — ' + status;
+    }
+
+    // Language passes finished so far (bulk_publish_jobs.language_progress,
+    // migration 065), in publish order: e.g. ['English'].
+    function doneLanguages(job) {
+        var names = {en: 'English', es: 'Spanish', de: 'German', fr: 'French'};
+        var out = [];
+        try {
+            var p = job.language_progress ? JSON.parse(job.language_progress) : null;
+            (p && p.order ? p.order : []).forEach(function (lang) {
+                var pass = p.passes ? p.passes[lang] : null;
+                if (pass && pass.done_at) {
+                    out.push(names[lang] || String(lang).toUpperCase());
+                }
+            });
+        } catch (e) { /* older job or no data */ }
+        return out;
     }
 
     function showError(msg) {

@@ -194,21 +194,38 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
     // Per batch, how many of its items belong to each language pass and the
     // ones before it (batches are sorted by language), so the poll loop can
     // tell when every worker has finished, e.g., its English items.
-    $passEnds = [];
-    foreach ($batches as $i => $batch) {
-        foreach ($publishOrder as $rank => $lang) {
-            $passEnds[$i][$lang] = 0;
-        }
-        foreach ($batch as $pos => $item) {
-            $rank = BulkPublishController::languageRank($item, $publishOrder);
-            foreach ($publishOrder as $r => $lang) {
-                if ($rank <= $r) {
-                    $passEnds[$i][$lang] = $pos + 1;
-                }
-            }
+    $passEnds = BulkPublishController::passEnds($batches, $publishOrder);
+    $passDone = [];
+
+    // Language passes on the job row (migration 065) for the queue and
+    // publish pages: "English done 14:05". Only languages with sheets of
+    // their own; private-label documents count in the first pass, but a run
+    // of private labels only (blank company phone) shows no language.
+    $langProgress = ['order' => [], 'passes' => []];
+    foreach (BulkPublishController::passProgress($passEnds, [], $publishOrder) as $lang => $p) {
+        if (($perLanguage[$lang] ?? 0) > 0) {
+            $langProgress['order'][]       = $lang;
+            $langProgress['passes'][$lang] = ['items' => $p['items'], 'processed' => 0, 'done_at' => null];
         }
     }
-    $passDone = [];
+    $langProgressAt = 0;
+    $recordLanguages = static function (array $processedBy, bool $force) use ($jobId, $passEnds, $publishOrder, &$langProgress, &$langProgressAt): void {
+        if (!$force && time() - $langProgressAt < 15) {
+            return;
+        }
+        foreach (BulkPublishController::passProgress($passEnds, $processedBy, $publishOrder) as $lang => $p) {
+            if (isset($langProgress['passes'][$lang])) {
+                $langProgress['passes'][$lang]['processed'] = $p['processed'];
+            }
+        }
+        try {
+            BulkPublishQueue::updateLanguageProgress($jobId, $langProgress);
+        } catch (\Throwable $e) {
+            // Display only: never let it stop a publish run.
+        }
+        $langProgressAt = time();
+    };
+    $recordLanguages([], true);
 
     $progressFiles = [];
     $batchFiles    = [];
@@ -260,6 +277,9 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
     $lastProgressKey    = '';
     $lastProgressChange = time();
     $stallTimeoutSec    = 180; // 3 min of zero progress with no live workers → give up
+    // Last good processed count per batch: a progress file read mid-write
+    // (empty or torn JSON) keeps the previous count instead of dropping to 0.
+    $processedBy        = array_fill_keys(array_keys($progressFiles), 0);
 
     while (true) {
         $allComplete    = true;
@@ -268,7 +288,6 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
         $totalProcessed = 0;
         $totalTotal     = 0;
         $errors         = [];
-        $processedBy    = [];
 
         foreach ($progressFiles as $idx => $pf) {
             $content = @file_get_contents($pf);
@@ -288,34 +307,31 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
             $processedBy[$idx] = (int) ($progress['processed'] ?? 0);
         }
 
-        // Log each language pass once every worker has processed its items
-        // of that language (and of the languages before it).
+        // A language pass is complete once every one of its items has been
+        // processed, counted on its own: in a small run, split by language,
+        // Spanish can finish on its own workers before English does.
         $currentPass = null;
-        foreach ($publishOrder as $lang) {
-            if (isset($passDone[$lang])) {
+        foreach (BulkPublishController::passProgress($passEnds, $processedBy, $publishOrder) as $lang => $p) {
+            if (isset($passDone[$lang]) || $p['items'] === 0) {
                 continue;
             }
-            $done = true;
-            foreach ($passEnds as $idx => $ends) {
-                if (($processedBy[$idx] ?? 0) < $ends[$lang]) {
-                    $done = false;
-                    break;
-                }
-            }
-            if (!$done) {
+            if ($p['processed'] < $p['items']) {
                 $currentPass ??= $lang;
                 continue;
             }
-            if ($currentPass === null) {
-                $passDone[$lang] = true;
-                if (($perLanguage[$lang] ?? 0) === 0) {
-                    continue;   // no items in this language (e.g. a private-label-only run)
-                }
-                echo "  [" . date('H:i:s') . "] " . bp_languageName($lang) . " pass complete after "
-                    . bp_elapsed(microtime(true) - $start) . " ({$totalProcessed}/{$totalTotal} items processed, "
-                    . "{$totalPublished} published, {$totalFailed} failed so far)\n";
+            $passDone[$lang] = true;
+            if (($perLanguage[$lang] ?? 0) === 0) {
+                continue;   // no items in this language (e.g. a private-label-only run)
+            }
+            echo "  [" . date('H:i:s') . "] " . bp_languageName($lang) . " pass complete after "
+                . bp_elapsed(microtime(true) - $start) . " ({$totalProcessed}/{$totalTotal} items processed, "
+                . "{$totalPublished} published, {$totalFailed} failed so far)\n";
+            if (isset($langProgress['passes'][$lang])) {
+                $langProgress['passes'][$lang]['done_at'] = \SDS\Services\PublishClock::nowUtc();
+                $langProgressAt = 0;   // write now
             }
         }
+        $recordLanguages($processedBy, false);
 
         // Live push to the job row so the admin queue view + progress
         // bar can tail without needing progress files.
@@ -343,6 +359,7 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
         if ($workersAlive === 0 && $stalledFor >= 10) {
             echo "  [" . date('H:i:s') . "] WARNING: no publish-worker processes alive "
                 . "(progress: {$totalProcessed}/{$totalTotal}) — aborting poll loop.\n";
+            $recordLanguages($processedBy, true);
             foreach (array_merge($batchFiles, $progressFiles) as $file) { @unlink($file); }
             throw new \RuntimeException(sprintf(
                 'Workers died before marking complete: %d/%d processed (published=%d, failed=%d). '
@@ -354,6 +371,7 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
         if ($stalledFor >= $stallTimeoutSec) {
             echo "  [" . date('H:i:s') . "] WARNING: no progress for {$stalledFor}s "
                 . "(workers alive: {$workersAlive}) — aborting poll loop.\n";
+            $recordLanguages($processedBy, true);
             foreach (array_merge($batchFiles, $progressFiles) as $file) { @unlink($file); }
             throw new \RuntimeException(sprintf(
                 'Stalled: no progress for %ds with %d workers alive. Remaining work will be '
@@ -370,6 +388,8 @@ function bp_runOne(Database $db, string $basePath, int $jobId): array
         }
         sleep(2);
     }
+
+    $recordLanguages($processedBy, true);
 
     // ── Summary + cleanup ────────────────────────────────────────
     $elapsed = round(microtime(true) - $start, 1);

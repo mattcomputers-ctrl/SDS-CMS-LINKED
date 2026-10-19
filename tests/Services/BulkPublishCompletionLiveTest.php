@@ -178,6 +178,18 @@ try {
     sort($got);
     sort($want);
     check($got === $want, 'completion items: base at the base version, alias at the version the run gave it', $got);
+
+    // Language passes on the job row (migration 065), as the queue page reads them.
+    $jobId = (int) $db->insert('bulk_publish_jobs', ['status' => 'running', 'triggered_by' => 'cli']);
+    $hasCol = (int) ($db->fetch("SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bulk_publish_jobs' AND COLUMN_NAME = 'language_progress'")['n'] ?? 0) > 0;
+    \SDS\Services\BulkPublishQueue::updateLanguageProgress($jobId, ['order' => [$first], 'passes' => [$first => ['items' => 5, 'processed' => 5, 'done_at' => '2026-10-20 14:05:00']]]);
+    if ($hasCol) {
+        $rowsLp = BP::languageProgressRows($db->fetch('SELECT language_progress FROM bulk_publish_jobs WHERE id = ?', [$jobId])['language_progress'] ?? null);
+        check(count($rowsLp) === 1 && $rowsLp[0]['done_at'] === '2026-10-20 14:05:00', 'the first language\'s pass is stored on the job and read back for the queue page', $rowsLp);
+    } else {
+        check(true, 'migration 065 not run yet: progress write is a no-op (no error)');
+    }
 } finally {
     $pdo->rollBack();
 }

@@ -152,8 +152,17 @@ final class AbbreviationService
 
                 case 11: // only these keys are rendered (hazard_classes /
                          // carcinogen_result are never printed)
-                    foreach (['routes_of_exposure', 'symptoms', 'acute_toxicity', 'chronic_effects', 'carcinogenicity', 'uv_acrylate_note'] as $k) { // uv_acrylate_note: audit #35; routes/symptoms: Q8
+                    foreach (['routes_of_exposure', 'symptoms', 'acute_toxicity', 'chronic_effects', 'uv_acrylate_note'] as $k) { // uv_acrylate_note: audit #35; routes/symptoms: Q8
                         $parts[] = (string) ($section[$k] ?? '');
+                    }
+                    // Carcinogenicity (2026-10-19): the table (intro, rows, dust
+                    // footnote) prints instead of the text when rows exist.
+                    if (!empty($section['carcinogen_rows']) && is_array($section['carcinogen_rows'])) {
+                        $parts[] = (string) ($section['carcinogen_intro'] ?? '');
+                        self::walk($section['carcinogen_rows'], $parts);
+                        $parts[] = (string) ($section['carcinogen_dust_note'] ?? '');
+                    } else {
+                        $parts[] = (string) ($section['carcinogenicity'] ?? '');
                     }
                     if (!empty($section['component_toxicology'])) {
                         $parts[] = 'CAS'; // renderer literal "(CAS n-n-n)"
@@ -252,6 +261,7 @@ final class AbbreviationService
         }
 
         return [
+            'signal_word'          => !empty($s2['signal_word']),   // 2026-10-19 Section 2 label
             'ghs_classification'   => !empty($s2['hazard_classes']),
             'physical_hazards'     => !empty($s2['hazard_classes']),
             'health_hazards'       => !empty($s2['hazard_classes']),
@@ -271,9 +281,16 @@ final class AbbreviationService
             'el_conc_pct'          => $hasEl,
             'el_notes'             => $hasEl,
             'component_tox_data'   => !empty($s11['component_toxicology']),
+            // 2026-10-19 tables: column headers print only with their table.
+            'tox_exposure_limits'     => !empty($s11['component_toxicology']),
+            'tox_carcinogen_listings' => !empty($s11['component_toxicology']),
+            'carc_iarc'            => !empty($s11['carcinogen_rows']),
+            'carc_ntp'             => !empty($s11['carcinogen_rows']),
+            'carc_osha'            => !empty($s11['carcinogen_rows']),
             'sara_313_title'       => $saraBlock,
             'sara_313_statement'   => $saraList,
-            'sara_313_threshold'   => $saraList,
+            'sara_313_threshold'   => false,       // 2026-10-19: the SARA table prints the percentage alone
+            'sara_313_de_minimis'  => $saraList,   // SARA table column header
             'sara_313_pbt_no_deminimis' => $saraList,   // #26: replaces labels.sara_313_pbt (no longer printed)
             'sara_313_special_concern_no_deminimis' => $saraList,   // TRI PFAS (40 CFR 372.28)
             'sara_313_range_note'  => $saraList,

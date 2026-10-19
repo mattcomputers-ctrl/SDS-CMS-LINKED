@@ -630,6 +630,7 @@ return [
 
         // Section 2
         'pictograms'            => 'Piktogramme',
+        'signal_word'           => 'Signalwort',   // 2026-10-19 Section 2 label (GHS term)
         'ghs_classification'    => 'GHS-Einstufung',
         'physical_hazards'      => 'Physikalische Gefahren',
         'health_hazards'        => 'Gesundheitsgefahren',
@@ -731,6 +732,11 @@ return [
         'chronic_effects'       => 'Chronische Wirkungen',
         'carcinogenicity'       => 'Karzinogenität',
         'component_tox_data'    => 'Toxikologische Daten je Bestandteil',
+        'tox_exposure_limits'   => 'Arbeitsplatzgrenzwerte',   // 2026-10-19 Section 11 component table
+        'tox_carcinogen_listings' => 'Einstufung als krebserzeugend',
+        'carc_iarc'             => 'IARC',
+        'carc_ntp'              => 'NTP',
+        'carc_osha'             => 'OSHA',
         'routes_of_exposure'    => 'Wahrscheinliche Expositionswege',
 
         // Section 12 (Ecological Information)
@@ -766,6 +772,7 @@ return [
         'sara_313_pbt'          => 'PBT-Stoff',
         'sara_313_pbt_no_deminimis' => 'PBT-Stoff; keine De-minimis-Ausnahme',
         'sara_313_special_concern_no_deminimis' => 'besonders besorgniserregende Chemikalie (40 CFR 372.28); keine De-minimis-Ausnahme',
+        'sara_313_de_minimis'   => 'De-minimis-Schwelle',   // 2026-10-19 SARA 313 table column
         'hap_title'             => 'Clean Air Act Abschnitt 112(b) — Gefährliche Luftschadstoffe (HAP)',
         'hap_triggering'        => 'Auslösende HAP-Chemikalie',
         'hap_wt_pct'            => 'Gew.-% in der Formel',

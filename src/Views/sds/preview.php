@@ -73,9 +73,9 @@ $sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, '
             <?php if (!\SDS\Services\SDSGenerator::section2IsClassified($section)): // #63: legacy snapshots without is_classified ?>
                 <p style="margin: 0.5rem 0;"><?= e($section['not_classified_text'] ?? $tx('section2.not_classified')) ?></p>
             <?php endif; ?>
-            <?php if (!empty($section['signal_word'])): ?>
-                <p class="signal-word signal-<?= strtolower($section['signal_word_en'] ?? $section['signal_word']) ?>" style="font-size: 1.3rem; font-weight: bold; color: <?= ($section['signal_word_en'] ?? $section['signal_word']) === 'Danger' ? '#DC0000' : '#FF8C00' ?>;">
-                    <?= e(mb_strtoupper($section['signal_word'], 'UTF-8')) ?>
+            <?php if (!empty($section['signal_word'])): // 2026-10-19: "Signal Word:" label, same as PDFService::renderSection2() ?>
+                <p style="margin: 0.5rem 0;"><strong><?= e($l('signal_word')) ?>:</strong>
+                    <span class="signal-word signal-<?= e(strtolower($section['signal_word_en'] ?? $section['signal_word'])) ?>" style="font-size: 1.3rem; font-weight: bold; color: <?= ($section['signal_word_en'] ?? $section['signal_word']) === 'Danger' ? '#DC0000' : '#FF8C00' ?>;"><?= e(mb_strtoupper($section['signal_word'], 'UTF-8')) ?></span>
                 </p>
             <?php endif; ?>
 
@@ -375,52 +375,77 @@ $sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, '
             <p><strong><?= e($l('chronic_effects')) ?>:</strong> <?= e($section['chronic_effects'] ?? '') ?></p>
 
             <p><strong><?= e($l('carcinogenicity')) ?>:</strong></p>
-            <div style="white-space: pre-wrap; margin-left: 1rem;"><?= e($section['carcinogenicity'] ?? '') ?></div>
+            <?php $carcRows = $section['carcinogen_rows'] ?? []; /* 2026-10-19 table form, same as PDFService::renderSection11() */ ?>
+            <?php if (is_array($carcRows) && $carcRows !== []): ?>
+                <?php if (($section['carcinogen_intro'] ?? '') !== ''): ?><p style="margin-left: 1rem;"><?= e($section['carcinogen_intro']) ?></p><?php endif; ?>
+                <table class="table table-sm" style="font-size: 0.85rem;">
+                    <thead><tr>
+                        <th><?= e($l('chemical_name')) ?></th>
+                        <th><?= e($l('cas_number')) ?></th>
+                        <th><?= e($l('el_conc_pct')) ?></th>
+                        <th><?= e($l('carc_iarc')) ?></th>
+                        <th><?= e($l('carc_ntp')) ?></th>
+                        <th><?= e($l('carc_osha')) ?></th>
+                    </tr></thead>
+                    <tbody>
+                    <?php foreach ($carcRows as $r): ?>
+                        <tr>
+                            <td><?= ($r['chemical_name'] ?? '') !== '' ? e($r['chemical_name']) : '&mdash;' ?><?= !empty($r['inhalable_dust_only']) ? ' *' : '' ?></td>
+                            <td><?= ($r['cas_number'] ?? '') !== '' ? e($r['cas_number']) : '&mdash;' ?></td>
+                            <td><?= ($r['concentration_range'] ?? '') !== '' ? e($r['concentration_range']) : '&mdash;' ?></td><?php /* Section 3 band only */ ?>
+                            <td><?= ($r['iarc'] ?? '') !== '' ? e($r['iarc']) : '&mdash;' ?></td>
+                            <td><?= ($r['ntp'] ?? '') !== '' ? e($r['ntp']) : '&mdash;' ?></td>
+                            <td><?= ($r['osha'] ?? '') !== '' ? e($r['osha']) : '&mdash;' ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <?php if (($section['carcinogen_dust_note'] ?? '') !== ''): ?><p style="font-size: 0.75rem; font-style: italic;">* <?= e(\SDS\Services\PDFService::footnoteText((string) $section['carcinogen_dust_note'])) ?></p><?php endif; ?>
+            <?php else: ?>
+                <div style="white-space: pre-wrap; margin-left: 1rem;"><?= e($section['carcinogenicity'] ?? '') ?></div>
+            <?php endif; ?>
 
-            <?php if (!empty($section['component_toxicology'])): ?>
+            <?php if (!empty($section['component_toxicology'])): /* 2026-10-19 table, same as PDFService::renderSection11() */ ?>
                 <h4 style="margin-top: 1rem;"><?= e($l('component_tox_data')) ?></h4>
-                <?php foreach ($section['component_toxicology'] as $comp): ?>
-                    <div style="margin: 0.5rem 0; padding: 0.5rem; background: #f8f8f8; border-left: 3px solid #003366;">
-                        <strong><?= e($comp['chemical_name']) ?></strong>
-                        (CAS <?= e($comp['cas_number']) ?>)<?php if (($comp['concentration_range'] ?? '') !== ''): ?> &mdash; <?= e($comp['concentration_range']) ?><?php endif; /* prescribed-range band only, never the exact % */ ?>
-
-                        <?php if (!empty($comp['carcinogen_listings'])): ?>
-                            <div style="margin-top: 0.3rem;">
-                                <?php foreach ($comp['carcinogen_listings'] as $listing): ?>
-                                    <span class="badge badge-warning" style="background: #d9534f; color: #fff; padding: 2px 6px; border-radius: 3px; margin-right: 4px;">
-                                        <?= e($listing['agency']) ?>: <?= e($listing['classification']) ?>
-                                    </span>
-                                    <?php if (!empty($listing['description'])): ?>
-                                        <span style="font-size: 0.85rem; margin-right: 8px;"><?= e($listing['description']) ?></span>
-                                    <?php endif; ?>
-                                <?php endforeach; ?>
-                                <?php if (!empty($comp['carcinogen_note'])): /* audit #41(2), same text as the PDF */ ?>
-                                    <div style="font-size: 0.85rem; margin-top: 0.2rem;"><?= e($comp['carcinogen_note']) ?></div>
-                                <?php endif; ?>
-                            </div>
-                        <?php endif; ?>
-
-                        <?php if (!empty($comp['exposure_limits'])): ?>
-                            <table class="table table-sm" style="margin-top: 0.3rem; font-size: 0.85rem;">
-                                <thead><tr>
-                                    <th><?= e($l('el_type')) ?></th>
-                                    <th><?= e($l('el_value')) ?></th>
-                                    <th><?= e($l('el_units')) ?></th>
-                                    <th><?= e($l('el_notes')) ?></th>
-                                </tr></thead>
-                                <tbody>
-                                <?php foreach ($comp['exposure_limits'] as $el): ?>
-                                    <tr>
-                                        <td><?= e($el['limit_type']) ?></td>
-                                        <td><?= e($el['value']) ?></td>
-                                        <td><?= e($el['units']) ?></td>
-                                        <td><?= e($el['notes'] ?? '') ?></td>
-                                    </tr>
-                                <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        <?php endif; ?>
-                    </div>
+                <?php $toxNotes = []; ?>
+                <table class="table table-sm" style="font-size: 0.85rem;">
+                    <thead><tr>
+                        <th><?= e($l('chemical_name')) ?></th>
+                        <th><?= e($l('cas_number')) ?></th>
+                        <th><?= e($l('el_conc_pct')) ?></th>
+                        <th><?= e($l('tox_exposure_limits')) ?></th>
+                        <th><?= e($l('tox_carcinogen_listings')) ?></th>
+                    </tr></thead>
+                    <tbody>
+                    <?php foreach ($section['component_toxicology'] as $comp): ?>
+                        <?php
+                            $hasNote = !empty($comp['carcinogen_listings']) && !empty($comp['carcinogen_note']); // audit #41(2)
+                            if ($hasNote) { $toxNotes[(string) $comp['carcinogen_note']] = true; }
+                        ?>
+                        <tr>
+                            <td><?= ($comp['chemical_name'] ?? '') !== '' ? e($comp['chemical_name']) : '&mdash;' ?><?= $hasNote ? ' *' : '' ?></td>
+                            <td><?= ($comp['cas_number'] ?? '') !== '' ? e($comp['cas_number']) : '&mdash;' ?></td>
+                            <td><?= ($comp['concentration_range'] ?? '') !== '' ? e($comp['concentration_range']) : '&mdash;' ?></td><?php /* prescribed-range band only, never the exact % */ ?>
+                            <td>
+                                <?php if (!empty($comp['exposure_limits'])): ?>
+                                    <?php foreach ($comp['exposure_limits'] as $el): ?>
+                                        <div><?= e(trim(($el['limit_type'] ?? '') . ': ' . ($el['value'] ?? '') . ' ' . ($el['units'] ?? ''))) ?><?= !empty($el['notes']) ? ' (' . e($el['notes']) . ')' : '' ?></div>
+                                    <?php endforeach; ?>
+                                <?php else: ?>&mdash;<?php endif; ?>
+                            </td>
+                            <td>
+                                <?php if (!empty($comp['carcinogen_listings'])): ?>
+                                    <?php foreach ($comp['carcinogen_listings'] as $listing): ?>
+                                        <div><?= e(($listing['agency'] ?? '') . ': ' . ($listing['classification'] ?? '')) ?><?= !empty($listing['description']) ? ' &mdash; ' . e($listing['description']) : '' ?></div>
+                                    <?php endforeach; ?>
+                                <?php else: ?>&mdash;<?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <?php foreach (array_keys($toxNotes) as $note): ?>
+                    <p style="font-size: 0.75rem; font-style: italic;">* <?= e(\SDS\Services\PDFService::footnoteText((string) $note)) ?></p>
                 <?php endforeach; ?>
             <?php endif; ?>
 
@@ -494,17 +519,29 @@ $sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, '
                 <h4><?= e($l('sara_313_title')) ?></h4>
                 <?php if (!empty($sara['reportable'])): ?>
                 <p><?= e($l('sara_313_statement')) ?></p>
-                <ul>
-                <?php foreach ($sara['reportable'] as $chem): ?>
-                    <?php
-                        $saraName      = (string) ((($chem['sara_name'] ?? '') !== '') ? $chem['sara_name'] : ($chem['chemical_name'] ?? ''));
-                        $saraThreshold = rtrim(rtrim(number_format((float) ($chem['threshold_pct'] ?? 1.0), 4), '0'), '.');
-                    ?>
-                    <li><?= e($saraName) ?> (CAS <?= e($chem['cas_number'] ?? '') ?>) &mdash;
-                        <?= e((string) ($chem['concentration_range'] ?? '')) ?><?php /* band only, never the exact % */ ?>
-                        (<?= !empty($chem['is_pbt']) ? e($l('sara_313_pbt_no_deminimis')) : (!empty($chem['is_special_concern']) ? e($l('sara_313_special_concern_no_deminimis')) : e($l('sara_313_threshold')) . ': ' . e($saraThreshold) . '%') ?>)</li>
-                <?php endforeach; ?>
-                </ul>
+                <table class="table table-sm" style="font-size: 0.85rem;"><?php /* 2026-10-19 table, same as PDFService::renderSection15() */ ?>
+                    <thead><tr>
+                        <th><?= e($l('chemical_name')) ?></th>
+                        <th><?= e($l('cas_number')) ?></th>
+                        <th><?= e($l('concentration')) ?></th>
+                        <th><?= e($l('sara_313_de_minimis')) ?></th>
+                    </tr></thead>
+                    <tbody>
+                    <?php foreach ($sara['reportable'] as $chem): ?>
+                        <?php
+                            $saraName      = (string) ((($chem['sara_name'] ?? '') !== '') ? $chem['sara_name'] : ($chem['chemical_name'] ?? ''));
+                            $saraThreshold = rtrim(rtrim(number_format((float) ($chem['threshold_pct'] ?? 1.0), 4), '0'), '.');
+                            $saraConc      = (string) ($chem['concentration_range'] ?? '');   // band only, never the exact %
+                        ?>
+                        <tr>
+                            <td><?= $saraName !== '' ? e($saraName) : '&mdash;' ?></td>
+                            <td><?= ($chem['cas_number'] ?? '') !== '' ? e($chem['cas_number']) : '&mdash;' ?></td>
+                            <td><?= $saraConc !== '' ? e($saraConc) : '&mdash;' ?></td>
+                            <td><?= !empty($chem['is_pbt']) ? e($l('sara_313_pbt_no_deminimis')) : (!empty($chem['is_special_concern']) ? e($l('sara_313_special_concern_no_deminimis')) : e($saraThreshold) . '%') ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
                 <p class="text-muted" style="font-size: 0.75rem; font-style: italic;"><?= e($l('sara_313_range_note')) ?></p>
                 <?php else: ?>
                 <p><?= e($l('sara_313_none')) ?></p>

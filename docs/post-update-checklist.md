@@ -41,6 +41,7 @@ step is expanded in sections 1–4 below; the section number is in brackets.
 12. **Findings batch (migrations 056–059)** — migrations applied, override cleanup pass 2 done (step 10), carcinogen correction check, non-hazardous flag count, per-language legal disclaimers, full-republish bump [3.8c].
 12b. **Batch F (migrations 060–062)** — acrylate flag seed, family SDS profiles, STOT target organs, combustible-dust determinations on powder raws, Section 9 flash point edit review, then Bump ALL [3.8d, 3.2c].
 12c. **Resale import (migrations 063–064)** — deploy with `update.sh` (064 adds a column); the first CMS sync creates a raw material for every Resale item; mark the non-chemicals **No SDS required** (Raw Materials list, admins only until a group is given the permission) instead of deleting them, then enter composition for the resale items you sell [3.8e].
+12d. **Tables and label layout (code only, 2026-10-19)** — Section 11 carcinogenicity and component toxicological data, and Section 15 SARA 313, print as tables; long labels keep their value on the same line; Section 2 prints "Signal Word:"; table cells no longer drop their last wrapped line or overprint across a page break. Press **Bump ALL** so every sheet republishes, then spot-check [3.8f].
 13. **Live-DB test suites** on the server [3.8].
 14. **Spot-check three sheets** (solvent ink, water-based, UV with acrylates) in EN and ES against the Section checklist [4.B].
 15. **Resume**: tick "Auto bulk publish" again and run one bulk publish; work through the failures it reports (each one is a publish gate from step 4 or 6) [3.9].
@@ -251,9 +252,9 @@ Migration 058 adds the SARA 313 / HAP compound categories (metal compounds by el
 - [ ] `sdsq 'SELECT list_code, member_type, COUNT(*) FROM regulatory_category_members GROUP BY list_code, member_type'` prints `hap include 20`, `sara313 exclude 5`, `sara313 include 21`.
 - [ ] `sdsq 'SELECT COUNT(*) FROM sara313_list WHERE is_pbt = 1'` returns about 63 when the list was loaded from the shipped seed (it was 33 before).
 - [ ] `sdsq 'SELECT COUNT(*) FROM raw_materials WHERE is_prop65 = 1 AND TRIM(COALESCE(prop65_chemical_name, "")) <> "" AND (prop65_data IS NULL OR TRIM(prop65_data) IN ("", "[]", "null"))'` returns `0`.
-- [ ] A product containing zinc oxide (or any metal-compound pigment except copper phthalocyanine blue/green and barium sulfate) lists "Zinc compounds (CAS 1314-13-2) — <band> (de minimis threshold: 1%)" under SARA 313 in the preview (?html=1) and the PDF.
-- [ ] A product with a PBT chemical below 0.1 % (e.g. lead impurity) lists it with "(PBT chemical; no de minimis exemption)". Section 12 names the same PBT on its persistence line.
-- [ ] TRI PFAS (2023 TRI rule: chemicals of special concern, no de minimis): `sdsq 'SELECT COUNT(*) FROM sara313_list WHERE is_special_concern = 1 AND is_pbt = 0'` returns about 202 on the shipped seed. Raw-material constituents that are TRI PFAS (each prints in Section 15 at any concentration with "(Chemical of special concern (40 CFR 372.28); no de minimis exemption)"):
+- [ ] A product containing zinc oxide (or any metal-compound pigment except copper phthalocyanine blue/green and barium sulfate) has a row "Zinc compounds | 1314-13-2 | <band> | 1%" in the SARA 313 table (Chemical Name | CAS Number | Concentration | De Minimis Threshold) in the preview (?html=1) and the PDF.
+- [ ] A product with a PBT chemical below 0.1 % (e.g. lead impurity) shows "PBT chemical; no de minimis exemption" in its De Minimis Threshold cell. Section 12 names the same PBT on its persistence line.
+- [ ] TRI PFAS (2023 TRI rule: chemicals of special concern, no de minimis): `sdsq 'SELECT COUNT(*) FROM sara313_list WHERE is_special_concern = 1 AND is_pbt = 0'` returns about 202 on the shipped seed. Raw-material constituents that are TRI PFAS (each prints in the Section 15 SARA table at any concentration, with "Chemical of special concern (40 CFR 372.28); no de minimis exemption" in its De Minimis Threshold cell):
 
   ```bash
   sdsq 'SELECT rm.internal_code, c.cas_number, c.chemical_name FROM raw_material_constituents c JOIN raw_materials rm ON rm.id = c.raw_material_id JOIN sara313_list s ON s.cas_number = c.cas_number WHERE s.is_special_concern = 1 AND s.is_pbt = 0 ORDER BY rm.internal_code'
@@ -428,6 +429,18 @@ The CMS sync now creates a raw material for every item in the CMS **Resale** GL 
    Older bulk runs only checked "reviewed", so some empty resale raw materials may already carry an automatic "Not a hazardous substance or mixture" sheet. Only sheets published by hand now count, so these are blocked as well (flagged items are left out: their old sheets stay as history and are never sent):
    `sdsq 'SELECT rm.internal_code FROM raw_materials rm WHERE rm.sds_not_required = 0 AND (rm.hazardous_no_cas IS NULL OR rm.hazardous_no_cas = 0) AND NOT EXISTS (SELECT 1 FROM raw_material_constituents c WHERE c.raw_material_id = rm.id) AND EXISTS (SELECT 1 FROM sds_versions sv WHERE sv.raw_material_id = rm.id AND sv.alias_id IS NULL AND sv.finished_good_id IS NULL AND sv.status = "published" AND sv.is_deleted = 0) AND NOT EXISTS (SELECT 1 FROM sds_versions sv WHERE sv.raw_material_id = rm.id AND sv.alias_id IS NULL AND sv.finished_good_id IS NULL AND sv.status = "published" AND sv.is_deleted = 0 AND COALESCE(sv.change_summary, "") <> "Bulk publish (resale)") ORDER BY rm.internal_code'`
    - [ ] Each one has constituents entered, or was confirmed non-hazardous by publishing it by hand once. Its existing sheets stay published until then; retire wrong ones on Admin → SDS Versions, which now lists resale and resale-alias sheets.
+
+### 3.8f Tables, label layout and the cell-height fix (2026-10-19, code only)
+
+No migration. Code changes do not mark sheets out of date, so this needs a full republish.
+
+1. **Bump ALL.** Settings → Maintenance → **Bump ALL unblocked SDSs**, once. Run the bulk publish early in the day so it ends before the 06:00–07:00 UTC Ubuntu update window (an Apache restart there kills a run started from the web page).
+2. **Spot-check, PDF and `?html=1`, EN and one other language:**
+   - [ ] Section 2: "Signal Word:" label with DANGER / WARNING on the same line.
+   - [ ] Section 9: long labels ("Upper/Lower Flammability or Explosive Limits", "Initial Boiling Point and Boiling Range") keep the value on the same line; a long value wraps under itself, never back at the left margin.
+   - [ ] Section 11: Carcinogenicity table (IARC / NTP / OSHA columns) for a product with a listed carcinogen; Component Toxicological Data table with every exposure limit line; "*" footnote for titanium dioxide / carbon black (inhalable dust); an operator Carcinogenicity edit still prints as text.
+   - [ ] Section 15: SARA 313 table with the De Minimis Threshold column.
+   - [ ] Sections 3, 8 and 12: a long chemical name prints in full (before this release the last wrapped line could be missing), and a table that crosses a page repeats its header with no overprinted row.
 
 ### 3.9 Finish
 

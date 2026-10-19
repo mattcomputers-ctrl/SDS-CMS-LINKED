@@ -20,6 +20,19 @@ class PDFService
     /** Pages 2+: no header (the product code is in the footer), so the body starts at the normal margin (audit #41). */
     private const MARGIN_TOP_CONTINUATION = 15;
     private const MARGIN_RIGHT  = 15;
+    /** labelValue(): value column (mm from the label's x), tab-stop step and minimum value width (2026-10-19). */
+    private const VALUE_COLUMN    = 50;
+    private const VALUE_TAB       = 25;
+    private const VALUE_MIN_WIDTH = 45;
+    /**
+     * Extra height (mm) for every table cell (2026-10-19). TCPDF's MultiCell
+     * drops the LAST line of a cell whose max height equals the measured
+     * getStringHeight() (float rounding): at 7 pt any wrapped cell lost its
+     * last line, at 8 pt from three lines on. 0.1 mm is invisible.
+     */
+    private const CELL_SLACK = 0.1;
+    /** renderGridTable(): extra height (mm) for a row or header that wraps. */
+    private const TABLE_ROW_PAD = 1.2;
     private const MARGIN_BOTTOM = 20;
 
     /**
@@ -415,12 +428,20 @@ class PDFService
             $pdf->MultiCell(0, 5, $s['not_classified_text'] ?? $this->text('section2.not_classified'), 0, 'L');
         }
 
-        // Signal word
+        // Signal word: "Signal Word:" label (2026-10-19, owner request) in the
+        // label column, then the word itself large and coloured on the same line.
         if (!empty($s['signal_word'])) {
+            $pdf->SetFont('helvetica', 'B', 9);
+            $sigLabel = $this->label('signal_word') . ':';
+            $sigCol   = self::VALUE_COLUMN;
+            while ($sigCol < $pdf->GetStringWidth($sigLabel) + 2) {
+                $sigCol += self::VALUE_TAB;
+            }
+            $pdf->Cell($sigCol, 7, $sigLabel, 0, 0, 'L', false, '', 0, false, 'T', 'M');
             $pdf->SetFont('helvetica', 'B', 14);
             $color = ($s['signal_word_en'] ?? $s['signal_word']) === 'Danger' ? [220, 0, 0] : [255, 140, 0];
             $pdf->SetTextColor(...$color);
-            $pdf->Cell(0, 7, mb_strtoupper($s['signal_word'], 'UTF-8'), 0, 1);
+            $pdf->Cell(0, 7, mb_strtoupper($s['signal_word'], 'UTF-8'), 0, 1, 'L', false, '', 0, false, 'T', 'M');
             $pdf->SetTextColor(0, 0, 0);
             $pdf->SetFont('helvetica', '', 9);
         }
@@ -770,15 +791,20 @@ class PDFService
                 $pdf->Ln(1);
             }
 
-            // Table header — CAS + Chemical Name + Concentration + H-codes
-            $pdf->SetFont('helvetica', 'B', 8);
-            $pdf->SetFillColor(230, 230, 230);
+            // Table header — CAS + Chemical Name + Concentration + H-codes.
+            // A closure, so a row that does not fit starts a new page with the
+            // header repeated instead of splitting (2026-10-19 review).
             $w = [25, 75, 30, 40];
-            $pdf->Cell($w[0], 5, $this->label('cas_number'), 1, 0, 'C', true);
-            $pdf->Cell($w[1], 5, $this->label('chemical_name'), 1, 0, 'C', true);
-            $pdf->Cell($w[2], 5, $this->label('concentration'), 1, 0, 'C', true);
-            $pdf->Cell($w[3], 5, $this->label('h_codes'), 1, 1, 'C', true);
-            $pdf->SetFont('helvetica', '', 8);
+            $s3Header = function () use ($pdf, $w): void {
+                $pdf->SetFont('helvetica', 'B', 8);
+                $pdf->SetFillColor(230, 230, 230);
+                $pdf->Cell($w[0], 5, $this->label('cas_number'), 1, 0, 'C', true);
+                $pdf->Cell($w[1], 5, $this->label('chemical_name'), 1, 0, 'C', true);
+                $pdf->Cell($w[2], 5, $this->label('concentration'), 1, 0, 'C', true);
+                $pdf->Cell($w[3], 5, $this->label('h_codes'), 1, 1, 'C', true);
+                $pdf->SetFont('helvetica', '', 8);
+            };
+            $s3Header();
 
             foreach ($s['components'] as $comp) {
                 $hCodes = (!empty($comp['h_codes']) && is_array($comp['h_codes']))
@@ -799,11 +825,12 @@ class PDFService
                 // to two lines in the 25 mm cell (as in Sections 8 / 12).
                 $rowH = max(
                     5,
-                    $pdf->getStringHeight($w[0], $cas),
-                    $pdf->getStringHeight($w[1], $name),
-                    $pdf->getStringHeight($w[2], $conc),
-                    $pdf->getStringHeight($w[3], $hCodes)
+                    $this->fitHeight($pdf, $w[0], $cas),
+                    $this->fitHeight($pdf, $w[1], $name),
+                    $this->fitHeight($pdf, $w[2], $conc),
+                    $this->fitHeight($pdf, $w[3], $hCodes)
                 );
+                $this->breakBeforeRow($pdf, $rowH, $s3Header);
 
                 $pdf->MultiCell($w[0], $rowH, $cas,    1, 'C', false, 0, '', '', true, 0, false, true, $rowH, 'M');
                 $pdf->MultiCell($w[1], $rowH, $name,   1, 'L', false, 0, '', '', true, 0, false, true, $rowH, 'T');
@@ -828,17 +855,20 @@ class PDFService
     private function renderSection8(\TCPDF $pdf, array $s): void
     {
         if (!empty($s['exposure_limits'])) {
-            $pdf->SetFont('helvetica', 'B', 7);
-            $pdf->SetFillColor(230, 230, 230);
             $w = [22, 42, 22, 20, 17, 15, 37];
-            $pdf->Cell($w[0], 5, $this->label('el_cas'), 1, 0, 'C', true);
-            $pdf->Cell($w[1], 5, $this->label('el_chemical'), 1, 0, 'C', true);
-            $pdf->Cell($w[2], 5, $this->label('el_type'), 1, 0, 'C', true);
-            $pdf->Cell($w[3], 5, $this->label('el_value'), 1, 0, 'C', true);
-            $pdf->Cell($w[4], 5, $this->label('el_units'), 1, 0, 'C', true);
-            $pdf->Cell($w[5], 5, $this->label('el_conc_pct'), 1, 0, 'C', true);
-            $pdf->Cell($w[6], 5, $this->label('el_notes'), 1, 1, 'C', true);
-            $pdf->SetFont('helvetica', '', 7);
+            $s8Header = function () use ($pdf, $w): void {
+                $pdf->SetFont('helvetica', 'B', 7);
+                $pdf->SetFillColor(230, 230, 230);
+                $pdf->Cell($w[0], 5, $this->label('el_cas'), 1, 0, 'C', true);
+                $pdf->Cell($w[1], 5, $this->label('el_chemical'), 1, 0, 'C', true);
+                $pdf->Cell($w[2], 5, $this->label('el_type'), 1, 0, 'C', true);
+                $pdf->Cell($w[3], 5, $this->label('el_value'), 1, 0, 'C', true);
+                $pdf->Cell($w[4], 5, $this->label('el_units'), 1, 0, 'C', true);
+                $pdf->Cell($w[5], 5, $this->label('el_conc_pct'), 1, 0, 'C', true);
+                $pdf->Cell($w[6], 5, $this->label('el_notes'), 1, 1, 'C', true);
+                $pdf->SetFont('helvetica', '', 7);
+            };
+            $s8Header();
 
             foreach ($s['exposure_limits'] as $el) {
                 $cas     = (string) ($el['cas_number']   ?? '');
@@ -858,10 +888,11 @@ class PDFService
                 // to silently truncate long names/notes and overflow.
                 $rowH = max(
                     5,
-                    $pdf->getStringHeight($w[0], $cas),
-                    $pdf->getStringHeight($w[1], $name),
-                    $pdf->getStringHeight($w[6], $notes)
+                    $this->fitHeight($pdf, $w[0], $cas),
+                    $this->fitHeight($pdf, $w[1], $name),
+                    $this->fitHeight($pdf, $w[6], $notes)
                 );
+                $this->breakBeforeRow($pdf, $rowH, $s8Header);
 
                 $pdf->MultiCell($w[0], $rowH, $cas,     1, 'C', false, 0, '', '', true, 0, false, true, $rowH, 'M');
                 $pdf->MultiCell($w[1], $rowH, $name,    1, 'L', false, 0, '', '', true, 0, false, true, $rowH, 'M');
@@ -937,63 +968,107 @@ class PDFService
         $this->labelValue($pdf, $this->label('acute_toxicity'), $s['acute_toxicity'] ?? '');
         $this->labelValue($pdf, $this->label('chronic_effects'), $s['chronic_effects'] ?? '');
 
-        // Carcinogenicity
+        // Carcinogenicity (2026-10-19): the automatic listing prints as a table
+        // (intro sentence, one row per listed component, one column per agency,
+        // inhalable-dust footnote). An operator override, the negative sentence
+        // and snapshots published before the table print the text as before.
+        $carcRows = $s['carcinogen_rows'] ?? [];
+        if (is_array($carcRows) && $carcRows !== []) {
+            // Heading + intro + table header + first row stay on one page.
+            $pdf->SetFont('helvetica', '', 9);
+            $introH = (string) ($s['carcinogen_intro'] ?? '') !== ''
+                ? $pdf->getStringHeight(0, (string) $s['carcinogen_intro']) + 1 : 0;
+            $this->ensureSpace($pdf, 5 + $introH + 18);
+        }
         $pdf->SetFont('helvetica', 'B', 9);
         $pdf->Cell(0, 5, $this->label('carcinogenicity') . ':', 0, 1);
         $pdf->SetFont('helvetica', '', 9);
-        $carcinogenText = $s['carcinogenicity'] ?? '';
-        if ($carcinogenText !== '') {
-            $pdf->MultiCell(0, 4, $carcinogenText, 0, 'L');
+        if (is_array($carcRows) && $carcRows !== []) {
+            $intro = (string) ($s['carcinogen_intro'] ?? '');
+            if ($intro !== '') {
+                $pdf->MultiCell(0, 4, $intro, 0, 'L');
+                $pdf->Ln(1);
+            }
+            $rows = [];
+            foreach ($carcRows as $r) {
+                $rows[] = [
+                    (string) ($r['chemical_name'] ?? '') . (!empty($r['inhalable_dust_only']) ? ' *' : ''),
+                    (string) ($r['cas_number'] ?? ''),
+                    (string) ($r['concentration_range'] ?? ''),   // Section 3 band, never the exact %
+                    (string) ($r['iarc'] ?? ''),
+                    (string) ($r['ntp'] ?? ''),
+                    (string) ($r['osha'] ?? ''),
+                ];
+            }
+            $this->renderGridTable(
+                $pdf,
+                '',
+                [$this->label('chemical_name'), $this->label('cas_number'), $this->label('el_conc_pct'),
+                 $this->label('carc_iarc'), $this->label('carc_ntp'), $this->label('carc_osha')],
+                [56, 24, 16, 30, 30, 30],
+                $rows,
+                ['L', 'C', 'C', 'C', 'C', 'C']
+            );
+            $this->renderTableFootnote($pdf, (string) ($s['carcinogen_dust_note'] ?? ''));
+        } else {
+            $carcinogenText = $s['carcinogenicity'] ?? '';
+            if ($carcinogenText !== '') {
+                $pdf->MultiCell(0, 4, $carcinogenText, 0, 'L');
+            }
         }
 
-        // Component-level toxicology table
+        // Component toxicological data (2026-10-19): one table row per component
+        // (Section 3 band, never the exact %); exposure limits and carcinogen
+        // listings as lines inside their cells; inhalable-dust footnote.
         $componentTox = $s['component_toxicology'] ?? [];
         if (!empty($componentTox)) {
             $pdf->Ln(2);
-            $pdf->SetFont('helvetica', 'B', 9);
-            $pdf->Cell(0, 5, $this->label('component_tox_data') . ':', 0, 1);
-
+            $rows  = [];
+            $notes = [];
             foreach ($componentTox as $comp) {
-                $pdf->SetFont('helvetica', 'B', 8);
-                // Prescribed-range band only (SDS content policy); a pre-banding
-                // snapshot prints no value here, never the exact percentage.
-                $label = ($comp['chemical_name'] ?? '') . ' (CAS ' . ($comp['cas_number'] ?? '') . ')';
-                $band  = (string) ($comp['concentration_range'] ?? '');
-                if ($band !== '') {
-                    $label .= ' — ' . $band;
-                }
-                $pdf->Cell(0, 5, $label, 0, 1);
-                $pdf->SetFont('helvetica', '', 8);
-
-                // Carcinogen listings (agency: classification — registry description)
-                if (!empty($comp['carcinogen_listings'])) {
-                    foreach ($comp['carcinogen_listings'] as $listing) {
-                        $pdf->Cell(5, 4, '', 0, 0);
-                        $listingText = ($listing['agency'] ?? '') . ': ' . ($listing['classification'] ?? '');
-                        if (!empty($listing['description'])) {
-                            $listingText .= ' — ' . $listing['description'];
-                        }
-                        $pdf->MultiCell(0, 4, $listingText, 0, 'L');
+                $limits = [];
+                foreach ($comp['exposure_limits'] ?? [] as $el) {
+                    $limitText = trim(($el['limit_type'] ?? '') . ': ' . ($el['value'] ?? '') . ' ' . ($el['units'] ?? ''));
+                    if (!empty($el['notes'])) {
+                        $limitText .= ' (' . $el['notes'] . ')';
                     }
-                    // Audit #41(2): inhalable-dust note (same text as the HTML preview)
-                    if (!empty($comp['carcinogen_note'])) {
-                        $pdf->Cell(5, 4, '', 0, 0);
-                        $pdf->MultiCell(0, 4, (string) $comp['carcinogen_note'], 0, 'L');
-                    }
+                    $limits[] = $limitText;
                 }
-
-                // Exposure limits for this component
-                if (!empty($comp['exposure_limits'])) {
-                    foreach ($comp['exposure_limits'] as $el) {
-                        $pdf->Cell(5, 4, '', 0, 0);
-                        $limitText = ($el['limit_type'] ?? '') . ': ' . ($el['value'] ?? '') . ' ' . ($el['units'] ?? '');
-                        if (!empty($el['notes'])) {
-                            $limitText .= ' (' . $el['notes'] . ')';
-                        }
-                        $pdf->MultiCell(0, 4, $limitText, 0, 'L');
+                $listings = [];
+                foreach ($comp['carcinogen_listings'] ?? [] as $listing) {
+                    $listingText = ($listing['agency'] ?? '') . ': ' . ($listing['classification'] ?? '');
+                    if (!empty($listing['description'])) {
+                        $listingText .= ' — ' . $listing['description'];
                     }
+                    $listings[] = $listingText;
                 }
+                $mark = '';
+                // Audit #41(2): inhalable-dust note, printed once under the table.
+                if (!empty($comp['carcinogen_listings']) && !empty($comp['carcinogen_note'])) {
+                    $mark = ' *';
+                    $notes[(string) $comp['carcinogen_note']] = true;
+                }
+                $rows[] = [
+                    (string) ($comp['chemical_name'] ?? '') . $mark,
+                    (string) ($comp['cas_number'] ?? ''),
+                    (string) ($comp['concentration_range'] ?? ''),
+                    implode("\n", $limits),
+                    implode("\n", $listings),
+                ];
             }
+            $this->renderGridTable(
+                $pdf,
+                $this->label('component_tox_data') . ':',
+                [$this->label('chemical_name'), $this->label('cas_number'), $this->label('el_conc_pct'),
+                 $this->label('tox_exposure_limits'), $this->label('tox_carcinogen_listings')],
+                [46, 24, 16, 58, 42],
+                $rows,
+                ['L', 'C', 'C', 'L', 'L']
+            );
+            foreach (array_keys($notes) as $note) {
+                $this->renderTableFootnote($pdf, (string) $note);
+            }
+            $pdf->SetFont('helvetica', '', 9);
         }
 
         // UV acrylate rule-pack note (audit #35), after the component table.
@@ -1034,7 +1109,7 @@ class PDFService
             $pdf->SetFont('helvetica', 'B', 7);
             $headH = 5;
             foreach ($headers as $i => $text) {
-                $headH = max($headH, $pdf->getStringHeight($w[$i], $text));
+                $headH = max($headH, $this->fitHeight($pdf, $w[$i], $text));
             }
 
             $pdf->Ln(1);
@@ -1045,13 +1120,16 @@ class PDFService
             $pdf->SetFont('helvetica', 'B', 9);
             $pdf->Cell(0, 5, $this->label('component_ecotox_data') . ':', 0, 1);
 
-            $pdf->SetFont('helvetica', 'B', 7);
-            $pdf->SetFillColor(230, 230, 230);
             $lastHeader = count($headers) - 1;
-            foreach ($headers as $i => $text) {
-                $pdf->MultiCell($w[$i], $headH, $text, 1, 'C', true, $i === $lastHeader ? 1 : 0, '', '', true, 0, false, true, $headH, 'M');
-            }
-            $pdf->SetFont('helvetica', '', 7);
+            $s12Header = static function () use ($pdf, $w, $headers, $headH, $lastHeader): void {
+                $pdf->SetFont('helvetica', 'B', 7);
+                $pdf->SetFillColor(230, 230, 230);
+                foreach ($headers as $i => $text) {
+                    $pdf->MultiCell($w[$i], $headH, $text, 1, 'C', true, $i === $lastHeader ? 1 : 0, '', '', true, 0, false, true, $headH, 'M');
+                }
+                $pdf->SetFont('helvetica', '', 7);
+            };
+            $s12Header();
 
             foreach ($rows as $row) {
                 $name    = (string) ($row['chemical_name'] ?? '');
@@ -1065,11 +1143,12 @@ class PDFService
 
                 $rowH = max(
                     5,
-                    $pdf->getStringHeight($w[0], $name),
-                    $pdf->getStringHeight($w[1], $cas),
-                    $pdf->getStringHeight($w[3], $acute),
-                    $pdf->getStringHeight($w[4], $chronic)
+                    $this->fitHeight($pdf, $w[0], $name),
+                    $this->fitHeight($pdf, $w[1], $cas),
+                    $this->fitHeight($pdf, $w[3], $acute),
+                    $this->fitHeight($pdf, $w[4], $chronic)
                 );
+                $this->breakBeforeRow($pdf, $rowH, $s12Header);
 
                 $pdf->MultiCell($w[0], $rowH, $name,    1, 'L', false, 0, '', '', true, 0, false, true, $rowH, 'M');
                 $pdf->MultiCell($w[1], $rowH, $cas,     1, 'C', false, 0, '', '', true, 0, false, true, $rowH, 'M');
@@ -1117,27 +1196,43 @@ class PDFService
         // English defaults keep pre-existing snapshots (meta.labels without these keys) readable.
         $sara = $s['sara_313'] ?? [];
         if (isset($sara['reportable']) && is_array($sara['reportable'])) {
+            if (!empty($sara['reportable'])) {
+                // Title + statement + table header + first row stay on one page.
+                $pdf->SetFont('helvetica', '', 8);
+                $this->ensureSpace($pdf, 5 + $pdf->getStringHeight(0, $this->label('sara_313_statement')) + 1 + 18);
+            }
             $pdf->SetFont('helvetica', 'B', 9);
             $pdf->Cell(0, 5, $this->label('sara_313_title') . ':', 0, 1);
             $pdf->SetFont('helvetica', '', 8);
             if (!empty($sara['reportable'])) {
                 $pdf->MultiCell(0, 4, $this->label('sara_313_statement'), 0, 'L');
+                $pdf->Ln(1);
+                // 2026-10-19: one table row per reportable chemical.
+                $rows = [];
                 foreach ($sara['reportable'] as $chem) {
                     $name      = (string) ((($chem['sara_name'] ?? '') !== '') ? $chem['sara_name'] : ($chem['chemical_name'] ?? ''));
                     $threshold = rtrim(rtrim(number_format((float) ($chem['threshold_pct'] ?? 1.0), 4), '0'), '.');
                     // Band only (audit #8/#42): exact percentages are never printed,
-                    // so a legacy snapshot without a band shows nothing here.
+                    // so a legacy snapshot without a band shows a dash here.
                     $conc = (string) ($chem['concentration_range'] ?? '');
                     // #26: PBT and other chemicals of special concern (TRI PFAS, 40 CFR
                     // 372.28) have no de minimis since the 2023 TRI rule.
-                    $detail = !empty($chem['is_pbt'])
+                    $deMinimis = !empty($chem['is_pbt'])
                         ? $this->label('sara_313_pbt_no_deminimis')
                         : (!empty($chem['is_special_concern'])
                             ? $this->label('sara_313_special_concern_no_deminimis')
-                            : $this->label('sara_313_threshold') . ': ' . $threshold . '%');
-                    $text = $name . ' (CAS ' . ($chem['cas_number'] ?? '') . ') — ' . $conc . ' (' . $detail . ')';
-                    $pdf->MultiCell(0, 4, "\xE2\x80\xA2 " . $text, 0, 'L');
+                            : $threshold . '%');
+                    $rows[] = [$name, (string) ($chem['cas_number'] ?? ''), $conc, $deMinimis];
                 }
+                $this->renderGridTable(
+                    $pdf,
+                    '',
+                    [$this->label('chemical_name'), $this->label('cas_number'), $this->label('concentration'), $this->label('sara_313_de_minimis')],
+                    [82, 26, 28, 50],
+                    $rows,
+                    ['L', 'C', 'C', 'C'],
+                    8.0
+                );
                 $pdf->SetFont('helvetica', 'I', 7);
                 $pdf->MultiCell(0, 3, $this->label('sara_313_range_note'), 0, 'L');
                 $pdf->SetFont('helvetica', '', 8);
@@ -1373,19 +1468,159 @@ class PDFService
         }
         $pdf->SetFont('helvetica', 'B', 9);
         $labelText = $label . ':';
-        $defaultWidth = 50;
-        $neededWidth = $pdf->GetStringWidth($labelText) + 2;
+        $startX    = $pdf->GetX();
+        $lineW     = $pdf->getPageWidth() - self::MARGIN_RIGHT - $startX;
 
-        if ($neededWidth > $defaultWidth) {
-            // Label too long for inline layout — place value on next line
-            $pdf->Cell(0, 5, $labelText, 0, 1, 'L');
-            $pdf->SetFont('helvetica', '', 9);
-            $pdf->MultiCell(0, 5, $value, 0, 'L');
-        } else {
-            $pdf->Cell($defaultWidth, 5, $labelText, 0, 0, 'L', false, '', 0, false, 'T', 'T');
-            $pdf->SetFont('helvetica', '', 9);
-            $pdf->MultiCell(0, 5, $value, 0, 'L');
+        // 2026-10-19 (owner request): the value stays on the label's line. It
+        // starts at the value column (50 mm), or, for a longer label, at the
+        // next tab stop (every 25 mm), and wraps under its own first line. Only
+        // a label that leaves less than VALUE_MIN_WIDTH for the value puts the
+        // value on the next line, indented to the value column (never back at
+        // the left margin).
+        $col = self::VALUE_COLUMN;
+        while ($col < $pdf->GetStringWidth($labelText) + 2) {
+            $col += self::VALUE_TAB;
         }
+        if ($lineW - $col >= self::VALUE_MIN_WIDTH) {
+            $pdf->Cell($col, 5, $labelText, 0, 0, 'L', false, '', 0, false, 'T', 'T');
+            $pdf->SetFont('helvetica', '', 9);
+            $pdf->MultiCell(0, 5, $value, 0, 'L');
+            return;
+        }
+        $pdf->MultiCell(0, 5, $labelText, 0, 'L');
+        $pdf->SetFont('helvetica', '', 9);
+        $pdf->SetX($startX + self::VALUE_COLUMN);
+        $pdf->MultiCell(0, 5, $value, 0, 'L');
+    }
+
+    /**
+     * Bordered table in the Section 3 / 8 / 12 style (2026-10-19): optional
+     * bold title, grey header row, one shared height per body row
+     * (getStringHeight, so no cell overflows into its neighbour), a page break
+     * that keeps the title + header with the first row and repeats the header
+     * on every new page. Empty cells print an em dash.
+     *
+     * @param string[]       $headers
+     * @param float[]        $w      column widths in mm (sum = content width, 186 mm)
+     * @param list<string[]> $rows   cell texts ("\n" = line break inside a cell)
+     * @param string[]       $align  'L' / 'C' per column
+     */
+    private function renderGridTable(\TCPDF $pdf, string $title, array $headers, array $w, array $rows, array $align, float $fontSize = 7.0): void
+    {
+        $limit = static fn(): float => $pdf->getPageHeight() - $pdf->getBreakMargin();
+        $last  = count($w) - 1;
+
+        // A row that wraps gets TABLE_ROW_PAD of breathing room so its first
+        // and last lines do not touch the borders; one-line rows stay 5 mm.
+        $pad = static fn(float $h): float => $h > 5.0 ? $h + self::TABLE_ROW_PAD : 5.0;
+        $pdf->SetFont('helvetica', 'B', $fontSize);
+        $headH = 5.0;
+        foreach ($headers as $i => $text) {
+            $headH = max($headH, $this->fitHeight($pdf, $w[$i], (string) $text));
+        }
+        $headH = $pad($headH);
+        $pdf->SetFont('helvetica', '', $fontSize);
+        $heights = [];
+        foreach ($rows as $r => $cells) {
+            $h = 5.0;
+            foreach ($w as $i => $cw) {
+                $h = max($h, $this->fitHeight($pdf, $cw, (string) ($cells[$i] ?? '')));
+            }
+            $heights[$r] = $pad($h);
+        }
+
+        $drawHeader = static function () use ($pdf, $headers, $w, $headH, $fontSize, $last): void {
+            $pdf->SetFont('helvetica', 'B', $fontSize);
+            $pdf->SetFillColor(230, 230, 230);
+            foreach ($headers as $i => $text) {
+                $pdf->MultiCell($w[$i], $headH, (string) $text, 1, 'C', true, $i === $last ? 1 : 0, '', '', true, 0, false, true, $headH, 'M');
+            }
+            $pdf->SetFont('helvetica', '', $fontSize);
+        };
+
+        // A row taller than a whole page under the header only needs a
+        // 15 mm start; TCPDF then splits it (no page with a header alone).
+        $bodyH  = $limit() - self::MARGIN_TOP_CONTINUATION - $headH;
+        $need   = static fn(float $h): float => $h > $bodyH ? 15.0 : $h;
+        $titleH = $title !== '' ? 5.0 : 0.0;
+        $firstH = $rows !== [] ? $need($heights[array_key_first($heights)]) : 0.0;
+        if ($pdf->GetY() + $titleH + $headH + $firstH > $limit()) {
+            $pdf->AddPage();
+        }
+        if ($title !== '') {
+            $pdf->SetFont('helvetica', 'B', 9);
+            $pdf->Cell(0, 5, $title, 0, 1);
+        }
+        $drawHeader();
+        foreach ($rows as $r => $cells) {
+            $h = $heights[$r];
+            if ($pdf->GetY() + $need($h) > $limit()) {
+                $pdf->AddPage();
+                $drawHeader();
+            }
+            foreach ($w as $i => $cw) {
+                $text = (string) ($cells[$i] ?? '');
+                if ($text === '') {
+                    $text = "\xE2\x80\x94";   // em dash: nothing listed
+                }
+                $pdf->MultiCell($cw, $h, $text, 1, $align[$i] ?? 'L', false, $i === $last ? 1 : 0, '', '', true, 0, false, true, $h, 'M');
+            }
+        }
+    }
+
+    /** Height a table cell needs for $text at the current font, plus CELL_SLACK. */
+    private function fitHeight(\TCPDF $pdf, float $w, string $text): float
+    {
+        return $pdf->getStringHeight($w, $text) + self::CELL_SLACK;
+    }
+
+    /**
+     * Sections 3 / 8 / 12 (2026-10-19 review): a row that does not fit above
+     * the bottom margin starts a new page and the table header is repeated,
+     * instead of TCPDF splitting every cell and the row's last line printing
+     * over the next row. A row taller than a whole page is left to split.
+     */
+    private function breakBeforeRow(\TCPDF $pdf, float $rowH, callable $drawHeader): void
+    {
+        $limit = $pdf->getPageHeight() - $pdf->getBreakMargin();
+        if ($pdf->GetY() + $rowH <= $limit || $rowH > $limit - self::MARGIN_TOP_CONTINUATION - 5) {
+            return;
+        }
+        $pdf->AddPage();
+        $drawHeader();
+    }
+
+    /** Start a new page unless $mm of space is left above the bottom margin. */
+    private function ensureSpace(\TCPDF $pdf, float $mm): void
+    {
+        if ($pdf->GetY() + $mm > $pdf->getPageHeight() - $pdf->getBreakMargin()) {
+            $pdf->AddPage();
+        }
+    }
+
+    /** Italic footnote under a table ("* " + text); nothing for ''. */
+    private function renderTableFootnote(\TCPDF $pdf, string $text): void
+    {
+        $text = self::footnoteText($text);
+        if ($text === '') {
+            return;
+        }
+        $pdf->SetFont('helvetica', 'I', 7);
+        $pdf->MultiCell(0, 3.5, '* ' . $text, 0, 'L');
+    }
+
+    /**
+     * Footnote form of a sentence written to sit inline in parentheses (the
+     * inhalable-dust note): "(The listing ... use.)" -> "The listing ... use.".
+     * Public for the HTML preview.
+     */
+    public static function footnoteText(string $text): string
+    {
+        $text = trim($text);
+        if (preg_match('/^\((.*)\)$/su', $text, $m) === 1) {
+            $text = trim($m[1]);
+        }
+        return $text;
     }
 
     /**

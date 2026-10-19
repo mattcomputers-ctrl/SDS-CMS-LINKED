@@ -634,6 +634,7 @@ return [
 
         // Section 2
         'pictograms'            => 'Pictogramas',
+        'signal_word'           => 'Palabra de advertencia',   // 2026-10-19 Section 2 label (GHS term)
         'ghs_classification'    => 'Clasificación SGA',
         'physical_hazards'      => 'Peligros Físicos',
         'health_hazards'        => 'Peligros para la Salud',
@@ -735,6 +736,11 @@ return [
         'chronic_effects'       => 'Efectos Crónicos',
         'carcinogenicity'       => 'Carcinogenicidad',
         'component_tox_data'    => 'Datos Toxicológicos por Componente',
+        'tox_exposure_limits'   => 'Límites de exposición',   // 2026-10-19 Section 11 component table
+        'tox_carcinogen_listings' => 'Clasificación como cancerígeno',
+        'carc_iarc'             => 'IARC',
+        'carc_ntp'              => 'NTP',
+        'carc_osha'             => 'OSHA',
         'routes_of_exposure'    => 'Vías Probables de Exposición',
 
         // Section 12 (Ecological Information)
@@ -770,6 +776,7 @@ return [
         'sara_313_pbt'          => 'sustancia PBT',
         'sara_313_pbt_no_deminimis' => 'sustancia PBT; sin exención de minimis',
         'sara_313_special_concern_no_deminimis' => 'sustancia química de especial preocupación (40 CFR 372.28); sin exención de minimis',
+        'sara_313_de_minimis'   => 'Umbral de minimis',   // 2026-10-19 SARA 313 table column
         'hap_title'             => 'Ley de Aire Limpio Sección 112(b) — Contaminantes Peligrosos del Aire (HAP)',
         'hap_triggering'        => 'Sustancia HAP determinante',
         'hap_wt_pct'            => '% en Peso en Fórmula',

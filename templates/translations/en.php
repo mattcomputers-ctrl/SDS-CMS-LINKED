@@ -671,6 +671,7 @@ return [
 
         // Section 2
         'pictograms'            => 'Pictograms',
+        'signal_word'           => 'Signal Word',   // 2026-10-19 Section 2 label (GHS term)
         'ghs_classification'    => 'GHS Classification',
         'physical_hazards'      => 'Physical Hazards',
         'health_hazards'        => 'Health Hazards',
@@ -772,6 +773,11 @@ return [
         'chronic_effects'       => 'Chronic Effects',
         'carcinogenicity'       => 'Carcinogenicity',
         'component_tox_data'    => 'Component Toxicological Data',
+        'tox_exposure_limits'   => 'Exposure Limits',   // 2026-10-19 Section 11 component table
+        'tox_carcinogen_listings' => 'Carcinogen Listings',
+        'carc_iarc'             => 'IARC',
+        'carc_ntp'              => 'NTP',
+        'carc_osha'             => 'OSHA',
         'routes_of_exposure'    => 'Likely Routes of Exposure', // Q8 Section 11(a)
 
         // Section 12 (Ecological Information)
@@ -807,6 +813,7 @@ return [
         'sara_313_pbt'          => 'PBT chemical',
         'sara_313_pbt_no_deminimis' => 'PBT chemical; no de minimis exemption',
         'sara_313_special_concern_no_deminimis' => 'Chemical of special concern (40 CFR 372.28); no de minimis exemption',
+        'sara_313_de_minimis'   => 'De Minimis Threshold',   // 2026-10-19 SARA 313 table column
         'hap_title'             => 'Clean Air Act Section 112(b) — Hazardous Air Pollutants (HAP)',   // A8: same wording as ES/FR/DE
         'hap_triggering'        => 'Triggering HAP Chemical',
         'hap_wt_pct'            => 'Wt% in Formula',

@@ -3934,6 +3934,10 @@ class SDSGenerator
         // #66: true only when the Carcinogenicity paragraph prints the registry
         // listing, so Chronic Effects may say "see Carcinogenicity below".
         $carcinogenListsBelow = false;
+        // Table form of the automatic listing (2026-10-19): one row per listed
+        // component, one column per agency. Empty when an operator override or
+        // the negative sentence prints; the renderers then print the text.
+        $carcinogenRows = [];
 
         // Carcinogenicity text: manual override wins; otherwise build it in
         // the sheet language from the (already filtered) registry findings.
@@ -3957,6 +3961,7 @@ class SDSGenerator
                 }
                 $carcinogenText = CarcinogenService::buildSummaryText($bandedFindings, $this->t);
                 $carcinogenListsBelow = true;
+                $carcinogenRows = $this->carcinogenTableRows($bandedFindings);
             } else {
                 // Negative sentence carries the same 0.1 % qualifier as the
                 // positive intro: a listed carcinogen below the cut-off is
@@ -3977,10 +3982,54 @@ class SDSGenerator
             'acute_toxicity'     => $overrides[11]['acute_toxicity'] ?? $this->buildAcuteToxicity($hazard),
             'chronic_effects'    => $overrides[11]['chronic_effects'] ?? $this->buildChronicEffects($hazard, $carcinogenResult, $carcinogenListsBelow),
             'carcinogenicity'    => $carcinogenText,
+            // Table form of 'carcinogenicity' (rows + the intro above them and the
+            // inhalable-dust footnote below). The text stays for the SDS editor,
+            // overrides and snapshots published before the table existed.
+            'carcinogen_rows'    => $carcinogenRows,
+            'carcinogen_intro'   => $carcinogenRows !== [] ? $this->t->get('section11.carcinogenicity_listed_intro', [
+                'threshold' => (string) CarcinogenService::LISTING_THRESHOLD_PCT,
+            ]) : '',
+            'carcinogen_dust_note' => array_filter($carcinogenRows, static fn (array $r): bool => !empty($r['inhalable_dust_only'])) !== []
+                ? $this->t->get('section11.carcinogenicity_inhalable_dust_note') : '',
             'hazard_classes'     => $hazard['hazard_classes'],
             'component_toxicology' => $componentTox,
             'carcinogen_result'  => $carcinogenResult,
         ];
+    }
+
+    /**
+     * Section 11 carcinogenicity table rows (2026-10-19) from the banded,
+     * trade-secret-masked findings: one row per finding with the agency
+     * classifications in the sheet language (same wording as the text line).
+     *
+     * @return list<array{chemical_name:string,cas_number:string,concentration_range:string,iarc:string,ntp:string,osha:string,inhalable_dust_only:bool}>
+     */
+    private function carcinogenTableRows(array $bandedFindings): array
+    {
+        $rows = [];
+        foreach ($bandedFindings as $f) {
+            if ((string) ($f['cas_number'] ?? '') === '') {
+                continue;
+            }
+            $byAgency = ['IARC' => [], 'NTP' => [], 'OSHA' => []];
+            foreach ($f['agencies'] ?? [] as $a) {
+                $agency = strtoupper((string) ($a['agency'] ?? ''));
+                if (!isset($byAgency[$agency])) {
+                    continue; // only reportable IARC / NTP / OSHA listings reach here
+                }
+                $byAgency[$agency][] = CarcinogenService::classificationText($agency, (string) ($a['classification'] ?? ''), $this->t);
+            }
+            $rows[] = [
+                'chemical_name'       => (string) ($f['chemical_name'] ?? ''),
+                'cas_number'          => (string) $f['cas_number'],
+                'concentration_range' => (string) ($f['concentration_range'] ?? ''),
+                'iarc'                => implode('; ', array_unique($byAgency['IARC'])),
+                'ntp'                 => implode('; ', array_unique($byAgency['NTP'])),
+                'osha'                => implode('; ', array_unique($byAgency['OSHA'])),
+                'inhalable_dust_only' => !empty($f['inhalable_dust_only']),
+            ];
+        }
+        return $rows;
     }
 
     private function section12(
@@ -5351,6 +5400,7 @@ class SDSGenerator
             'product_identifier', 'product_family', 'recommended_use', 'restrictions',
             'manufacturer_info', 'company', 'address', 'phone', 'emergency', 'email', 'website',
             // Section 2
+            'signal_word',   // 2026-10-19: "Signal Word:" label before Danger / Warning
             'pictograms', 'ghs_classification', 'hazard_statements',   // #40 Section 2 list of H-codes without a class line
             'physical_hazards', 'health_hazards', 'environmental_hazards',
             'precautionary_statements', 'ppe_recommendations', 'other_hazards',
@@ -5388,6 +5438,7 @@ class SDSGenerator
             // Section 11
             'acute_toxicity', 'chronic_effects', 'carcinogenicity',
             'component_tox_data',
+            'tox_exposure_limits', 'tox_carcinogen_listings', 'carc_iarc', 'carc_ntp', 'carc_osha',   // 2026-10-19 tables
             'routes_of_exposure', // Q8 (Section 11 symptoms reuse 'symptoms_effects', listed under Section 4)
             // Section 12
             'ecotoxicity', 'persistence', 'bioaccumulation', 'mobility',
@@ -5401,6 +5452,7 @@ class SDSGenerator
             'osha_status', 'tsca_status', 'sara_313_title',
             'sara_313_statement', 'sara_313_none', 'sara_313_threshold', 'sara_313_pbt_no_deminimis',   // #26 (labels.sara_313_pbt is no longer printed)
             'sara_313_special_concern_no_deminimis',   // TRI PFAS: chemical of special concern, not PBT
+            'sara_313_de_minimis',                     // 2026-10-19 SARA 313 table column
             'hap_title', 'hap_triggering', 'hap_wt_pct', 'hap_total', 'hap_none',
             'prop65_title', 'prop65_none', 'prop65_listed', 'sara_313_range_note', 'snur_title', 'state_regulations',
             // Section 16

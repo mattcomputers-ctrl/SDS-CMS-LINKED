@@ -118,7 +118,7 @@ class SdsArchiveController
         }
 
         $sizeMb = round(filesize($zipPath) / 1048576, 1);
-        AuditService::log('sds_archive', null, 'generate', [
+        AuditService::log('sds_archive', $zipName, 'generate', [
             'zip'     => $zipName,
             'added'   => $added,
             'skipped' => $skipped,
@@ -177,18 +177,34 @@ class SdsArchiveController
             return;
         }
 
-        $deleted = 0;
-        $freed   = 0;
-        $ids     = [];
+        $freed = 0;
+        $ids   = [];
+        $files = [];
 
         foreach ($oldVersions as $v) {
             $absPath = $basePath . '/' . $v['pdf_path'];
             if (file_exists($absPath)) {
                 $freed += filesize($absPath);
-                @unlink($absPath);
-                $deleted++;
+                $files[] = $absPath;
             }
             $ids[] = (int) $v['id'];
+        }
+
+        $freedMb = round($freed / 1048576, 1);
+
+        // Audit before touching anything, so the record survives a purge
+        // that dies part-way through the unlinks or the UPDATE.
+        AuditService::log('sds_archive', 'purge', 'purge', [
+            'sds_version_ids' => $ids,
+            'files_on_disk'   => count($files),
+            'missing_files'   => count($ids) - count($files),
+            'size_mb'         => $freedMb,
+        ]);
+
+        $deleted = 0;
+        foreach ($files as $absPath) {
+            @unlink($absPath);
+            $deleted++;
         }
 
         if (!empty($ids)) {
@@ -198,13 +214,6 @@ class SdsArchiveController
                 $ids
             );
         }
-
-        $freedMb = round($freed / 1048576, 1);
-        AuditService::log('sds_archive', null, 'purge', [
-            'deleted_files' => $deleted,
-            'cleared_rows'  => count($ids),
-            'freed_mb'      => $freedMb,
-        ]);
 
         $_SESSION['_flash']['success'] = "Purged {$deleted} old PDF files ({$freedMb} MB freed). "
             . count($ids) . ' database rows updated.';
@@ -230,7 +239,7 @@ class SdsArchiveController
         if (file_exists($path)) {
             $sizeMb = round(filesize($path) / 1048576, 1);
             @unlink($path);
-            AuditService::log('sds_archive', null, 'delete_zip', [
+            AuditService::log('sds_archive', $file, 'delete_zip', [
                 'zip'     => $file,
                 'size_mb' => $sizeMb,
             ]);

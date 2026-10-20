@@ -235,12 +235,34 @@ $sigDoc = $doc('en', $s11Rows, $s15);
 $sigDoc['sections'][2] = ['title' => 'Hazards', 'signal_word' => 'Danger', 'signal_word_en' => 'Danger', 'is_classified' => true,
                           'hazard_classes' => [['class' => 'Flammable Liquids', 'category' => 'Category 2']]];
 $rawSig = $pdfText($svc->generateString($sigDoc));
-check(str_contains($rawSig, 'Signal Word:') && str_contains($rawSig, 'DANGER'), 'PDF prints "Signal Word:" before the signal word');
+check(str_contains($rawSig, 'Signal Word:') && str_contains($rawSig, 'Danger)') && !str_contains($rawSig, 'DANGER'), 'PDF prints "Signal Word:" before the signal word, as written ("Danger")');
+// 2026-10-20 (owner request): the signal word in the same font, size and
+// colour as every other value: 9 pt regular, black (no red / orange).
+$sigPos  = strpos($rawSig, 'Danger)');
+$sigLead = $sigPos === false ? '' : substr($rawSig, max(0, $sigPos - 400), 400);
+preg_match_all('/([\d.]+) Tf/', $sigLead, $tfs);
+check($sigPos !== false && end($tfs[1]) === '9.000000', 'signal word at 9 pt like the other values', end($tfs[1]));
+preg_match_all('/([\d.]+) ([\d.]+) ([\d.]+) rg/', $sigLead, $rgs, PREG_SET_ORDER);
+$lastRg = end($rgs);
+check($lastRg === false || ($lastRg[1] === '0.000000' && $lastRg[2] === '0.000000' && $lastRg[3] === '0.000000'), 'signal word in black', $lastRg);
+// It reads "Signal Word: Danger": the word starts right after the label, not
+// in the 50 mm value column (owner request 2026-10-20).
+$labelX = preg_match('/BT ([\d.]+) [\d.]+ Td \[\(Signal Word: \)\] TJ/', $rawSig, $lx) ? (float) $lx[1] : null;
+$wordX  = preg_match('/BT ([\d.]+) [\d.]+ Td \[\(Danger\)\] TJ/', $rawSig, $wx) ? (float) $wx[1] : null;
+$gapMm  = ($labelX !== null && $wordX !== null) ? ($wordX - $labelX) / (72 / 25.4) : null;
+check($gapMm !== null && $gapMm > 15 && $gapMm < 30, 'signal word follows the label on the same line ("Signal Word: Danger"), not in the value column', $gapMm);
+$warnDoc = $sigDoc;
+$warnDoc['sections'][2]['signal_word'] = 'Warning';
+$warnDoc['sections'][2]['signal_word_en'] = 'Warning';
+$rawWarn = $pdfText($svc->generateString($warnDoc));
+check(!str_contains($rawWarn, '1.000000 0.549020 0.000000 rg') && !str_contains($rawSig, '0.862745 0.000000 0.000000 rg'), 'no red (Danger) or orange (Warning) text colour');
+check(!str_contains((string) file_get_contents($basePath . '/src/Services/PDFService.php'), "SetFont('helvetica', 'B', 14);\n            \$color = (\$s['signal_word_en']"), 'the 14 pt coloured signal word is gone');
 $noSig = $doc('en', $s11Rows, $s15);
 $noSig['sections'][2] = ['title' => 'Hazards', 'signal_word' => '', 'is_classified' => false, 'not_classified_text' => 'Not classified.'];
 check(!str_contains($pdfText($svc->generateString($noSig)), 'Signal Word:'), 'no label when there is no signal word');
 $pv = (string) file_get_contents($basePath . '/src/Views/sds/preview.php');
-check(str_contains($pv, "<strong><?= e(\$l('signal_word')) ?>:</strong>"), 'preview prints the same label');
+check(str_contains($pv, "<strong><?= e(\$l('signal_word')) ?>:</strong> <?= e(\$section['signal_word']) ?></p>"), 'preview prints the same label and a plain signal word');
+check(!str_contains($pv, 'font-size: 1.3rem; font-weight: bold; color:'), 'preview: no large coloured signal word');
 check(str_contains($abbr, "'signal_word'          => !empty(\$s2['signal_word'])"), 'abbreviation gate for the label');
 
 // ---------------------------------------------------------------------

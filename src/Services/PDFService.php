@@ -428,22 +428,20 @@ class PDFService
             $pdf->MultiCell(0, 5, $s['not_classified_text'] ?? $this->text('section2.not_classified'), 0, 'L');
         }
 
-        // Signal word: "Signal Word:" label (2026-10-19, owner request) in the
-        // label column, then the word itself large and coloured on the same line.
+        // Signal word: reads "Signal Word: Danger" on one line, the word right
+        // after the label (not in the value column), in the same font, size and
+        // colour (black) as the rest of the sheet (2026-10-20, owner request:
+        // the large red / orange word distracted from the content). No SDS rule
+        // sets colour, size, bold or capitals for it (OSHA 1910.1200 App. D
+        // Section 2, WHMIS HPR Sch. 1, NOM-018-STPS-2015, REACH Annex II 2.2,
+        // GHS Annex 4); only the right single word must appear. Prominence
+        // rules are for container labels.
         if (!empty($s['signal_word'])) {
             $pdf->SetFont('helvetica', 'B', 9);
-            $sigLabel = $this->label('signal_word') . ':';
-            $sigCol   = self::VALUE_COLUMN;
-            while ($sigCol < $pdf->GetStringWidth($sigLabel) + 2) {
-                $sigCol += self::VALUE_TAB;
-            }
-            $pdf->Cell($sigCol, 7, $sigLabel, 0, 0, 'L', false, '', 0, false, 'T', 'M');
-            $pdf->SetFont('helvetica', 'B', 14);
-            $color = ($s['signal_word_en'] ?? $s['signal_word']) === 'Danger' ? [220, 0, 0] : [255, 140, 0];
-            $pdf->SetTextColor(...$color);
-            $pdf->Cell(0, 7, mb_strtoupper($s['signal_word'], 'UTF-8'), 0, 1, 'L', false, '', 0, false, 'T', 'M');
-            $pdf->SetTextColor(0, 0, 0);
+            $pdf->Write(5, $this->label('signal_word') . ': ');
             $pdf->SetFont('helvetica', '', 9);
+            $pdf->Write(5, (string) $s['signal_word']);
+            $pdf->Ln(5);
         }
 
         // Pictograms — render as images if available, else text codes with names

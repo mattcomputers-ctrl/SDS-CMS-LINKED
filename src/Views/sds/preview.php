@@ -73,10 +73,8 @@ $sectionPrefix = mb_strtoupper(\SDS\Services\SDSDocumentStrings::resolve($doc, '
             <?php if (!\SDS\Services\SDSGenerator::section2IsClassified($section)): // #63: legacy snapshots without is_classified ?>
                 <p style="margin: 0.5rem 0;"><?= e($section['not_classified_text'] ?? $tx('section2.not_classified')) ?></p>
             <?php endif; ?>
-            <?php if (!empty($section['signal_word'])): // 2026-10-19: "Signal Word:" label, same as PDFService::renderSection2() ?>
-                <p style="margin: 0.5rem 0;"><strong><?= e($l('signal_word')) ?>:</strong>
-                    <span class="signal-word signal-<?= e(strtolower($section['signal_word_en'] ?? $section['signal_word'])) ?>" style="font-size: 1.3rem; font-weight: bold; color: <?= ($section['signal_word_en'] ?? $section['signal_word']) === 'Danger' ? '#DC0000' : '#FF8C00' ?>;"><?= e(mb_strtoupper($section['signal_word'], 'UTF-8')) ?></span>
-                </p>
+            <?php if (!empty($section['signal_word'])): // "Signal Word: Danger", plain like every other field (2026-10-20), same as PDFService::renderSection2() ?>
+                <p style="margin: 0.5rem 0;"><strong><?= e($l('signal_word')) ?>:</strong> <?= e($section['signal_word']) ?></p>
             <?php endif; ?>
 
             <?php if (!empty($section['pictograms'])): ?>

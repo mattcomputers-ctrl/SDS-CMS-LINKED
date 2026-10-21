@@ -88,8 +88,7 @@
                 <strong>Constituent data incomplete (warning only).</strong>
                 These raw materials have no constituents, a constituent without a CAS number, or a
                 constituent without a percentage. Those ingredients are left out of the hazard
-                classification and the regulatory checks, and Section 15 cannot state that every
-                component is on the TSCA inventory.
+                classification and the regulatory checks.
                 <ul style="margin: 0.5rem 0 0;">
                 <?php foreach ($review['incomplete_composition'] as $inc): ?>
                     <li>

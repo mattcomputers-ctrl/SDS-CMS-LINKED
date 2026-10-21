@@ -67,7 +67,7 @@ check(TSCAService::normaliseCas('0-00-0') === '0-00-0', 'all-zero first segment 
 // ---------------------------------------------------------------------
 echo "b. rollUp\n";
 $r = TSCAService::rollUp([]);
-check($r['all_covered'] === false && $r['total'] === 0, 'empty → not covered, total 0', $r);
+check($r['all_covered'] === true && $r['total'] === 0, 'empty: nothing provided to flag, covered (2026-10-21)', $r);
 check(TSCAService::rollUp([], 1)['no_cas_count'] === 1, 'noCasCount carried');
 
 $r = TSCAService::rollUp([
@@ -92,11 +92,20 @@ check($r['overridden'] === false, 'rollUp never marks overridden');
 // ---------------------------------------------------------------------
 echo "c. analyse (DB-free paths)\n";
 $r = TSCAService::analyse([]);
-check($r['all_covered'] === false && $r['no_cas_count'] === 0 && $r['total'] === 0, 'empty composition → not covered, no DB', $r);
+check($r['all_covered'] === true && $r['no_cas_count'] === 0 && $r['total'] === 0, 'empty composition: nothing provided to flag, covered, no DB', $r);
 $r = TSCAService::analyse([['cas_number' => 'TRADE_SECRET', 'chemical_name' => 'Trade secret', 'is_trade_secret' => true]]);
-check($r['all_covered'] === false && $r['no_cas_count'] === 1 && $r['total'] === 0, 'TRADE_SECRET bucket → one no-CAS, no DB', $r);
+check($r['all_covered'] === true && $r['no_cas_count'] === 0 && $r['covered_without_cas'] === 1 && $r['total'] === 0, 'TRADE_SECRET bucket: no CAS provided, assumed listed (2026-10-21), no DB', $r);
 $r = TSCAService::analyse([['cas_number' => '', 'chemical_name' => 'No CAS']]);
-check($r['no_cas_count'] === 1, 'blank CAS counted as no-CAS', $r);
+check($r['all_covered'] === true && $r['no_cas_count'] === 0, 'blank CAS: assumed listed', $r);
+$r = TSCAService::analyse([['cas_number' => 'Proprietary', 'chemical_name' => 'Resin']]);
+check($r['all_covered'] === true && $r['total'] === 0, 'a value without digits ("Proprietary"): not a provided CAS, assumed listed, never looked up', $r);
+foreach (['13463677' => 'digits without dashes', 'CAS 64-17-5' => 'a CAS with a prefix', '1330-20-7 / 100-41-4' => 'two CAS numbers in one field', '64-175' => 'a garbled CAS'] as $bad => $label) {
+    $bad = (string) $bad;
+    $r = TSCAService::analyse([['cas_number' => $bad, 'chemical_name' => 'X']]);
+    $key = TSCAService::normaliseCas($bad);
+    check($r['all_covered'] === false && isset($r['unverified'][$key]) && str_contains((string) TSCAService::warningText($r), 'not a valid CAS number'),
+        "a provided CAS that is not a CAS number ({$label}): not verified, flagged to be corrected, no DB", $r);
+}
 
 // ---------------------------------------------------------------------
 echo "d. warningText\n";
@@ -117,11 +126,9 @@ check(is_string($w) && str_contains($w, '(+3 more)'), '>8 CAS truncated with (+N
 $w = TSCAService::warningText(['all_covered' => false, 'unverified' => [], 'not_listed' => ['123-45-6' => 'Absent']]);
 check(is_string($w) && str_contains($w, 'NOT LISTED') && str_contains($w, '123-45-6'), 'not_listed → NOT LISTED', $w);
 
-$w = TSCAService::warningText(['all_covered' => false, 'unverified' => [], 'not_listed' => [], 'no_cas_count' => 2]);
-check(is_string($w) && str_contains($w, '2 trade-secret components with no CAS cannot be checked'), 'no-CAS buckets → cannot be checked', $w);
-
 $w = TSCAService::warningText(['all_covered' => false, 'unverified' => [], 'not_listed' => [], 'no_cas_count' => 0, 'total' => 0]);
-check(is_string($w) && str_contains($w, 'no CAS-level composition'), 'nothing to check → still a warning', $w);
+check($w === null, 'nothing provided to flag → no warning', $w);
+check(!str_contains((string) $w, 'raw-material TSCA override') && !str_contains((string) $w, 'cannot be checked'), 'the warning never asks about components without a CAS', $w);
 
 // ---------------------------------------------------------------------
 echo "e. section15 (Reflection, empty composition)\n";
@@ -141,19 +148,22 @@ $p65  = ['requires_warning' => false, 'warning_text' => '', 'cancer_chemicals' =
 $hap  = ['has_haps' => false, 'total_hap_pct' => 0.0, 'hap_chemicals' => []];
 
 $r = $s15->invoke($gen, $hz0, $sara, $p65, $hap, ['composition' => []], []);
-check($r['tsca_status'] === $t->get('section15.tsca_status_not_verified'), 'empty composition prints the not-verified sentence', $r['tsca_status']);
-check($r['tsca_status'] === 'TSCA inventory status has not been verified for all components.', 'en not-verified wording', $r['tsca_status']);
-check(($r['tsca']['all_covered'] ?? null) === false && ($r['tsca']['overridden'] ?? null) === false, 'tsca roll-up stored: not covered, not overridden', $r['tsca'] ?? null);
-check(SDSReadinessService::tscaWarning(['sections' => [15 => $r]]) !== null, 'readiness warning raised from the snapshot');
+check($r['tsca_status'] === $t->get('section15.tsca_status'), 'empty composition: nothing provided to flag, the all-listed sentence (2026-10-21)', $r['tsca_status']);
+check(SDSReadinessService::tscaWarning(['sections' => [15 => $r]]) === null, '... and no TSCA warning');
+check(($r['tsca']['all_covered'] ?? null) === true && ($r['tsca']['overridden'] ?? null) === false, 'tsca roll-up stored: covered, not overridden', $r['tsca'] ?? null);
+check($t->get('section15.tsca_status_not_verified') === 'TSCA inventory status has not been verified for all components.', 'en not-verified wording');
+// A provided CAS that cannot be matched (section15() itself needs the DB for SNUR, so the roll-up it stores).
+$badRoll = TSCAService::analyse([['cas_number' => '13463677', 'chemical_name' => 'Titanium dioxide']]);
+check(TSCAService::statusKey($badRoll) === 'section15.tsca_status_not_verified', 'a provided CAS that is not a CAS number: the not-verified sentence', $badRoll);
+check(SDSReadinessService::tscaWarning(['sections' => [15 => ['tsca' => $badRoll]]]) !== null, 'readiness warning raised from the snapshot');
 
 // Q12: the TSCA sentence is no longer editable per product; a stored row is ignored.
 $r = $s15->invoke($gen, $hz0, $sara, $p65, $hap, ['composition' => []], [15 => ['tsca_status' => 'Vendor confirms TSCA.']]);
-check($r['tsca_status'] === $t->get('section15.tsca_status_not_verified'), 'stored Section 15 TSCA override ignored (Q12)', $r['tsca_status']);
+check($r['tsca_status'] === $t->get('section15.tsca_status'), 'stored Section 15 TSCA override ignored (Q12)', $r['tsca_status']);
 check(($r['tsca']['overridden'] ?? null) === false, 'roll-up never marked overridden', $r['tsca'] ?? null);
-check(SDSReadinessService::tscaWarning(['sections' => [15 => $r]]) !== null, 'the TSCA warning still fires');
 
 $r = $s15->invoke($gen, $hz0, $sara, $p65, $hap, ['composition' => []], [15 => ['tsca_status' => '   ']]);
-check($r['tsca_status'] === $t->get('section15.tsca_status_not_verified') && ($r['tsca']['overridden'] ?? null) === false, 'blank override falls back to the translated sentence', $r['tsca_status']);
+check($r['tsca_status'] === $t->get('section15.tsca_status') && ($r['tsca']['overridden'] ?? null) === false, 'blank override falls back to the translated sentence', $r['tsca_status']);
 
 $ghsNoteProp->setValue(null, null);
 
@@ -184,8 +194,7 @@ $inact = TSCAService::rollUp([
     '64-17-5'  => ['status' => TSCAService::STATUS_INACTIVE, 'name' => 'Ethanol'],
 ]);
 check($inact['all_covered'] === true && $inact['inactive'] === ['64-17-5' => 'Ethanol'] && $inact['listed_count'] === 2, '#46 inactive counts as listed, kept for the warning', $inact);
-$w = TSCAService::warningText($inact);
-check(is_string($w) && str_contains($w, 'INACTIVE') && str_contains($w, '64-17-5') && str_contains($w, 'All components'), '#46 inactive entry raises a warning; the sentence stays "all listed"', $w);
+check(TSCAService::warningText($inact) === null, '#46 an INACTIVE entry is on the inventory: "all listed", not flagged (2026-10-21)');
 
 check(TSCAService::statusKey(['all_covered' => true, 'not_listed' => []]) === 'section15.tsca_status', 'statusKey covered');
 check(TSCAService::statusKey(['all_covered' => false, 'not_listed' => ['1-1-1' => 'X']]) === 'section15.tsca_status_not_listed', 'statusKey not_listed (#46)');
@@ -195,16 +204,16 @@ check(TSCAService::incompleteReasons(['n_constituents' => 0]) === ['no_constitue
 check(TSCAService::incompleteReasons(['n_constituents' => 3, 'n_blank_cas' => 1, 'n_ts_no_cas' => 0, 'n_no_pct' => 2]) === ['blank_cas', 'no_percentage'], '#27 reasons: blank CAS + no percentage');
 check(TSCAService::incompleteReasons(['n_constituents' => 2]) === [], '#27 reasons: complete');
 
-$covered = TSCAService::rollUp(['108-88-3' => ['status' => 'listed', 'name' => 'Toluene']]);
-$inc = TSCAService::applyIncomplete($covered, [['id' => 5, 'internal_code' => 'W-1', 'reasons' => ['no_constituents']]]);
-check($inc['all_covered'] === false && ($inc['incomplete_raw_materials'][0]['internal_code'] ?? null) === 'W-1', '#27 a raw material without constituents makes TSCA not verified', $inc);
-$w = TSCAService::warningText($inc);
-check(is_string($w) && str_contains($w, 'W-1') && str_contains($w, 'no constituents'), '#27 TSCA warning names the raw material', $w);
-check(TSCAService::statusKey($inc) === 'section15.tsca_status_not_verified', '#27 sentence is "not verified"');
-
-$inc2 = TSCAService::applyIncomplete($covered, [['id' => 6, 'internal_code' => 'P-2', 'reasons' => ['no_percentage']]]);
-check($inc2['all_covered'] === true, '#27 a missing percentage alone does not affect TSCA', $inc2);
-check(TSCAService::warningText($inc2) === null, '#27 no TSCA warning for a missing percentage alone');
+$tolRow   = ['cas_number' => '108-88-3', 'chemical_name' => 'Toluene', 'contributing_materials' => [['raw_material_id' => 3, 'internal_code' => 'SOLV']]];
+$tolSeen  = ['108-88-3' => ['status' => 'listed', 'source' => 'inventory', 'name' => 'Toluene']];
+$inc = TSCAService::analyseResolved([$tolRow], $tolSeen, [], [['id' => 5, 'internal_code' => 'W-1', 'reasons' => ['no_constituents']]]);
+check($inc['all_covered'] === true && TSCAService::statusKey($inc) === 'section15.tsca_status' && TSCAService::warningText($inc) === null,
+    '#27 a raw material without constituents: assumed listed, no TSCA warning (2026-10-21)', $inc);
+check(($inc['incomplete_raw_materials'][0]['internal_code'] ?? null) === 'W-1', '#27 ... still kept for the composition warning (hazard classification)');
+$inc2 = TSCAService::analyseResolved([$tolRow], $tolSeen, [], [['id' => 6, 'internal_code' => 'P-2', 'reasons' => ['no_percentage']]]);
+check($inc2['all_covered'] === true && TSCAService::warningText($inc2) === null, '#27 a missing percentage alone does not affect TSCA', $inc2);
+$inc3 = TSCAService::analyseResolved([$tolRow], $tolSeen, [], [['id' => 8, 'internal_code' => 'B-3', 'reasons' => ['blank_cas']], ['id' => 9, 'internal_code' => 'T-4', 'reasons' => ['trade_secret_no_cas']]]);
+check($inc3['all_covered'] === true, '#27 a blank-CAS or trade-secret constituent without a CAS: assumed listed', $inc3);
 
 $cw = SDSReadinessService::incompleteCompositionWarning([['id' => 6, 'internal_code' => 'P-2', 'reasons' => ['no_percentage']]]);
 check(is_string($cw) && str_contains($cw, 'P-2') && str_contains($cw, 'Publishing is not blocked'), '#27 composition warning (warning only)', $cw);
@@ -253,13 +262,13 @@ $listed = ['108-88-3' => ['status' => 'listed', 'source' => 'inventory', 'name' 
 $ovr7   = [7 => ['status' => 'listed', 'note' => 'Supplier SDS', 'internal_code' => 'TS-RESIN']];
 
 $r = TSCAService::analyseResolved([$tol, $ts], $listed, [], null);
-check(empty($r['all_covered']) && $r['no_cas_count'] === 1 && $r['no_cas_raw_materials'] === ['TS-RESIN'], 'trade-secret raw material without override: not verified, named', $r);
-check(str_contains((string) TSCAService::warningText($r), 'TS-RESIN') && str_contains((string) TSCAService::warningText($r), 'raw-material TSCA override'), 'warning names the raw material and the fix');
-$r = TSCAService::analyseResolved([$tol, $ts], $listed, $ovr7, null);
-check(!empty($r['all_covered']) && $r['no_cas_count'] === 0 && $r['covered_without_cas'] === 1, 'raw-material override (listed) covers its trade-secret component', $r);
+check(!empty($r['all_covered']) && $r['no_cas_count'] === 0 && $r['covered_without_cas'] === 1 && TSCAService::warningText($r) === null,
+    'trade-secret component without a CAS, no override: assumed listed, no warning (2026-10-21)', $r);
 check(TSCAService::statusKey($r) === 'section15.tsca_status', '... Section 15: all components listed on or exempt from the TSCA inventory');
-$r = TSCAService::analyseResolved([$ts], [], $ovr7, null);
-check(!empty($r['all_covered']), 'product made only of an overridden trade-secret raw material: covered', $r);
+$r = TSCAService::analyseResolved([$ts], [], [], null);
+check(!empty($r['all_covered']), 'product made only of a trade-secret raw material: assumed listed', $r);
+$r = TSCAService::analyseResolved([$tol, ['cas_number' => 'Proprietary', 'chemical_name' => 'Resin', 'contributing_materials' => [['raw_material_id' => 4, 'internal_code' => 'PROP']]]], $listed, [], null);
+check(!empty($r['all_covered']) && $r['unverified'] === [], 'a "Proprietary" CAS value: not a provided CAS, assumed listed', $r);
 $r = TSCAService::analyseResolved([$tol, $unk], $listed + ['999-99-9' => ['status' => 'not_verified', 'source' => 'none', 'name' => '']], $ovr7, null);
 check(!empty($r['all_covered']) && $r['unverified'] === [], 'a CAS not on the inventory but only from an overridden raw material: covered', $r);
 $both = ['cas_number' => '999-99-9', 'chemical_name' => 'Unknown', 'contributing_materials' => [['raw_material_id' => 7, 'internal_code' => 'TS-RESIN'], ['raw_material_id' => 3, 'internal_code' => 'SOLV']]];
@@ -272,20 +281,18 @@ $res = TSCAService::applyRawMaterialOverrides(['999-99-9' => ['status' => 'not_v
 check(($res['999-99-9']['status'] ?? '') === 'exempt' && ($res['999-99-9']['source'] ?? '') === 'raw_material_override', 'an exempt raw material makes its CAS exempt');
 $incomplete = [['id' => 7, 'internal_code' => 'TS-RESIN', 'reasons' => [TSCAService::REASON_NO_CONSTITUENTS]], ['id' => 3, 'internal_code' => 'SOLV', 'reasons' => [TSCAService::REASON_NO_PERCENTAGE]]];
 $r = TSCAService::analyseResolved([$tol], $listed, [], $incomplete);
-check(empty($r['all_covered']), 'raw material with no constituents and no override: not verified');
+check(!empty($r['all_covered']), 'raw material with no constituents and no override: assumed listed', $r);
 $r = TSCAService::analyseResolved([$tol], $listed, $ovr7, $incomplete);
 check(!empty($r['all_covered']), 'raw material with no constituents but a raw-material override: covered', $r);
 check(array_column($r['incomplete_raw_materials'] ?? [], 'internal_code') === ['TS-RESIN', 'SOLV']
     && str_contains((string) \SDS\Services\SDSReadinessService::incompleteCompositionWarning($r['incomplete_raw_materials']), 'TS-RESIN'),
     '... but the composition warning still names it (its hazards are still left out)', $r);
 check(TSCAService::warningText($r) === null, '... while the TSCA warning does not', TSCAService::warningText($r));
-check(array_column($r['tsca_open_incomplete'] ?? [], 'internal_code') === ['SOLV'], '... TSCA keeps only the raw materials without an override');
 $r = TSCAService::analyseResolved([$tol], $listed, [3 => ['status' => 'listed', 'note' => 'x', 'internal_code' => 'SOLV']], [['id' => 3, 'internal_code' => 'SOLV', 'reasons' => [TSCAService::REASON_NO_PERCENTAGE]]]);
 check(($r['covered_without_cas'] ?? null) === 0, 'an overridden raw material missing only a percentage is not counted as a component covered without a CAS', $r);
 $r = TSCAService::analyseResolved([], [], [7 => $ovr7[7]], [['id' => 7, 'internal_code' => 'TS-RESIN', 'reasons' => [TSCAService::REASON_NO_PERCENTAGE]]]);
-check(empty($r['all_covered']), '... so it alone cannot make a product with no checked component "all covered"', $r);
+check(!empty($r['all_covered']) && ($r['covered_without_cas'] ?? null) === 0, '... a product with nothing provided to flag is covered all the same', $r);
 check(str_contains(TSCAService::sqlBlankCas('rmc.cas_number'), 'CHAR(9)') && str_contains(TSCAService::sqlBlankCas('x'), 'CHAR(10)'), 'SQL blank-CAS test ignores tabs and line breaks');
-check(str_contains(TSCAService::noCasReasonLabel('invalid_cas'), 'not a CAS number'), 'second list reason: constituent CAS is not a CAS number');
 check(TSCAService::rollUp([], 0, [], 1)['all_covered'] === true, 'rollUp: a component covered without a CAS counts towards "all covered"');
 check(array_keys(TSCAService::RM_OVERRIDE_OPTIONS) === ['auto', 'listed', 'exempt'], 'raw-material override values: auto, listed, exempt');
 
@@ -300,8 +307,12 @@ check(str_contains($app, "\$router->post('/determinations/tsca-rm',      'AdminC
 $svc = (string) file_get_contents($basePath . '/src/Services/TSCAService.php');
 check(str_contains($svc, '$overrides[self::normaliseCas((string) $r[\'cas_number\'])] = $r;') && str_contains($svc, '$inventory[self::normaliseCas((string) $r[\'cas_number\'])] = $r;'), 'resolve() keys overrides and inventory by the canonical CAS');
 check(str_contains($svc, 'foreach (self::resolve(array_keys($byCas)) as $cas => $res) {'), 'TSCA Review list built on resolve() (cannot disagree with Section 15)');
-check(str_contains($svc, "if (\$cas === '' || !preg_match(self::CAS_PATTERN, \$cas)) {") && str_contains($svc, "\$p = isset(\$rmOverrides[(int) \$r['rm_id']]) ? 'ovr_' : '';"),
-    'TSCA Review CAS list skips values that are not a CAS (they go to the raw-material list); overridden raw materials count for an INACTIVE CAS only');
+check(str_contains($svc, "if (\$cas === '' || (!preg_match(self::CAS_PATTERN, \$cas) && !self::isMalformedCas(\$cas)) || isset(\$rmOverrides[(int) \$r['rm_id']])) {")
+    && str_contains($svc, "'invalid'            => (int) !preg_match(self::CAS_PATTERN, (string) \$cas),"),
+    'TSCA Review CAS list skips values without digits and raw materials with an override; lists a malformed CAS as invalid');
+check(TSCAService::isMalformedCas('13463677') && TSCAService::isMalformedCas('CAS64-17-5') && !TSCAService::isMalformedCas('Proprietary') && !TSCAService::isMalformedCas('TRADE_SECRET')
+    && !TSCAService::isMalformedCas('64-17-5') && !TSCAService::isMalformedCas(''), 'isMalformedCas: digits but not a CAS number');
+check(str_contains($svc, 'if (!preg_match(self::CAS_PATTERN, $n)) {') && str_contains($svc, '$coveredNoCas++;   // no CAS provided: assumed listed'), 'Section 15: a component without a provided CAS is assumed listed');
 check(!str_contains($svc, "cas_number LIKE"), 'raw materials for a CAS are found in canonical form, not with LIKE');
 $imp = (string) file_get_contents($basePath . '/src/Services/TSCAInventoryImporter.php');
 check(str_contains($imp, 'TSCAService::rawMaterialIdsForCasMany($affected)') && !str_contains($imp, 'bumpByCasMany('), 'TSCA inventory import bumps raw materials whatever way the CAS was typed');
@@ -318,22 +329,14 @@ check(str_contains($bpc, 'public static function rawMaterialsOnClearedSheets(Dat
 check(str_contains($bpc, "'cleared' => array_values(array_filter(") && str_contains($bpc, '!isset($resaleBlocks[$id])'), 'resale: every candidate the resale rule does not block, fresh or not');
 check(!str_contains($bpc, 'rawMaterialsHeldForMissingData'), 'the missing-data hold is replaced by the scope');
 check(str_contains($adm, '$tscaScope       = BulkPublishController::rawMaterialsOnClearedSheets($db);')
-    && str_contains($adm, 'TSCAService::reviewCandidates($tscaScope, $tscaNotCleared)') && str_contains($adm, 'TSCAService::noCasReviewCandidates($tscaScope, $tscaNotCleared)'),
-    'TSCA Review passes the scope to every list');
-check(str_contains($svc, "if (\$res['status'] === self::STATUS_INACTIVE) {") && str_contains($svc, "} elseif (\$res['status'] !== self::STATUS_NOT_VERIFIED) {") && str_contains($svc, "'status'             => (string) \$res['status'],"),
-    'CAS list includes INACTIVE inventory entries, with their status');
-echo "\nj. Third list: constituents adding up to less than 100% (2026-10-21)\n";
-check(TSCAService::undisclosedPct(62.5, 0) === 37.5, 'undisclosed share: 62.5% entered leaves 37.5%');
-check(TSCAService::undisclosedPct(99.0, 0) === 1.0, '... exactly 1% unaccounted for is listed');
-check(TSCAService::undisclosedPct(99.5, 0) === null && TSCAService::undisclosedPct(100.0, 0) === null && TSCAService::undisclosedPct(104.0, 0) === null, '... rounding gaps below 1%, a full or over-full composition: not listed');
-check(TSCAService::undisclosedPct(40.0, 1) === null, '... a constituent with no upper bound (no percentage, or only a minimum): cannot tell, not listed');
-check(str_contains($svc, 'SUM(pct_exact IS NULL AND pct_max IS NULL)  AS n_open') && str_contains($svc, 'SUM(COALESCE(pct_exact, pct_max, 0))        AS max_total'), 'entered share = each constituent\'s exact value or maximum');
-check(str_contains($svc, 'if (!isset($scopeRmIds[$id]) || isset($listed[$id])) {'), 'only raw materials in scope, and none already on the second list');
-check(str_contains($adm, 'TSCAService::undisclosedCompositionCandidates($tscaScope, array_column($tscaRmReview, \'id\'))'), 'third list uses the same scope');
-
+    && str_contains($adm, 'TSCAService::reviewCandidates($tscaScope, $tscaNotCleared)'), 'TSCA Review passes the scope to the CAS list');
+check(str_contains($svc, "if (\$res['status'] !== self::STATUS_NOT_VERIFIED) {") && !str_contains($svc, 'STATUS_INACTIVE) {'), 'the CAS list flags only a provided CAS not on the inventory (not INACTIVE entries)');
+foreach (['noCasReviewCandidates', 'undisclosedCompositionCandidates', 'applyIncomplete'] as $gone) {
+    check(!str_contains($svc, 'function ' . $gone) && !str_contains($adm, $gone), "{$gone} is gone (no CAS = assumed listed)");
+}
 $det = (string) file_get_contents($basePath . '/src/Views/admin/determinations.php');
-check(str_contains($det, 'Raw materials that may contain undisclosed components') && str_contains($det, 'id="tscaUndisclosedTable"'), 'TSCA tab shows the third list');
-check(str_contains($det, '$tscaCount = count($tscaReview ?? []) + count($tscaRmReview ?? []) + count($tscaUndisclosed ?? []);'), '... and counts it in the tab badge');
+check(!str_contains($det, 'Raw materials that may contain undisclosed components') && !str_contains($det, 'Raw materials that cannot be checked by CAS'), 'TSCA tab: the CAS list only (no raw-material lists)');
+check(str_contains($det, '$tscaCount = count($tscaReview ?? []);'), '... and the badge counts it');
 
 echo "\nk. Saving several TSCA overrides at once (2026-10-21)\n";
 check(str_contains($app, "\$router->post('/determinations/tsca-batch',   'AdminController@saveTscaBatch');"), 'route POST /determinations/tsca-batch');
@@ -343,18 +346,20 @@ check(str_contains($adm, 'TSCAService::writeCasOverride($db, $str(') && str_cont
     '... through the same validation and writes as the single-row saves');
 check(substr_count($adm, 'TSCAService::writeCasOverride(') === 2 && substr_count($adm, 'TSCAService::writeRawMaterialOverride(') === 2, 'single-row saves use the shared writers too');
 check(str_contains($adm, 'TSCAService::rawMaterialIdsForCasMany(array_keys($cas)), array_keys($rms))'), '... and bumps / queues every raw material touched once');
-check(substr_count($det, '<input type="checkbox" class="tsca-pick" aria-label=') === 3 && substr_count($det, 'class="tsca-pick-all"') === 3, 'a tick box on every row of the three lists, and a select-all per list');
+check(substr_count($det, '<input type="checkbox" class="tsca-pick" aria-label=') === 1 && substr_count($det, 'class="tsca-pick-all"') === 1, 'a tick box on every row of the CAS list, and a select-all');
 check(str_contains($det, 'id="tscaBatchForm"') && str_contains($det, 'action="/determinations/tsca-batch"') && str_contains($det, "JSON.stringify(payload)") && str_contains($det, 'id="tscaBatchBar"'),
     'one hidden batch form, posted with the selection as JSON from the bar');
 check(str_contains($det, "if (st === 'auto') { noStatus.push(label);") && str_contains($det, "if (note === '')   { noNote.push(label);"), 'the bar refuses rows still on Auto or without a note');
 check(str_contains($det, 'picked().filter(shown).forEach(') && str_contains($det, "if (st && sel && !sel.querySelector('option[value=\"' + st + '\"]')) {"),
     'Apply changes only shown ticked rows, and leaves (and unticks) rows that do not offer the status');
-check(substr_count($det, '<?php if ($canEditTsca): ?>') >= 6 && str_contains($det, "\$canEditTsca = can_edit('cas_determinations');"), 'batch controls only for users who can save');
-check(substr_count($det, 'autocomplete="off"') >= 9, 'no browser form-state restore onto a changed list');
+check(substr_count($det, '<?php if ($canEditTsca): ?>') >= 4 && str_contains($det, "\$canEditTsca = can_edit('cas_determinations');"), 'batch controls only for users who can save');
+check(substr_count($det, 'autocomplete="off"') >= 6, 'no browser form-state restore onto a changed list');
 check(strpos($adm, '$bumped = \SDS\Services\RegulatoryListBumper::bumpRawMaterialIds($rmIds);') < strpos($adm, '            $db->commit();')
     && str_contains($adm, 'Run the scan on SDS Updates to queue them.'), 'batch bump commits with the overrides; a queueing failure says to run the scan');
 check(str_contains($det, 'Not listed yet:') && str_contains($det, 'only on sheets Bulk SDS Publish is not cleared to publish'), 'TSCA tab says how many are not listed yet');
-check(str_contains($det, "\\SDS\\Services\\TSCAService::STATUS_INACTIVE ? '<span style=\"color:#fd7e14;font-weight:bold;\">INACTIVE</span>"), 'CAS list marks INACTIVE entries');
+check(!str_contains($det, 'Notice of Activity needed'), 'no INACTIVE column (INACTIVE entries are on the inventory)');
+check(str_contains($det, "<?php if (!empty(\$r['invalid'])): // a provided CAS that is not a CAS number: correct it on the raw material ?>") && str_contains($det, 'an override cannot be set on it.'),
+    'a CAS that is not a CAS number is listed with links to correct it, without an override form or tick box');
 
 $rmForm = (string) file_get_contents($basePath . '/src/Views/raw-materials/form.php');
 check(str_contains($rmForm, 'action="/determinations/tsca-rm"') && str_contains($rmForm, 'name="back_to" value="raw_material"'), 'raw-material edit page has the TSCA override card');

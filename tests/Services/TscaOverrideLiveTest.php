@@ -4,22 +4,20 @@
  * TSCA overrides — live-DB test (needs config/config.php and migration 066)
  *
  * Runs inside ONE transaction that is always rolled back, so it is safe on
- * the production database: its rows (codes ZZTSC*, CAS 7777770..7777777)
- * disappear at the end, also on failure. Checks the 2026-10-21 fixes for
- * "TSCA inventory status has not been verified" despite overrides:
- *   - a raw-material override covers components without a CAS (a whole
- *     trade-secret raw material, a raw material with no constituents);
+ * the production database: its rows (codes ZZTSC*, CAS 7777768..7777777)
+ * disappear at the end, also on failure. Checks the 2026-10-21 TSCA rules:
+ *   - only CAS numbers that are provided are checked: a component without a
+ *     CAS (a whole trade-secret raw material, no constituents, a blank or
+ *     "Proprietary" value, constituents adding up to less than 100%) is
+ *     assumed listed, and an INACTIVE inventory entry counts as listed;
  *   - a CAS override matches a constituent CAS typed with an invisible
  *     character or zero padding, and an override stored on such a spelling
- *     still covers the clean CAS;
- *   - the TSCA Review lists agree with Section 15 (nothing covered is
+ *     still covers the clean CAS; a raw-material override covers its CAS;
+ *   - the TSCA Review CAS list agrees with Section 15 (nothing covered is
  *     listed, nothing uncovered is missing), and a CAS override finds every
  *     raw material whatever way its CAS was typed;
- *   - the TSCA Review lists only raw materials on a sheet Bulk SDS Publish
- *     is cleared to publish; the rest are reported as "not listed yet";
- *   - a CAS on the inventory but INACTIVE is listed (Notice of Activity);
- *   - the third list names raw materials whose constituents add up to less
- *     than 100% (undisclosed, possibly trade-secret components).
+ *   - the list covers only raw materials on a sheet Bulk SDS Publish is
+ *     cleared to publish; the rest are reported as "not listed yet".
  *
  * Run:
  *   sudo -u www-data php tests/Services/TscaOverrideLiveTest.php
@@ -124,35 +122,23 @@ try {
     check(!isset($review['7777777-77-1']) && !isset($review['7777776-77-2']) && !isset($review['7777775-77-3']), 'TSCA Review does not list a CAS that Section 15 counts as covered', array_keys($review));
     check(isset($review['7777774-77-4']) && str_contains($review['7777774-77-4']['raw_material_codes'], 'ZZTSCAUTO'), 'TSCA Review lists the uncovered CAS with its raw material');
 
-    echo "\nRaw-material override\n";
-    check($key([$whole]) === 'section15.tsca_status_not_verified', 'whole trade-secret raw material: not verified (no CAS override possible)');
-    check($key([$empty]) === 'section15.tsca_status_not_verified', 'raw material with no constituents: not verified');
-    $noCas = array_column(T::noCasReviewCandidates(), null, 'internal_code');
-    check(isset($noCas['ZZTSCWHOLE']) && in_array('whole_trade_secret', $noCas['ZZTSCWHOLE']['reasons'], true), 'second list shows the whole trade-secret raw material', $noCas['ZZTSCWHOLE'] ?? null);
-    check(isset($noCas['ZZTSCEMPTY']) && in_array('no_constituents', $noCas['ZZTSCEMPTY']['reasons'], true), '... and the raw material with no constituents');
-    check(!isset($noCas['ZZTSCNBSP']) && !isset($noCas['ZZTSCAUTO']), '... but not raw materials whose components all have a CAS');
-    check(in_array('invalid_cas', $noCas['ZZTSCPROP']['reasons'] ?? [], true) && !isset($review['PROPRIETARY']) && !isset($review['Proprietary']),
-        'a constituent "CAS" that is not a CAS number is on the second list, not the CAS list', $noCas['ZZTSCPROP'] ?? null);
-    check(in_array('blank_cas', $noCas['ZZTSCTAB']['reasons'] ?? [], true) && $key([$tab]) === 'section15.tsca_status_not_verified',
-        'a CAS that is only a tab counts as blank', $noCas['ZZTSCTAB'] ?? null);
-
-    $db->query("UPDATE raw_materials SET tsca_status = 'listed', tsca_note = 'Supplier SDS Section 15' WHERE id IN (?, ?)", [$whole, $empty]);
-    check($key([$whole]) === 'section15.tsca_status', 'raw-material override (listed): the whole trade-secret raw material is covered');
-    check($key([$empty]) === 'section15.tsca_status', '... and the one with no constituents');
+    echo "\nComponents without a CAS: assumed listed\n";
+    check($key([$whole]) === 'section15.tsca_status' && T::warningText(T::rollUpForRawMaterialIds([$whole])) === null, 'whole trade-secret raw material: assumed listed, no TSCA warning');
+    check($key([$empty]) === 'section15.tsca_status', 'raw material with no constituents: assumed listed');
     $emptyRoll = T::rollUpForRawMaterialIds([$empty]);
     check(in_array('ZZTSCEMPTY', array_column($emptyRoll['incomplete_raw_materials'] ?? [], 'internal_code'), true) && T::warningText($emptyRoll) === null,
-        '... its composition warning stays (no constituents), its TSCA warning goes', $emptyRoll);
-    $noCas = array_column(T::noCasReviewCandidates(), null, 'internal_code');
-    check(!isset($noCas['ZZTSCWHOLE']) && !isset($noCas['ZZTSCEMPTY']), 'overridden raw materials leave the second list');
-    $inEffect = array_column(T::rawMaterialOverridesInEffect(), null, 'internal_code');
-    check(($inEffect['ZZTSCWHOLE']['tsca_status'] ?? '') === 'listed', '... and appear under raw-material overrides in effect');
+        '... its composition warning stays (no constituents), no TSCA warning', $emptyRoll);
+    check($key([$prop]) === 'section15.tsca_status' && !isset($review['PROPRIETARY']) && !isset($review['Proprietary']), 'a constituent "CAS" that is not a CAS number: assumed listed, not on the CAS list');
+    check($key([$tab]) === 'section15.tsca_status', 'a CAS that is only a tab counts as blank: assumed listed');
+    check($key([$whole, $empty, $nb, $pad, $dirty, $dash, $zw, $sp, $prop, $tab]) === 'section15.tsca_status', 'covered CAS numbers plus components without a CAS: "All components ... listed"');
+    check($key([$whole, $empty, $auto]) === 'section15.tsca_status_not_verified', '... but a provided CAS that is not on the inventory still makes it "not verified"');
 
+    echo "\nRaw-material override\n";
     $db->query("UPDATE raw_materials SET tsca_status = 'exempt', tsca_note = 'Supplier certifies' WHERE id = ?", [$auto]);
     check($key([$auto]) === 'section15.tsca_status', 'raw-material override covers its CAS that is not on the inventory');
     check(!isset(array_column(T::reviewCandidates(), null, 'cas_number')['7777774-77-4']), '... which then leaves the TSCA Review list');
-
-    $db->query("UPDATE raw_materials SET tsca_status = 'listed', tsca_note = 'Supplier SDS' WHERE id IN (?, ?)", [$prop, $tab]);
-    check($key([$prop]) === 'section15.tsca_status' && $key([$tab]) === 'section15.tsca_status', 'raw-material override covers a non-CAS value and a blank CAS');
+    $inEffect = array_column(T::rawMaterialOverridesInEffect(), null, 'internal_code');
+    check(($inEffect['ZZTSCAUTO']['tsca_status'] ?? '') === 'exempt', '... and appears under raw-material overrides in effect');
     check($key([$whole, $empty, $nb, $pad, $dirty, $auto, $dash, $zw, $sp, $prop, $tab]) === 'section15.tsca_status', 'the whole product: "All components ... listed on or exempt from the TSCA inventory"');
 
     echo "\nScope: sheets Bulk SDS Publish is cleared to publish\n";
@@ -186,39 +172,27 @@ try {
     $scope = static fn (): array => \SDS\Controllers\BulkPublishController::rawMaterialsOnClearedSheets($db);
     $lists = static function (array $scope): array {
         $waiting = [];
-        $cas = array_column(T::reviewCandidates($scope, $waiting), null, 'cas_number');
-        $rms = array_column(T::noCasReviewCandidates($scope, $waiting), null, 'internal_code');
-        $und = array_column(T::undisclosedCompositionCandidates($scope, array_column($rms, 'id')), null, 'internal_code');
-        return [$cas, $rms, $waiting, $und];
+        $cas     = array_column(T::reviewCandidates($scope, $waiting), null, 'cas_number');
+        return [$cas, $waiting];
     };
     $hU = $rm('ZZTSCHOLDU');                                      // not reviewed, no data, in a formula
     $hC = $rm('ZZTSCHOLDC'); $con($hC, '7777773-77-5', 'Not reviewed, CAS not on the inventory');
     $hR = $rm('ZZTSCHOLDR'); $review($hR); $sheet($hR, \SDS\Services\SDSReadinessService::BULK_RESALE_CHANGE_SUMMARY);
     $hF = $rm('ZZTSCHOLDF'); $review($hF);                        // reviewed, no data, only in ZZTSCFG2
-    $fg2 = (int) $db->insert('finished_goods', ['product_code' => 'ZZTSCFG2']);
-    $f2  = (int) $db->insert('formulas', ['finished_good_id' => $fg2, 'is_current' => 1]);
-    foreach ([$hU, $hF] as $id) {
-        $db->insert('formula_lines', ['formula_id' => $f2, 'raw_material_id' => $id, 'pct' => 50]);
-    }
+    $product('ZZTSCFG2', [$hU, $hF]);
 
     $sc = $scope();
     check(!isset($sc[$hU]) && !isset($sc[$hF]), 'a product bulk publish skips (one raw material not reviewed): none of its raw materials are in scope');
     check(!isset($sc[$hC]), 'not reviewed, in no formula and with no sheet: not in scope');
     check(!isset($sc[$hR]), 'no constituents and only a sheet bulk publish wrote: not in scope (the resale gate refuses it)');
-    [$casList, $rmList, $waiting] = $lists($sc);
-    check(!isset($casList['7777773-77-5']), 'CAS list leaves out a CAS carried only by raw materials not in scope', array_keys($casList));
-    check(!isset($rmList['ZZTSCHOLDU']) && !isset($rmList['ZZTSCHOLDR']) && !isset($rmList['ZZTSCHOLDF']), '... and so does the second list', array_keys($rmList));
-    check(($waiting[$hU] ?? '') === 'ZZTSCHOLDU' && ($waiting[$hC] ?? '') === 'ZZTSCHOLDC' && ($waiting[$hR] ?? '') === 'ZZTSCHOLDR' && ($waiting[$hF] ?? '') === 'ZZTSCHOLDF',
-        '... and reports them as "not listed yet"', $waiting);
-    check(isset(array_column(T::noCasReviewCandidates(), null, 'internal_code')['ZZTSCHOLDU']), 'without a scope the raw material would be listed (default unchanged)');
+    [$casList, $waiting] = $lists($sc);
+    check(!isset($casList['7777773-77-5']) && ($waiting[$hC] ?? '') === 'ZZTSCHOLDC', 'CAS list leaves out a CAS carried only by raw materials not in scope, and reports them as "not listed yet"', [array_keys($casList), $waiting]);
+    check(!isset($waiting[$hU]) && !isset($waiting[$hF]) && !isset($waiting[$hR]), '... raw materials without a CAS are never waiting (nothing to flag)', $waiting);
 
     $review($hU);   // every raw material of ZZTSCFG2 reviewed: bulk publish is cleared to publish it
-    [, $rmList] = $lists($scope());
-    check(isset($rmList['ZZTSCHOLDF']) && isset($rmList['ZZTSCHOLDU']), 'once the product is cleared, its raw materials with no constituents are listed (Section 15 prints "not verified")', array_keys($rmList));
-    $pail = $rm('ZZTSCPAIL');
-    $db->query("UPDATE raw_materials SET sds_not_required = 1 WHERE id = ?", [$pail]);
-    [, , $waiting] = $lists($scope());
-    check(!isset($waiting[$pail]), 'a No SDS required item no formula uses is not even "not listed yet" (no sheet can carry it)');
+    $sc = $scope();
+    check(isset($sc[$hU]) && isset($sc[$hF]) && $key([$hU, $hF]) === 'section15.tsca_status' && T::warningText(T::rollUpForRawMaterialIds([$hU, $hF])) === null,
+        'once the product is cleared, its raw materials with no constituents are in scope and print "all listed" with no warning');
 
     $sheet($hR, 'Published from SDS Creation Readiness Check');   // published by hand
     $sc = $scope();
@@ -233,62 +207,46 @@ try {
 
     $hB = $part('ZZTSCBLKC', [['cas_number' => '7777771-77-8', 'pct_exact' => 100]]);   // reviewed, CAS not on the inventory
     $f4 = $product('ZZTSCFG4', [$hB, $rm('ZZTSCHOLDB')]);                               // skipped: ZZTSCHOLDB not reviewed
-    [$casList, , $waiting] = $lists($scope());
+    [$casList, $waiting] = $lists($scope());
     check(!isset($casList['7777771-77-8']) && ($waiting[$hB] ?? '') === 'ZZTSCBLKC', 'reviewed with data but only in a product bulk publish skips: not listed yet', $waiting[$hB] ?? array_keys($casList));
 
     // A raw-material line whose code matches an active product: the planner
     // re-routes it (Rule 1 never checks it) but Section 15 prints its data.
     $sub = (int) $db->insert('finished_goods', ['product_code' => 'ZZTSCSUB']);
     $db->insert('formulas', ['finished_good_id' => $sub, 'is_current' => 1]);
-    $hX  = $rm('ZZTSCSUB-1G');                                   // not reviewed, no data
+    $hX  = $rm('ZZTSCSUB-1G'); $con($hX, '7777769-77-9', 'Not reviewed, re-routed line');
     $product('ZZTSCTOP', [$hX]);
-    [, $rmList] = $lists($scope());
-    check(isset($rmList['ZZTSCSUB-1G']), 'not reviewed but on a re-routed line of a product bulk publish is cleared to publish: listed (its gap prints on that sheet)', array_keys($rmList));
+    [$casList] = $lists($scope());
+    check(isset($casList['7777769-77-9']), 'not reviewed but on a re-routed line of a product bulk publish is cleared to publish: its CAS is listed (it prints on that sheet)', array_keys($casList));
     $db->query("UPDATE finished_goods SET is_active = 0 WHERE product_code = 'ZZTSCTOP'");
-    $sc = $scope();
-    check(!isset($sc[$hX]), '... not in scope once that product is inactive (bulk publish leaves it out)');
+    [$casList, $waiting] = $lists($scope());
+    check(!isset($casList['7777769-77-9']) && ($waiting[$hX] ?? '') === 'ZZTSCSUB-1G', '... waits once that product is inactive (bulk publish leaves it out)');
 
     echo "\nINACTIVE inventory entries\n";
     $db->insert('tsca_inventory', ['cas_number' => '7777770-77-0', 'chemical_name' => 'ZZ inactive', 'is_active_inventory' => 0]);
     $hI = $part('ZZTSCINACT', [['cas_number' => '7777770-77-0', 'pct_exact' => 100]]);
     $product('ZZTSCFG5', [$hI]);
     [$casList] = $lists($scope());
-    check(($casList['7777770-77-0']['status'] ?? '') === T::STATUS_INACTIVE, 'a CAS on the inventory but INACTIVE is listed (Notice of Activity needed)', $casList['7777770-77-0'] ?? array_keys($casList));
-    check($key([$hI]) === 'section15.tsca_status' && str_contains((string) T::warningText(T::rollUpForRawMaterialIds([$hI])), 'INACTIVE'),
-        '... although Section 15 prints it as listed (the preview only warns)');
-    $db->query("UPDATE raw_materials SET tsca_status = 'listed', tsca_note = 'Supplier SDS' WHERE id = ?", [$hI]);
-    [$casList] = $lists($scope());
-    check(($casList['7777770-77-0']['status'] ?? '') === T::STATUS_INACTIVE && str_contains((string) T::warningText(T::rollUpForRawMaterialIds([$hI])), 'INACTIVE'),
-        '... still listed when its raw material has a raw-material override (that does not confirm a Notice of Activity; the sheet still warns)', $casList['7777770-77-0'] ?? array_keys($casList));
-    $ov('7777770-77-0');   // Listed, with the Notice of Activity reference as the note
-    [$casList] = $lists($scope());
-    check(!isset($casList['7777770-77-0']), '... and it leaves the list once its CAS override is set');
+    check(!isset($casList['7777770-77-0']), 'a CAS on the inventory but INACTIVE is not flagged (it is on the list)', array_keys($casList));
+    check($key([$hI]) === 'section15.tsca_status' && T::warningText(T::rollUpForRawMaterialIds([$hI])) === null, '... Section 15 prints it as listed, with no warning');
 
-    echo "\nConstituents adding up to less than 100% (third list)\n";
-    $ov('7777772-77-6');                                          // covered: Section 15 reads "all listed"
-    $pIn    = $part('ZZTSCPART',  [['cas_number' => '7777772-77-6', 'pct_exact' => 60]]);
-    $pBlk   = $part('ZZTSCPARTB', [['cas_number' => '7777772-77-6', 'pct_exact' => 50]]);
-    $pOpen  = $part('ZZTSCOPEN',  [['cas_number' => '7777772-77-6', 'pct_exact' => 40], ['cas_number' => '7777772-77-6', 'pct_min' => 10]]);
-    $pFull  = $part('ZZTSCFULL',  [['cas_number' => '7777772-77-6', 'pct_min' => 40, 'pct_max' => 60], ['cas_number' => '7777772-77-6', 'pct_max' => 45]]);
-    $pTs    = $part('ZZTSCPARTT', [['cas_number' => '7777772-77-6', 'pct_exact' => 30, 'is_trade_secret' => 1]]);
-    $pSheet = $part('ZZTSCSHEET', [['cas_number' => '7777772-77-6', 'pct_exact' => 70]]);
-    $sheet($pSheet, 'Published from SDS Creation Readiness Check');
-    $product('ZZTSCFG3', [$pIn, $pOpen, $pFull, $pTs]);
+    echo "\nConstituents adding up to less than 100%\n";
+    $ov('7777772-77-6');                                          // covered CAS
+    $pIn  = $part('ZZTSCPART',  [['cas_number' => '7777772-77-6', 'pct_exact' => 60]]);
+    $pTs  = $part('ZZTSCPARTT', [['cas_number' => '7777772-77-6', 'pct_exact' => 30, 'is_trade_secret' => 1]]);
+    $pUn  = $part('ZZTSCPARTU', [['cas_number' => '7777768-77-8', 'pct_exact' => 50]]);   // provided CAS not on the inventory
+    $pBlk = $part('ZZTSCPARTB', [['cas_number' => '7777772-77-6', 'pct_exact' => 50]]);
+    $pBad = $part('ZZTSCBADCAS', [['cas_number' => '13463677', 'pct_exact' => 100]]);   // TiO2 typed without dashes
+    $product('ZZTSCFG3', [$pIn, $pTs, $pUn, $pBad]);
     $db->insert('formula_lines', ['formula_id' => $f4, 'raw_material_id' => $pBlk, 'pct' => 50]);   // only in the skipped ZZTSCFG4
-
-    $u = $lists($scope())[3];
-    check(($u['ZZTSCPART']['undisclosed_pct'] ?? null) == 40 && ($u['ZZTSCPART']['entered_pct'] ?? null) == 60 && ($u['ZZTSCPART']['in_formula'] ?? 0) === 1,
-        '60% entered, in a product bulk publish is cleared to publish: listed, 40% undisclosed', $u['ZZTSCPART'] ?? array_keys($u));
-    check($key([$pIn]) === 'section15.tsca_status', '... while Section 15 still reads "all components listed" (why it is worth a look)');
-    check(($u['ZZTSCPARTT']['trade_secret_count'] ?? 0) === 1, 'a trade-secret constituent is counted on its row', $u['ZZTSCPARTT'] ?? null);
-    check(isset($u['ZZTSCSHEET']) && ($u['ZZTSCSHEET']['in_formula'] ?? 1) === 0, 'not in a formula but with a resale sheet bulk publish republishes: listed');
-    check(!isset($u['ZZTSCPARTB']), 'only in a product bulk publish skips: not listed');
-    check(!isset($u['ZZTSCOPEN']), 'a constituent with only a minimum: cannot tell, not listed');
-    check(!isset($u['ZZTSCFULL']), 'ranges whose maximums reach 100%: not listed');
-
-    $db->query("UPDATE raw_materials SET tsca_status = 'listed', tsca_note = 'Supplier SDS Section 15' WHERE id = ?", [$pIn]);
-    $u = $lists($scope())[3];
-    check(!isset($u['ZZTSCPART']), 'a raw-material override takes it off the list');
+    check($key([$pIn]) === 'section15.tsca_status' && $key([$pTs]) === 'section15.tsca_status' && T::warningText(T::rollUpForRawMaterialIds([$pIn, $pTs])) === null,
+        '60% or 30% entered (the rest undisclosed, possibly a trade secret): assumed listed, no warning');
+    [$casList] = $lists($scope());
+    check(!isset($casList['7777772-77-6']) && isset($casList['7777768-77-8']), '... only the provided CAS that is not on the inventory is flagged', array_keys($casList));
+    check($key([$pUn]) === 'section15.tsca_status_not_verified', '... and only it makes the sheet "not verified"');
+    [$casList] = $lists($scope());
+    check(($casList['13463677']['invalid'] ?? 0) === 1 && isset($casList['13463677']['raw_materials']['ZZTSCBADCAS']), 'a provided CAS that is not a CAS number is listed as invalid, with its raw material to correct', $casList['13463677'] ?? array_keys($casList));
+    check($key([$pBad]) === 'section15.tsca_status_not_verified' && str_contains((string) T::warningText(T::rollUpForRawMaterialIds([$pBad])), 'not a valid CAS number'), '... Section 15 says "not verified" and the warning says to correct it');
 
     echo "\nOverride writers (single-row and batch saves)\n";
     $w = T::writeCasOverride($db, '7777771-77-8', 'listed', '  ');

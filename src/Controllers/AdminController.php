@@ -2587,16 +2587,14 @@ class AdminController
         // with no override, plus the overrides currently in effect.
         // 2026-10-21 (migration 066): raw materials that cannot be checked by
         // CAS (trade secrets, missing constituent data), with their overrides.
-        // 2026-10-21: the TSCA Review lists only raw materials on a sheet Bulk
-        // SDS Publish is cleared to publish, so what it shows is what
-        // publishes; the rest wait ("Not listed yet") until bulk publish is
-        // cleared to publish a sheet that carries them.
+        // 2026-10-21: the TSCA Review lists the provided CAS numbers that are
+        // not on the inventory (no override), on a sheet Bulk SDS Publish is
+        // cleared to publish, so what it shows is what publishes; the rest
+        // wait ("Not listed yet"). Components without a CAS are assumed listed.
         $tscaScope       = BulkPublishController::rawMaterialsOnClearedSheets($db);
         $tscaNotCleared  = [];
         $tscaReview      = TSCAService::reviewCandidates($tscaScope, $tscaNotCleared);
         $tscaOverrides   = TSCAService::overridesInEffect();
-        $tscaRmReview    = TSCAService::noCasReviewCandidates($tscaScope, $tscaNotCleared);
-        $tscaUndisclosed = TSCAService::undisclosedCompositionCandidates($tscaScope, array_column($tscaRmReview, 'id'));
         $tscaRmOverrides = TSCAService::rawMaterialOverridesInEffect();
         asort($tscaNotCleared);
 
@@ -2612,12 +2610,9 @@ class AdminController
             'tscaReview'         => $tscaReview,
             'tscaOverrides'      => $tscaOverrides,
             'tscaOptions'        => TSCAService::OVERRIDE_OPTIONS,
-            'tscaRmReview'       => $tscaRmReview,
             'tscaRmOverrides'    => $tscaRmOverrides,
             'tscaRmOptions'      => TSCAService::RM_OVERRIDE_OPTIONS,
-            'tscaRmEnabled'      => TSCAService::hasRawMaterialOverrideColumns(),
             'tscaNotCleared'     => $tscaNotCleared,
-            'tscaUndisclosed'    => $tscaUndisclosed,
             'stotRows'           => $stotRows,                                   // A12(b)
             'stotOrgans'         => \SDS\Services\StotTargetOrgans::ORGANS,
             'stotRoutes'         => \SDS\Services\StotTargetOrgans::ROUTES,

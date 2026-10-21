@@ -96,14 +96,15 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
     <h3 style="margin-top: 0;">TSCA inventory status</h3>
     <?php if ($trSet): ?>
         <p><span class="badge badge-warning">Override: <?= e($tr['status']) ?></span>
-        Section 15 counts every component of this raw material as <?= $tr['status'] === 'exempt' ? 'listed on or exempt from' : 'listed on' ?> the TSCA inventory, including components without a CAS.
+        Section 15 counts every CAS of this raw material as <?= $tr['status'] === 'exempt' ? 'listed on or exempt from' : 'listed on' ?> the TSCA inventory, including one that is not on the inventory.
         A CAS marked Not listed on CAS Determinations still wins.
         <?php if ($tr['note'] !== ''): ?><br>Basis: <?= e($tr['note']) ?><?php endif; ?>
         <?php if (!empty($tr['updated_by']) || !empty($tr['updated_at'])): ?><br><small class="text-muted">Set by <?= e($tr['updated_by'] ?? '—') ?><?= !empty($tr['updated_at']) ? ' · ' . e(\SDS\Services\PublishClock::display($tr['updated_at'], 'm/d/Y')) : '' ?></small><?php endif; ?></p>
     <?php else: ?>
-        <p class="text-muted" style="margin-top: 0;">Section 15 checks each constituent CAS against the TSCA inventory and the CAS overrides (CAS Determinations &gt; TSCA Review).
-        Components without a CAS (a trade secret, no constituents entered) cannot be checked that way. When the supplier's SDS certifies that every component
-        is listed on or exempt from the TSCA inventory, set an override here with that basis as the note.</p>
+        <p class="text-muted" style="margin-top: 0;">Section 15 checks each constituent CAS that is provided against the TSCA inventory and the CAS overrides (CAS Determinations &gt; TSCA Review).
+        Components without a CAS (a trade secret, no constituents entered, constituents that add up to less than 100%) are assumed listed.
+        When the supplier's SDS certifies that every component is listed on or exempt from the TSCA inventory, an override here also covers this raw material's
+        CAS numbers that are not on the inventory; give that basis as the note.</p>
     <?php endif; ?>
 
     <?php if ($tr['can_set']): ?>

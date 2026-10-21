@@ -274,5 +274,45 @@ foreach (['stot_se_organs', 'stot_se_route', 'stot_re_organs', 'stot_re_route'] 
 }
 check(substr_count($mig, "INSERT IGNORE INTO `schema_migrations`") === 1, '062 has exactly one version row');
 
+echo "\nSTOT tab rework (2026-10-21)\n";
+$cv = Stot::columnValues(['stot_se_organs' => [], 'stot_se_route' => 'inhalation']);
+check($cv['stot_se_organs'] === null && $cv['stot_se_route'] === null, 'unticking every organ clears the exposure type and drops its route', $cv);
+$pBatch = strpos($app, "'/determinations/stot-batch'");
+check($pBatch !== false && $pBatch < $pId && str_contains($app, "'AdminController@saveCasStotBatch'"), 'route POST /determinations/stot-batch precedes /determinations/{id}');
+$adm = (string) file_get_contents($basePath . '/src/Controllers/AdminController.php');
+check(substr_count($adm, '\SDS\Services\StotTargetOrgans::writeCasStot($db, ') === 2, 'single and batch saves share StotTargetOrgans::writeCasStot()');
+check(!str_contains($adm, 'target organs before setting a'), 'clearing organs while a route is set is no longer refused');
+check(str_contains($adm, "\$rmIds  = TSCAService::rawMaterialIdsForCas(\$cas);") && str_contains($adm, 'TSCAService::rawMaterialIdsForCasMany(array_keys($changed))'), 'STOT saves bump raw materials whatever way the CAS was typed');
+$det = (string) file_get_contents($basePath . '/src/Views/admin/determinations.php');
+$stotTab = substr($det, (int) strpos($det, '<!-- Tab: STOT Target Organs'));
+check(!str_contains($stotTab, '<select name="stot_') || !str_contains($stotTab, ' multiple'), 'no multi-select lists (Ctrl-click to untick)');
+check(str_contains($stotTab, '<input type="checkbox" name="stot_') && str_contains($stotTab, "type=\"checkbox\" value=\"' + esc(k) + '\""), 'organs are tick boxes (new-CAS form and the in-place editor)');
+check(str_contains($stotTab, 'id="stotBatchForm"') && str_contains($stotTab, 'action="/determinations/stot-batch"') && str_contains($stotTab, 'JSON.stringify({rows: list.map('), 'edits are saved as one JSON field (one substance or all changed)');
+check(str_contains($stotTab, "\$canEditStot   = can_edit('cas_determinations');") && str_contains($stotTab, '<?php if ($canEditStot): ?>'), 'edit controls only for users who can save');
+
+echo "\nOne CAS however it was typed (2026-10-21)\n";
+$r = Stot::resolve(['H372'], ["14808-60-7\u{00A0}" => ['H372']], [$re1("14808-60-7\u{00A0}")], ['14808-60-7' => $flags['14808-60-7']]);
+check(($r['details']['H372']['organs'] ?? null) === ['lungs'] && ($r['details']['H372']['route'] ?? null) === 'inhalation',
+    'a driver CAS typed with a no-break space finds the organs stored under the canonical CAS', $r);
+$r = Stot::resolve(['H372'], ["14808\u{2013}60\u{2013}7" => ['H372']], [$re1("14808\u{2013}60\u{2013}7")], ['14808-60-7' => $flags['14808-60-7']]);
+check(($r['details']['H372']['organs'] ?? null) === ['lungs'], '... and one typed with en dashes', $r);
+check(Stot::preferredRow('67-64-1', "67\u{2013}64\u{2013}1", '67-64-1') && !Stot::preferredRow("67\u{2013}64\u{2013}1", '67-64-1', '67-64-1'),
+    'the row stored under the canonical CAS wins over another spelling');
+$merged = Stot::mergeAdminRows([
+    ['cas_number' => "67\u{2013}64\u{2013}1", 'chemical_name' => 'Acetone', 'stot_se_organs' => null, 'stot_se_route' => null, 'stot_re_organs' => 'liver', 'stot_re_route' => null, 'has_se' => 0, 'has_re' => 1, 'rm_count' => 2],
+    ['cas_number' => '67-64-1', 'chemical_name' => '', 'stot_se_organs' => 'central_nervous_system', 'stot_se_route' => 'all', 'stot_re_organs' => null, 'stot_re_route' => null, 'has_se' => 1, 'has_re' => 0, 'rm_count' => 3],
+    ['cas_number' => '108-88-3', 'chemical_name' => 'Toluene', 'stot_se_organs' => null, 'stot_se_route' => null, 'stot_re_organs' => null, 'stot_re_route' => null, 'has_se' => 1, 'has_re' => 1, 'rm_count' => 1],
+]);
+check(count($merged) === 2 && $merged[0]['cas_number'] === '108-88-3' && $merged[1]['cas_number'] === '67-64-1', 'STOT tab: one row per canonical CAS, substances without organs first', array_column($merged, 'cas_number'));
+check($merged[1]['has_se'] === 1 && $merged[1]['has_re'] === 1 && $merged[1]['rm_count'] === 5 && $merged[1]['chemical_name'] === 'Acetone'
+    && $merged[1]['stot_se_organs'] === 'central_nervous_system' && $merged[1]['stot_re_organs'] === null, '... flags OR-ed, counts added, organs from the canonical row (as the sheet reads them)', $merged[1]);
+check(str_contains($adm, '$errors[] = "CAS {$canon} was sent twice; only its first row was saved.";'), 'batch save refuses a second row for the same CAS');
+$stotSrc = (string) file_get_contents($basePath . '/src/Services/StotTargetOrgans.php');
+check(str_contains($stotSrc, '            $rows = $db->fetchAll(') && str_contains($stotSrc, 'return self::mergeAdminRows($rows);'), 'adminRows() merges its rows per canonical CAS');
+$det2 = (string) file_get_contents($basePath . '/src/Views/admin/determinations.php');
+check(str_contains($det2, 'window.sdsPage = window.sdsPage || {') && str_contains($det2, "window.sdsPage.pending.stot = function()") && str_contains($det2, "window.sdsPage.pending.tsca = function()")
+    && substr_count($det2, "window.sdsPage.leaveOk('tsca')") === 2 && str_contains($det2, "window.sdsPage.leaveOk('stot')"),
+    'STOT and TSCA saves ask about each other\'s unsaved work instead of tripping each other\'s leave-page guard');
+
 echo "\n{$checks} checks, {$failures} failed\n";
 exit($failures === 0 ? 0 : 1);

@@ -19,8 +19,8 @@ use SDS\Core\Database;
  * filled only when EVERY CAS behind it has organs for that exposure type and
  * no finished-good override / trade-secret entry also carries it; organs are
  * the union in ORGANS order; the route prints only when all those CAS state
- * the same single route (inhalation / oral / dermal). Pure except loadByCas()
- * and adminRows().
+ * the same single route (inhalation / oral / dermal). Pure except loadByCas(),
+ * adminRows() and writeCasStot().
  */
 final class StotTargetOrgans
 {
@@ -101,6 +101,47 @@ final class StotTargetOrgans
         return $out;
     }
 
+    /**
+     * Validate and write one CAS's STOT target organs and routes on
+     * cas_master (audited as 'cas_stot'); no bump, no flash. $values uses
+     * the column names (stot_se_organs as a list or CSV, stot_se_route, ...).
+     * Unticking every organ of an exposure type clears it and drops its
+     * route (columnValues()). Shared by the single-CAS save and the STOT
+     * tab's batch save (AdminController, 2026-10-21).
+     *
+     * @return array{cas:string, changed:bool}|array{error:string}
+     */
+    public static function writeCasStot(Database $db, string $casIn, array $values): array
+    {
+        $cas = TSCAService::normaliseCas($casIn);
+        if ($cas === '' || !preg_match(TSCAService::CAS_PATTERN, $cas)) {
+            return ['error' => 'A valid CAS number is required.'];
+        }
+        $new      = self::columnValues($values);
+        $existing = $db->fetch(
+            "SELECT stot_se_organs, stot_se_route, stot_re_organs, stot_re_route FROM cas_master WHERE cas_number = ?",
+            [$cas]
+        );
+        $old = self::columnValues($existing ?? []);
+        if ($old === $new) {
+            return ['cas' => $cas, 'changed' => false];
+        }
+        if ($existing === null) {
+            // Same as TSCAService::writeCasOverride(): create the registry row,
+            // named from the most common constituent description.
+            $nameRow = $db->fetch(
+                "SELECT chemical_name FROM raw_material_constituents
+                 WHERE cas_number = ? AND chemical_name <> ''
+                 GROUP BY chemical_name ORDER BY COUNT(*) DESC LIMIT 1",
+                [$cas]
+            );
+            $db->insert('cas_master', ['cas_number' => $cas, 'preferred_name' => (string) ($nameRow['chemical_name'] ?? '')]);
+        }
+        $db->update('cas_master', $new, 'cas_number = ?', [$cas]);
+        AuditService::log('cas_stot', $cas, 'update', ['before' => $old, 'after' => $new]);
+        return ['cas' => $cas, 'changed' => true];
+    }
+
     /** @return array{se: array{organs: string[], route: ?string}, re: array{organs: string[], route: ?string}} */
     public static function flagsFromRow(array $row): array
     {
@@ -126,10 +167,20 @@ final class StotTargetOrgans
     /** @return array<string, array> CAS => flagsFromRow(); only CAS with organs; [] when none or 062 not applied. */
     public static function loadByCas(Database $db, array $casList): array
     {
-        $casList = array_values(array_unique(array_filter(
-            array_map(static fn($c): string => trim((string) $c), $casList),
-            static fn(string $c): bool => $c !== ''
-        )));
+        // Each CAS as typed and in canonical form (2026-10-21): the result is
+        // keyed by the canonical CAS (resolve() looks it up that way), and the
+        // row stored under the canonical CAS — what the STOT tab writes —
+        // wins over one stored with another spelling (preferredRow()).
+        $wanted = [];
+        foreach ($casList as $c) {
+            $c = trim((string) $c);
+            if ($c !== '') {
+                $wanted[$c] = true;
+                $wanted[TSCAService::normaliseCas($c)] = true;
+            }
+        }
+        unset($wanted['']);
+        $casList = array_map('strval', array_keys($wanted));
         if ($casList === []) {
             return [];
         }
@@ -145,18 +196,37 @@ final class StotTargetOrgans
         } catch (\Throwable $e) {
             return []; // migration 062 not applied yet: generic statements, as before
         }
-        $out = [];
+        $out    = [];
+        $stored = [];
         foreach ($rows as $r) {
-            $out[(string) $r['cas_number']] = self::flagsFromRow($r);
+            $key = TSCAService::normaliseCas((string) $r['cas_number']);
+            if (!isset($stored[$key]) || self::preferredRow((string) $r['cas_number'], $stored[$key], $key)) {
+                $out[$key]    = self::flagsFromRow($r);
+                $stored[$key] = (string) $r['cas_number'];
+            }
         }
         return $out;
+    }
+
+    /**
+     * Of two cas_master rows for one canonical CAS (one stored with another
+     * spelling), whether $candidate beats $current: the row stored under
+     * the canonical CAS wins, else the lowest stored spelling, so the STOT
+     * tab (mergeAdminRows()) and the sheet (loadByCas()) agree.
+     */
+    public static function preferredRow(string $candidate, string $current, string $canonical): bool
+    {
+        if ($current === $canonical) {
+            return false;
+        }
+        return $candidate === $canonical || strcmp($candidate, $current) < 0;
     }
 
     /**
      * @param string[]               $hCodes        the product's final H-codes (keys of HazardEngine $allHStmts)
      * @param array<string,string[]> $casHCodes     HazardEngine::buildCasHCodeMap() output (pseudo keys already skipped)
      * @param array                  $hazardClasses UNconsolidated class entries (finds FG_OVERRIDE / TRADE_SECRET sources)
-     * @param array                  $flagsByCas    loadByCas() output
+     * @param array                  $flagsByCas    loadByCas() output (keyed by canonical CAS)
      * @return array{details: array<string, array{organs: string[], route: ?string, cas: string[]}>,
      *               incomplete: array<string, array{flagged: string[], unflagged: string[], other_source: bool}>}
      */
@@ -191,7 +261,7 @@ final class StotTargetOrgans
             $flagged = [];
             $unflagged = [];
             foreach ($drivers as $cas) {
-                if (($flagsByCas[$cas][$exp]['organs'] ?? []) !== []) {
+                if (($flagsByCas[TSCAService::normaliseCas((string) $cas)][$exp]['organs'] ?? []) !== []) {
                     $flagged[] = $cas;
                 } else {
                     $unflagged[] = $cas;
@@ -208,10 +278,11 @@ final class StotTargetOrgans
             $set    = [];
             $routes = [];
             foreach ($flagged as $cas) {
-                foreach ($flagsByCas[$cas][$exp]['organs'] as $o) {
+                $f = $flagsByCas[TSCAService::normaliseCas((string) $cas)][$exp];
+                foreach ($f['organs'] as $o) {
                     $set[(string) $o] = true;
                 }
-                $routes[(string) ($flagsByCas[$cas][$exp]['route'] ?? '')] = true;
+                $routes[(string) ($f['route'] ?? '')] = true;
             }
             $route = count($routes) === 1 ? (string) array_key_first($routes) : '';
             $details[$code] = [
@@ -279,7 +350,7 @@ final class StotTargetOrgans
     public static function adminRows(Database $db): array
     {
         try {
-            return $db->fetchAll(
+            $rows = $db->fetchAll(
                 "SELECT x.cas_number,
                         COALESCE(NULLIF(cm.preferred_name, ''),
                                  (SELECT rmc.chemical_name FROM raw_material_constituents rmc
@@ -319,6 +390,53 @@ final class StotTargetOrgans
         } catch (\Throwable $e) {
             return [];
         }
+        return self::mergeAdminRows($rows);
+    }
+
+    /**
+     * DB-free (2026-10-21): adminRows() rows merged per canonical CAS
+     * (TSCAService::normaliseCas()), so a substance typed two ways ('67–64–1'
+     * and '67-64-1') is one row and the tab saves the CAS the writer stores.
+     * Organs and routes come from the row loadByCas() prints from
+     * (preferredRow()); the classification flags are OR-ed and the
+     * raw-material counts added (each spelling counts its own constituents).
+     * Substances without organs first, then by CAS.
+     */
+    public static function mergeAdminRows(array $rows): array
+    {
+        $out    = [];
+        $stored = [];
+        foreach ($rows as $r) {
+            $spelling = (string) ($r['cas_number'] ?? '');
+            $key      = TSCAService::normaliseCas($spelling);
+            if ($key === '') {
+                continue;
+            }
+            if (!isset($out[$key])) {
+                $out[$key] = ['cas_number' => $key, 'chemical_name' => null, 'stot_se_organs' => null, 'stot_se_route' => null,
+                              'stot_re_organs' => null, 'stot_re_route' => null, 'has_se' => 0, 'has_re' => 0, 'rm_count' => 0];
+            }
+            $out[$key]['has_se']   = max((int) $out[$key]['has_se'], (int) ($r['has_se'] ?? 0));
+            $out[$key]['has_re']   = max((int) $out[$key]['has_re'], (int) ($r['has_re'] ?? 0));
+            $out[$key]['rm_count'] = (int) $out[$key]['rm_count'] + (int) ($r['rm_count'] ?? 0);
+            if ((string) ($out[$key]['chemical_name'] ?? '') === '' && (string) ($r['chemical_name'] ?? '') !== '') {
+                $out[$key]['chemical_name'] = $r['chemical_name'];
+            }
+            $hasOrgans = trim((string) ($r['stot_se_organs'] ?? '')) !== '' || trim((string) ($r['stot_re_organs'] ?? '')) !== '';
+            if ($hasOrgans && (!isset($stored[$key]) || self::preferredRow($spelling, $stored[$key], $key))) {
+                foreach (['stot_se_organs', 'stot_se_route', 'stot_re_organs', 'stot_re_route'] as $col) {
+                    $out[$key][$col] = $r[$col] ?? null;
+                }
+                $stored[$key] = $spelling;
+            }
+        }
+        $out = array_values($out);
+        usort($out, static function (array $a, array $b): int {
+            $ea = trim((string) $a['stot_se_organs']) === '' && trim((string) $a['stot_re_organs']) === '';
+            $eb = trim((string) $b['stot_se_organs']) === '' && trim((string) $b['stot_re_organs']) === '';
+            return [$eb, (string) $a['cas_number']] <=> [$ea, (string) $b['cas_number']];
+        });
+        return $out;
     }
 
     private static function fill(string $key, string $organs, mixed $route, TranslationService $t): string

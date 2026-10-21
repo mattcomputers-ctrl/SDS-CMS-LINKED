@@ -3155,58 +3155,128 @@ class AdminController
         CSRF::validateRequest();
         $db = Database::getInstance();
 
-        $cas = TSCAService::normaliseCas((string) ($_POST['cas_number'] ?? ''));
-        if ($cas === '' || !preg_match(TSCAService::CAS_PATTERN, $cas)) {
-            $_SESSION['_flash']['error'] = 'A valid CAS number is required.';
+        $saved = \SDS\Services\StotTargetOrgans::writeCasStot($db, (string) ($_POST['cas_number'] ?? ''), $_POST);
+        if (isset($saved['error'])) {
+            $_SESSION['_flash']['error'] = $saved['error'];
             redirect('/determinations?tab=stot');
             return;
         }
-        foreach (['se' => 'single exposure', 're' => 'repeated exposure'] as $x => $label) {
-            $route  = \SDS\Services\StotTargetOrgans::normaliseRoute($_POST['stot_' . $x . '_route'] ?? null);
-            $organs = \SDS\Services\StotTargetOrgans::parseOrgans($_POST['stot_' . $x . '_organs'] ?? []);
-            if ($route !== null && $organs === []) {
-                $_SESSION['_flash']['error'] = "CAS {$cas}: choose the {$label} target organs before setting a {$label} route.";
-                redirect('/determinations?tab=stot');
-                return;
-            }
-        }
-        $new = \SDS\Services\StotTargetOrgans::columnValues($_POST);
-
-        $existing = $db->fetch(
-            "SELECT stot_se_organs, stot_se_route, stot_re_organs, stot_re_route FROM cas_master WHERE cas_number = ?",
-            [$cas]
-        );
-        $old = \SDS\Services\StotTargetOrgans::columnValues($existing ?? []);
-        if ($old === $new) {
+        $cas = $saved['cas'];
+        if (!$saved['changed']) {
             $_SESSION['_flash']['success'] = "STOT target organs for CAS {$cas} unchanged.";
             redirect('/determinations?tab=stot');
             return;
         }
-        if ($existing === null) {
-            // Same as saveTscaOverride(): create the registry row, named from the
-            // most common constituent description.
-            $nameRow = $db->fetch(
-                "SELECT chemical_name FROM raw_material_constituents
-                 WHERE cas_number = ? AND chemical_name <> ''
-                 GROUP BY chemical_name ORDER BY COUNT(*) DESC LIMIT 1",
-                [$cas]
-            );
-            $db->insert('cas_master', ['cas_number' => $cas, 'preferred_name' => (string) ($nameRow['chemical_name'] ?? '')]);
-        }
-        $db->update('cas_master', $new, 'cas_number = ?', [$cas]);
 
-        // Deliberate content change: Sections 2, 4 and 11 change for every product whose H370-H373 come from this CAS.
-        $bumped = \SDS\Services\RegulatoryListBumper::bumpByCas($cas);
-        $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByCas(
-            [$cas],
+        // Deliberate content change: Sections 2, 4 and 11 change for every
+        // product whose H370-H373 come from this CAS (matched in any spelling).
+        $rmIds  = TSCAService::rawMaterialIdsForCas($cas);
+        $bumped = \SDS\Services\RegulatoryListBumper::bumpRawMaterialIds($rmIds);
+        $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByRawMaterialIds(
+            $rmIds,
             current_user_id(),
             "STOT target organs updated for {$cas}"
         );
 
-        AuditService::log('cas_stot', $cas, 'update', ['before' => $old, 'after' => $new]);
         $_SESSION['_flash']['success'] = "STOT target organs for CAS {$cas} saved."
             . self::bumpedTail($bumped) . self::queuedTail($queued);
         redirect('/determinations?tab=stot');
+    }
+
+    /** Most substances one STOT batch save takes. */
+    private const STOT_BATCH_MAX = 1000;
+
+    /**
+     * POST /determinations/stot-batch (2026-10-21): save the target organs
+     * of several substances edited on the STOT tab at once. 'payload' =
+     *   {"rows": [{"cas_number", "stot_se_organs": [...], "stot_se_route",
+     *              "stot_re_organs": [...], "stot_re_route"}, ...]}
+     * (one JSON field, so a long batch never meets max_input_vars). Rows
+     * that fail validation are reported and skipped; the rest, and the bump
+     * of every raw material carrying a changed CAS, are written in one
+     * transaction; SDS Updates queueing follows (as saveTscaBatch()).
+     */
+    public function saveCasStotBatch(): void
+    {
+        $this->requirePageAccess('cas_determinations', 'full');
+        CSRF::validateRequest();
+        $db   = Database::getInstance();
+        $back = '/determinations?tab=stot';
+
+        $payload = json_decode((string) ($_POST['payload'] ?? ''), true);
+        $rows    = is_array($payload) && is_array($payload['rows'] ?? null) ? array_values($payload['rows']) : [];
+        if ($rows === []) {
+            $_SESSION['_flash']['error'] = 'No STOT changes were sent.';
+            redirect($back);
+            return;
+        }
+        if (count($rows) > self::STOT_BATCH_MAX) {
+            $_SESSION['_flash']['error'] = 'Save at most ' . self::STOT_BATCH_MAX . ' substances at once (' . count($rows) . ' were sent).';
+            redirect($back);
+            return;
+        }
+
+        $str       = static fn ($v): string => is_scalar($v) ? (string) $v : '';
+        $errors    = [];
+        $changed   = [];   // canonical CAS => true
+        $seen      = [];   // canonical CAS => true: a second row for one CAS would overwrite the first
+        $unchanged = 0;
+        $db->beginTransaction();
+        try {
+            foreach ($rows as $row) {
+                $row   = is_array($row) ? $row : [];
+                $canon = TSCAService::normaliseCas($str($row['cas_number'] ?? ''));
+                if ($canon !== '' && isset($seen[$canon])) {
+                    $errors[] = "CAS {$canon} was sent twice; only its first row was saved.";
+                    continue;
+                }
+                $seen[$canon] = true;
+                $values = [];
+                foreach (['se', 're'] as $x) {
+                    $values['stot_' . $x . '_organs'] = is_array($row['stot_' . $x . '_organs'] ?? null) ? $row['stot_' . $x . '_organs'] : [];
+                    $values['stot_' . $x . '_route']  = $str($row['stot_' . $x . '_route'] ?? '');
+                }
+                $r = \SDS\Services\StotTargetOrgans::writeCasStot($db, $str($row['cas_number'] ?? ''), $values);
+                if (isset($r['error'])) {
+                    $errors[] = $r['error'] . ($str($row['cas_number'] ?? '') !== '' ? ' (' . $str($row['cas_number']) . ')' : '');
+                } elseif ($r['changed']) {
+                    $changed[$r['cas']] = true;
+                } else {
+                    $unchanged++;
+                }
+            }
+            // One bump for every changed CAS, committed with the organs.
+            $rmIds  = [];
+            $bumped = 0;
+            if ($changed !== []) {
+                $rmIds  = TSCAService::rawMaterialIdsForCasMany(array_keys($changed));
+                $bumped = \SDS\Services\RegulatoryListBumper::bumpRawMaterialIds($rmIds);
+            }
+            $db->commit();
+        } catch (\Throwable $e) {
+            $db->rollback();
+            throw $e;
+        }
+
+        $n = count($changed);
+        if ($n > 0) {
+            $queued = 0;
+            try {
+                $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByRawMaterialIds($rmIds, current_user_id(), 'STOT target organs updated (' . $n . ' CAS)');
+            } catch (\Throwable $e) {
+                $_SESSION['_flash']['error'] = 'The target organs were saved and their raw materials flagged for re-publish, but adding the products to SDS Updates failed ('
+                    . $e->getMessage() . '). Run the scan on SDS Updates to queue them.';
+            }
+            $_SESSION['_flash']['success'] = "Saved STOT target organs for {$n} CAS: " . self::listForFlash(array_keys($changed), ', ') . '.'
+                . ($unchanged > 0 ? " {$unchanged} unchanged." : '') . self::bumpedTail($bumped) . self::queuedTail($queued);
+        } elseif ($errors === []) {
+            $_SESSION['_flash']['success'] = 'No STOT target organs changed.';
+        }
+        if ($errors !== []) {
+            $e = count($errors);
+            $_SESSION['_flash']['warning'] = $e . ' substance' . ($e === 1 ? ' was' : 's were') . ' not saved: ' . self::listForFlash($errors, ' ');
+        }
+        redirect($back);
     }
 
     /**

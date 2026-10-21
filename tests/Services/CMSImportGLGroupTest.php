@@ -148,7 +148,7 @@ check(str_contains($pub, 'SDSReadinessService::resaleAutoPublishError((int) $res
 check(strpos($pub, 'resaleAutoPublishError') < strpos($pub, 'computeBaseForResaleRawMaterial'), 'AliasPublisher checks before rendering');
 $bp = (string) file_get_contents($basePath . '/src/Controllers/BulkPublishController.php');
 $elig = fn_body($bp, 'public static function computeEligibleResaleItems');
-check(str_contains($elig, 'SDSReadinessService::resaleAutoPublishBlocks($rmIds, $db)') && str_contains($elig, 'isset($resaleBlocks[$rmId])'), 'bulk eligibility blocks by the resale rule');
+check(str_contains($elig, 'SDSReadinessService::resaleAutoPublishBlocks($rmIds, $db, $reviewed)') && str_contains($elig, 'isset($resaleBlocks[$rmId])'), 'bulk eligibility blocks by the resale rule');
 check(str_contains($elig, "sv.raw_material_id = rm.id") && str_contains($elig, 'rep.rep_id IS NOT NULL'), 'bulk candidates: alias representative OR own published resale sheet');
 check(str_contains($elig, 'SELECT MIN(r2.id) AS rep_id'), 'alias representative = lowest id per base (AliasResolver rule)');
 check(str_contains($bp, "(\$resale['alias_representative'] ?? true) ? self::deduplicateAliasesByBaseCode("), 'only the alias representative emits alias work items');

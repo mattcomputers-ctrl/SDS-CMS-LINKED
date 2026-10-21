@@ -290,7 +290,7 @@ foreach ([
     check($mm[0] === [], "{$f}: no direct column reference", $mm[0]);
 }
 $bp = $src('src/Controllers/BulkPublishController.php');
-$elig = fn_body($bp, 'public static function computeEligibleResaleItems(Database $db)');
+$elig = fn_body($bp, 'public static function computeEligibleResaleItems(Database $db, bool $clearedOnly = false, ?array $reviewed = null)');
 preg_match_all($cronRe, $elig, $mm);
 check($elig !== '' && $mm[0] === [], 'computeEligibleResaleItems(): no direct column reference', $mm[0]);
 
@@ -304,7 +304,7 @@ check(str_contains($elig, $needs), 'outer WHERE excludes flagged raw materials')
 check(before($elig, ') rep ON rep.rep_id = rm.id', $needs) && before($elig, $needs, 'AND (rep.rep_id IS NOT NULL'), 'filter sits in the outer WHERE, not the alias-representative subquery');
 $repSub = substr($elig, pos_of($elig, 'LEFT JOIN ('), max(0, pos_of($elig, ') rep ON rep.rep_id = rm.id') - pos_of($elig, 'LEFT JOIN (')));
 check($repSub !== '' && !str_contains($repSub, 'sqlNeedsSds') && !str_contains($repSub, 'sds_not_required'), 'alias-representative subquery is flag-agnostic (a flagged representative keeps its base suppressed)');
-check(before($elig, $needs, 'resaleAutoPublishBlocks($rmIds, $db)'), 'filtered before the gate, so a flagged item is neither eligible nor blocked');
+check(before($elig, $needs, 'resaleAutoPublishBlocks($rmIds, $db, $reviewed)'), 'filtered before the gate, so a flagged item is neither eligible nor blocked');
 $bv = $src('src/Views/admin/bulk-publish.php');
 check(str_contains($bv, 'marked <strong>No SDS required</strong>') && str_contains($bv, 'not listed as blocked'), 'bulk page says flagged items are skipped');
 

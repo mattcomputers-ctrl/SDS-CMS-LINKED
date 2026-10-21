@@ -29,7 +29,7 @@
     </button>
     <button class="tab-btn" data-tab="tsca" style="padding: 0.5rem 1.2rem; border: 2px solid #003366; border-bottom: none; background: #e9ecef; color: #003366; cursor: pointer; border-radius: 4px 4px 0 0; font-weight: bold; margin-left: 2px;">
         TSCA Review
-        <?php $tscaCount = count($tscaReview ?? []) + count($tscaRmReview ?? []); ?>
+        <?php $tscaCount = count($tscaReview ?? []) + count($tscaRmReview ?? []) + count($tscaUndisclosed ?? []); ?>
         <?php if ($tscaCount > 0): ?>
             <span style="background: #fd7e14; color: #fff; border-radius: 10px; padding: 1px 7px; font-size: 0.8rem; margin-left: 4px;"><?= $tscaCount ?></span>
         <?php endif; ?>
@@ -255,32 +255,39 @@
 <!-- Tab: TSCA Review (audit #29) -->
 <div class="tab-panel" id="tab-tsca" style="display: none;">
     <p class="text-muted" style="margin-bottom: 0.5rem;">
-        Constituent CAS numbers in use that are <strong>not on the <a href="/tsca">TSCA inventory</a></strong> and have no override.
-        Products containing them print "TSCA inventory status has not been verified for all components" in Section 15 and raise a publish warning.
-        Set <em>Listed</em> for crossover / confidential-inventory CAS, <em>Exempt</em> for exemptions (e.g. polymer exemption), or <em>Not listed</em> when verified absent. A note is required. <em>Auto</em> removes the override.
+        Everything here is on a sheet <a href="/bulk-publish">Bulk SDS Publish</a> is cleared to publish, so clearing these keeps the TSCA wording of published SDSs accurate.
+        Raw materials only on sheets bulk publish is not cleared to publish yet wait (see "Not listed yet").
     </p>
-    <?php if (!empty($tscaHeldListed)): ?>
+    <p class="text-muted" style="margin-bottom: 0.5rem;">
+        Constituent CAS numbers in use that are <strong>not on the <a href="/tsca">TSCA inventory</a></strong> and have no override: products containing them print
+        "TSCA inventory status has not been verified for all components" in Section 15 and raise a publish warning. Also listed: CAS numbers on the inventory but
+        <strong>INACTIVE</strong>, which print as listed although a Notice of Activity (Form B, 40 CFR 710.30) is required before they are manufactured or imported again.
+        Set <em>Listed</em> for crossover / confidential-inventory CAS (or an INACTIVE CAS once the Notice of Activity is confirmed, with its reference as the note), <em>Exempt</em> for exemptions (e.g. polymer exemption), or <em>Not listed</em> when verified absent. A note is required. <em>Auto</em> removes the override.
+    </p>
+    <?php if (!empty($tscaNotCleared)): ?>
     <details class="text-muted" style="margin-bottom: 0.5rem;">
-        <summary>Not listed yet: <?= count($tscaHeldListed) ?> raw material<?= count($tscaHeldListed) === 1 ? '' : 's' ?> waiting for data that Bulk SDS Publish is holding back</summary>
-        Not reviewed (no one has saved their data), or no constituents entered, and not on any sheet bulk publish writes.
-        They appear here once their data is entered (<a href="/sds-review">SDS Creation Readiness Check</a>):
-        <?= e(implode(', ', $tscaHeldListed)) ?>
+        <summary>Not listed yet: <?= count($tscaNotCleared) ?> raw material<?= count($tscaNotCleared) === 1 ? '' : 's' ?> with TSCA items only on sheets Bulk SDS Publish is not cleared to publish</summary>
+        For example a product bulk publish skips because one of its raw materials has not been reviewed, an inactive product, a resale item with no data entered,
+        or a raw material in no current formula and with no sheet of its own. They appear here once bulk publish is cleared to publish a sheet that carries them
+        (<a href="/sds-review">SDS Creation Readiness Check</a>):
+        <?= e(implode(', ', array_slice($tscaNotCleared, 0, 300))) ?><?= count($tscaNotCleared) > 300 ? ' … and ' . (count($tscaNotCleared) - 300) . ' more' : '' ?>
     </details>
     <?php endif; ?>
     <div style="margin-bottom: 0.5rem;">
         <input type="text" id="tscaFilter" placeholder="Filter by CAS, description or raw material..." style="max-width: 360px;">
     </div>
     <?php if (empty($tscaReview)): ?>
-        <div style="text-align: center; padding: 1.5rem; color: #28a745;"><strong><?= empty($tscaHeldListed) ? 'Every constituent CAS in use is on the TSCA inventory or has an override.' : 'No CAS needs a TSCA override right now.' ?></strong><?= !empty($tscaHeldListed) ? '<br><span style="color:#fd7e14;">Raw materials waiting for data are not checked yet: see "Not listed yet" above.</span>' : '' ?><?= !empty($tscaRmReview) ? '<br><span style="color:#fd7e14;">Some raw materials still cannot be checked by CAS: see the list below.</span>' : '' ?></div>
+        <div style="text-align: center; padding: 1.5rem; color: #28a745;"><strong>Every constituent CAS on a sheet bulk publish is cleared to publish is on the TSCA inventory (and active) or has an override.</strong><?= !empty($tscaNotCleared) ? '<br><span style="color:#fd7e14;">Raw materials only on sheets bulk publish is not cleared to publish are not checked yet: see "Not listed yet" above.</span>' : '' ?><?= !empty($tscaRmReview) ? '<br><span style="color:#fd7e14;">Some raw materials still cannot be checked by CAS: see the list below.</span>' : '' ?><?= !empty($tscaUndisclosed) ? '<br><span style="color:#fd7e14;">Some raw materials may contain undisclosed components: see the third list below.</span>' : '' ?></div>
     <?php else: ?>
     <table class="table" id="tscaTable">
-        <thead><tr><th style="width:130px;">CAS Number</th><th>Description</th><th>Raw Materials</th><th style="width:90px;">In Formula</th><th style="width:420px;">TSCA Override</th></tr></thead>
+        <thead><tr><th style="width:130px;">CAS Number</th><th>Description</th><th style="width:150px;">Inventory</th><th>Raw Materials</th><th style="width:90px;">In Formula</th><th style="width:420px;">TSCA Override</th></tr></thead>
         <tbody>
         <?php foreach ($tscaReview as $idx => $r): ?>
             <?php $formId = 'tsca-form-' . $idx; ?>
             <tr>
                 <td><strong><?= e($r['cas_number']) ?></strong></td>
                 <td><?= e($r['chemical_name'] ?? '') ?></td>
+                <td><?= ($r['status'] ?? '') === \SDS\Services\TSCAService::STATUS_INACTIVE ? '<span style="color:#fd7e14;font-weight:bold;">INACTIVE</span><br><small class="text-muted">Notice of Activity needed</small>' : '<span class="text-muted">Not on the inventory</span>' ?></td>
                 <td><span title="<?= e($r['raw_material_codes'] ?? '') ?>"><?= e($r['raw_material_codes'] ?? '') ?></span>
                     <?php if ((int) ($r['raw_material_count'] ?? 0) > 1): ?><small class="text-muted">(<?= (int) $r['raw_material_count'] ?> materials)</small><?php endif; ?></td>
                 <td><?= (int) ($r['in_formula'] ?? 0) ? '<span style="color:#28a745;font-weight:bold;">Yes</span>' : '<span class="text-muted">No</span>' ?></td>
@@ -312,7 +319,7 @@
     <?php if (empty($tscaRmEnabled)): ?>
         <p class="text-muted">Available after the database update (migration 066).</p>
     <?php elseif (empty($tscaRmReview)): ?>
-        <p style="color: #28a745;"><strong><?= empty($tscaHeldListed) ? 'Every raw material in use can be checked by CAS or has a raw-material override.' : 'No raw material needs a raw-material override right now (raw materials waiting for data are not checked yet: see "Not listed yet" above).' ?></strong></p>
+        <p style="color: #28a745;"><strong>Every raw material on a sheet bulk publish is cleared to publish can be checked by CAS or has a raw-material override.</strong><?= !empty($tscaUndisclosed) ? '<br><span style="color:#fd7e14;">Some may contain undisclosed components: see the next list.</span>' : '' ?></p>
     <?php else: ?>
     <table class="table" id="tscaRmTable">
         <thead><tr><th style="width:140px;">Raw Material</th><th>Name</th><th>Why it cannot be checked</th><th style="width:90px;">In Formula</th><th style="width:420px;">Raw-material TSCA Override</th></tr></thead>
@@ -322,7 +329,7 @@
                 <td><strong><a href="/raw-materials/<?= (int) $r['id'] ?>/edit"><?= e($r['internal_code']) ?></a></strong></td>
                 <td><?= e($r['name'] ?? '') ?></td>
                 <td><small><?= e(implode('; ', array_map([\SDS\Services\TSCAService::class, 'noCasReasonLabel'], (array) $r['reasons']))) ?></small></td>
-                <td><?= (int) ($r['in_formula'] ?? 0) ? '<span style="color:#28a745;font-weight:bold;">Yes</span>' : '<span class="text-muted">No (own sheet)</span>' ?></td>
+                <td><?= (int) ($r['in_formula'] ?? 0) ? '<span style="color:#28a745;font-weight:bold;">Yes</span>' : '<span class="text-muted">No (resale sheet)</span>' ?></td>
                 <td>
                     <form method="POST" action="/determinations/tsca-rm" style="display:flex; gap:0.35rem; align-items:center;">
                         <?= csrf_field() ?>
@@ -340,6 +347,47 @@
         <?php endforeach; ?>
         </tbody>
     </table>
+    <?php endif; ?>
+
+    <?php if (!empty($tscaRmEnabled)): ?>
+    <h4 style="margin-top:1.5rem;">Raw materials that may contain undisclosed components <?php if (!empty($tscaUndisclosed)): ?><small class="text-muted">(<?= count($tscaUndisclosed) ?>)</small><?php endif; ?></h4>
+    <p class="text-muted" style="margin-bottom: 0.5rem;">
+        Their entered constituents add up to less than 100% (at least <?= e(rtrim(rtrim(number_format(\SDS\Services\TSCAService::UNDISCLOSED_MIN_PCT, 1), '0'), '.')) ?>% unaccounted for), so part of the composition is not disclosed:
+        often a trade secret, or ingredients the supplier did not list. Section 15 checks only the entered constituents, so products using them can still print
+        "All components of this product are listed on or exempt from the TSCA inventory". Only raw materials on a sheet Bulk SDS Publish is cleared to publish are listed.
+        If the supplier's SDS certifies the TSCA status of the whole product, set <em>Listed</em> or <em>Exempt</em> with that basis as the note; otherwise enter the missing constituents.
+    </p>
+    <?php if (empty($tscaUndisclosed)): ?>
+        <p style="color: #28a745;"><strong>No raw material on a sheet bulk publish is cleared to publish has undisclosed components.</strong></p>
+    <?php else: ?>
+    <table class="table" id="tscaUndisclosedTable">
+        <thead><tr><th style="width:140px;">Raw Material</th><th>Name</th><th style="width:130px;">Constituents entered</th><th style="width:110px;">Trade-secret constituents</th><th style="width:90px;">In Formula</th><th style="width:420px;">Raw-material TSCA Override</th></tr></thead>
+        <tbody>
+        <?php foreach ($tscaUndisclosed as $r): ?>
+            <tr>
+                <td><strong><a href="/raw-materials/<?= (int) $r['id'] ?>/edit"><?= e($r['internal_code']) ?></a></strong></td>
+                <td><?= e($r['name'] ?? '') ?></td>
+                <td>at most <?= e(rtrim(rtrim(number_format((float) $r['entered_pct'], 2), '0'), '.')) ?>%</td>
+                <td><?= (int) $r['trade_secret_count'] > 0 ? (int) $r['trade_secret_count'] : '<span class="text-muted">None</span>' ?></td>
+                <td><?= (int) ($r['in_formula'] ?? 0) ? '<span style="color:#28a745;font-weight:bold;">Yes</span>' : '<span class="text-muted">No (resale sheet)</span>' ?></td>
+                <td>
+                    <form method="POST" action="/determinations/tsca-rm" style="display:flex; gap:0.35rem; align-items:center;">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="raw_material_id" value="<?= (int) $r['id'] ?>">
+                        <select name="tsca_status">
+                            <?php foreach ($tscaRmOptions as $val => $label): ?>
+                                <option value="<?= e($val) ?>"<?= $val === 'listed' ? ' selected' : '' ?>><?= e($label) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <input type="text" name="tsca_note" placeholder="Basis, e.g. supplier SDS Section 15 (required)" style="flex:1;">
+                        <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                    </form>
+                </td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+    <?php endif; ?>
     <?php endif; ?>
 
     <?php if (!empty($tscaRmOverrides)): ?>

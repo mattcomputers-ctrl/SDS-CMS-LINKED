@@ -2587,16 +2587,18 @@ class AdminController
         // with no override, plus the overrides currently in effect.
         // 2026-10-21 (migration 066): raw materials that cannot be checked by
         // CAS (trade secrets, missing constituent data), with their overrides.
-        // 2026-10-21: raw materials Bulk SDS Publish holds back for want of
-        // data (not reviewed, or no constituents and on no sheet it writes)
-        // are left off both lists until their data is entered.
-        $tscaHeld        = BulkPublishController::rawMaterialsHeldForMissingData($db);
-        $tscaHeldListed  = [];
-        $tscaReview      = TSCAService::reviewCandidates($tscaHeld, $tscaHeldListed);
+        // 2026-10-21: the TSCA Review lists only raw materials on a sheet Bulk
+        // SDS Publish is cleared to publish, so what it shows is what
+        // publishes; the rest wait ("Not listed yet") until bulk publish is
+        // cleared to publish a sheet that carries them.
+        $tscaScope       = BulkPublishController::rawMaterialsOnClearedSheets($db);
+        $tscaNotCleared  = [];
+        $tscaReview      = TSCAService::reviewCandidates($tscaScope, $tscaNotCleared);
         $tscaOverrides   = TSCAService::overridesInEffect();
-        $tscaRmReview    = TSCAService::noCasReviewCandidates($tscaHeld, $tscaHeldListed);
+        $tscaRmReview    = TSCAService::noCasReviewCandidates($tscaScope, $tscaNotCleared);
+        $tscaUndisclosed = TSCAService::undisclosedCompositionCandidates($tscaScope, array_column($tscaRmReview, 'id'));
         $tscaRmOverrides = TSCAService::rawMaterialOverridesInEffect();
-        asort($tscaHeldListed);
+        asort($tscaNotCleared);
 
         // A12(b) / T4a: STOT Target Organs tab — CAS whose hazard data or active
         // determination carries H370-H373, plus every CAS with organs entered.
@@ -2614,7 +2616,8 @@ class AdminController
             'tscaRmOverrides'    => $tscaRmOverrides,
             'tscaRmOptions'      => TSCAService::RM_OVERRIDE_OPTIONS,
             'tscaRmEnabled'      => TSCAService::hasRawMaterialOverrideColumns(),
-            'tscaHeldListed'     => $tscaHeldListed,
+            'tscaNotCleared'     => $tscaNotCleared,
+            'tscaUndisclosed'    => $tscaUndisclosed,
             'stotRows'           => $stotRows,                                   // A12(b)
             'stotOrgans'         => \SDS\Services\StotTargetOrgans::ORGANS,
             'stotRoutes'         => \SDS\Services\StotTargetOrgans::ROUTES,

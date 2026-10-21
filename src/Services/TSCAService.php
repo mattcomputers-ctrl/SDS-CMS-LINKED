@@ -664,15 +664,17 @@ class TSCAService
      * Raw materials marked "No SDS required" (migration 064) are left out
      * unless a current formula uses them (their data still feeds that
      * finished good).
-     * $heldRmIds (BulkPublishController::rawMaterialsHeldForMissingData):
-     * raw materials Bulk SDS Publish holds back for want of data are left
-     * out until their data is entered; those that would have been listed
-     * are added to $heldListed (id => internal code).
+     * Also listed (2026-10-21): a CAS on the inventory but INACTIVE, which
+     * prints as listed although a Notice of Activity is required before it
+     * is manufactured or imported again (row 'status' => 'inactive').
+     * $scopeRmIds (BulkPublishController::rawMaterialsOnClearedSheets()):
+     * only raw materials on a sheet bulk publish is cleared to publish; the
+     * others that would have been listed go to $notCleared (id => code).
      *
-     * @param array<int,true>         $heldRmIds
-     * @param array<int,string>|null  $heldListed
+     * @param array<int,true>|null    $scopeRmIds  null = no scope
+     * @param array<int,string>|null  $notCleared
      */
-    public static function reviewCandidates(array $heldRmIds = [], ?array &$heldListed = null): array
+    public static function reviewCandidates(?array $scopeRmIds = null, ?array &$notCleared = null): array
     {
         $db       = Database::getInstance();
         $needsSds = \SDS\Models\RawMaterial::sqlNeedsSds('rm');
@@ -699,16 +701,20 @@ class TSCAService
             $cas = self::normaliseCas((string) $r['cas_number']);
             // A value that is not a CAS ('Proprietary', 'N/A') cannot take a
             // CAS override: noCasReviewCandidates() lists its raw material.
-            if ($cas === '' || !preg_match(self::CAS_PATTERN, $cas) || isset($rmOverrides[(int) $r['rm_id']])) {
+            if ($cas === '' || !preg_match(self::CAS_PATTERN, $cas)) {
                 continue;
             }
-            if (isset($heldRmIds[(int) $r['rm_id']])) {
-                $byCas[$cas]['held'][(int) $r['rm_id']] = (string) $r['internal_code'];
+            // A raw-material override clears a CAS that is not verified
+            // (applyRawMaterialOverrides()), not an INACTIVE one, which
+            // still warns: such rows are kept aside for an INACTIVE CAS.
+            $p = isset($rmOverrides[(int) $r['rm_id']]) ? 'ovr_' : '';
+            if ($scopeRmIds !== null && !isset($scopeRmIds[(int) $r['rm_id']])) {
+                $byCas[$cas][$p . 'waiting'][(int) $r['rm_id']] = (string) $r['internal_code'];
                 continue;
             }
-            $byCas[$cas]['names'][(string) $r['chemical_name']] = true;
-            $byCas[$cas]['rms'][(string) $r['internal_code']]   = true;
-            $byCas[$cas]['in_formula'] = max((int) ($byCas[$cas]['in_formula'] ?? 0), (int) $r['in_formula']);
+            $byCas[$cas][$p . 'names'][(string) $r['chemical_name']] = true;
+            $byCas[$cas][$p . 'rms'][(string) $r['internal_code']]   = true;
+            $byCas[$cas][$p . 'in_formula'] = max((int) ($byCas[$cas][$p . 'in_formula'] ?? 0), (int) $r['in_formula']);
         }
         if ($byCas === []) {
             return [];
@@ -724,11 +730,16 @@ class TSCAService
 
         $out = [];
         foreach (self::resolve(array_keys($byCas)) as $cas => $res) {
-            if ($res['status'] !== self::STATUS_NOT_VERIFIED) {
+            if ($res['status'] === self::STATUS_INACTIVE) {
+                foreach (['waiting', 'names', 'rms'] as $k) {
+                    $byCas[$cas][$k] = ($byCas[$cas][$k] ?? []) + ($byCas[$cas]['ovr_' . $k] ?? []);
+                }
+                $byCas[$cas]['in_formula'] = max((int) ($byCas[$cas]['in_formula'] ?? 0), (int) ($byCas[$cas]['ovr_in_formula'] ?? 0));
+            } elseif ($res['status'] !== self::STATUS_NOT_VERIFIED) {
                 continue;
             }
-            foreach ($byCas[$cas]['held'] ?? [] as $rmId => $code) {
-                $heldListed[$rmId] = $code;
+            foreach ($byCas[$cas]['waiting'] ?? [] as $rmId => $code) {
+                $notCleared[$rmId] = $code;
             }
             if (empty($byCas[$cas]['rms'])) {
                 continue;
@@ -743,6 +754,7 @@ class TSCAService
                 'raw_material_count' => count($codes),
                 'raw_material_codes' => implode(', ', $codes),
                 'in_formula'         => (int) $byCas[$cas]['in_formula'],
+                'status'             => (string) $res['status'],
             ];
         }
         usort($out, static fn (array $a, array $b): int =>
@@ -758,18 +770,21 @@ class TSCAService
      * or no constituents at all — in a current formula or with a sheet of
      * their own (any version), without a raw-material override. Others can
      * be set on the raw material's edit page. Empty before migration 066.
-     * $heldRmIds / $heldListed: as in reviewCandidates().
+     * $scopeRmIds / $notCleared: as in reviewCandidates(); with a scope it
+     * replaces the formula-or-own-sheet condition (No SDS required items are
+     * still left out unless a current formula uses them, as in list 1).
      *
-     * @param array<int,true>         $heldRmIds
-     * @param array<int,string>|null  $heldListed
+     * @param array<int,true>|null    $scopeRmIds  null = no scope
+     * @param array<int,string>|null  $notCleared
      * @return list<array{id:int, internal_code:string, name:string, reasons:string[], in_formula:int}>
      */
-    public static function noCasReviewCandidates(array $heldRmIds = [], ?array &$heldListed = null): array
+    public static function noCasReviewCandidates(?array $scopeRmIds = null, ?array &$notCleared = null): array
     {
         if (!self::hasRawMaterialOverrideColumns()) {
             return [];
         }
-        $db   = Database::getInstance();
+        $db       = Database::getInstance();
+        $needsSds = \SDS\Models\RawMaterial::sqlNeedsSds('rm');
         $rows = $db->fetchAll(
             "SELECT rm.id, rm.internal_code, rm.supplier_product_name, rm.hazardous_no_cas, rm.tsca_status,
                     COUNT(rmc.id) AS n_constituents,
@@ -785,7 +800,12 @@ class TSCAService
                     )) AS in_formula
              FROM raw_materials rm
              LEFT JOIN raw_material_constituents rmc ON rmc.raw_material_id = rm.id
-             WHERE rm.tsca_status = 'auto'
+             WHERE rm.tsca_status = 'auto'" . ($scopeRmIds !== null ? "
+               AND ({$needsSds} OR EXISTS (
+                        SELECT 1 FROM formula_lines fl3
+                        JOIN formulas f3 ON f3.id = fl3.formula_id AND f3.is_current = 1
+                        WHERE fl3.raw_material_id = rm.id
+                    ))" : "
                AND (EXISTS (
                         SELECT 1 FROM formula_lines fl2
                         JOIN formulas f2 ON f2.id = fl2.formula_id AND f2.is_current = 1
@@ -795,7 +815,7 @@ class TSCAService
                         SELECT 1 FROM sds_versions sv
                         WHERE sv.raw_material_id = rm.id AND sv.alias_id IS NULL AND sv.finished_good_id IS NULL
                           AND sv.is_deleted = 0
-                    ))
+                    ))") . "
              GROUP BY rm.id, rm.internal_code, rm.supplier_product_name, rm.hazardous_no_cas, rm.tsca_status
              ORDER BY rm.internal_code"
         );
@@ -824,8 +844,8 @@ class TSCAService
             if ($reasons === []) {
                 continue;
             }
-            if (isset($heldRmIds[(int) $r['id']])) {
-                $heldListed[(int) $r['id']] = (string) $r['internal_code'];
+            if ($scopeRmIds !== null && !isset($scopeRmIds[(int) $r['id']])) {
+                $notCleared[(int) $r['id']] = (string) $r['internal_code'];
                 continue;
             }
             $out[] = [
@@ -836,6 +856,97 @@ class TSCAService
                 'in_formula'    => (int) $r['in_formula'],
             ];
         }
+        return $out;
+    }
+
+    /**
+     * Third TSCA Review list: at least this share (%) of a raw material must
+     * be unaccounted for by its entered constituents. Smaller gaps are
+     * supplier rounding and impurities (not listed on the inventory).
+     */
+    public const UNDISCLOSED_MIN_PCT = 1.0;
+
+    /**
+     * DB-free: the share (%) of a raw material its entered constituents do
+     * not account for, or null when it is below UNDISCLOSED_MIN_PCT or cannot
+     * be told ($openRows: constituents with neither an exact value nor a
+     * maximum). $maxTotal sums each constituent's exact value or maximum.
+     */
+    public static function undisclosedPct(float $maxTotal, int $openRows): ?float
+    {
+        if ($openRows > 0) {
+            return null;
+        }
+        $rest = 100.0 - $maxTotal;
+        return $rest >= self::UNDISCLOSED_MIN_PCT - 1e-9 ? round($rest, 2) : null;
+    }
+
+    /**
+     * TSCA Review, third list (2026-10-21): raw materials whose entered
+     * constituents add up to less than 100%, so part of the composition is
+     * undisclosed — often a trade secret, or ingredients the supplier did not
+     * list. Section 15 checks only the entered constituents, so products
+     * using them can still print that all components are listed; a
+     * raw-material override (the supplier certifies the whole product) or
+     * the missing constituents settle it.
+     * Only raw materials on a sheet Bulk SDS Publish is cleared to publish
+     * ($scopeRmIds, BulkPublishController::rawMaterialsOnClearedSheets()).
+     * Left out: those already on the second list ($listedRmIds), a
+     * raw-material override, a whole trade secret. Empty before 066.
+     *
+     * @param array<int,true> $scopeRmIds
+     * @param int[]           $listedRmIds
+     * @return list<array{id:int, internal_code:string, name:string, entered_pct:float, undisclosed_pct:float, trade_secret_count:int, in_formula:int}>
+     */
+    public static function undisclosedCompositionCandidates(array $scopeRmIds, array $listedRmIds = []): array
+    {
+        if (!self::hasRawMaterialOverrideColumns()) {
+            return [];
+        }
+        $rows = Database::getInstance()->fetchAll(
+            "SELECT rm.id, rm.internal_code, rm.supplier_product_name, c.n_open, c.max_total, c.n_trade_secret,
+                    (EXISTS (
+                        SELECT 1 FROM formula_lines fl
+                        JOIN formulas f ON f.id = fl.formula_id AND f.is_current = 1
+                        WHERE fl.raw_material_id = rm.id
+                    )) AS in_formula
+             FROM (
+                 SELECT raw_material_id,
+                        SUM(pct_exact IS NULL AND pct_max IS NULL)  AS n_open,
+                        SUM(COALESCE(pct_exact, pct_max, 0))        AS max_total,
+                        SUM(COALESCE(is_trade_secret, 0) = 1)       AS n_trade_secret
+                 FROM raw_material_constituents
+                 GROUP BY raw_material_id
+             ) c
+             JOIN raw_materials rm ON rm.id = c.raw_material_id
+             WHERE rm.tsca_status = 'auto' AND COALESCE(rm.hazardous_no_cas, 0) = 0
+               AND c.n_open = 0 AND c.max_total <= ?",
+            [100.0 - self::UNDISCLOSED_MIN_PCT + 1e-6]
+        );
+
+        $listed = array_flip(array_map('intval', $listedRmIds));
+        $out    = [];
+        foreach ($rows as $r) {
+            $id = (int) $r['id'];
+            if (!isset($scopeRmIds[$id]) || isset($listed[$id])) {
+                continue;
+            }
+            $rest = self::undisclosedPct((float) $r['max_total'], (int) $r['n_open']);
+            if ($rest === null) {
+                continue;
+            }
+            $out[] = [
+                'id'                 => $id,
+                'internal_code'      => (string) $r['internal_code'],
+                'name'               => (string) ($r['supplier_product_name'] ?? ''),
+                'entered_pct'        => round((float) $r['max_total'], 2),
+                'undisclosed_pct'    => $rest,
+                'trade_secret_count' => (int) $r['n_trade_secret'],
+                'in_formula'         => (int) $r['in_formula'],
+            ];
+        }
+        usort($out, static fn (array $a, array $b): int =>
+            [$b['in_formula'], $b['undisclosed_pct'], $a['internal_code']] <=> [$a['in_formula'], $a['undisclosed_pct'], $b['internal_code']]);
         return $out;
     }
 

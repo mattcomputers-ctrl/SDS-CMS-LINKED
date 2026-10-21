@@ -900,117 +900,30 @@ class BulkPublishController
     }
 
     /**
-     * Raw materials Bulk SDS Publish holds back for want of data (TSCA
-     * Review, 2026-10-21): no information entered and no sheet that bulk
-     * publish writes carries them. The TSCA Review leaves them out until
-     * their data is entered.
-     *   - Not reviewed (SDSReadinessService::loadReviewedRmIds, the same
-     *     rule as the planner): the resale gate refuses its own sheet and
-     *     Rule 1 skips every finished good using it — except where the
-     *     walker re-routes its line into a finished good (its code matches
-     *     an active product), which the planner decides.
-     *   - Reviewed but no constituents (and not a whole trade secret), on
-     *     the second list only (migration 066, no raw-material override):
-     *     held when its own sheet fails the resale gate (no sheet published
-     *     by hand) and no finished good that the planner leaves unblocked
-     *     (eligible, fresh or completing) carries it.
-     * The planner runs only for those two cases with a current formula.
+     * TSCA Review scope (2026-10-21): raw materials whose data a sheet Bulk
+     * SDS Publish is cleared to publish carries. The TSCA Review lists only
+     * those, so what it shows is what publishes; a sheet bulk publish is not
+     * cleared to publish (a product it skips, an inactive product, a resale
+     * item it blocks) waits until it is.
+     *   - Finished goods: every candidate (active, current formula) the
+     *     planner does not put in 'blocked' (eligible, fresh or completing),
+     *     with the raw materials its sheet carries, raw-material lines the
+     *     walker re-routes into a finished good included (Section 15 still
+     *     reads them). Its alias and private-label sheets carry the same.
+     *   - Resale: every resale candidate the resale planner does not block
+     *     (its own sheet and its alias sheets).
+     * A sheet bulk publish is cleared for can still fail a publish gate
+     * (missing hazard data, Section 14) when the worker renders it.
      *
+     * @param array<int,true>|null $reviewed  loadReviewedRmIds(), when already loaded
      * @return array<int,true> raw material id => true
      */
-    public static function rawMaterialsHeldForMissingData(Database $db): array
+    public static function rawMaterialsOnClearedSheets(Database $db, ?array $reviewed = null): array
     {
-        $reviewed = \SDS\Services\SDSReadinessService::loadReviewedRmIds($db);
-        // A raw material with no constituents only reaches the second TSCA
-        // list, which needs migration 066 and keeps tsca_status 'auto' only.
-        $rmCols  = \SDS\Services\TSCAService::hasRawMaterialOverrideColumns();
-        $fgCodes = [];
-        foreach ($db->fetchAll("SELECT product_code FROM finished_goods WHERE is_active = 1") as $r) {
-            $fgCodes[(string) $r['product_code']] = true;
-        }
-        $held     = [];
-        $rerouted = [];   // not reviewed, on a line the walker may re-route: id => true
-        $empty    = [];   // reviewed, no constituents: id => used by a current formula
-        foreach ($db->fetchAll(
-            "SELECT rm.id, rm.internal_code, rm.hazardous_no_cas" . ($rmCols ? ', rm.tsca_status' : '') . ",
-                    (EXISTS (SELECT 1 FROM raw_material_constituents rmc WHERE rmc.raw_material_id = rm.id)) AS has_constituents,
-                    (EXISTS (
-                        SELECT 1 FROM formula_lines fl
-                        JOIN formulas f ON f.id = fl.formula_id AND f.is_current = 1
-                        WHERE fl.raw_material_id = rm.id
-                    )) AS in_formula
-             FROM raw_materials rm"
-        ) as $r) {
-            $id        = (int) $r['id'];
-            $code      = (string) $r['internal_code'];
-            $inFormula = (int) $r['in_formula'] === 1;
-            $hasData   = (int) $r['has_constituents'] === 1 || (int) ($r['hazardous_no_cas'] ?? 0) === 1;
-            if (!isset($reviewed[$id])) {
-                // Same match as the walker in computeEligibleFinishedGoods().
-                if ($inFormula && (isset($fgCodes[$code]) || isset($fgCodes[strip_pack_extension($code)]))) {
-                    $rerouted[$id] = true;
-                } else {
-                    $held[$id] = true;
-                }
-            } elseif (!$hasData && $rmCols && (string) ($r['tsca_status'] ?? 'auto') === 'auto') {
-                $empty[$id] = $inFormula;
-            }
-        }
-        if ($empty === [] && $rerouted === []) {
-            return $held;
-        }
-
-        $inUnblocked = null;   // planner run only when needed
-        $carried = function (int $id) use (&$inUnblocked, $db, $reviewed): bool {
-            $inUnblocked ??= self::rawMaterialsInUnblockedFinishedGoods($db, $reviewed);
-            return isset($inUnblocked[$id]);
-        };
-        foreach ($rerouted as $id => $_) {
-            if (self::heldForMissingData(false, false, false, $carried($id))) {
-                $held[$id] = true;
-            }
-        }
-        $resaleBlocked = $empty === [] ? [] : \SDS\Services\SDSReadinessService::resaleAutoPublishBlocks(array_keys($empty), $db, $reviewed);
-        foreach ($empty as $id => $inFormula) {
-            $ownSheet  = !isset($resaleBlocked[$id]);
-            $inProduct = !$ownSheet && $inFormula && $carried($id);
-            if (self::heldForMissingData(true, false, $ownSheet, $inProduct)) {
-                $held[$id] = true;
-            }
-        }
-        return $held;
-    }
-
-    /**
-     * DB-free rule of rawMaterialsHeldForMissingData(): a raw material that
-     * a sheet bulk publish writes carries (a finished good the planner leaves
-     * unblocked) is never held. Otherwise it is held when it is not reviewed
-     * (the resale gate refuses its own sheet), or when it has no data and its
-     * own sheet fails the resale gate.
-     */
-    public static function heldForMissingData(bool $reviewed, bool $hasData, bool $ownSheetPublishable, bool $inUnblockedProduct): bool
-    {
-        if ($inUnblockedProduct) {
-            return false;
-        }
-        if (!$reviewed) {
-            return true;
-        }
-        return !$hasData && !$ownSheetPublishable;
-    }
-
-    /**
-     * Raw material ids whose data the sheet of a finished good the planner
-     * does not block (eligible, fresh or completing) carries.
-     *
-     * @param array<int,true>|null $reviewed
-     * @return array<int,true>
-     */
-    private static function rawMaterialsInUnblockedFinishedGoods(Database $db, ?array $reviewed = null): array
-    {
-        $plan    = self::computeEligibleFinishedGoods($db, true, $reviewed);
-        $blocked = array_flip(array_column($plan['blocked'], 'id'));
-        $out     = [];
+        $reviewed ??= \SDS\Services\SDSReadinessService::loadReviewedRmIds($db);
+        $plan     = self::computeEligibleFinishedGoods($db, true, $reviewed);
+        $blocked  = array_flip(array_column($plan['blocked'], 'id'));
+        $out      = [];
         foreach ($plan['upstream_rms'] ?? [] as $fgId => $rmIds) {
             if (isset($blocked[$fgId])) {
                 continue;
@@ -1018,6 +931,9 @@ class BulkPublishController
             foreach ($rmIds as $rmId) {
                 $out[(int) $rmId] = true;
             }
+        }
+        foreach (self::computeEligibleResaleItems($db, true, $reviewed)['cleared'] ?? [] as $rmId) {
+            $out[(int) $rmId] = true;
         }
         return $out;
     }
@@ -1048,11 +964,15 @@ class BulkPublishController
      * 'incomplete': fresh RMs whose current version is missing languages, as
      * in computeEligibleFinishedGoods().
      *
+     * $clearedOnly (TSCA Review, 2026-10-21) returns just 'cleared': every
+     * candidate the resale rule does not block, fresh or not, without the
+     * freshness work. $reviewed: loadReviewedRmIds(), when already loaded.
+     *
      * @return array{eligible:   array<int,array{rm_id:int,base_code:string,description:string}>,
      *               blocked:    array<int,array{rm_id:int,base_code:string,description:string}>,
      *               incomplete: array<int,array{rm_id:int,base_code:string,description:string,version:int,missing:string[]}>}
      */
-    public static function computeEligibleResaleItems(Database $db): array
+    public static function computeEligibleResaleItems(Database $db, bool $clearedOnly = false, ?array $reviewed = null): array
     {
         // Candidate RMs: those whose base internal_code matches at least
         // one alias's internal_code_base AND whose base does NOT match
@@ -1099,7 +1019,7 @@ class BulkPublishController
         );
 
         if (empty($candidates)) {
-            return ['eligible' => [], 'blocked' => []];
+            return ['eligible' => [], 'blocked' => []] + ($clearedOnly ? ['cleared' => []] : []);
         }
 
         // Per-RM upstream timestamps for Rule 2.
@@ -1108,7 +1028,13 @@ class BulkPublishController
         // Rule 1: the reviewed-RM rule shared with FG eligibility, plus the
         // resale composition rule (no constituents and never published by
         // hand = blocked; resale import 2026-10-13).
-        $resaleBlocks = \SDS\Services\SDSReadinessService::resaleAutoPublishBlocks($rmIds, $db);
+        $resaleBlocks = \SDS\Services\SDSReadinessService::resaleAutoPublishBlocks($rmIds, $db, $reviewed);
+        if ($clearedOnly) {
+            return ['eligible' => [], 'blocked' => [], 'cleared' => array_values(array_filter(
+                $rmIds,
+                static fn (int $id): bool => !isset($resaleBlocks[$id])
+            ))];
+        }
         $placeholders = implode(',', array_fill(0, count($rmIds), '?'));
 
         $rmMaxUpstream = [];

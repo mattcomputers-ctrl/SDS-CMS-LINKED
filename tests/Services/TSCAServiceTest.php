@@ -306,6 +306,26 @@ $imp = (string) file_get_contents($basePath . '/src/Services/TSCAInventoryImport
 check(str_contains($imp, 'TSCAService::rawMaterialIdsForCasMany($affected)') && !str_contains($imp, 'bumpByCasMany('), 'TSCA inventory import bumps raw materials whatever way the CAS was typed');
 check(substr_count($adm, 'TSCAService::rawMaterialIdsForCas(') >= 4, 'TSCA inventory add / edit / remove and CAS override all use the canonical match');
 check(str_contains($adm, "'/raw-materials/' . \$rmId . '/edit#tsca-override'"), 'raw-material override from the edit page returns to the raw material');
+echo "\ni. TSCA Review leaves out raw materials bulk publish holds for missing data (2026-10-21)\n";
+use SDS\Controllers\BulkPublishController as BPC;
+check(BPC::heldForMissingData(false, true, true, false) === true, 'not reviewed: held (the resale gate refuses its own sheet, bulk publish skips products using it)');
+check(BPC::heldForMissingData(false, false, false, true) === false, 'not reviewed but on a line a published product carries (code matches a product): listed');
+check(BPC::heldForMissingData(true, true, false, false) === false, 'reviewed with data: listed');
+check(BPC::heldForMissingData(true, false, false, false) === true, 'reviewed, no data, on no sheet bulk publish writes: held');
+check(BPC::heldForMissingData(true, false, true, false) === false, '... unless its own sheet passes the resale gate (published by hand)');
+check(BPC::heldForMissingData(true, false, false, true) === false, '... or a product bulk publish does not skip uses it');
+$bpc = (string) file_get_contents($basePath . '/src/Controllers/BulkPublishController.php');
+check(str_contains($bpc, 'public static function computeEligibleFinishedGoods(Database $db, bool $withUpstreamRms = false, ?array $reviewedRms = null): array')
+    && str_contains($bpc, "\$upstreamByFg[(int) \$fg['id']] = array_keys(\$upstreamRms + \$result['rerouted']);"), 'planner can return the raw materials each product\'s sheet carries, re-routed lines included');
+check(str_contains($bpc, "\$rerouted[\$line['rm']] = true;") && str_contains($bpc, "'rerouted' => []"), 'walker records raw-material lines it re-routes into a finished good');
+check(str_contains($bpc, 'SDSReadinessService::loadReviewedRmIds($db);') && str_contains($bpc, 'SDSReadinessService::resaleAutoPublishBlocks(array_keys($empty), $db, $reviewed)'), 'hold uses the bulk review rule and the resale gate (reviewed set loaded once)');
+check(str_contains($bpc, "\$rmCols && (string) (\$r['tsca_status'] ?? 'auto') === 'auto'"), 'raw materials with an override (or before 066) never trigger the planner');
+check(str_contains($adm, '$tscaHeld        = BulkPublishController::rawMaterialsHeldForMissingData($db);')
+    && str_contains($adm, 'TSCAService::reviewCandidates($tscaHeld, $tscaHeldListed)') && str_contains($adm, 'TSCAService::noCasReviewCandidates($tscaHeld, $tscaHeldListed)'),
+    'TSCA Review passes the hold to both lists');
+$det = (string) file_get_contents($basePath . '/src/Views/admin/determinations.php');
+check(str_contains($det, 'Not listed yet:') && str_contains($det, 'Bulk SDS Publish is holding back'), 'TSCA tab says how many are not listed yet');
+
 $rmForm = (string) file_get_contents($basePath . '/src/Views/raw-materials/form.php');
 check(str_contains($rmForm, 'action="/determinations/tsca-rm"') && str_contains($rmForm, 'name="back_to" value="raw_material"'), 'raw-material edit page has the TSCA override card');
 

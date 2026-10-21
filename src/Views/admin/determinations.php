@@ -259,11 +259,19 @@
         Products containing them print "TSCA inventory status has not been verified for all components" in Section 15 and raise a publish warning.
         Set <em>Listed</em> for crossover / confidential-inventory CAS, <em>Exempt</em> for exemptions (e.g. polymer exemption), or <em>Not listed</em> when verified absent. A note is required. <em>Auto</em> removes the override.
     </p>
+    <?php if (!empty($tscaHeldListed)): ?>
+    <details class="text-muted" style="margin-bottom: 0.5rem;">
+        <summary>Not listed yet: <?= count($tscaHeldListed) ?> raw material<?= count($tscaHeldListed) === 1 ? '' : 's' ?> waiting for data that Bulk SDS Publish is holding back</summary>
+        Not reviewed (no one has saved their data), or no constituents entered, and not on any sheet bulk publish writes.
+        They appear here once their data is entered (<a href="/sds-review">SDS Creation Readiness Check</a>):
+        <?= e(implode(', ', $tscaHeldListed)) ?>
+    </details>
+    <?php endif; ?>
     <div style="margin-bottom: 0.5rem;">
         <input type="text" id="tscaFilter" placeholder="Filter by CAS, description or raw material..." style="max-width: 360px;">
     </div>
     <?php if (empty($tscaReview)): ?>
-        <div style="text-align: center; padding: 1.5rem; color: #28a745;"><strong>Every constituent CAS in use is on the TSCA inventory or has an override.</strong><?= !empty($tscaRmReview) ? '<br><span style="color:#fd7e14;">Some raw materials still cannot be checked by CAS: see the list below.</span>' : '' ?></div>
+        <div style="text-align: center; padding: 1.5rem; color: #28a745;"><strong><?= empty($tscaHeldListed) ? 'Every constituent CAS in use is on the TSCA inventory or has an override.' : 'No CAS needs a TSCA override right now.' ?></strong><?= !empty($tscaHeldListed) ? '<br><span style="color:#fd7e14;">Raw materials waiting for data are not checked yet: see "Not listed yet" above.</span>' : '' ?><?= !empty($tscaRmReview) ? '<br><span style="color:#fd7e14;">Some raw materials still cannot be checked by CAS: see the list below.</span>' : '' ?></div>
     <?php else: ?>
     <table class="table" id="tscaTable">
         <thead><tr><th style="width:130px;">CAS Number</th><th>Description</th><th>Raw Materials</th><th style="width:90px;">In Formula</th><th style="width:420px;">TSCA Override</th></tr></thead>
@@ -304,7 +312,7 @@
     <?php if (empty($tscaRmEnabled)): ?>
         <p class="text-muted">Available after the database update (migration 066).</p>
     <?php elseif (empty($tscaRmReview)): ?>
-        <p style="color: #28a745;"><strong>Every raw material in use can be checked by CAS or has a raw-material override.</strong></p>
+        <p style="color: #28a745;"><strong><?= empty($tscaHeldListed) ? 'Every raw material in use can be checked by CAS or has a raw-material override.' : 'No raw material needs a raw-material override right now (raw materials waiting for data are not checked yet: see "Not listed yet" above).' ?></strong></p>
     <?php else: ?>
     <table class="table" id="tscaRmTable">
         <thead><tr><th style="width:140px;">Raw Material</th><th>Name</th><th>Why it cannot be checked</th><th style="width:90px;">In Formula</th><th style="width:420px;">Raw-material TSCA Override</th></tr></thead>

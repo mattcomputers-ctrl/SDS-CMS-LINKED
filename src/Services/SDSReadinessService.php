@@ -512,11 +512,13 @@ class SDSReadinessService
 
     /**
      * Batch form of resaleAutoPublishBlock() for raw material ids.
+     * $reviewed: the loadReviewedRmIds() set when the caller already has it.
      *
-     * @param int[] $rmIds
+     * @param int[]                $rmIds
+     * @param array<int,true>|null $reviewed
      * @return array<int,string> rm id => blocking message (ids that pass are absent)
      */
-    public static function resaleAutoPublishBlocks(array $rmIds, Database $db): array
+    public static function resaleAutoPublishBlocks(array $rmIds, Database $db, ?array $reviewed = null): array
     {
         $rmIds = array_values(array_unique(array_filter(array_map('intval', $rmIds), static fn(int $i): bool => $i > 0)));
         if ($rmIds === []) {
@@ -533,7 +535,7 @@ class SDSReadinessService
                 $notRequired[(int) $r['id']] = true;
             }
         }
-        $reviewed = self::loadReviewedRmIds($db);
+        $reviewed ??= self::loadReviewedRmIds($db);
         $empty = [];
         foreach (TSCAService::incompleteRawMaterials($rmIds) as $row) {
             if (in_array(TSCAService::REASON_NO_CONSTITUENTS, (array) ($row['reasons'] ?? []), true)) {

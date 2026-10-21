@@ -14,7 +14,10 @@
  *     still covers the clean CAS;
  *   - the TSCA Review lists agree with Section 15 (nothing covered is
  *     listed, nothing uncovered is missing), and a CAS override finds every
- *     raw material whatever way its CAS was typed.
+ *     raw material whatever way its CAS was typed;
+ *   - raw materials Bulk SDS Publish holds back for want of data (not
+ *     reviewed, or no constituents and on no sheet bulk publish writes)
+ *     are left off both lists until their data is entered.
  *
  * Run:
  *   sudo -u www-data php tests/Services/TscaOverrideLiveTest.php
@@ -149,6 +152,71 @@ try {
     $db->query("UPDATE raw_materials SET tsca_status = 'listed', tsca_note = 'Supplier SDS' WHERE id IN (?, ?)", [$prop, $tab]);
     check($key([$prop]) === 'section15.tsca_status' && $key([$tab]) === 'section15.tsca_status', 'raw-material override covers a non-CAS value and a blank CAS');
     check($key([$whole, $empty, $nb, $pad, $dirty, $auto, $dash, $zw, $sp, $prop, $tab]) === 'section15.tsca_status', 'the whole product: "All components ... listed on or exempt from the TSCA inventory"');
+
+    echo "\nHeld for missing data (the bulk publish rule)\n";
+    $uid = (int) ($db->fetch("SELECT id FROM users ORDER BY id LIMIT 1")['id'] ?? 0);
+    if ($uid === 0) {
+        $uid = (int) $db->insert('users', ['username' => 'zztsc_reviewer', 'password_hash' => 'x']);
+    }
+    $review = function (int $rmId) use ($db, $uid): void {
+        $db->insert('audit_log', ['user_id' => $uid, 'entity_type' => 'raw_material', 'entity_id' => (string) $rmId, 'action' => 'update']);
+    };
+    $sheet = function (int $rmId, string $summary) use ($db): void {
+        $db->insert('sds_versions', ['raw_material_id' => $rmId, 'language' => 'en', 'version' => 1, 'status' => 'published',
+            'change_summary' => $summary, 'published_at' => gmdate('Y-m-d H:i:s'), 'is_deleted' => 0]);
+    };
+    $hU = $rm('ZZTSCHOLDU');                                      // not reviewed, no data, in a formula
+    $hC = $rm('ZZTSCHOLDC'); $con($hC, '7777773-77-5', 'Not reviewed, CAS not on the inventory');
+    $hR = $rm('ZZTSCHOLDR'); $review($hR); $sheet($hR, \SDS\Services\SDSReadinessService::BULK_RESALE_CHANGE_SUMMARY);
+    $hF = $rm('ZZTSCHOLDF'); $review($hF);                        // reviewed, no data, only in ZZTSCFG2
+    $fg2 = (int) $db->insert('finished_goods', ['product_code' => 'ZZTSCFG2']);
+    $f2  = (int) $db->insert('formulas', ['finished_good_id' => $fg2, 'is_current' => 1]);
+    foreach ([$hU, $hF] as $id) {
+        $db->insert('formula_lines', ['formula_id' => $f2, 'raw_material_id' => $id, 'pct' => 50]);
+    }
+
+    $held = \SDS\Controllers\BulkPublishController::rawMaterialsHeldForMissingData($db);
+    check(isset($held[$hU]) && isset($held[$hC]), 'not reviewed: held, with or without constituents');
+    check(isset($held[$hR]), 'reviewed, no constituents, only a sheet bulk publish wrote: held (the resale gate refuses it)');
+    check(isset($held[$hF]), 'reviewed, no constituents, only in a product bulk publish skips (another raw material not reviewed): held');
+
+    $listed = [];
+    $casList = array_column(T::reviewCandidates($held, $listed), null, 'cas_number');
+    $rmList  = array_column(T::noCasReviewCandidates($held, $listed), null, 'internal_code');
+    check(!isset($casList['7777773-77-5']), 'TSCA Review CAS list leaves out a CAS only a held raw material carries', array_keys($casList));
+    check(!isset($rmList['ZZTSCHOLDU']) && !isset($rmList['ZZTSCHOLDR']) && !isset($rmList['ZZTSCHOLDF']), '... and the second list leaves out held raw materials', array_keys($rmList));
+    check(($listed[$hU] ?? '') === 'ZZTSCHOLDU' && ($listed[$hC] ?? '') === 'ZZTSCHOLDC' && ($listed[$hR] ?? '') === 'ZZTSCHOLDR' && ($listed[$hF] ?? '') === 'ZZTSCHOLDF',
+        '... and reports them as "not listed yet"', $listed);
+    check(isset(array_column(T::noCasReviewCandidates(), null, 'internal_code')['ZZTSCHOLDU']), 'without the hold the raw material would be listed (default unchanged)');
+
+    $review($hU);   // now every raw material of ZZTSCFG2 is reviewed: bulk publish includes it
+    $held = \SDS\Controllers\BulkPublishController::rawMaterialsHeldForMissingData($db);
+    check(!isset($held[$hF]) && !isset($held[$hU]), 'once the product is no longer skipped, its raw materials with no constituents are listed again');
+    $rmList = array_column(T::noCasReviewCandidates($held), null, 'internal_code');
+    check(isset($rmList['ZZTSCHOLDF']) && isset($rmList['ZZTSCHOLDU']), '... on the second list (Section 15 will print "not verified" for that product)', array_keys($rmList));
+
+    $sheet($hR, 'Published from SDS Creation Readiness Check');   // published by hand
+    $held = \SDS\Controllers\BulkPublishController::rawMaterialsHeldForMissingData($db);
+    check(!isset($held[$hR]), 'a raw material with no constituents whose sheet was published by hand is listed (bulk publish republishes it)');
+
+    $review($hC);
+    $held = \SDS\Controllers\BulkPublishController::rawMaterialsHeldForMissingData($db);
+    check(!isset($held[$hC]) && isset(array_column(T::reviewCandidates($held), null, 'cas_number')['7777773-77-5']), 'reviewed with constituents: its CAS is listed');
+
+    // A raw-material line whose code matches an active product: the planner
+    // re-routes it (Rule 1 never checks it) but Section 15 prints its data.
+    $sub = (int) $db->insert('finished_goods', ['product_code' => 'ZZTSCSUB']);
+    $db->insert('formulas', ['finished_good_id' => $sub, 'is_current' => 1]);
+    $top = (int) $db->insert('finished_goods', ['product_code' => 'ZZTSCTOP']);
+    $ft  = (int) $db->insert('formulas', ['finished_good_id' => $top, 'is_current' => 1]);
+    $hX  = $rm('ZZTSCSUB-1G');                                   // not reviewed, no data
+    $db->insert('formula_lines', ['formula_id' => $ft, 'raw_material_id' => $hX, 'pct' => 100]);
+    $held = \SDS\Controllers\BulkPublishController::rawMaterialsHeldForMissingData($db);
+    check(!isset($held[$hX]) && isset(array_column(T::noCasReviewCandidates($held), null, 'internal_code')['ZZTSCSUB-1G']),
+        'not reviewed but on a re-routed line of a product bulk publish writes: listed (its gap prints on that sheet)', $held[$hX] ?? null);
+    $db->query("UPDATE finished_goods SET is_active = 0 WHERE id = ?", [$top]);
+    $held = \SDS\Controllers\BulkPublishController::rawMaterialsHeldForMissingData($db);
+    check(isset($held[$hX]), '... held again once that product is inactive (bulk publish leaves it out)');
 } finally {
     $pdo->rollBack();
 }

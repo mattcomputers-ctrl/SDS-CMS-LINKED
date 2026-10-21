@@ -581,11 +581,20 @@ class BulkPublishController
      * whose current version is missing languages (missingLanguages()); the
      * run publishes just those languages at that version.
      *
+     * $withUpstreamRms (TSCA Review, 2026-10-21) adds 'upstream_rms': for
+     * every candidate finished good, the raw material ids whose data its
+     * sheet carries — Rule 1's set plus raw-material lines the walker
+     * re-routes into a finished good (Section 15 still reads those lines as
+     * raw materials). That mode skips the missing-language / alias-sheet
+     * work, so its 'incomplete' is empty. $reviewedRms: the
+     * loadReviewedRmIds() set when the caller already has it.
+     *
      * @return array{eligible:   array<int,array{id:int,product_code:string}>,
      *               blocked:    array<int,array{id:int,product_code:string}>,
-     *               incomplete: array<int,array{id:int,product_code:string,version:int,missing:string[]}>}
+     *               incomplete: array<int,array{id:int,product_code:string,version:int,missing:string[]}>,
+     *               upstream_rms?: array<int,int[]>}
      */
-    public static function computeEligibleFinishedGoods(Database $db): array
+    public static function computeEligibleFinishedGoods(Database $db, bool $withUpstreamRms = false, ?array $reviewedRms = null): array
     {
         // All active FGs with a current formula — the candidate set.
         $fgs = $db->fetchAll(
@@ -597,7 +606,7 @@ class BulkPublishController
         );
 
         if (empty($fgs)) {
-            return ['eligible' => [], 'blocked' => []];
+            return ['eligible' => [], 'blocked' => []] + ($withUpstreamRms ? ['upstream_rms' => []] : []);
         }
 
         // ── Batch-load every table needed for the recursion & rule checks ──
@@ -623,7 +632,7 @@ class BulkPublishController
 
         // Reviewed RM ids (Rule 1) — shared with the per-FG SDS Review page
         // so both views agree on what "reviewed" means.
-        $reviewedRms = \SDS\Services\SDSReadinessService::loadReviewedRmIds($db);
+        $reviewedRms ??= \SDS\Services\SDSReadinessService::loadReviewedRmIds($db);
 
         // Per-RM max upstream timestamp = MAX(rm.updated_at, constituents.updated_at, CPDs.updated_at)
         $rmMaxUpstream = [];
@@ -687,7 +696,7 @@ class BulkPublishController
             ];
         }
         $languages  = App::config('sds.supported_languages', ['en', 'es', 'fr', 'de']);
-        $aliasTimes = self::aliasSheetTimes($db);
+        $aliasTimes = $withUpstreamRms ? [] : self::aliasSheetTimes($db);
 
         // RM code lookup — re-check ingredients that were stored as raw
         // materials but actually match a finished good (with pack extension).
@@ -713,13 +722,14 @@ class BulkPublishController
                 return $cache[$formulaId];
             }
             if (isset($visited[$formulaId])) {
-                return ['rms' => [], 'fg_deps' => [], 'max_ts' => null];
+                return ['rms' => [], 'fg_deps' => [], 'max_ts' => null, 'rerouted' => []];
             }
             $visited[$formulaId] = true;
 
-            $rms    = [];
-            $fgDeps = [];
-            $maxTs  = $formulaCreatedAt[$formulaId] ?? null;
+            $rms      = [];
+            $fgDeps   = [];
+            $rerouted = [];   // RM lines sent into an FG (not checked by Rule 1)
+            $maxTs    = $formulaCreatedAt[$formulaId] ?? null;
 
             foreach ($linesByFormula[$formulaId] ?? [] as $line) {
                 $targetFgId = null;
@@ -733,6 +743,7 @@ class BulkPublishController
                         $rms[$line['rm']] = true;
                         continue;
                     }
+                    $rerouted[$line['rm']] = true;
                 } elseif ($line['fg'] !== null) {
                     $targetFgId = $line['fg'];
                 }
@@ -748,6 +759,9 @@ class BulkPublishController
                         foreach ($sub['fg_deps'] as $depId => $_) {
                             $fgDeps[$depId] = true;
                         }
+                        foreach ($sub['rerouted'] as $rmId => $_) {
+                            $rerouted[$rmId] = true;
+                        }
                         if ($sub['max_ts'] !== null && ($maxTs === null || $sub['max_ts'] > $maxTs)) {
                             $maxTs = $sub['max_ts'];
                         }
@@ -755,7 +769,7 @@ class BulkPublishController
                 }
             }
 
-            $cache[$formulaId] = ['rms' => $rms, 'fg_deps' => $fgDeps, 'max_ts' => $maxTs];
+            $cache[$formulaId] = ['rms' => $rms, 'fg_deps' => $fgDeps, 'max_ts' => $maxTs, 'rerouted' => $rerouted];
             return $cache[$formulaId];
         };
 
@@ -763,11 +777,15 @@ class BulkPublishController
         $eligible   = [];
         $blocked    = [];
         $incomplete = [];
+        $upstreamByFg = [];
 
         foreach ($fgs as $fg) {
             $result      = $walk((int) $fg['formula_id'], []);
             $upstreamRms = $result['rms'];
             $maxTs       = $result['max_ts'];
+            if ($withUpstreamRms) {
+                $upstreamByFg[(int) $fg['id']] = array_keys($upstreamRms + $result['rerouted']);
+            }
 
             // Rule 1: every upstream RM must be reviewed
             $allReviewed = true;
@@ -801,6 +819,9 @@ class BulkPublishController
             $byLang  = $versionsByFg[(int) $fg['id']] ?? [];
             $lastPub = self::currentVersionPublishedAt($byLang, $languages);
             if ($lastPub !== null && $maxTs !== null && $lastPub >= $maxTs) {
+                if ($withUpstreamRms) {
+                    continue;   // TSCA hold mode: 'incomplete' is not used
+                }
                 $gap = self::missingLanguages($byLang, $languages);
                 if ($gap === null && self::aliasesIncomplete($aliasTimes[(string) $fg['product_code']] ?? [], $lastPub, $languages)) {
                     $gap = ['version' => self::currentVersion($byLang, $languages), 'missing' => []];
@@ -874,7 +895,131 @@ class BulkPublishController
             return true;
         }));
 
-        return ['eligible' => $eligible, 'blocked' => $blocked, 'incomplete' => $incomplete];
+        return ['eligible' => $eligible, 'blocked' => $blocked, 'incomplete' => $incomplete]
+            + ($withUpstreamRms ? ['upstream_rms' => $upstreamByFg] : []);
+    }
+
+    /**
+     * Raw materials Bulk SDS Publish holds back for want of data (TSCA
+     * Review, 2026-10-21): no information entered and no sheet that bulk
+     * publish writes carries them. The TSCA Review leaves them out until
+     * their data is entered.
+     *   - Not reviewed (SDSReadinessService::loadReviewedRmIds, the same
+     *     rule as the planner): the resale gate refuses its own sheet and
+     *     Rule 1 skips every finished good using it — except where the
+     *     walker re-routes its line into a finished good (its code matches
+     *     an active product), which the planner decides.
+     *   - Reviewed but no constituents (and not a whole trade secret), on
+     *     the second list only (migration 066, no raw-material override):
+     *     held when its own sheet fails the resale gate (no sheet published
+     *     by hand) and no finished good that the planner leaves unblocked
+     *     (eligible, fresh or completing) carries it.
+     * The planner runs only for those two cases with a current formula.
+     *
+     * @return array<int,true> raw material id => true
+     */
+    public static function rawMaterialsHeldForMissingData(Database $db): array
+    {
+        $reviewed = \SDS\Services\SDSReadinessService::loadReviewedRmIds($db);
+        // A raw material with no constituents only reaches the second TSCA
+        // list, which needs migration 066 and keeps tsca_status 'auto' only.
+        $rmCols  = \SDS\Services\TSCAService::hasRawMaterialOverrideColumns();
+        $fgCodes = [];
+        foreach ($db->fetchAll("SELECT product_code FROM finished_goods WHERE is_active = 1") as $r) {
+            $fgCodes[(string) $r['product_code']] = true;
+        }
+        $held     = [];
+        $rerouted = [];   // not reviewed, on a line the walker may re-route: id => true
+        $empty    = [];   // reviewed, no constituents: id => used by a current formula
+        foreach ($db->fetchAll(
+            "SELECT rm.id, rm.internal_code, rm.hazardous_no_cas" . ($rmCols ? ', rm.tsca_status' : '') . ",
+                    (EXISTS (SELECT 1 FROM raw_material_constituents rmc WHERE rmc.raw_material_id = rm.id)) AS has_constituents,
+                    (EXISTS (
+                        SELECT 1 FROM formula_lines fl
+                        JOIN formulas f ON f.id = fl.formula_id AND f.is_current = 1
+                        WHERE fl.raw_material_id = rm.id
+                    )) AS in_formula
+             FROM raw_materials rm"
+        ) as $r) {
+            $id        = (int) $r['id'];
+            $code      = (string) $r['internal_code'];
+            $inFormula = (int) $r['in_formula'] === 1;
+            $hasData   = (int) $r['has_constituents'] === 1 || (int) ($r['hazardous_no_cas'] ?? 0) === 1;
+            if (!isset($reviewed[$id])) {
+                // Same match as the walker in computeEligibleFinishedGoods().
+                if ($inFormula && (isset($fgCodes[$code]) || isset($fgCodes[strip_pack_extension($code)]))) {
+                    $rerouted[$id] = true;
+                } else {
+                    $held[$id] = true;
+                }
+            } elseif (!$hasData && $rmCols && (string) ($r['tsca_status'] ?? 'auto') === 'auto') {
+                $empty[$id] = $inFormula;
+            }
+        }
+        if ($empty === [] && $rerouted === []) {
+            return $held;
+        }
+
+        $inUnblocked = null;   // planner run only when needed
+        $carried = function (int $id) use (&$inUnblocked, $db, $reviewed): bool {
+            $inUnblocked ??= self::rawMaterialsInUnblockedFinishedGoods($db, $reviewed);
+            return isset($inUnblocked[$id]);
+        };
+        foreach ($rerouted as $id => $_) {
+            if (self::heldForMissingData(false, false, false, $carried($id))) {
+                $held[$id] = true;
+            }
+        }
+        $resaleBlocked = $empty === [] ? [] : \SDS\Services\SDSReadinessService::resaleAutoPublishBlocks(array_keys($empty), $db, $reviewed);
+        foreach ($empty as $id => $inFormula) {
+            $ownSheet  = !isset($resaleBlocked[$id]);
+            $inProduct = !$ownSheet && $inFormula && $carried($id);
+            if (self::heldForMissingData(true, false, $ownSheet, $inProduct)) {
+                $held[$id] = true;
+            }
+        }
+        return $held;
+    }
+
+    /**
+     * DB-free rule of rawMaterialsHeldForMissingData(): a raw material that
+     * a sheet bulk publish writes carries (a finished good the planner leaves
+     * unblocked) is never held. Otherwise it is held when it is not reviewed
+     * (the resale gate refuses its own sheet), or when it has no data and its
+     * own sheet fails the resale gate.
+     */
+    public static function heldForMissingData(bool $reviewed, bool $hasData, bool $ownSheetPublishable, bool $inUnblockedProduct): bool
+    {
+        if ($inUnblockedProduct) {
+            return false;
+        }
+        if (!$reviewed) {
+            return true;
+        }
+        return !$hasData && !$ownSheetPublishable;
+    }
+
+    /**
+     * Raw material ids whose data the sheet of a finished good the planner
+     * does not block (eligible, fresh or completing) carries.
+     *
+     * @param array<int,true>|null $reviewed
+     * @return array<int,true>
+     */
+    private static function rawMaterialsInUnblockedFinishedGoods(Database $db, ?array $reviewed = null): array
+    {
+        $plan    = self::computeEligibleFinishedGoods($db, true, $reviewed);
+        $blocked = array_flip(array_column($plan['blocked'], 'id'));
+        $out     = [];
+        foreach ($plan['upstream_rms'] ?? [] as $fgId => $rmIds) {
+            if (isset($blocked[$fgId])) {
+                continue;
+            }
+            foreach ($rmIds as $rmId) {
+                $out[(int) $rmId] = true;
+            }
+        }
+        return $out;
     }
 
     /**

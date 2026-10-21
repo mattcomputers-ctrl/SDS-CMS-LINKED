@@ -2587,10 +2587,16 @@ class AdminController
         // with no override, plus the overrides currently in effect.
         // 2026-10-21 (migration 066): raw materials that cannot be checked by
         // CAS (trade secrets, missing constituent data), with their overrides.
-        $tscaReview      = TSCAService::reviewCandidates();
+        // 2026-10-21: raw materials Bulk SDS Publish holds back for want of
+        // data (not reviewed, or no constituents and on no sheet it writes)
+        // are left off both lists until their data is entered.
+        $tscaHeld        = BulkPublishController::rawMaterialsHeldForMissingData($db);
+        $tscaHeldListed  = [];
+        $tscaReview      = TSCAService::reviewCandidates($tscaHeld, $tscaHeldListed);
         $tscaOverrides   = TSCAService::overridesInEffect();
-        $tscaRmReview    = TSCAService::noCasReviewCandidates();
+        $tscaRmReview    = TSCAService::noCasReviewCandidates($tscaHeld, $tscaHeldListed);
         $tscaRmOverrides = TSCAService::rawMaterialOverridesInEffect();
+        asort($tscaHeldListed);
 
         // A12(b) / T4a: STOT Target Organs tab — CAS whose hazard data or active
         // determination carries H370-H373, plus every CAS with organs entered.
@@ -2608,6 +2614,7 @@ class AdminController
             'tscaRmOverrides'    => $tscaRmOverrides,
             'tscaRmOptions'      => TSCAService::RM_OVERRIDE_OPTIONS,
             'tscaRmEnabled'      => TSCAService::hasRawMaterialOverrideColumns(),
+            'tscaHeldListed'     => $tscaHeldListed,
             'stotRows'           => $stotRows,                                   // A12(b)
             'stotOrgans'         => \SDS\Services\StotTargetOrgans::ORGANS,
             'stotRoutes'         => \SDS\Services\StotTargetOrgans::ROUTES,

@@ -664,8 +664,15 @@ class TSCAService
      * Raw materials marked "No SDS required" (migration 064) are left out
      * unless a current formula uses them (their data still feeds that
      * finished good).
+     * $heldRmIds (BulkPublishController::rawMaterialsHeldForMissingData):
+     * raw materials Bulk SDS Publish holds back for want of data are left
+     * out until their data is entered; those that would have been listed
+     * are added to $heldListed (id => internal code).
+     *
+     * @param array<int,true>         $heldRmIds
+     * @param array<int,string>|null  $heldListed
      */
-    public static function reviewCandidates(): array
+    public static function reviewCandidates(array $heldRmIds = [], ?array &$heldListed = null): array
     {
         $db       = Database::getInstance();
         $needsSds = \SDS\Models\RawMaterial::sqlNeedsSds('rm');
@@ -695,6 +702,10 @@ class TSCAService
             if ($cas === '' || !preg_match(self::CAS_PATTERN, $cas) || isset($rmOverrides[(int) $r['rm_id']])) {
                 continue;
             }
+            if (isset($heldRmIds[(int) $r['rm_id']])) {
+                $byCas[$cas]['held'][(int) $r['rm_id']] = (string) $r['internal_code'];
+                continue;
+            }
             $byCas[$cas]['names'][(string) $r['chemical_name']] = true;
             $byCas[$cas]['rms'][(string) $r['internal_code']]   = true;
             $byCas[$cas]['in_formula'] = max((int) ($byCas[$cas]['in_formula'] ?? 0), (int) $r['in_formula']);
@@ -714,6 +725,12 @@ class TSCAService
         $out = [];
         foreach (self::resolve(array_keys($byCas)) as $cas => $res) {
             if ($res['status'] !== self::STATUS_NOT_VERIFIED) {
+                continue;
+            }
+            foreach ($byCas[$cas]['held'] ?? [] as $rmId => $code) {
+                $heldListed[$rmId] = $code;
+            }
+            if (empty($byCas[$cas]['rms'])) {
                 continue;
             }
             $names = array_keys($byCas[$cas]['names']);
@@ -741,10 +758,13 @@ class TSCAService
      * or no constituents at all — in a current formula or with a sheet of
      * their own (any version), without a raw-material override. Others can
      * be set on the raw material's edit page. Empty before migration 066.
+     * $heldRmIds / $heldListed: as in reviewCandidates().
      *
+     * @param array<int,true>         $heldRmIds
+     * @param array<int,string>|null  $heldListed
      * @return list<array{id:int, internal_code:string, name:string, reasons:string[], in_formula:int}>
      */
-    public static function noCasReviewCandidates(): array
+    public static function noCasReviewCandidates(array $heldRmIds = [], ?array &$heldListed = null): array
     {
         if (!self::hasRawMaterialOverrideColumns()) {
             return [];
@@ -802,6 +822,10 @@ class TSCAService
                 $reasons[] = 'invalid_cas';
             }
             if ($reasons === []) {
+                continue;
+            }
+            if (isset($heldRmIds[(int) $r['id']])) {
+                $heldListed[(int) $r['id']] = (string) $r['internal_code'];
                 continue;
             }
             $out[] = [

@@ -293,7 +293,7 @@ $mig = (string) file_get_contents($basePath . '/migrations/066_rm_tsca_override.
 check(str_contains($mig, "ADD COLUMN `tsca_status` ENUM(''auto'',''listed'',''exempt'') NOT NULL DEFAULT ''auto''")
     && str_contains($mig, "INSERT IGNORE INTO `schema_migrations` (`version`) VALUES ('066_rm_tsca_override');"), 'migration 066: guarded raw_materials.tsca_status');
 $adm = (string) file_get_contents($basePath . '/src/Controllers/AdminController.php');
-check(str_contains($adm, 'public function saveTscaRawMaterialOverride(): void') && str_contains($adm, "AuditService::log('tsca_rm_override'"), 'raw-material override save, audited apart from raw-material reviews');
+check(str_contains($adm, 'public function saveTscaRawMaterialOverride(): void') && str_contains((string) file_get_contents($basePath . '/src/Services/TSCAService.php'), "AuditService::log('tsca_rm_override'"), 'raw-material override save, audited apart from raw-material reviews');
 check(str_contains($adm, '$rmIds  = TSCAService::rawMaterialIdsForCas($cas);'), 'a CAS override bumps raw materials whatever way the CAS was typed');
 $app = (string) file_get_contents($basePath . '/src/Core/App.php');
 check(str_contains($app, "\$router->post('/determinations/tsca-rm',      'AdminController@saveTscaRawMaterialOverride');"), 'route POST /determinations/tsca-rm');
@@ -334,6 +334,25 @@ check(str_contains($adm, 'TSCAService::undisclosedCompositionCandidates($tscaSco
 $det = (string) file_get_contents($basePath . '/src/Views/admin/determinations.php');
 check(str_contains($det, 'Raw materials that may contain undisclosed components') && str_contains($det, 'id="tscaUndisclosedTable"'), 'TSCA tab shows the third list');
 check(str_contains($det, '$tscaCount = count($tscaReview ?? []) + count($tscaRmReview ?? []) + count($tscaUndisclosed ?? []);'), '... and counts it in the tab badge');
+
+echo "\nk. Saving several TSCA overrides at once (2026-10-21)\n";
+check(str_contains($app, "\$router->post('/determinations/tsca-batch',   'AdminController@saveTscaBatch');"), 'route POST /determinations/tsca-batch');
+check(str_contains($adm, "json_decode((string) (\$_POST['payload'] ?? ''), true)") && str_contains($adm, '$db->beginTransaction();') && str_contains($adm, '$db->rollback();'),
+    'batch save reads one JSON field and writes in one transaction');
+check(str_contains($adm, 'TSCAService::writeCasOverride($db, $str(') && str_contains($adm, 'TSCAService::writeRawMaterialOverride($db, $rmId,'),
+    '... through the same validation and writes as the single-row saves');
+check(substr_count($adm, 'TSCAService::writeCasOverride(') === 2 && substr_count($adm, 'TSCAService::writeRawMaterialOverride(') === 2, 'single-row saves use the shared writers too');
+check(str_contains($adm, 'TSCAService::rawMaterialIdsForCasMany(array_keys($cas)), array_keys($rms))'), '... and bumps / queues every raw material touched once');
+check(substr_count($det, '<input type="checkbox" class="tsca-pick" aria-label=') === 3 && substr_count($det, 'class="tsca-pick-all"') === 3, 'a tick box on every row of the three lists, and a select-all per list');
+check(str_contains($det, 'id="tscaBatchForm"') && str_contains($det, 'action="/determinations/tsca-batch"') && str_contains($det, "JSON.stringify(payload)") && str_contains($det, 'id="tscaBatchBar"'),
+    'one hidden batch form, posted with the selection as JSON from the bar');
+check(str_contains($det, "if (st === 'auto') { noStatus.push(label);") && str_contains($det, "if (note === '')   { noNote.push(label);"), 'the bar refuses rows still on Auto or without a note');
+check(str_contains($det, 'picked().filter(shown).forEach(') && str_contains($det, "if (st && sel && !sel.querySelector('option[value=\"' + st + '\"]')) {"),
+    'Apply changes only shown ticked rows, and leaves (and unticks) rows that do not offer the status');
+check(substr_count($det, '<?php if ($canEditTsca): ?>') >= 6 && str_contains($det, "\$canEditTsca = can_edit('cas_determinations');"), 'batch controls only for users who can save');
+check(substr_count($det, 'autocomplete="off"') >= 9, 'no browser form-state restore onto a changed list');
+check(strpos($adm, '$bumped = \SDS\Services\RegulatoryListBumper::bumpRawMaterialIds($rmIds);') < strpos($adm, '            $db->commit();')
+    && str_contains($adm, 'Run the scan on SDS Updates to queue them.'), 'batch bump commits with the overrides; a queueing failure says to run the scan');
 check(str_contains($det, 'Not listed yet:') && str_contains($det, 'only on sheets Bulk SDS Publish is not cleared to publish'), 'TSCA tab says how many are not listed yet');
 check(str_contains($det, "\\SDS\\Services\\TSCAService::STATUS_INACTIVE ? '<span style=\"color:#fd7e14;font-weight:bold;\">INACTIVE</span>"), 'CAS list marks INACTIVE entries');
 

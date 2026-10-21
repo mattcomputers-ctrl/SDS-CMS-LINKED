@@ -2690,46 +2690,14 @@ class AdminController
         CSRF::validateRequest();
         $db = Database::getInstance();
 
-        $cas    = TSCAService::normaliseCas((string) ($_POST['cas_number'] ?? ''));
         $status = (string) ($_POST['tsca_status'] ?? 'auto');
-        $note   = mb_substr(trim((string) ($_POST['tsca_note'] ?? '')), 0, 500);
-
-        if ($cas === '' || !preg_match(TSCAService::CAS_PATTERN, $cas)) {
-            $_SESSION['_flash']['error'] = 'A valid CAS number is required.';
+        $saved  = TSCAService::writeCasOverride($db, (string) ($_POST['cas_number'] ?? ''), $status, (string) ($_POST['tsca_note'] ?? ''));
+        if (isset($saved['error'])) {
+            $_SESSION['_flash']['error'] = $saved['error'];
             redirect('/determinations?tab=tsca');
             return;
         }
-        if (!array_key_exists($status, TSCAService::OVERRIDE_OPTIONS)) {
-            $_SESSION['_flash']['error'] = 'Unknown TSCA status.';
-            redirect('/determinations?tab=tsca');
-            return;
-        }
-        if ($status !== 'auto' && $note === '') {
-            $_SESSION['_flash']['error'] = "A note explaining the TSCA override for CAS {$cas} is required (e.g. crossover CAS, polymer exemption).";
-            redirect('/determinations?tab=tsca');
-            return;
-        }
-
-        // cas_master is the override's home; create the registry row if the
-        // CAS is not there yet (same as saveCasDescription), naming it from
-        // the most common constituent description.
-        $existing = $db->fetch("SELECT cas_number FROM cas_master WHERE cas_number = ?", [$cas]);
-        if (!$existing) {
-            $nameRow = $db->fetch(
-                "SELECT chemical_name FROM raw_material_constituents
-                 WHERE cas_number = ? AND chemical_name <> ''
-                 GROUP BY chemical_name ORDER BY COUNT(*) DESC LIMIT 1",
-                [$cas]
-            );
-            $db->insert('cas_master', ['cas_number' => $cas, 'preferred_name' => (string) ($nameRow['chemical_name'] ?? '')]);
-        }
-
-        $db->update('cas_master', [
-            'tsca_status'     => $status,
-            'tsca_note'       => $status === 'auto' ? null : $note,
-            'tsca_updated_by' => current_user_id(),
-            'tsca_updated_at' => gmdate('Y-m-d H:i:s'),
-        ], 'cas_number = ?', [$cas]);
+        $cas = $saved['cas'];
 
         // The Section 15 TSCA sentence of every product carrying this CAS may
         // change: bump the RMs (bulk-publish staleness) and queue SDS updates.
@@ -2743,7 +2711,6 @@ class AdminController
             'TSCA status override set to ' . $status . ' for CAS ' . $cas
         );
 
-        AuditService::log('tsca_override', $cas, 'update', ['status' => $status, 'note' => $note]);
         $_SESSION['_flash']['success'] = "TSCA status for CAS {$cas} set to '{$status}'." . self::bumpedTail($bumped) . self::queuedTail($queued);
         redirect('/determinations?tab=tsca');
     }
@@ -2764,7 +2731,6 @@ class AdminController
 
         $rmId   = (int) ($_POST['raw_material_id'] ?? 0);
         $status = (string) ($_POST['tsca_status'] ?? 'auto');
-        $note   = mb_substr(trim((string) ($_POST['tsca_note'] ?? '')), 0, 500);
         // The raw-material edit page posts back_to=raw_material (a fixed
         // target, never a URL from the request).
         $back   = ($_POST['back_to'] ?? '') === 'raw_material' && $rmId > 0
@@ -2776,30 +2742,13 @@ class AdminController
             redirect($back);
             return;
         }
-        $rm = $rmId > 0 ? $db->fetch("SELECT id, internal_code FROM raw_materials WHERE id = ?", [$rmId]) : null;
-        if (!$rm) {
-            $_SESSION['_flash']['error'] = 'Raw material not found.';
+        $saved = TSCAService::writeRawMaterialOverride($db, $rmId, $status, (string) ($_POST['tsca_note'] ?? ''));
+        if (isset($saved['error'])) {
+            $_SESSION['_flash']['error'] = $saved['error'];
             redirect($back);
             return;
         }
-        if (!array_key_exists($status, TSCAService::RM_OVERRIDE_OPTIONS)) {
-            $_SESSION['_flash']['error'] = 'Unknown TSCA status.';
-            redirect($back);
-            return;
-        }
-        $code = (string) $rm['internal_code'];
-        if ($status !== 'auto' && $note === '') {
-            $_SESSION['_flash']['error'] = "A note explaining the TSCA override for {$code} is required (e.g. \"Supplier SDS Section 15: all components listed on or exempt from TSCA\").";
-            redirect($back);
-            return;
-        }
-
-        $db->update('raw_materials', [
-            'tsca_status'     => $status,
-            'tsca_note'       => $status === 'auto' ? null : $note,
-            'tsca_updated_by' => current_user_id(),
-            'tsca_updated_at' => gmdate('Y-m-d H:i:s'),
-        ], 'id = ?', [$rmId]);
+        $code = $saved['code'];
 
         // The Section 15 TSCA sentence of every product using this raw
         // material may change: bump it and queue SDS updates.
@@ -2810,9 +2759,121 @@ class AdminController
             'TSCA raw-material override set to ' . $status . ' for ' . $code
         );
 
-        AuditService::log('tsca_rm_override', $rmId, 'update', ['internal_code' => $code, 'status' => $status, 'note' => $note]);
         $_SESSION['_flash']['success'] = "TSCA status for raw material {$code} set to '{$status}'." . self::bumpedTail($bumped) . self::queuedTail($queued);
         redirect($back);
+    }
+
+    /** Most rows one TSCA Review batch save takes. */
+    private const TSCA_BATCH_MAX = 1000;
+
+    /**
+     * POST /determinations/tsca-batch (2026-10-21): save several TSCA
+     * overrides from the TSCA Review at once — CAS overrides and
+     * raw-material overrides, each row with its own status and note. The
+     * rows come as one JSON field, 'payload' =
+     *   {"cas": [{"cas_number", "tsca_status", "tsca_note"}, ...],
+     *    "rm":  [{"raw_material_id", "tsca_status", "tsca_note"}, ...]},
+     * so a long selection never meets PHP's max_input_vars. Rows that fail
+     * validation are reported and skipped; the rest are written, and every
+     * raw material they touch is bumped once, in one transaction (so a
+     * failure leaves the rows on the review lists to retry). SDS Updates
+     * queueing follows the commit; if it fails the flash says to run the
+     * SDS Updates scan (as CasElementFlagSeeder::apply does).
+     */
+    public function saveTscaBatch(): void
+    {
+        $this->requirePageAccess('cas_determinations', 'full');
+        CSRF::validateRequest();
+        $db   = Database::getInstance();
+        $back = '/determinations?tab=tsca';
+
+        $payload = json_decode((string) ($_POST['payload'] ?? ''), true);
+        $casRows = is_array($payload) && is_array($payload['cas'] ?? null) ? array_values($payload['cas']) : [];
+        $rmRows  = is_array($payload) && is_array($payload['rm'] ?? null) ? array_values($payload['rm']) : [];
+        $total   = count($casRows) + count($rmRows);
+        if ($total === 0) {
+            $_SESSION['_flash']['error'] = 'No rows were selected to save.';
+            redirect($back);
+            return;
+        }
+        if ($total > self::TSCA_BATCH_MAX) {
+            $_SESSION['_flash']['error'] = 'Save at most ' . self::TSCA_BATCH_MAX . " TSCA overrides at once ({$total} were selected).";
+            redirect($back);
+            return;
+        }
+        if ($rmRows !== [] && !TSCAService::hasRawMaterialOverrideColumns()) {
+            $_SESSION['_flash']['error'] = 'Run the database update (migration 066) before setting raw-material TSCA overrides.';
+            redirect($back);
+            return;
+        }
+
+        $str    = static fn ($v): string => is_scalar($v) ? (string) $v : '';
+        $errors = [];
+        $cas    = [];   // canonical CAS => true
+        $rms    = [];   // raw material id => code
+        $db->beginTransaction();
+        try {
+            foreach ($casRows as $row) {
+                $row = is_array($row) ? $row : [];
+                $r   = TSCAService::writeCasOverride($db, $str($row['cas_number'] ?? ''), $str($row['tsca_status'] ?? ''), $str($row['tsca_note'] ?? ''));
+                if (isset($r['error'])) {
+                    $errors[] = $r['error'];
+                } else {
+                    $cas[$r['cas']] = true;
+                }
+            }
+            foreach ($rmRows as $row) {
+                $row  = is_array($row) ? $row : [];
+                $rmId = (int) $str($row['raw_material_id'] ?? 0);
+                $r    = TSCAService::writeRawMaterialOverride($db, $rmId, $str($row['tsca_status'] ?? ''), $str($row['tsca_note'] ?? ''));
+                if (isset($r['error'])) {
+                    $errors[] = $r['error'];
+                } else {
+                    $rms[$rmId] = $r['code'];
+                }
+            }
+            // One bump for everything saved, committed with the overrides.
+            $rmIds  = [];
+            $bumped = 0;
+            if ($cas !== [] || $rms !== []) {
+                $rmIds  = array_values(array_unique(array_merge(TSCAService::rawMaterialIdsForCasMany(array_keys($cas)), array_keys($rms))));
+                $bumped = \SDS\Services\RegulatoryListBumper::bumpRawMaterialIds($rmIds);
+            }
+            $db->commit();
+        } catch (\Throwable $e) {
+            $db->rollback();
+            throw $e;
+        }
+
+        $saved = count($cas) + count($rms);
+        if ($saved > 0) {
+            $queued = 0;
+            try {
+                $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByRawMaterialIds(
+                    $rmIds,
+                    current_user_id(),
+                    'TSCA overrides saved from the TSCA Review (' . $saved . ')'
+                );
+            } catch (\Throwable $e) {
+                $_SESSION['_flash']['error'] = 'The overrides were saved and their raw materials flagged for re-publish, but adding the products to SDS Updates failed ('
+                    . $e->getMessage() . '). Run the scan on SDS Updates to queue them.';
+            }
+            $names = array_merge(array_map(static fn (string $c): string => 'CAS ' . $c, array_keys($cas)), array_values($rms));
+            $_SESSION['_flash']['success'] = "Saved {$saved} TSCA override" . ($saved === 1 ? '' : 's') . ': ' . self::listForFlash($names, ', ') . '.'
+                . self::bumpedTail($bumped) . self::queuedTail($queued);
+        }
+        if ($errors !== []) {
+            $n = count($errors);
+            $_SESSION['_flash']['warning'] = $n . ' row' . ($n === 1 ? ' was' : 's were') . ' not saved: ' . self::listForFlash($errors, ' ');
+        }
+        redirect($back);
+    }
+
+    /** Up to $max items joined for a flash message, with a "+N more" tail. */
+    private static function listForFlash(array $items, string $glue, int $max = 10): string
+    {
+        $shown = implode($glue, array_slice($items, 0, $max));
+        return count($items) > $max ? $shown . $glue . '… (+' . (count($items) - $max) . ' more)' : $shown;
     }
 
     /**

@@ -289,6 +289,26 @@ try {
     $db->query("UPDATE raw_materials SET tsca_status = 'listed', tsca_note = 'Supplier SDS Section 15' WHERE id = ?", [$pIn]);
     $u = $lists($scope())[3];
     check(!isset($u['ZZTSCPART']), 'a raw-material override takes it off the list');
+
+    echo "\nOverride writers (single-row and batch saves)\n";
+    $w = T::writeCasOverride($db, '7777771-77-8', 'listed', '  ');
+    check(isset($w['error']) && str_contains($w['error'], 'note'), 'a CAS override without a note is refused', $w);
+    $w = T::writeCasOverride($db, 'Proprietary', 'listed', 'x');
+    check(isset($w['error']), 'a value that is not a CAS number is refused', $w);
+    $w = T::writeCasOverride($db, "7777771\u{2013}77\u{2013}8", 'listed', 'Crossover CAS');
+    $row = $db->fetch("SELECT tsca_status, tsca_note FROM cas_master WHERE cas_number = '7777771-77-8'");
+    check(($w['cas'] ?? '') === '7777771-77-8' && ($row['tsca_status'] ?? '') === 'listed' && ($row['tsca_note'] ?? '') === 'Crossover CAS',
+        'a CAS override is written under the canonical CAS, with its note', [$w, $row]);
+    check($key([$hB]) === 'section15.tsca_status', '... and covers the raw material carrying it');
+    $w = T::writeRawMaterialOverride($db, $pBlk, 'not_listed', 'x');
+    check(isset($w['error']), 'a raw-material override takes only auto / listed / exempt', $w);
+    $w = T::writeRawMaterialOverride($db, 0, 'listed', 'x');
+    check(($w['error'] ?? '') === 'Raw material not found.', 'an unknown raw material is refused', $w);
+    $w = T::writeRawMaterialOverride($db, $pBlk, 'exempt', 'Supplier certifies');
+    $row = $db->fetch("SELECT tsca_status, tsca_note FROM raw_materials WHERE id = ?", [$pBlk]);
+    check(($w['code'] ?? '') === 'ZZTSCPARTB' && ($row['tsca_status'] ?? '') === 'exempt' && ($row['tsca_note'] ?? '') === 'Supplier certifies', 'a raw-material override is written with its note', [$w, $row]);
+    $audits = (int) ($db->fetch("SELECT COUNT(*) AS n FROM audit_log WHERE entity_type IN ('tsca_override', 'tsca_rm_override') AND entity_id IN ('7777771-77-8', ?)", [(string) $pBlk])['n'] ?? 0);
+    check($audits === 2, 'each saved override is audited (and not as a raw-material review)', $audits);
 } finally {
     $pdo->rollBack();
 }

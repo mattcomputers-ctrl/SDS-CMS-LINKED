@@ -961,6 +961,82 @@ class TSCAService
         }
     }
 
+    /**
+     * Validate and write one per-CAS TSCA override on cas_master (audited
+     * as 'tsca_override'); no bump, no flash. Used by the single-row save
+     * and the TSCA Review batch save (AdminController).
+     *
+     * @return array{cas:string}|array{error:string}
+     */
+    public static function writeCasOverride(Database $db, string $casIn, string $status, string $note): array
+    {
+        $cas  = self::normaliseCas($casIn);
+        $note = mb_substr(trim($note), 0, 500);
+        if ($cas === '' || !preg_match(self::CAS_PATTERN, $cas)) {
+            return ['error' => 'A valid CAS number is required.'];
+        }
+        if (!array_key_exists($status, self::OVERRIDE_OPTIONS)) {
+            return ['error' => "Unknown TSCA status for CAS {$cas}."];
+        }
+        if ($status !== 'auto' && $note === '') {
+            return ['error' => "A note explaining the TSCA override for CAS {$cas} is required (e.g. crossover CAS, polymer exemption)."];
+        }
+
+        // cas_master is the override's home; create the registry row if the
+        // CAS is not there yet (same as saveCasDescription), naming it from
+        // the most common constituent description.
+        if (!$db->fetch("SELECT cas_number FROM cas_master WHERE cas_number = ?", [$cas])) {
+            $nameRow = $db->fetch(
+                "SELECT chemical_name FROM raw_material_constituents
+                 WHERE cas_number = ? AND chemical_name <> ''
+                 GROUP BY chemical_name ORDER BY COUNT(*) DESC LIMIT 1",
+                [$cas]
+            );
+            $db->insert('cas_master', ['cas_number' => $cas, 'preferred_name' => (string) ($nameRow['chemical_name'] ?? '')]);
+        }
+        $db->update('cas_master', [
+            'tsca_status'     => $status,
+            'tsca_note'       => $status === 'auto' ? null : $note,
+            'tsca_updated_by' => current_user_id(),
+            'tsca_updated_at' => gmdate('Y-m-d H:i:s'),
+        ], 'cas_number = ?', [$cas]);
+
+        AuditService::log('tsca_override', $cas, 'update', ['status' => $status, 'note' => $note]);
+        return ['cas' => $cas];
+    }
+
+    /**
+     * Validate and write one raw-material TSCA override (migration 066;
+     * audited as 'tsca_rm_override', not 'raw_material', which would count
+     * as a review); no bump, no flash. The caller checks the migration.
+     *
+     * @return array{code:string}|array{error:string}
+     */
+    public static function writeRawMaterialOverride(Database $db, int $rmId, string $status, string $note): array
+    {
+        $note = mb_substr(trim($note), 0, 500);
+        $rm   = $rmId > 0 ? $db->fetch("SELECT id, internal_code FROM raw_materials WHERE id = ?", [$rmId]) : null;
+        if (!$rm) {
+            return ['error' => 'Raw material not found.'];
+        }
+        $code = (string) $rm['internal_code'];
+        if (!array_key_exists($status, self::RM_OVERRIDE_OPTIONS)) {
+            return ['error' => "Unknown TSCA status for raw material {$code}."];
+        }
+        if ($status !== 'auto' && $note === '') {
+            return ['error' => "A note explaining the TSCA override for {$code} is required (e.g. \"Supplier SDS Section 15: all components listed on or exempt from TSCA\")."];
+        }
+        $db->update('raw_materials', [
+            'tsca_status'     => $status,
+            'tsca_note'       => $status === 'auto' ? null : $note,
+            'tsca_updated_by' => current_user_id(),
+            'tsca_updated_at' => gmdate('Y-m-d H:i:s'),
+        ], 'id = ?', [$rmId]);
+
+        AuditService::log('tsca_rm_override', $rmId, 'update', ['internal_code' => $code, 'status' => $status, 'note' => $note]);
+        return ['code' => $code];
+    }
+
     /** Raw-material overrides currently in effect (migration 066). */
     public static function rawMaterialOverridesInEffect(): array
     {

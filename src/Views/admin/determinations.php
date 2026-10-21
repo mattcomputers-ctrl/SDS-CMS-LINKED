@@ -254,6 +254,7 @@
 
 <!-- Tab: TSCA Review (audit #29) -->
 <div class="tab-panel" id="tab-tsca" style="display: none;">
+    <?php $canEditTsca = can_edit('cas_determinations'); ?>
     <p class="text-muted" style="margin-bottom: 0.5rem;">
         Everything here is on a sheet <a href="/bulk-publish">Bulk SDS Publish</a> is cleared to publish, so clearing these keeps the TSCA wording of published SDSs accurate.
         Raw materials only on sheets bulk publish is not cleared to publish yet wait (see "Not listed yet").
@@ -273,6 +274,16 @@
         <?= e(implode(', ', array_slice($tscaNotCleared, 0, 300))) ?><?= count($tscaNotCleared) > 300 ? ' … and ' . (count($tscaNotCleared) - 300) . ' more' : '' ?>
     </details>
     <?php endif; ?>
+    <?php if ($canEditTsca): ?>
+    <p class="text-muted" style="margin-bottom: 0.5rem;">
+        To save several rows at once, tick them (changing a row's status or note ticks it), then use <strong>Save selected</strong> in the bar at the bottom:
+        one save for all of them. The bar can also apply one status and note to every ticked row shown.
+    </p>
+    <form method="POST" action="/determinations/tsca-batch" id="tscaBatchForm" autocomplete="off" style="display: none;">
+        <?= csrf_field() ?>
+        <input type="hidden" name="payload" id="tscaBatchPayload" value="">
+    </form>
+    <?php endif; ?>
     <div style="margin-bottom: 0.5rem;">
         <input type="text" id="tscaFilter" placeholder="Filter by CAS, description or raw material..." style="max-width: 360px;">
     </div>
@@ -280,11 +291,12 @@
         <div style="text-align: center; padding: 1.5rem; color: #28a745;"><strong>Every constituent CAS on a sheet bulk publish is cleared to publish is on the TSCA inventory (and active) or has an override.</strong><?= !empty($tscaNotCleared) ? '<br><span style="color:#fd7e14;">Raw materials only on sheets bulk publish is not cleared to publish are not checked yet: see "Not listed yet" above.</span>' : '' ?><?= !empty($tscaRmReview) ? '<br><span style="color:#fd7e14;">Some raw materials still cannot be checked by CAS: see the list below.</span>' : '' ?><?= !empty($tscaUndisclosed) ? '<br><span style="color:#fd7e14;">Some raw materials may contain undisclosed components: see the third list below.</span>' : '' ?></div>
     <?php else: ?>
     <table class="table" id="tscaTable">
-        <thead><tr><th style="width:130px;">CAS Number</th><th>Description</th><th style="width:150px;">Inventory</th><th>Raw Materials</th><th style="width:90px;">In Formula</th><th style="width:420px;">TSCA Override</th></tr></thead>
+        <thead><tr><?php if ($canEditTsca): ?><th style="width:30px;"><input type="checkbox" class="tsca-pick-all" title="Select every row shown in this list" autocomplete="off"></th><?php endif; ?><th style="width:130px;">CAS Number</th><th>Description</th><th style="width:150px;">Inventory</th><th>Raw Materials</th><th style="width:90px;">In Formula</th><th style="width:420px;">TSCA Override</th></tr></thead>
         <tbody>
         <?php foreach ($tscaReview as $idx => $r): ?>
             <?php $formId = 'tsca-form-' . $idx; ?>
-            <tr>
+            <tr data-tsca-kind="cas" data-tsca-key="<?= e($r['cas_number']) ?>" data-tsca-label="CAS <?= e($r['cas_number']) ?>">
+                <?php if ($canEditTsca): ?><td><input type="checkbox" class="tsca-pick" aria-label="Select CAS <?= e($r['cas_number']) ?>" autocomplete="off"></td><?php endif; ?>
                 <td><strong><?= e($r['cas_number']) ?></strong></td>
                 <td><?= e($r['chemical_name'] ?? '') ?></td>
                 <td><?= ($r['status'] ?? '') === \SDS\Services\TSCAService::STATUS_INACTIVE ? '<span style="color:#fd7e14;font-weight:bold;">INACTIVE</span><br><small class="text-muted">Notice of Activity needed</small>' : '<span class="text-muted">Not on the inventory</span>' ?></td>
@@ -292,7 +304,7 @@
                     <?php if ((int) ($r['raw_material_count'] ?? 0) > 1): ?><small class="text-muted">(<?= (int) $r['raw_material_count'] ?> materials)</small><?php endif; ?></td>
                 <td><?= (int) ($r['in_formula'] ?? 0) ? '<span style="color:#28a745;font-weight:bold;">Yes</span>' : '<span class="text-muted">No</span>' ?></td>
                 <td>
-                    <form method="POST" action="/determinations/tsca" id="<?= $formId ?>" style="display:flex; gap:0.35rem; align-items:center;">
+                    <form method="POST" action="/determinations/tsca" id="<?= $formId ?>" autocomplete="off" style="display:flex; gap:0.35rem; align-items:center;">
                         <?= csrf_field() ?>
                         <input type="hidden" name="cas_number" value="<?= e($r['cas_number']) ?>">
                         <select name="tsca_status">
@@ -322,16 +334,17 @@
         <p style="color: #28a745;"><strong>Every raw material on a sheet bulk publish is cleared to publish can be checked by CAS or has a raw-material override.</strong><?= !empty($tscaUndisclosed) ? '<br><span style="color:#fd7e14;">Some may contain undisclosed components: see the next list.</span>' : '' ?></p>
     <?php else: ?>
     <table class="table" id="tscaRmTable">
-        <thead><tr><th style="width:140px;">Raw Material</th><th>Name</th><th>Why it cannot be checked</th><th style="width:90px;">In Formula</th><th style="width:420px;">Raw-material TSCA Override</th></tr></thead>
+        <thead><tr><?php if ($canEditTsca): ?><th style="width:30px;"><input type="checkbox" class="tsca-pick-all" title="Select every row shown in this list" autocomplete="off"></th><?php endif; ?><th style="width:140px;">Raw Material</th><th>Name</th><th>Why it cannot be checked</th><th style="width:90px;">In Formula</th><th style="width:420px;">Raw-material TSCA Override</th></tr></thead>
         <tbody>
         <?php foreach ($tscaRmReview as $idx => $r): ?>
-            <tr>
+            <tr data-tsca-kind="rm" data-tsca-key="<?= (int) $r['id'] ?>" data-tsca-label="<?= e($r['internal_code']) ?>">
+                <?php if ($canEditTsca): ?><td><input type="checkbox" class="tsca-pick" aria-label="Select <?= e($r['internal_code']) ?>" autocomplete="off"></td><?php endif; ?>
                 <td><strong><a href="/raw-materials/<?= (int) $r['id'] ?>/edit"><?= e($r['internal_code']) ?></a></strong></td>
                 <td><?= e($r['name'] ?? '') ?></td>
                 <td><small><?= e(implode('; ', array_map([\SDS\Services\TSCAService::class, 'noCasReasonLabel'], (array) $r['reasons']))) ?></small></td>
                 <td><?= (int) ($r['in_formula'] ?? 0) ? '<span style="color:#28a745;font-weight:bold;">Yes</span>' : '<span class="text-muted">No (resale sheet)</span>' ?></td>
                 <td>
-                    <form method="POST" action="/determinations/tsca-rm" style="display:flex; gap:0.35rem; align-items:center;">
+                    <form method="POST" action="/determinations/tsca-rm" autocomplete="off" style="display:flex; gap:0.35rem; align-items:center;">
                         <?= csrf_field() ?>
                         <input type="hidden" name="raw_material_id" value="<?= (int) $r['id'] ?>">
                         <select name="tsca_status">
@@ -361,17 +374,18 @@
         <p style="color: #28a745;"><strong>No raw material on a sheet bulk publish is cleared to publish has undisclosed components.</strong></p>
     <?php else: ?>
     <table class="table" id="tscaUndisclosedTable">
-        <thead><tr><th style="width:140px;">Raw Material</th><th>Name</th><th style="width:130px;">Constituents entered</th><th style="width:110px;">Trade-secret constituents</th><th style="width:90px;">In Formula</th><th style="width:420px;">Raw-material TSCA Override</th></tr></thead>
+        <thead><tr><?php if ($canEditTsca): ?><th style="width:30px;"><input type="checkbox" class="tsca-pick-all" title="Select every row shown in this list" autocomplete="off"></th><?php endif; ?><th style="width:140px;">Raw Material</th><th>Name</th><th style="width:130px;">Constituents entered</th><th style="width:110px;">Trade-secret constituents</th><th style="width:90px;">In Formula</th><th style="width:420px;">Raw-material TSCA Override</th></tr></thead>
         <tbody>
         <?php foreach ($tscaUndisclosed as $r): ?>
-            <tr>
+            <tr data-tsca-kind="rm" data-tsca-key="<?= (int) $r['id'] ?>" data-tsca-label="<?= e($r['internal_code']) ?>">
+                <?php if ($canEditTsca): ?><td><input type="checkbox" class="tsca-pick" aria-label="Select <?= e($r['internal_code']) ?>" autocomplete="off"></td><?php endif; ?>
                 <td><strong><a href="/raw-materials/<?= (int) $r['id'] ?>/edit"><?= e($r['internal_code']) ?></a></strong></td>
                 <td><?= e($r['name'] ?? '') ?></td>
                 <td>at most <?= e(rtrim(rtrim(number_format((float) $r['entered_pct'], 2), '0'), '.')) ?>%</td>
                 <td><?= (int) $r['trade_secret_count'] > 0 ? (int) $r['trade_secret_count'] : '<span class="text-muted">None</span>' ?></td>
                 <td><?= (int) ($r['in_formula'] ?? 0) ? '<span style="color:#28a745;font-weight:bold;">Yes</span>' : '<span class="text-muted">No (resale sheet)</span>' ?></td>
                 <td>
-                    <form method="POST" action="/determinations/tsca-rm" style="display:flex; gap:0.35rem; align-items:center;">
+                    <form method="POST" action="/determinations/tsca-rm" autocomplete="off" style="display:flex; gap:0.35rem; align-items:center;">
                         <?= csrf_field() ?>
                         <input type="hidden" name="raw_material_id" value="<?= (int) $r['id'] ?>">
                         <select name="tsca_status">
@@ -403,7 +417,7 @@
                 <td><?= e($o['tsca_note'] ?? '') ?></td>
                 <td><small><?= e($o['tsca_updated_by_name'] ?? '—') ?><?= !empty($o['tsca_updated_at']) ? ' · ' . e(\SDS\Services\PublishClock::display($o['tsca_updated_at'], 'm/d/Y')) : '' ?></small></td>
                 <td>
-                    <form method="POST" action="/determinations/tsca-rm" style="display:flex; gap:0.35rem; align-items:center;">
+                    <form method="POST" action="/determinations/tsca-rm" autocomplete="off" style="display:flex; gap:0.35rem; align-items:center;">
                         <?= csrf_field() ?>
                         <input type="hidden" name="raw_material_id" value="<?= (int) $o['id'] ?>">
                         <input type="hidden" name="tsca_note" value="<?= e($o['tsca_note'] ?? '') ?>">
@@ -439,7 +453,7 @@
                 <td><?= (int) ($o['rm_count'] ?? 0) > 0 ? (int) $o['rm_count'] : '<span class="text-muted">—</span>' ?></td>
                 <td><small><?= e($o['tsca_updated_by_name'] ?? '—') ?><?= !empty($o['tsca_updated_at']) ? ' · ' . e(\SDS\Services\PublishClock::display($o['tsca_updated_at'], 'm/d/Y')) : '' ?></small></td>
                 <td>
-                    <form method="POST" action="/determinations/tsca" id="<?= $formId ?>" style="display:flex; gap:0.35rem; align-items:center;">
+                    <form method="POST" action="/determinations/tsca" id="<?= $formId ?>" autocomplete="off" style="display:flex; gap:0.35rem; align-items:center;">
                         <?= csrf_field() ?>
                         <input type="hidden" name="cas_number" value="<?= e($o['cas_number']) ?>">
                         <input type="hidden" name="tsca_note" value="<?= e($o['tsca_note'] ?? '') ?>">
@@ -455,6 +469,24 @@
         <?php endforeach; ?>
         </tbody>
     </table>
+    <?php endif; ?>
+
+    <?php if ($canEditTsca): ?>
+    <div id="tscaBatchBar" style="display: none; position: sticky; bottom: 0; z-index: 10; margin-top: 1rem; padding: 0.6rem 0.75rem; gap: 0.5rem; align-items: center; flex-wrap: wrap;
+                                  background: #fff8e6; border: 1px solid #fd7e14; border-radius: 4px; box-shadow: 0 -2px 6px rgba(0,0,0,0.12);">
+        <strong><span id="tscaBatchCount">0</span> selected</strong><span id="tscaBatchHidden" class="text-muted"></span>
+        <span class="text-muted">Apply to the selected rows:</span>
+        <select id="tscaFillStatus" aria-label="Status for the selected rows" autocomplete="off">
+            <option value="">Status: keep each row's</option>
+            <option value="listed">Listed</option>
+            <option value="exempt">Exempt</option>
+            <option value="not_listed">Not listed (CAS rows only)</option>
+        </select>
+        <input type="text" id="tscaFillNote" maxlength="500" placeholder="Note for the selected rows" aria-label="Note for the selected rows" style="min-width: 260px; flex: 1;">
+        <button type="button" id="tscaFillApply" class="btn btn-sm">Apply</button>
+        <button type="button" id="tscaBatchSave" class="btn btn-sm btn-primary">Save selected</button>
+        <button type="button" id="tscaBatchClear" class="btn btn-sm">Clear selection</button>
+    </div>
     <?php endif; ?>
 </div>
 
@@ -577,6 +609,122 @@ document.getElementById('descFilter').addEventListener('input', function() {
             });
         });
     }
+})();
+
+// TSCA Review batch save (2026-10-21): tick rows, edit each (or apply one
+// status / note to all ticked rows), then save them in one request. The rows
+// go as one JSON field, so a long selection never meets max_input_vars.
+(function() {
+    var panel = document.getElementById('tab-tsca');
+    var form  = document.getElementById('tscaBatchForm');
+    var bar   = document.getElementById('tscaBatchBar');
+    if (!panel || !form || !bar) return;
+    var submitting = false;
+    function rows() { return Array.prototype.slice.call(panel.querySelectorAll('tr[data-tsca-kind]')); }
+    function box(r) { return r.querySelector('.tsca-pick'); }
+    function picked() { return rows().filter(function(r) { return box(r) && box(r).checked; }); }
+    function shown(r) { return r.style.display !== 'none'; }
+    function refresh() {
+        var n = picked().length, hidden = picked().filter(function(r) { return !shown(r); }).length;
+        document.getElementById('tscaBatchCount').textContent = n;
+        document.getElementById('tscaBatchHidden').textContent = hidden ? ' (' + hidden + ' hidden by the filter, saved too)' : '';
+        bar.style.display = n > 0 ? 'flex' : 'none';
+    }
+    function short(list) { return list.slice(0, 10).join(', ') + (list.length > 10 ? ' … (+' + (list.length - 10) + ' more)' : ''); }
+    rows().forEach(function(r) {
+        r.querySelectorAll('select[name="tsca_status"], input[name="tsca_note"]').forEach(function(el) {
+            el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', function() {
+                if (box(r)) box(r).checked = true;
+                refresh();
+            });
+        });
+        if (box(r)) box(r).addEventListener('change', refresh);
+        var single = r.querySelector('form');
+        if (single) single.addEventListener('submit', function(ev) {
+            var others = picked().filter(function(o) { return o !== r; }).length;
+            if (others > 0 && !confirm('Save only this row? The other ' + others + ' selected row(s) are not saved by this button; use "Save selected" for them.')) {
+                ev.preventDefault();
+                return;
+            }
+            submitting = true;
+        });
+    });
+    panel.querySelectorAll('.tsca-pick-all').forEach(function(all) {
+        all.addEventListener('change', function() {
+            all.closest('table').querySelectorAll('tbody tr[data-tsca-kind]').forEach(function(r) {
+                if (r.style.display !== 'none' && box(r)) box(r).checked = all.checked;
+            });
+            refresh();
+        });
+    });
+    // Apply changes only ticked rows that are shown. A row that does not
+    // offer the chosen status (Not listed on a raw material) is left alone
+    // and unticked, so it never saves with a note meant for another status.
+    document.getElementById('tscaFillApply').addEventListener('click', function() {
+        var st   = document.getElementById('tscaFillStatus').value;
+        var note = document.getElementById('tscaFillNote').value;
+        var skipped = [];
+        picked().filter(shown).forEach(function(r) {
+            var sel = r.querySelector('select[name="tsca_status"]');
+            if (st && sel && !sel.querySelector('option[value="' + st + '"]')) {
+                skipped.push(r.getAttribute('data-tsca-label'));
+                box(r).checked = false;
+                return;
+            }
+            if (st && sel) sel.value = st;
+            var n = r.querySelector('input[name="tsca_note"]');
+            if (n && note.trim() !== '') n.value = note;
+        });
+        refresh();
+        if (skipped.length) {
+            alert(skipped.length + ' raw-material row(s) were left unchanged and unticked: "Not listed" applies to CAS rows only (' + short(skipped) + ').');
+        }
+    });
+    var filter = document.getElementById('tscaFilter');
+    if (filter) filter.addEventListener('input', refresh);
+    document.getElementById('tscaBatchClear').addEventListener('click', function() {
+        rows().forEach(function(r) { if (box(r)) box(r).checked = false; r.style.outline = ''; });
+        panel.querySelectorAll('.tsca-pick-all').forEach(function(a) { a.checked = false; });
+        refresh();
+    });
+    document.getElementById('tscaBatchSave').addEventListener('click', function() {
+        var payload = {cas: [], rm: []}, noStatus = [], noNote = [];
+        picked().forEach(function(r) {
+            var st    = r.querySelector('select[name="tsca_status"]').value;
+            var note  = r.querySelector('input[name="tsca_note"]').value.trim();
+            var label = r.getAttribute('data-tsca-label');
+            r.style.outline = '';
+            if (st === 'auto') { noStatus.push(label); r.style.outline = '2px solid #dc3545'; return; }
+            if (note === '')   { noNote.push(label);   r.style.outline = '2px solid #dc3545'; return; }
+            if (r.getAttribute('data-tsca-kind') === 'cas') {
+                payload.cas.push({cas_number: r.getAttribute('data-tsca-key'), tsca_status: st, tsca_note: note});
+            } else {
+                payload.rm.push({raw_material_id: parseInt(r.getAttribute('data-tsca-key'), 10), tsca_status: st, tsca_note: note});
+            }
+        });
+        if (noStatus.length || noNote.length) {
+            alert((noStatus.length ? 'Choose Listed, Exempt or Not listed for: ' + short(noStatus) + '\n' : '')
+                + (noNote.length ? 'A note is required for: ' + short(noNote) : ''));
+            return;
+        }
+        if (payload.cas.length + payload.rm.length === 0) return;
+        document.getElementById('tscaBatchPayload').value = JSON.stringify(payload);
+        submitting = true;
+        this.disabled = true;
+        form.submit();
+    });
+    window.addEventListener('beforeunload', function(ev) {
+        if (!submitting && picked().length > 0) { ev.preventDefault(); ev.returnValue = ''; }
+    });
+    // Back to a page kept in the back-forward cache: usable again.
+    window.addEventListener('pageshow', function(ev) {
+        if (ev.persisted) {
+            submitting = false;
+            document.getElementById('tscaBatchSave').disabled = false;
+            refresh();
+        }
+    });
+    refresh();
 })();
 
 document.querySelectorAll('.tab-btn').forEach(function(btn) {

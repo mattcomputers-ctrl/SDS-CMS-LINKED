@@ -2076,6 +2076,39 @@ class SDSGenerator
     }
 
     /**
+     * 2026-10-21 (owner rule): an initial boiling point at least double the
+     * flash point (both °C, as stored and printed first) cannot be right for
+     * the product: the formula boiling point is only the lowest one among the
+     * raw materials that carry a boiling point, so a lower-boiling ingredient
+     * without one is likely missing. Only for a flash point above 0 °C
+     * ("double" means nothing at or below 0 °C). DB-free.
+     */
+    public static function boilingPointLooksIncomplete(?float $boilingPointC, ?float $flashPointC): bool
+    {
+        return $boilingPointC !== null && $flashPointC !== null && $flashPointC > 0
+            && $boilingPointC >= 2 * $flashPointC;
+    }
+
+    /**
+     * boilingPointLooksIncomplete() for a sheet: only the boiling point derived
+     * from the formula (a Section 9 boiling point edit is a measured value and
+     * prints as entered), against the flash point the sheet prints (edit or
+     * formula). Not for resale sheets: their values are the raw material's own
+     * (vendor SDS), not a lowest-of-the-ingredients figure.
+     */
+    private static function formulaBoilingPointLooksIncomplete(array $props, array $overrides, array $fg): bool
+    {
+        if (!empty($fg['is_resale']) || self::parsedTemperatureOverride($overrides, 'boiling_point') !== null) {
+            return false;
+        }
+        $bp = $props['boiling_point_c'] ?? null;
+        if ($bp === null || $bp === '') {
+            return false;
+        }
+        return self::boilingPointLooksIncomplete((float) $bp, self::resolveFlashPointNumeric($props, $overrides)['fp']);
+    }
+
+    /**
      * #44(2) / Q3: the numeric initial boiling point of the Section 9 edit
      * (only vetBoilingPointEdit() reads it since Q3: Section 14 and the engine
      * classify from formula_props) — the Section 9 edit when it reads as a
@@ -3136,6 +3169,12 @@ class SDSGenerator
         // recursive, weight-independent), else "Not determined" — App D
         // accepts a no-data statement.
         $boilingPoint = self::resolveBoilingPointDisplay($props, $overrides) ?? $notDetermined;
+        // 2026-10-21 (owner rule): a formula boiling point at least double the
+        // flash point means the boiling-point data is incomplete, so it reads
+        // "Not determined" (boilingPointLooksIncomplete).
+        if (self::formulaBoilingPointLooksIncomplete($props, $overrides, $fg)) {
+            $boilingPoint = $notDetermined;
+        }
 
         // VOC wt%: if all materials are <1%, display "<1%"
         $vocWtPctDisplay = round((float) ($voc['total_voc_wt_pct'] ?? 0), 2);
@@ -4743,6 +4782,13 @@ class SDSGenerator
         $out = array_values(array_filter([$editWarning, $bpEditWarning], static fn ($w) => $w !== null));
         if (!empty($hazardResult['flammability']['ibp_assumed'])) {
             $out[] = 'Flash point warning: the product flash point is below 23 °C but no raw material carries an initial boiling point, so the product is classified Flammable Liquids Category 2 (H225) and Section 14 Packing Group II on the assumption that the boiling point is above 35 °C. Enter boiling points on the solvent raw materials to confirm. Publishing is not blocked.';
+        }
+        // 2026-10-21: Section 9 prints the boiling point as "Not determined" (operator note, not printed).
+        $bpProps = $calcResult['formula_props'] ?? [];
+        if (self::formulaBoilingPointLooksIncomplete($bpProps, $overrides, $fg)) {
+            $out[] = 'Boiling point warning: the initial boiling point from the raw materials (' . round((float) $bpProps['boiling_point_c'], 1)
+                . ' °C, the lowest one entered) is at least double the flash point (' . round((float) self::resolveFlashPointNumeric($bpProps, $overrides)['fp'], 1)
+                . ' °C), so the boiling-point data is likely incomplete and Section 9 prints the no-data wording instead. Enter boiling points on the volatile raw materials, or a measured value in SDS > Edit Text. Publishing is not blocked.';
         }
         $flam = self::flammabilityOf($hazardResult, $calcResult, $fg);
         $basis = (string) ($flam['basis'] ?? '');

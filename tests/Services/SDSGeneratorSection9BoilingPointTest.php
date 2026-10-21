@@ -154,11 +154,42 @@ foreach (['en', 'es', 'fr', 'de'] as $lang) {
 
 // ---------------------------------------------------------------------
 echo "9. Flash point unaffected\n";
-$r = $s9->invoke($gen, $fg, $calc(78.4, 38.0), []);
+$r = $s9->invoke($gen, $fg, $calc(70.0, 38.0), []);
 check($r['flash_point'] === '38 °C (100 °F) (calculated)', 'flash point still 38 °C (100 °F) (calculated)', $r['flash_point']);
-check($r['boiling_point'] === '78.4 °C (173.1 °F)', 'boiling point alongside flash point', $r['boiling_point']);
+check($r['boiling_point'] === '70 °C (158 °F)', 'boiling point alongside flash point', $r['boiling_point']);
 $r = $s9->invoke($gen, $fg, $calc(78.4, 55.0, true), [9 => ['boiling_point' => 'x']]);
 check($r['flash_point'] === '> 55 °C (131 °F) (calculated)', 'boiling override does not touch the flash point', $r['flash_point']);
+
+// ---------------------------------------------------------------------
+echo "10. Boiling point at least double the flash point -> Not determined (owner rule 2026-10-21)\n";
+$r = $s9->invoke($gen, $fg, $calc(100.0, 94.0), []);
+check($r['boiling_point'] === '100 °C (212 °F)', 'water-based: bp 100 °C, fp 94 °C -> printed', $r['boiling_point']);
+$r = $s9->invoke($gen, $fg, $calc(188.0, 94.0), []);
+check($r['boiling_point'] === $nd, 'bp 188 °C = 2 x fp 94 °C -> Not determined', $r['boiling_point']);
+$r = $s9->invoke($gen, $fg, $calc(187.9, 94.0), []);
+check($r['boiling_point'] === '187.9 °C (370.2 °F)', 'bp 187.9 °C, just under double -> printed', $r['boiling_point']);
+$r = $s9->invoke($gen, $fg, $calc(250.0, 120.0, true), []);
+check($r['boiling_point'] === $nd, 'UV ink: bp 250 °C, fp > 120 °C -> Not determined', $r['boiling_point']);
+check($r['flash_point'] === '> 120 °C (248 °F) (calculated)', '... the flash point still prints', $r['flash_point']);
+$r = $s9->invoke($gen, $fg, $calc(250.0, 94.0), [9 => ['boiling_point' => '250 °C (482 °F)']]);
+check($r['boiling_point'] === '250 °C (482 °F)', 'a Section 9 boiling point edit (measured) prints as entered', $r['boiling_point']);
+$r = $s9->invoke($gen, $fg, $calc(230.0, 94.0), [9 => ['flash_point' => '120 °C']]);
+check($r['boiling_point'] === '230 °C (446 °F)', 'compared with the flash point the sheet prints (edit 120 °C): 230 < 240 -> printed', $r['boiling_point']);
+$r = $s9->invoke($gen, $fg, $calc(240.0, 94.0), [9 => ['flash_point' => '120 °C']]);
+check($r['boiling_point'] === $nd, '... 240 >= 240 -> Not determined', $r['boiling_point']);
+$r = $s9->invoke($gen, $fg, $calc(300.0, null), []);
+check($r['boiling_point'] === '300 °C (572 °F)', 'no flash point -> rule does not apply', $r['boiling_point']);
+$r = $s9->invoke($gen, $fg, $calc(30.0, -5.0), []);
+check($r['boiling_point'] === '30 °C (86 °F)', 'flash point at or below 0 °C -> rule does not apply', $r['boiling_point']);
+$r = $s9->invoke($gen, $fg + ['is_resale' => true], $calc(250.0, 94.0), []);
+check($r['boiling_point'] === '250 °C (482 °F)', 'resale sheet (vendor values) -> printed', $r['boiling_point']);
+check(\SDS\Services\SDSGenerator::boilingPointLooksIncomplete(200.0, 100.0) && !\SDS\Services\SDSGenerator::boilingPointLooksIncomplete(199.9, 100.0)
+    && !\SDS\Services\SDSGenerator::boilingPointLooksIncomplete(null, 100.0) && !\SDS\Services\SDSGenerator::boilingPointLooksIncomplete(200.0, null), 'boilingPointLooksIncomplete: >= 2 x, nulls off');
+$fw = $method('flammabilityWarnings');
+$warn = $fw->invoke($gen, ['flammability' => []], null, null, [], $calc(250.0, 94.0), $fg);
+check(count(array_filter($warn, static fn ($w) => str_starts_with($w, 'Boiling point warning:'))) === 1, 'operator warning explains it (preview only)', $warn);
+$warn = $fw->invoke($gen, ['flammability' => []], null, null, [], $calc(100.0, 94.0), $fg);
+check(count(array_filter($warn, static fn ($w) => str_starts_with($w, 'Boiling point warning:'))) === 0, 'no warning when the boiling point prints', $warn);
 
 restore_error_handler();
 

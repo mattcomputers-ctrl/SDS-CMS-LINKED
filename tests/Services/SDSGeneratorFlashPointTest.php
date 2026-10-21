@@ -211,8 +211,9 @@ check($vetBp->invokeArgs($gen, [&$ov, $hz(['H226'])]) === null && isset($ov[9]['
 $ov  = [9 => ['boiling_point' => 'x']];
 $r14 = $s14->invoke($gen, $fg, $c, $hz(['H225']), $ov);
 check($r14['packing_group'] === 'II', 'edit "x" ignored → PG II', $r14['packing_group']);
-$r9 = $s9->invoke($gen, $fg, $c, $ov);
-check($r9['boiling_point'] === '120 °C (248 °F)', 'edit "x" not printed', $r9['boiling_point']);
+// Boiling point 19 °C: under double the 10 °C flash point (2026-10-21 rule), so it prints.
+$r9 = $s9->invoke($gen, $fg, $calc(10.0, false, 19.0), $ov);
+check($r9['boiling_point'] === '19 °C (66.2 °F)', 'edit "x" not printed', $r9['boiling_point']);
 $w = $warn($ov);
 check(count($w) === 1 && str_contains($w[0], 'Initial Boiling Point'), 'one operator warning for the boiling point', $w);
 

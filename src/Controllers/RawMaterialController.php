@@ -231,7 +231,31 @@ class RawMaterialController
             'tradeSecretDescriptions' => $this->loadTradeSecretDescriptions(),
             'families'               => \SDS\Models\ProductFamily::all(false),   // audit #3 picker
             'sdsFlagInfo'            => $this->sdsFlagInfo($item),               // migration 064 card
+            'tscaRm'                 => $this->tscaRmInfo($item),                // migration 066 card
         ]);
+    }
+
+    /**
+     * Raw-material TSCA override card (migration 066, 2026-10-21), so it can
+     * be set for any raw material, not only those on the TSCA Review list.
+     * Null before the migration has run.
+     */
+    private function tscaRmInfo(array $item): ?array
+    {
+        if (!\SDS\Services\TSCAService::hasRawMaterialOverrideColumns()) {
+            return null;
+        }
+        $by = null;
+        if (!empty($item['tsca_updated_by'])) {
+            $by = Database::getInstance()->fetch("SELECT display_name FROM users WHERE id = ?", [(int) $item['tsca_updated_by']])['display_name'] ?? null;
+        }
+        return [
+            'status'     => (string) ($item['tsca_status'] ?? 'auto'),
+            'note'       => (string) ($item['tsca_note'] ?? ''),
+            'updated_at' => $item['tsca_updated_at'] ?? null,
+            'updated_by' => $by,
+            'can_set'    => can_edit('cas_determinations'),
+        ];
     }
 
     /* ------------------------------------------------------------------

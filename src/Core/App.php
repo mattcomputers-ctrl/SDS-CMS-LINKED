@@ -257,6 +257,7 @@ class App
         $router->get('/determinations/acrylate-flags',        'AdminController@acrylateFlagsSeedPreview'); // seed dry run (CasAcrylateFlagSeeder::plan)
         $router->post('/determinations/acrylate-flags/apply', 'AdminController@applyAcrylateFlagsSeed');   // seed apply (CasAcrylateFlagSeeder::apply)
         $router->post('/determinations/tsca',         'AdminController@saveTscaOverride'); // audit #29 per-CAS TSCA override
+        $router->post('/determinations/tsca-rm',      'AdminController@saveTscaRawMaterialOverride'); // migration 066 per-RM TSCA override
         $router->post('/determinations/stot',         'AdminController@saveCasStot');      // A12(b) STOT target organs + route
         $router->get('/determinations/{id}/edit',    'AdminController@editDetermination');
         $router->post('/determinations/{id}',        'AdminController@updateDetermination');

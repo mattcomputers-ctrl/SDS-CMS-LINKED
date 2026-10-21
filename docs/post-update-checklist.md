@@ -44,6 +44,7 @@ step is expanded in sections 1–4 below; the section number is in brackets.
 12d. **Tables and label layout (code only, 2026-10-19)** — Section 11 carcinogenicity and component toxicological data, and Section 15 SARA 313, print as tables; long labels keep their value on the same line; Section 2 prints "Signal Word: Danger" in plain black text like every other field (2026-10-20); table cells no longer drop their last wrapped line or overprint across a page break. Press **Bump ALL** so every sheet republishes, then spot-check [3.8f].
 12e. **Housekeeping and scheduled backups (code only, 2026-10-19)** — neither cron script had ever run (both used the database before starting the app). Check for SDS Archive ZIPs you still need, run housekeeping once with `--dry-run`, confirm the cron lines, and check the log the next morning [3.8g].
 12f. **Bulk publish language order (migration 065, 2026-10-19)** — deploy with `update.sh` (065 adds a column). Every bulk publish now does English first, then Spanish, German, French; the Bulk Publish Queue shows "English done" with the time; an interrupted run's missing languages are completed by the next run at the same version. Check the first run [3.8h].
+12g. **TSCA overrides (migration 066, 2026-10-21)** — deploy with `update.sh`. On CAS Determinations > TSCA Review, the new list "Raw materials that cannot be checked by CAS" shows what kept sheets on "TSCA inventory status has not been verified": enter their constituents, or set a raw-material override (Listed / Exempt) with the supplier's certification as the note; it can also be set on any raw material's edit page (card "TSCA inventory status"). A CAS is now compared the same way everywhere, whatever way it was typed (hidden characters, typographic dashes, internal spaces, zero padding), so a CAS override reaches every raw material carrying it and queues its products for republish [3.8i].
 13. **Live-DB test suites** on the server [3.8].
 14. **Spot-check three sheets** (solvent ink, water-based, UV with acrylates) in EN and ES against the Section checklist [4.B].
 15. **Resume**: tick "Auto bulk publish" again and run one bulk publish; work through the failures it reports (each one is a publish gate from step 4 or 6) [3.9].
@@ -292,13 +293,13 @@ Migration 056 normalised bare PubChem categories, corrected two carcinogen rows 
 ### 3.8 Live-DB test suites (server)
 
 ```bash
-for t in HazardEngineGoldenTest HazardClassAliasesTest CarbonBlackProp65Test SubFgProp65PropagationTest BulkPublishCompletionLiveTest; do
+for t in HazardEngineGoldenTest HazardClassAliasesTest CarbonBlackProp65Test SubFgProp65PropagationTest BulkPublishCompletionLiveTest TscaOverrideLiveTest; do
   sudo -u www-data php /var/www/sds-system/tests/Services/$t.php > /tmp/$t.log 2>&1 \
     && echo "PASS $t" || echo "FAIL $t (see /tmp/$t.log)"
 done
 ```
 
-- [ ] All five print PASS. HazardEngineGoldenTest creates and removes its own fixtures; BulkPublishCompletionLiveTest works inside one transaction that it always rolls back. The two Prop 65 suites exit 0 with a SKIP line when the data they need is absent.
+- [ ] All six print PASS. HazardEngineGoldenTest creates and removes its own fixtures; BulkPublishCompletionLiveTest and TscaOverrideLiveTest work inside one transaction that they always roll back (TscaOverrideLiveTest prints SKIP until migration 066 has run). The two Prop 65 suites exit 0 with a SKIP line when the data they need is absent.
 - [ ] Optional, on the server's PHP build: `tests/smoke_pdf.php` and every DB-free suite (including `TranslationCompletenessTest`) pass too:
   `for f in /var/www/sds-system/tests/smoke_pdf.php /var/www/sds-system/tests/Services/*Test.php; do sudo -u www-data php "$f" > /dev/null 2>&1 && echo "PASS $(basename $f)" || echo "FAIL $(basename $f)"; done`
 
@@ -471,6 +472,14 @@ Deploy with `update.sh`: migration 065 adds `bulk_publish_jobs.language_progress
 1. - [ ] **Bulk SDS Publish page** — "Languages (publish order)" shows EN, ES, DE, FR. On the first visit after deploying, "Products missing languages of their current version" may show a one-time count: products an earlier run left with only some languages (for example job 2235, killed at 06:34 UTC). The next run completes them.
 2. - [ ] **First run** — the Bulk Publish Queue's **Languages** column shows "✓ English done" with the time, well before the job ends, then Spanish, German and French (the Bulk SDS Publish page's progress line also says "English done."). The log has the same: `grep -E 'Publish order|pass complete|Missing languages' /var/www/sds-system/storage/logs/cms-sync.log | tail -n 8` shows `Publish order: EN, ES, DE, FR` and an "English pass complete after …" line.
 3. - [ ] **Spot-check** — while a full run is on its Spanish pass, open a product it has already done: its English sheet is the new version, the other languages follow later in the run. After the run every language shows the same version.
+
+### 3.8i TSCA overrides (2026-10-21, migration 066)
+
+Deploy with `update.sh`: migration 066 adds `raw_materials.tsca_status`, `tsca_note`, `tsca_updated_by` and `tsca_updated_at`. Why sheets still said "TSCA inventory status has not been verified for all components" with every listed CAS overridden: CAS overrides were already counted as listed or exempt, but (1) components with no CAS (a raw material that is wholly a trade secret, a trade-secret constituent without a CAS, a constituent without a CAS, or a raw material with no constituents entered) can never carry a CAS override, and the TSCA Review page never showed them; and (2) a constituent CAS typed differently from its override did not reach Section 15 the same way everywhere: one typed with a hidden character (often pasted from a PDF or web page) or a typographic dash dropped off the review page as if covered, but Section 15 did not match it to the override; one typed with zero padding matched in Section 15, but stayed on the review page and was not flagged for republish when the override was saved.
+
+1. - [ ] **CAS Determinations > TSCA Review** — the first list (constituent CAS not on the inventory, no override) now uses the same check as Section 15. The new list "Raw materials that cannot be checked by CAS" names each raw material and why (whole trade secret, trade-secret constituent with no CAS, constituent without a CAS, a constituent "CAS" that is not a CAS number such as "Proprietary", no constituents). Raw materials not on either list (not yet in a formula and without a sheet) can be set on their edit page, card "TSCA inventory status".
+2. - [ ] For each one: enter the missing constituents on the raw material, or, when the supplier's SDS certifies that every component is on the TSCA inventory (or exempt), choose **Listed** or **Exempt** and give that basis as the note (e.g. "Supplier SDS Section 15: all components listed on or exempt from TSCA"). The override covers every component of that raw material, its CAS numbers included; a CAS marked **Not listed** still wins. Saving bumps the raw material and queues its products on SDS Updates.
+3. - [ ] Republish (Bulk SDS Publish, or SDS Updates), then preview one product that showed "not verified": Section 15 reads "All components of this product are listed on or exempt from the TSCA inventory." If it still says not verified, the preview's Warnings box names what is left.
 
 ### 3.9 Finish
 

@@ -48,8 +48,8 @@
  *   - Non-UTF-8 cells are treated as Windows-1252 and converted.
  *
  * Staleness: every CAS whose resolution changed (inserted ∪ pruned) that
- * is used by a raw material constituent is bumped through
- * RegulatoryListBumper::bumpByCasMany() and queued on SDS Updates. Name /
+ * is used by a raw material constituent (in any spelling) is bumped through
+ * RegulatoryListBumper::bumpRawMaterialIds() and queued on SDS Updates. Name /
  * activity / flag refreshes do not change the resolution and are not bumped.
  *
  * Idempotent: re-running with the same CSV and version label makes no row
@@ -522,8 +522,10 @@ final class TSCAInventoryImporter
         $bumpedRms = 0;
         $queued    = 0;
         if ($queue && $affected !== []) {
-            $bumpedRms = RegulatoryListBumper::bumpByCasMany($affected);
-            $queued    = RegulatoryListBumper::queueSdsUpdatesByCas($affected, $userId, 'TSCA inventory import ' . $version);
+            // Raw materials carrying these CAS in any spelling (2026-10-21).
+            $rmIds     = TSCAService::rawMaterialIdsForCasMany($affected);
+            $bumpedRms = RegulatoryListBumper::bumpRawMaterialIds($rmIds);
+            $queued    = RegulatoryListBumper::queueSdsUpdatesByRawMaterialIds($rmIds, $userId, 'TSCA inventory import ' . $version);
         }
 
         $plan['pruned']        = count($prunedCas);

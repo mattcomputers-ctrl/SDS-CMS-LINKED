@@ -29,8 +29,9 @@
     </button>
     <button class="tab-btn" data-tab="tsca" style="padding: 0.5rem 1.2rem; border: 2px solid #003366; border-bottom: none; background: #e9ecef; color: #003366; cursor: pointer; border-radius: 4px 4px 0 0; font-weight: bold; margin-left: 2px;">
         TSCA Review
-        <?php if (!empty($tscaReview)): ?>
-            <span style="background: #fd7e14; color: #fff; border-radius: 10px; padding: 1px 7px; font-size: 0.8rem; margin-left: 4px;"><?= count($tscaReview) ?></span>
+        <?php $tscaCount = count($tscaReview ?? []) + count($tscaRmReview ?? []); ?>
+        <?php if ($tscaCount > 0): ?>
+            <span style="background: #fd7e14; color: #fff; border-radius: 10px; padding: 1px 7px; font-size: 0.8rem; margin-left: 4px;"><?= $tscaCount ?></span>
         <?php endif; ?>
     </button>
     <?php // A12(b) / T4a ?>
@@ -262,7 +263,7 @@
         <input type="text" id="tscaFilter" placeholder="Filter by CAS, description or raw material..." style="max-width: 360px;">
     </div>
     <?php if (empty($tscaReview)): ?>
-        <div style="text-align: center; padding: 1.5rem; color: #28a745;"><strong>Every constituent CAS in use is on the TSCA inventory or has an override.</strong></div>
+        <div style="text-align: center; padding: 1.5rem; color: #28a745;"><strong>Every constituent CAS in use is on the TSCA inventory or has an override.</strong><?= !empty($tscaRmReview) ? '<br><span style="color:#fd7e14;">Some raw materials still cannot be checked by CAS: see the list below.</span>' : '' ?></div>
     <?php else: ?>
     <table class="table" id="tscaTable">
         <thead><tr><th style="width:130px;">CAS Number</th><th>Description</th><th>Raw Materials</th><th style="width:90px;">In Formula</th><th style="width:420px;">TSCA Override</th></tr></thead>
@@ -286,6 +287,76 @@
                         </select>
                         <input type="text" name="tsca_note" placeholder="Note (required)" style="flex:1;">
                         <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                    </form>
+                </td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+    <?php endif; ?>
+
+    <h4 style="margin-top:1.5rem;">Raw materials that cannot be checked by CAS <?php if (!empty($tscaRmReview)): ?><small class="text-muted">(<?= count($tscaRmReview) ?>)</small><?php endif; ?></h4>
+    <p class="text-muted" style="margin-bottom: 0.5rem;">
+        These have no CAS for some or all of their components (a trade secret, or constituent data not entered), so a CAS override cannot clear them and every product
+        using them prints "TSCA inventory status has not been verified for all components". Enter the missing constituents on the raw material, or, when the supplier's SDS
+        certifies that every component is on the TSCA inventory (or exempt), set <em>Listed</em> or <em>Exempt</em> here with that basis as the note. It then covers all of the raw material's components.
+    </p>
+    <?php if (empty($tscaRmEnabled)): ?>
+        <p class="text-muted">Available after the database update (migration 066).</p>
+    <?php elseif (empty($tscaRmReview)): ?>
+        <p style="color: #28a745;"><strong>Every raw material in use can be checked by CAS or has a raw-material override.</strong></p>
+    <?php else: ?>
+    <table class="table" id="tscaRmTable">
+        <thead><tr><th style="width:140px;">Raw Material</th><th>Name</th><th>Why it cannot be checked</th><th style="width:90px;">In Formula</th><th style="width:420px;">Raw-material TSCA Override</th></tr></thead>
+        <tbody>
+        <?php foreach ($tscaRmReview as $idx => $r): ?>
+            <tr>
+                <td><strong><a href="/raw-materials/<?= (int) $r['id'] ?>/edit"><?= e($r['internal_code']) ?></a></strong></td>
+                <td><?= e($r['name'] ?? '') ?></td>
+                <td><small><?= e(implode('; ', array_map([\SDS\Services\TSCAService::class, 'noCasReasonLabel'], (array) $r['reasons']))) ?></small></td>
+                <td><?= (int) ($r['in_formula'] ?? 0) ? '<span style="color:#28a745;font-weight:bold;">Yes</span>' : '<span class="text-muted">No (own sheet)</span>' ?></td>
+                <td>
+                    <form method="POST" action="/determinations/tsca-rm" style="display:flex; gap:0.35rem; align-items:center;">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="raw_material_id" value="<?= (int) $r['id'] ?>">
+                        <select name="tsca_status">
+                            <?php foreach ($tscaRmOptions as $val => $label): ?>
+                                <option value="<?= e($val) ?>"<?= $val === 'listed' ? ' selected' : '' ?>><?= e($label) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <input type="text" name="tsca_note" placeholder="Basis, e.g. supplier SDS Section 15 (required)" style="flex:1;">
+                        <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                    </form>
+                </td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+    <?php endif; ?>
+
+    <?php if (!empty($tscaRmOverrides)): ?>
+    <h4 style="margin-top:1.5rem;">Raw-material overrides in effect <small class="text-muted">(<?= count($tscaRmOverrides) ?>)</small></h4>
+    <table class="table table-sm" id="tscaRmOverrideTable">
+        <thead><tr><th style="width:140px;">Raw Material</th><th>Name</th><th style="width:110px;">Status</th><th>Note</th><th style="width:150px;">Set by</th><th style="width:150px;">Change</th></tr></thead>
+        <tbody>
+        <?php foreach ($tscaRmOverrides as $o): ?>
+            <tr>
+                <td><strong><a href="/raw-materials/<?= (int) $o['id'] ?>/edit"><?= e($o['internal_code']) ?></a></strong></td>
+                <td><?= e($o['supplier_product_name'] ?? '') ?></td>
+                <td><span class="badge badge-warning"><?= e($o['tsca_status']) ?></span></td>
+                <td><?= e($o['tsca_note'] ?? '') ?></td>
+                <td><small><?= e($o['tsca_updated_by_name'] ?? '—') ?><?= !empty($o['tsca_updated_at']) ? ' · ' . e(\SDS\Services\PublishClock::display($o['tsca_updated_at'], 'm/d/Y')) : '' ?></small></td>
+                <td>
+                    <form method="POST" action="/determinations/tsca-rm" style="display:flex; gap:0.35rem; align-items:center;">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="raw_material_id" value="<?= (int) $o['id'] ?>">
+                        <input type="hidden" name="tsca_note" value="<?= e($o['tsca_note'] ?? '') ?>">
+                        <select name="tsca_status">
+                            <?php foreach ($tscaRmOptions as $val => $label): ?>
+                                <option value="<?= e($val) ?>" <?= ($o['tsca_status'] ?? '') === $val ? 'selected' : '' ?>><?= e($val) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <button type="submit" class="btn btn-sm">Save</button>
                     </form>
                 </td>
             </tr>

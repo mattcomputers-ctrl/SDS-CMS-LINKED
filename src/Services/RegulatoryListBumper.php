@@ -118,18 +118,51 @@ class RegulatoryListBumper
         }
 
         $db = Database::getInstance();
-
-        // 1. Direct hits: FGs whose current formula uses a raw material that
-        //    lists one of these CASes as a constituent.
         $placeholders = implode(',', array_fill(0, count($casList), '?'));
+        $rmIds = array_map(static fn (array $r): int => (int) $r['raw_material_id'], $db->fetchAll(
+            "SELECT DISTINCT raw_material_id FROM raw_material_constituents WHERE cas_number IN ({$placeholders})",
+            $casList
+        ));
+        return self::queueSdsUpdatesByRawMaterialIds($rmIds, $userId, $reason);
+    }
+
+    /**
+     * Bump raw_materials.updated_at for these raw materials (public wrapper,
+     * 2026-10-21: TSCA overrides that match a CAS in any spelling, and the
+     * per-raw-material TSCA override). Returns the count bumped.
+     *
+     * @param int[] $ids
+     */
+    public static function bumpRawMaterialIds(array $ids): int
+    {
+        return self::bumpRmIds(array_values(array_unique(array_filter(array_map('intval', $ids), static fn (int $i): bool => $i > 0))));
+    }
+
+    /**
+     * queueSdsUpdatesByCas() starting from raw materials: every published,
+     * active finished good whose current formula (or a nested sub-formula)
+     * uses one of them. Returns the number of finished goods newly queued.
+     *
+     * @param int[] $rmIds
+     */
+    public static function queueSdsUpdatesByRawMaterialIds(array $rmIds, ?int $userId, string $reason): int
+    {
+        $rmIds = array_values(array_unique(array_filter(array_map('intval', $rmIds), static fn (int $i): bool => $i > 0)));
+        if (empty($rmIds)) {
+            return 0;
+        }
+
+        $db = Database::getInstance();
+
+        // 1. Direct hits: FGs whose current formula uses one of these raw materials.
+        $placeholders = implode(',', array_fill(0, count($rmIds), '?'));
         $affected = [];
         foreach ($db->fetchAll(
             "SELECT DISTINCT f.finished_good_id AS fg_id
-             FROM raw_material_constituents rmc
-             JOIN formula_lines fl ON fl.raw_material_id = rmc.raw_material_id
+             FROM formula_lines fl
              JOIN formulas f ON f.id = fl.formula_id AND f.is_current = 1
-             WHERE rmc.cas_number IN ({$placeholders})",
-            $casList
+             WHERE fl.raw_material_id IN ({$placeholders})",
+            $rmIds
         ) as $r) {
             $affected[(int) $r['fg_id']] = true;
         }

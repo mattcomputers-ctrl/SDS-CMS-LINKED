@@ -1844,8 +1844,9 @@ class AdminController
         }
         $db->insert('tsca_inventory', array_merge($data, ['source_ref' => 'manual', 'source_version' => null, 'imported_at' => null]));
 
-        $bumped = \SDS\Services\RegulatoryListBumper::bumpByCas($data['cas_number']);
-        $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByCas([$data['cas_number']], current_user_id(), 'TSCA inventory entry added for CAS ' . $data['cas_number']);
+        $rmIds  = TSCAService::rawMaterialIdsForCas($data['cas_number']);   // any spelling (2026-10-21)
+        $bumped = \SDS\Services\RegulatoryListBumper::bumpRawMaterialIds($rmIds);
+        $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByRawMaterialIds($rmIds, current_user_id(), 'TSCA inventory entry added for CAS ' . $data['cas_number']);
         AuditService::log('tsca_inventory', $data['cas_number'], 'create');
         $_SESSION['_flash']['success'] = "TSCA entry added for CAS {$data['cas_number']}." . self::bumpedTail($bumped) . self::queuedTail($queued);
         redirect('/tsca');
@@ -1886,7 +1887,7 @@ class AdminController
 
         // Name/active/flags do not change the resolution (presence does), but
         // the row is now operator-owned; keep the Prop 65 behaviour and bump.
-        $bumped = \SDS\Services\RegulatoryListBumper::bumpByCas($cas);
+        $bumped = \SDS\Services\RegulatoryListBumper::bumpRawMaterialIds(TSCAService::rawMaterialIdsForCas($cas));
         AuditService::log('tsca_inventory', $cas, 'update');
         $_SESSION['_flash']['success'] = 'TSCA entry updated.' . self::bumpedTail($bumped);
         redirect('/tsca');
@@ -1900,8 +1901,9 @@ class AdminController
         $cas = TSCAService::normaliseCas($cas);
         $db->query("DELETE FROM tsca_inventory WHERE cas_number = ?", [$cas]);
 
-        $bumped = \SDS\Services\RegulatoryListBumper::bumpByCas($cas);
-        $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByCas([$cas], current_user_id(), 'TSCA inventory entry removed for CAS ' . $cas);
+        $rmIds  = TSCAService::rawMaterialIdsForCas($cas);   // any spelling (2026-10-21)
+        $bumped = \SDS\Services\RegulatoryListBumper::bumpRawMaterialIds($rmIds);
+        $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByRawMaterialIds($rmIds, current_user_id(), 'TSCA inventory entry removed for CAS ' . $cas);
         AuditService::log('tsca_inventory', $cas, 'delete');
         $_SESSION['_flash']['success'] = 'TSCA entry removed.' . self::bumpedTail($bumped) . self::queuedTail($queued);
         redirect('/tsca');
@@ -2583,8 +2585,12 @@ class AdminController
 
         // Audit #29 — TSCA Review tab: constituent CAS not on the inventory
         // with no override, plus the overrides currently in effect.
-        $tscaReview    = TSCAService::reviewCandidates();
-        $tscaOverrides = TSCAService::overridesInEffect();
+        // 2026-10-21 (migration 066): raw materials that cannot be checked by
+        // CAS (trade secrets, missing constituent data), with their overrides.
+        $tscaReview      = TSCAService::reviewCandidates();
+        $tscaOverrides   = TSCAService::overridesInEffect();
+        $tscaRmReview    = TSCAService::noCasReviewCandidates();
+        $tscaRmOverrides = TSCAService::rawMaterialOverridesInEffect();
 
         // A12(b) / T4a: STOT Target Organs tab — CAS whose hazard data or active
         // determination carries H370-H373, plus every CAS with organs entered.
@@ -2598,6 +2604,10 @@ class AdminController
             'tscaReview'         => $tscaReview,
             'tscaOverrides'      => $tscaOverrides,
             'tscaOptions'        => TSCAService::OVERRIDE_OPTIONS,
+            'tscaRmReview'       => $tscaRmReview,
+            'tscaRmOverrides'    => $tscaRmOverrides,
+            'tscaRmOptions'      => TSCAService::RM_OVERRIDE_OPTIONS,
+            'tscaRmEnabled'      => TSCAService::hasRawMaterialOverrideColumns(),
             'stotRows'           => $stotRows,                                   // A12(b)
             'stotOrgans'         => \SDS\Services\StotTargetOrgans::ORGANS,
             'stotRoutes'         => \SDS\Services\StotTargetOrgans::ROUTES,
@@ -2713,9 +2723,12 @@ class AdminController
 
         // The Section 15 TSCA sentence of every product carrying this CAS may
         // change: bump the RMs (bulk-publish staleness) and queue SDS updates.
-        $bumped = \SDS\Services\RegulatoryListBumper::bumpByCas($cas);
-        $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByCas(
-            [$cas],
+        // Matched in any spelling (zero padding, invisible characters;
+        // 2026-10-21), like the Section 15 check itself.
+        $rmIds  = TSCAService::rawMaterialIdsForCas($cas);
+        $bumped = \SDS\Services\RegulatoryListBumper::bumpRawMaterialIds($rmIds);
+        $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByRawMaterialIds(
+            $rmIds,
             current_user_id(),
             'TSCA status override set to ' . $status . ' for CAS ' . $cas
         );
@@ -2723,6 +2736,73 @@ class AdminController
         AuditService::log('tsca_override', $cas, 'update', ['status' => $status, 'note' => $note]);
         $_SESSION['_flash']['success'] = "TSCA status for CAS {$cas} set to '{$status}'." . self::bumpedTail($bumped) . self::queuedTail($queued);
         redirect('/determinations?tab=tsca');
+    }
+
+    /**
+     * POST /determinations/tsca-rm — per-raw-material TSCA override
+     * (migration 066, 2026-10-21) for components that cannot be checked by
+     * CAS. 'listed' / 'exempt' = the supplier certifies every component;
+     * 'auto' clears it. A note is required for an override. Audited as
+     * 'tsca_rm_override' (not 'raw_material', which would count as a review).
+     * Posted from the TSCA Review tab and from the raw material's edit page.
+     */
+    public function saveTscaRawMaterialOverride(): void
+    {
+        $this->requirePageAccess('cas_determinations', 'full');
+        CSRF::validateRequest();
+        $db = Database::getInstance();
+
+        $rmId   = (int) ($_POST['raw_material_id'] ?? 0);
+        $status = (string) ($_POST['tsca_status'] ?? 'auto');
+        $note   = mb_substr(trim((string) ($_POST['tsca_note'] ?? '')), 0, 500);
+        // The raw-material edit page posts back_to=raw_material (a fixed
+        // target, never a URL from the request).
+        $back   = ($_POST['back_to'] ?? '') === 'raw_material' && $rmId > 0
+            ? '/raw-materials/' . $rmId . '/edit#tsca-override'
+            : '/determinations?tab=tsca';
+
+        if (!TSCAService::hasRawMaterialOverrideColumns()) {
+            $_SESSION['_flash']['error'] = 'Run the database update (migration 066) before setting raw-material TSCA overrides.';
+            redirect($back);
+            return;
+        }
+        $rm = $rmId > 0 ? $db->fetch("SELECT id, internal_code FROM raw_materials WHERE id = ?", [$rmId]) : null;
+        if (!$rm) {
+            $_SESSION['_flash']['error'] = 'Raw material not found.';
+            redirect($back);
+            return;
+        }
+        if (!array_key_exists($status, TSCAService::RM_OVERRIDE_OPTIONS)) {
+            $_SESSION['_flash']['error'] = 'Unknown TSCA status.';
+            redirect($back);
+            return;
+        }
+        $code = (string) $rm['internal_code'];
+        if ($status !== 'auto' && $note === '') {
+            $_SESSION['_flash']['error'] = "A note explaining the TSCA override for {$code} is required (e.g. \"Supplier SDS Section 15: all components listed on or exempt from TSCA\").";
+            redirect($back);
+            return;
+        }
+
+        $db->update('raw_materials', [
+            'tsca_status'     => $status,
+            'tsca_note'       => $status === 'auto' ? null : $note,
+            'tsca_updated_by' => current_user_id(),
+            'tsca_updated_at' => gmdate('Y-m-d H:i:s'),
+        ], 'id = ?', [$rmId]);
+
+        // The Section 15 TSCA sentence of every product using this raw
+        // material may change: bump it and queue SDS updates.
+        $bumped = \SDS\Services\RegulatoryListBumper::bumpRawMaterialIds([$rmId]);
+        $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByRawMaterialIds(
+            [$rmId],
+            current_user_id(),
+            'TSCA raw-material override set to ' . $status . ' for ' . $code
+        );
+
+        AuditService::log('tsca_rm_override', $rmId, 'update', ['internal_code' => $code, 'status' => $status, 'note' => $note]);
+        $_SESSION['_flash']['success'] = "TSCA status for raw material {$code} set to '{$status}'." . self::bumpedTail($bumped) . self::queuedTail($queued);
+        redirect($back);
     }
 
     /**

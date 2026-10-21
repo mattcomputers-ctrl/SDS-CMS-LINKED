@@ -90,6 +90,41 @@ if ($hasOld && isset($old['cas_number']) && is_array($old['cas_number'])) {
 </div>
 <?php endif; ?>
 
+<?php if ($isEdit && !empty($tscaRm)): $tr = $tscaRm; $trSet = $tr['status'] !== 'auto'; ?>
+<!-- Migration 066: raw-material TSCA override (its own form, posted to CAS Determinations) -->
+<div class="card" id="tsca-override" style="margin-bottom: 16px;<?= $trSet ? ' border-left: 4px solid #ffc107;' : '' ?>">
+    <h3 style="margin-top: 0;">TSCA inventory status</h3>
+    <?php if ($trSet): ?>
+        <p><span class="badge badge-warning">Override: <?= e($tr['status']) ?></span>
+        Section 15 counts every component of this raw material as <?= $tr['status'] === 'exempt' ? 'listed on or exempt from' : 'listed on' ?> the TSCA inventory, including components without a CAS.
+        A CAS marked Not listed on CAS Determinations still wins.
+        <?php if ($tr['note'] !== ''): ?><br>Basis: <?= e($tr['note']) ?><?php endif; ?>
+        <?php if (!empty($tr['updated_by']) || !empty($tr['updated_at'])): ?><br><small class="text-muted">Set by <?= e($tr['updated_by'] ?? '—') ?><?= !empty($tr['updated_at']) ? ' · ' . e(\SDS\Services\PublishClock::display($tr['updated_at'], 'm/d/Y')) : '' ?></small><?php endif; ?></p>
+    <?php else: ?>
+        <p class="text-muted" style="margin-top: 0;">Section 15 checks each constituent CAS against the TSCA inventory and the CAS overrides (CAS Determinations &gt; TSCA Review).
+        Components without a CAS (a trade secret, no constituents entered) cannot be checked that way. When the supplier's SDS certifies that every component
+        is listed on or exempt from the TSCA inventory, set an override here with that basis as the note.</p>
+    <?php endif; ?>
+
+    <?php if ($tr['can_set']): ?>
+        <form method="POST" action="/determinations/tsca-rm" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <?= csrf_field() ?>
+            <input type="hidden" name="raw_material_id" value="<?= (int) $item['id'] ?>">
+            <input type="hidden" name="back_to" value="raw_material">
+            <select name="tsca_status">
+                <?php foreach (\SDS\Services\TSCAService::RM_OVERRIDE_OPTIONS as $val => $label): ?>
+                    <option value="<?= e($val) ?>" <?= $tr['status'] === $val ? 'selected' : '' ?>><?= e($label) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <input type="text" name="tsca_note" maxlength="500" value="<?= e($tr['note']) ?>" placeholder="Basis (required for an override), e.g. Supplier SDS Section 15: all components listed on or exempt from TSCA" style="min-width: 360px; flex: 1;">
+            <button type="submit" class="btn btn-sm btn-primary">Save TSCA status</button>
+        </form>
+    <?php else: ?>
+        <p class="text-muted" style="margin-bottom: 0;">Only users with full access to CAS Determinations can change this.</p>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
+
 <div class="card">
     <form method="POST" action="<?= $action ?>" enctype="multipart/form-data" id="rawMaterialForm">
         <?= csrf_field() ?>

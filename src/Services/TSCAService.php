@@ -15,6 +15,12 @@ use SDS\Core\Database;
  * Resolution per CAS: override (listed / exempt / not_listed) if set,
  * else 'listed' ('inactive' for an INACTIVE entry) when the CAS is on the
  * inventory, else 'not_verified'.
+ * Raw-material override (migration 066, 2026-10-21): raw_materials.tsca_status
+ * 'listed' / 'exempt' (the supplier certifies every component of that raw
+ * material is on the inventory or exempt) covers all of that raw material's
+ * components: its constituents without a CAS (trade secrets, a whole
+ * trade-secret raw material, missing constituent data) and any of its CAS
+ * that resolve 'not_verified'. A CAS-level 'not_listed' still wins.
  * Section 15 prints the "all listed/exempt" sentence only when every CAS
  * is listed or exempt and nothing is unverifiable (a trade-secret bucket
  * with no CAS at all cannot be checked); otherwise the "not verified"
@@ -22,8 +28,11 @@ use SDS\Core\Database;
  * publish block). Trade-secret constituents that carry a real CAS are
  * resolved by that CAS (the composition keeps it, is_trade_secret = true).
  *
- * analyse() and rollUp() are DB-free for an empty CAS set so section15()
- * stays unit-testable without a database (same rule as analyseSnur()).
+ * analyseResolved() and rollUp() are DB-free; analyse() is DB-free only for
+ * a composition with no CAS, no contributing raw materials and no raw
+ * material ids, so section15() stays unit-testable without a database.
+ * CAS numbers are compared in canonical form (normaliseCas) everywhere:
+ * Section 15, the TSCA Review lists and the bump / republish queue.
  */
 class TSCAService
 {
@@ -48,12 +57,39 @@ class TSCAService
         'not_listed' => 'Not listed (verified absent) — Section 15 states a component is not listed',
     ];
 
+    /** raw_materials.tsca_status values (migration 066) → operator labels. 'auto' = no override. */
+    public const RM_OVERRIDE_OPTIONS = [
+        'auto'   => 'Auto — check each component by CAS',
+        'listed' => 'Listed — the supplier certifies every component is on the TSCA inventory',
+        'exempt' => 'Exempt — the supplier certifies every component is on the inventory or exempt',
+    ];
+
     public const CAS_PATTERN = '/^\d{1,7}-\d{2}-\d$/';
 
-    /** Trim and drop EPA-style zero padding of the first segment (0000050-00-0 → 50-00-0). */
+    /** Whether raw_materials.tsca_status exists (migration 066); checked once per process. */
+    private static ?bool $hasRmOverrideColumns = null;
+
+    /**
+     * Canonical spelling of a CAS number: drop EPA-style zero padding of the
+     * first segment (0000050-00-0 → 50-00-0). Pasted CAS numbers can carry
+     * characters the database collation ignores but PHP does not (2026-10-21):
+     * non-breaking / zero-width spaces and BOMs, typographic dashes and
+     * full-width digits are folded to plain ASCII first, so an override or
+     * inventory row matches whatever way the constituent CAS was typed.
+     */
     public static function normaliseCas(string $cas): string
     {
-        $cas = trim($cas);
+        // Every Unicode space and format character (\p{Z}, \p{Cf}: no-break
+        // and zero-width spaces, BOM, soft hyphen, text-direction marks ...)
+        // plus combining grapheme joiner and variation selectors.
+        $folded = preg_replace('/[\s\p{Z}\p{Cf}\x{034F}\x{180B}-\x{180D}\x{FE00}-\x{FE0F}]+/u', '', $cas);
+        $cas    = $folded ?? trim($cas);   // invalid UTF-8: plain trim
+        $cas    = strtr($cas, [
+            "\u{2010}" => '-', "\u{2011}" => '-', "\u{2012}" => '-', "\u{2013}" => '-', "\u{2014}" => '-',
+            "\u{2015}" => '-', "\u{2212}" => '-', "\u{FE63}" => '-', "\u{FF0D}" => '-',
+            "\u{FF10}" => '0', "\u{FF11}" => '1', "\u{FF12}" => '2', "\u{FF13}" => '3', "\u{FF14}" => '4',
+            "\u{FF15}" => '5', "\u{FF16}" => '6', "\u{FF17}" => '7', "\u{FF18}" => '8', "\u{FF19}" => '9',
+        ]);
         if ($cas === '') {
             return '';
         }
@@ -79,26 +115,30 @@ class TSCAService
         }
 
         $db = Database::getInstance();
-        $ph = implode(',', array_fill(0, count($casList), '?'));
 
+        // Keyed by the canonical spelling (2026-10-21): the SQL IN() also finds
+        // rows stored with an invisible character (the collation ignores it),
+        // and those must still match the canonical CAS looked up below.
         $overrides = [];
-        foreach ($db->fetchAll(
-            "SELECT cas_number, preferred_name, tsca_status, tsca_note
-             FROM cas_master
-             WHERE cas_number IN ({$ph}) AND tsca_status <> 'auto'",
-            $casList
-        ) as $r) {
-            $overrides[$r['cas_number']] = $r;
-        }
-
         $inventory = [];
-        foreach ($db->fetchAll(
-            "SELECT cas_number, chemical_name, is_active_inventory
-             FROM tsca_inventory
-             WHERE cas_number IN ({$ph})",
-            $casList
-        ) as $r) {
-            $inventory[$r['cas_number']] = $r;
+        foreach (array_chunk($casList, 1000) as $chunk) {
+            $ph = implode(',', array_fill(0, count($chunk), '?'));
+            foreach ($db->fetchAll(
+                "SELECT cas_number, preferred_name, tsca_status, tsca_note
+                 FROM cas_master
+                 WHERE cas_number IN ({$ph}) AND tsca_status <> 'auto'",
+                $chunk
+            ) as $r) {
+                $overrides[self::normaliseCas((string) $r['cas_number'])] = $r;
+            }
+            foreach ($db->fetchAll(
+                "SELECT cas_number, chemical_name, is_active_inventory
+                 FROM tsca_inventory
+                 WHERE cas_number IN ({$ph})",
+                $chunk
+            ) as $r) {
+                $inventory[self::normaliseCas((string) $r['cas_number'])] = $r;
+            }
         }
 
         $out = [];
@@ -138,9 +178,11 @@ class TSCAService
 
     /**
      * DB-free roll-up. $names: cas => composition chemical_name fallback.
-     * @return array{all_covered:bool,total:int,listed_count:int,exempt_count:int,unverified:array<string,string>,not_listed:array<string,string>,inactive:array<string,string>,no_cas_count:int,overridden:bool,incomplete_raw_materials?:array}
+     * $coveredWithoutCas: components without a CAS that a raw-material
+     * override covers (they count towards "every component is covered").
+     * @return array{all_covered:bool,total:int,listed_count:int,exempt_count:int,unverified:array<string,string>,not_listed:array<string,string>,inactive:array<string,string>,no_cas_count:int,covered_without_cas:int,overridden:bool,incomplete_raw_materials?:array}
      */
-    public static function rollUp(array $resolved, int $noCasCount = 0, array $names = []): array
+    public static function rollUp(array $resolved, int $noCasCount = 0, array $names = [], int $coveredWithoutCas = 0): array
     {
         $unverified = [];
         $notListed  = [];
@@ -173,45 +215,202 @@ class TSCAService
         }
         $total = count($resolved);
         return [
-            'all_covered'  => $total > 0 && $unverified === [] && $notListed === [] && $noCasCount === 0,
-            'total'        => $total,
-            'listed_count' => $listed,
-            'exempt_count' => $exempt,
-            'unverified'   => $unverified,
-            'not_listed'   => $notListed,
-            'inactive'     => $inactive,
-            'no_cas_count' => $noCasCount,
-            'overridden'   => false,
+            'all_covered'         => ($total + $coveredWithoutCas) > 0 && $unverified === [] && $notListed === [] && $noCasCount === 0,
+            'total'               => $total,
+            'listed_count'        => $listed,
+            'exempt_count'        => $exempt,
+            'unverified'          => $unverified,
+            'not_listed'          => $notListed,
+            'inactive'            => $inactive,
+            'no_cas_count'        => $noCasCount,
+            'covered_without_cas' => $coveredWithoutCas,
+            'overridden'          => false,
         ];
+    }
+
+    /**
+     * DB-free: a CAS that resolves 'not_verified' is covered when every raw
+     * material it comes from carries a raw-material override; it then counts
+     * as 'exempt' if one of them is exempt, else 'listed'. Nothing else
+     * changes (a CAS-level not_listed / listed / exempt stays as resolved).
+     *
+     * @param array<string, int[]> $casRms cas => contributing raw material ids
+     * @param array<int, array{status:string}> $rmOverrides rawMaterialOverrides()
+     */
+    public static function applyRawMaterialOverrides(array $resolved, array $casRms, array $rmOverrides): array
+    {
+        if ($rmOverrides === []) {
+            return $resolved;
+        }
+        foreach ($resolved as $cas => $r) {
+            if (($r['status'] ?? self::STATUS_NOT_VERIFIED) !== self::STATUS_NOT_VERIFIED) {
+                continue;
+            }
+            $rms = array_values(array_unique(array_map('intval', $casRms[$cas] ?? [])));
+            if ($rms === [] || array_diff($rms, array_keys($rmOverrides)) !== []) {
+                continue;
+            }
+            $exempt = false;
+            foreach ($rms as $id) {
+                $exempt = $exempt || ($rmOverrides[$id]['status'] ?? '') === self::STATUS_EXEMPT;
+            }
+            $resolved[$cas]['status'] = $exempt ? self::STATUS_EXEMPT : self::STATUS_LISTED;
+            $resolved[$cas]['source'] = 'raw_material_override';
+        }
+        return $resolved;
     }
 
     /**
      * Roll-up for an expanded composition (FormulaCalcService shape).
      * Components with no CAS ('' or the TRADE_SECRET bucket) are counted
-     * as unverifiable. DB-free when the composition carries no CAS.
+     * as unverifiable unless a raw-material override covers them.
      * $rawMaterialIds: every raw material in the formula tree (finding #27).
+     * Reads the database for the CAS, the contributing raw materials'
+     * overrides and incomplete data; analyseResolved() is the DB-free core.
      */
     public static function analyse(array $composition, array $rawMaterialIds = []): array
     {
         $cas   = [];
-        $names = [];
-        $noCas = 0;
+        $rmIds = array_map('intval', $rawMaterialIds);
         foreach ($composition as $c) {
             $n = self::normaliseCas((string) ($c['cas_number'] ?? ''));
+            if ($n !== '' && $n !== 'TRADE_SECRET') {
+                $cas[$n] = true;
+            }
+            foreach ((array) ($c['contributing_materials'] ?? []) as $cm) {
+                $rmIds[] = (int) ($cm['raw_material_id'] ?? 0);
+            }
+        }
+        $rmIds = array_values(array_unique(array_filter($rmIds, static fn (int $i): bool => $i > 0)));
+
+        // No DB for an empty / CAS-less composition without raw materials
+        // (tests call section15() with an empty composition).
+        $resolved    = $cas === [] ? [] : self::resolve(array_keys($cas));
+        $rmOverrides = $rmIds === [] ? [] : self::rawMaterialOverrides($rmIds);
+        // #27: formula raw materials whose constituents cannot be checked. Empty list = no DB.
+        $incomplete  = $rawMaterialIds === [] ? null : self::incompleteRawMaterials($rawMaterialIds);
+        return self::analyseResolved($composition, $resolved, $rmOverrides, $incomplete);
+    }
+
+    /**
+     * DB-free core of analyse(). Components with no CAS ('' or the
+     * TRADE_SECRET bucket) are unverifiable unless every raw material they
+     * come from carries a raw-material override; those raw materials' codes
+     * are listed for the operator warning. $incomplete null = not checked.
+     *
+     * @param array<int, array{status:string}> $rmOverrides rawMaterialOverrides()
+     */
+    public static function analyseResolved(array $composition, array $resolved, array $rmOverrides, ?array $incomplete): array
+    {
+        $names        = [];
+        $casRms       = [];
+        $noCas        = 0;
+        $coveredNoCas = 0;
+        $noCasRms     = [];
+        foreach ($composition as $c) {
+            $n       = self::normaliseCas((string) ($c['cas_number'] ?? ''));
+            $contrib = [];
+            foreach ((array) ($c['contributing_materials'] ?? []) as $cm) {
+                $id = (int) ($cm['raw_material_id'] ?? 0);
+                if ($id > 0) {
+                    $contrib[$id] = (string) ($cm['internal_code'] ?? '');
+                }
+            }
             if ($n === '' || $n === 'TRADE_SECRET') {
+                if ($contrib !== [] && array_diff_key($contrib, $rmOverrides) === []) {
+                    $coveredNoCas++;
+                    continue;
+                }
                 $noCas++;
+                foreach (array_diff_key($contrib, $rmOverrides) as $code) {
+                    if ($code !== '') {
+                        $noCasRms[$code] = true;
+                    }
+                }
                 continue;
             }
-            $cas[$n] = true;
             if (!isset($names[$n])) {
                 $names[$n] = (string) ($c['chemical_name'] ?? '');
             }
+            foreach (array_keys($contrib) as $id) {
+                $casRms[$n][] = $id;
+            }
         }
-        $tsca = $cas === []
-            ? self::rollUp([], $noCas)   // no DB (tests call section15() with an empty composition)
-            : self::rollUp(self::resolve(array_keys($cas)), $noCas, $names);
-        // #27: formula raw materials whose constituents cannot be checked. Empty list = no DB.
-        return $rawMaterialIds === [] ? $tsca : self::applyIncomplete($tsca, self::incompleteRawMaterials($rawMaterialIds));
+
+        // A raw material with incomplete constituent data (e.g. none entered)
+        // but a raw-material override no longer blocks TSCA, and one with a
+        // blocking gap is itself a covered component. The full list is kept
+        // in 'incomplete_raw_materials' for the composition warning (#27:
+        // the hazard classification still misses that data); the TSCA
+        // warning uses 'tsca_open_incomplete'.
+        $openIncomplete = [];
+        $blocking       = [self::REASON_NO_CONSTITUENTS, self::REASON_BLANK_CAS, self::REASON_TRADE_SECRET_NO_CAS];
+        foreach ($incomplete ?? [] as $row) {
+            if (isset($rmOverrides[(int) ($row['id'] ?? 0)])) {
+                if (array_intersect((array) ($row['reasons'] ?? []), $blocking) !== []) {
+                    $coveredNoCas++;
+                }
+            } else {
+                $openIncomplete[] = $row;
+            }
+        }
+
+        $resolved = self::applyRawMaterialOverrides(array_intersect_key($resolved, $names), $casRms, $rmOverrides);
+        $tsca     = self::rollUp($resolved, $noCas, $names, $coveredNoCas);
+        $tsca['no_cas_raw_materials'] = array_keys($noCasRms);
+        if ($incomplete === null) {
+            return $tsca;
+        }
+        $tsca = self::applyIncomplete($tsca, $openIncomplete);
+        $tsca['tsca_open_incomplete']     = $tsca['incomplete_raw_materials'];
+        $tsca['incomplete_raw_materials'] = array_values($incomplete);
+        return $tsca;
+    }
+
+    /**
+     * Raw-material TSCA overrides in effect (migration 066) for these ids:
+     * id => [status (listed|exempt), note, internal_code]. Empty before 066
+     * has run, so cron paths keep working.
+     *
+     * @param int[] $rmIds
+     * @return array<int, array{status:string, note:?string, internal_code:string}>
+     */
+    public static function rawMaterialOverrides(array $rmIds): array
+    {
+        $rmIds = array_values(array_unique(array_filter(array_map('intval', $rmIds), static fn (int $i): bool => $i > 0)));
+        if ($rmIds === [] || !self::hasRawMaterialOverrideColumns()) {
+            return [];
+        }
+        $db  = Database::getInstance();
+        $out = [];
+        foreach (array_chunk($rmIds, 1000) as $chunk) {
+            $ph = implode(',', array_fill(0, count($chunk), '?'));
+            foreach ($db->fetchAll(
+                "SELECT id, internal_code, tsca_status, tsca_note FROM raw_materials
+                 WHERE id IN ({$ph}) AND tsca_status IN ('listed', 'exempt')",
+                $chunk
+            ) as $r) {
+                $out[(int) $r['id']] = [
+                    'status'        => (string) $r['tsca_status'],
+                    'note'          => $r['tsca_note'],
+                    'internal_code' => (string) $r['internal_code'],
+                ];
+            }
+        }
+        return $out;
+    }
+
+    /** Whether migration 066 (raw_materials.tsca_status) has run. */
+    public static function hasRawMaterialOverrideColumns(): bool
+    {
+        if (self::$hasRmOverrideColumns === null) {
+            $row = Database::getInstance()->fetch(
+                "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'raw_materials' AND COLUMN_NAME = 'tsca_status'"
+            );
+            self::$hasRmOverrideColumns = (int) ($row['n'] ?? 0) > 0;
+        }
+        return self::$hasRmOverrideColumns;
     }
 
     /**
@@ -231,11 +430,13 @@ class TSCAService
         $db = Database::getInstance();
         $ph = implode(',', array_fill(0, count($rmIds), '?'));
 
-        $cas   = [];
-        $names = [];
-        $noCas = 0;
+        // Same composition shape analyseResolved() takes: one row per
+        // constituent CAS, no-CAS rows for trade secrets, with the raw
+        // material each comes from (raw-material overrides, migration 066).
+        $composition = [];
         foreach ($db->fetchAll(
-            "SELECT rmc.cas_number, rmc.chemical_name, rmc.is_trade_secret, rmc.trade_secret_h_codes
+            "SELECT rmc.raw_material_id, rm.internal_code, rmc.cas_number, rmc.chemical_name,
+                    rmc.is_trade_secret, rmc.trade_secret_h_codes
              FROM raw_material_constituents rmc
              JOIN raw_materials rm ON rm.id = rmc.raw_material_id
              WHERE rmc.raw_material_id IN ({$ph})
@@ -243,27 +444,38 @@ class TSCAService
             $rmIds
         ) as $r) {
             $n = self::normaliseCas((string) $r['cas_number']);
-            if ($n === '') {
-                if ((int) $r['is_trade_secret'] === 1 && !empty($r['trade_secret_h_codes'])) {
-                    $noCas++;
-                }
-                continue;
+            if ($n === '' && !((int) $r['is_trade_secret'] === 1 && !empty($r['trade_secret_h_codes']))) {
+                continue;   // other blank-CAS rows: incompleteRawMaterials() reports them
             }
-            $cas[$n] = true;
-            if (!isset($names[$n])) {
-                $names[$n] = (string) $r['chemical_name'];
+            $composition[] = [
+                'cas_number'             => $n === '' ? 'TRADE_SECRET' : $n,
+                'chemical_name'          => (string) $r['chemical_name'],
+                'contributing_materials' => [['raw_material_id' => (int) $r['raw_material_id'], 'internal_code' => (string) $r['internal_code']]],
+            ];
+        }
+        foreach ($db->fetchAll(
+            "SELECT id, internal_code FROM raw_materials WHERE id IN ({$ph}) AND hazardous_no_cas = 1",
+            $rmIds
+        ) as $r) {
+            $composition[] = [
+                'cas_number'             => 'TRADE_SECRET',
+                'chemical_name'          => '',   // no-CAS row: the name is never used
+                'contributing_materials' => [['raw_material_id' => (int) $r['id'], 'internal_code' => (string) $r['internal_code']]],
+            ];
+        }
+
+        $cas = [];
+        foreach ($composition as $c) {
+            if ($c['cas_number'] !== 'TRADE_SECRET') {
+                $cas[$c['cas_number']] = true;
             }
         }
-        $row = $db->fetch(
-            "SELECT COUNT(*) AS n FROM raw_materials WHERE id IN ({$ph}) AND hazardous_no_cas = 1",
-            $rmIds
+        return self::analyseResolved(
+            $composition,
+            $cas === [] ? [] : self::resolve(array_keys($cas)),
+            self::rawMaterialOverrides($rmIds),
+            self::incompleteRawMaterials($rmIds)   // #27
         );
-        $noCas += (int) ($row['n'] ?? 0);
-
-        $tsca = $cas === []
-            ? self::rollUp([], $noCas)
-            : self::rollUp(self::resolve(array_keys($cas)), $noCas, $names);
-        return self::applyIncomplete($tsca, self::incompleteRawMaterials($rmIds));   // #27
     }
 
     /**
@@ -284,8 +496,8 @@ class TSCAService
         foreach ($db->fetchAll(
             "SELECT rm.id, rm.internal_code,
                     COUNT(rmc.id) AS n_constituents,
-                    COALESCE(SUM(rmc.id IS NOT NULL AND TRIM(COALESCE(rmc.cas_number, '')) = '' AND COALESCE(rmc.is_trade_secret, 0) = 0), 0) AS n_blank_cas,
-                    COALESCE(SUM(rmc.id IS NOT NULL AND TRIM(COALESCE(rmc.cas_number, '')) = '' AND rmc.is_trade_secret = 1
+                    COALESCE(SUM(rmc.id IS NOT NULL AND " . self::sqlBlankCas('rmc.cas_number') . " AND COALESCE(rmc.is_trade_secret, 0) = 0), 0) AS n_blank_cas,
+                    COALESCE(SUM(rmc.id IS NOT NULL AND " . self::sqlBlankCas('rmc.cas_number') . " AND rmc.is_trade_secret = 1
                                  AND TRIM(COALESCE(rmc.trade_secret_h_codes, '')) = ''), 0) AS n_ts_no_cas,
                     COALESCE(SUM(rmc.id IS NOT NULL AND rmc.pct_exact IS NULL AND rmc.pct_min IS NULL AND rmc.pct_max IS NULL), 0) AS n_no_pct
              FROM raw_materials rm
@@ -302,6 +514,16 @@ class TSCAService
             }
         }
         return $out;
+    }
+
+    /**
+     * SQL test for a blank constituent CAS: empty after removing spaces,
+     * tabs and line breaks (SQL TRIM strips spaces only), the same verdict
+     * normaliseCas() gives in PHP for those characters.
+     */
+    public static function sqlBlankCas(string $col): string
+    {
+        return "TRIM(REPLACE(REPLACE(REPLACE(COALESCE({$col}, ''), CHAR(9), ''), CHAR(13), ''), CHAR(10), '')) = ''";
     }
 
     /** #27 DB-free: reasons from the incompleteRawMaterials() counters. */
@@ -391,17 +613,21 @@ class TSCAService
         }
         $noCas = (int) ($tsca['no_cas_count'] ?? 0);
         if ($noCas > 0) {
-            $parts[] = $noCas . ' trade-secret component' . ($noCas === 1 ? '' : 's') . ' with no CAS cannot be checked';
+            $codes = (array) ($tsca['no_cas_raw_materials'] ?? []);
+            $parts[] = $noCas . ' trade-secret component' . ($noCas === 1 ? '' : 's') . ' with no CAS cannot be checked'
+                . ($codes !== [] ? ' (raw material' . (count($codes) === 1 ? ' ' : 's ') . implode(', ', $codes)
+                    . '; if the supplier certifies its components, set a raw-material TSCA override)' : '');
         }
         $rms = [];
-        foreach ((array) ($tsca['incomplete_raw_materials'] ?? []) as $row) {
+        foreach ((array) ($tsca['tsca_open_incomplete'] ?? $tsca['incomplete_raw_materials'] ?? []) as $row) {
             $r = array_values(array_diff((array) ($row['reasons'] ?? []), [self::REASON_NO_PERCENTAGE]));
             if ($r !== []) {
                 $rms[] = (string) ($row['internal_code'] ?? '') . ' (' . implode(', ', array_map([self::class, 'reasonLabel'], $r)) . ')';
             }
         }
         if ($rms !== []) {
-            $parts[] = 'raw material constituents that cannot be checked: ' . implode(', ', $rms);
+            $parts[] = 'raw material constituents that cannot be checked: ' . implode(', ', $rms)
+                . ' (enter the constituents, or set a raw-material TSCA override if the supplier certifies them)';
         }
         if ($parts === []) {
             $parts[] = 'no CAS-level composition to check';
@@ -431,40 +657,231 @@ class TSCAService
     }
 
     /**
-     * TSCA Review list: every constituent CAS in use that is not on the
-     * inventory and has no override. Raw materials marked "No SDS required"
-     * (migration 064) are left out unless a current formula uses them
-     * (their data still feeds that finished good).
+     * TSCA Review list: every constituent CAS in use that resolve() does not
+     * cover (not on the inventory, no CAS override) and that no
+     * raw-material override covers. Built on resolve() itself (2026-10-21),
+     * so the list and Section 15 cannot disagree over how a CAS was typed.
+     * Raw materials marked "No SDS required" (migration 064) are left out
+     * unless a current formula uses them (their data still feeds that
+     * finished good).
      */
     public static function reviewCandidates(): array
     {
-        $db = Database::getInstance();
+        $db       = Database::getInstance();
         $needsSds = \SDS\Models\RawMaterial::sqlNeedsSds('rm');
-        return $db->fetchAll(
-            "SELECT rmc.cas_number,
-                    COALESCE(NULLIF(cm.preferred_name, ''), MAX(rmc.chemical_name)) AS chemical_name,
-                    COUNT(DISTINCT rm.id) AS raw_material_count,
-                    GROUP_CONCAT(DISTINCT rm.internal_code ORDER BY rm.internal_code SEPARATOR ', ') AS raw_material_codes,
-                    MAX(CASE WHEN EXISTS (
+        $rows     = $db->fetchAll(
+            "SELECT rmc.cas_number, rmc.chemical_name, rm.id AS rm_id, rm.internal_code,
+                    (EXISTS (
                         SELECT 1 FROM formula_lines fl
                         JOIN formulas f ON f.id = fl.formula_id AND f.is_current = 1
                         WHERE fl.raw_material_id = rm.id
-                    ) THEN 1 ELSE 0 END) AS in_formula
+                    )) AS in_formula
              FROM raw_material_constituents rmc
              JOIN raw_materials rm ON rm.id = rmc.raw_material_id
-             LEFT JOIN cas_master cm ON cm.cas_number = rmc.cas_number
-             LEFT JOIN tsca_inventory ti ON ti.cas_number = rmc.cas_number
-             WHERE rmc.cas_number <> ''
-               AND ti.cas_number IS NULL
-               AND (cm.tsca_status IS NULL OR cm.tsca_status = 'auto')
+             WHERE NOT " . self::sqlBlankCas('rmc.cas_number') . "
                AND ({$needsSds} OR EXISTS (
                    SELECT 1 FROM formula_lines fl2
                    JOIN formulas f2 ON f2.id = fl2.formula_id AND f2.is_current = 1
                    WHERE fl2.raw_material_id = rm.id
-               ))
-             GROUP BY rmc.cas_number, cm.preferred_name
-             ORDER BY in_formula DESC, raw_material_count DESC, rmc.cas_number ASC"
+               ))"
         );
+        $rmOverrides = self::rawMaterialOverrides(array_column($rows, 'rm_id'));
+
+        $byCas = [];
+        foreach ($rows as $r) {
+            $cas = self::normaliseCas((string) $r['cas_number']);
+            // A value that is not a CAS ('Proprietary', 'N/A') cannot take a
+            // CAS override: noCasReviewCandidates() lists its raw material.
+            if ($cas === '' || !preg_match(self::CAS_PATTERN, $cas) || isset($rmOverrides[(int) $r['rm_id']])) {
+                continue;
+            }
+            $byCas[$cas]['names'][(string) $r['chemical_name']] = true;
+            $byCas[$cas]['rms'][(string) $r['internal_code']]   = true;
+            $byCas[$cas]['in_formula'] = max((int) ($byCas[$cas]['in_formula'] ?? 0), (int) $r['in_formula']);
+        }
+        if ($byCas === []) {
+            return [];
+        }
+
+        $preferred = [];
+        foreach (array_chunk(array_keys($byCas), 1000) as $chunk) {
+            $ph = implode(',', array_fill(0, count($chunk), '?'));
+            foreach ($db->fetchAll("SELECT cas_number, preferred_name FROM cas_master WHERE cas_number IN ({$ph})", $chunk) as $r) {
+                $preferred[self::normaliseCas((string) $r['cas_number'])] = (string) ($r['preferred_name'] ?? '');
+            }
+        }
+
+        $out = [];
+        foreach (self::resolve(array_keys($byCas)) as $cas => $res) {
+            if ($res['status'] !== self::STATUS_NOT_VERIFIED) {
+                continue;
+            }
+            $names = array_keys($byCas[$cas]['names']);
+            rsort($names);
+            $codes = array_keys($byCas[$cas]['rms']);
+            sort($codes);
+            $out[] = [
+                'cas_number'         => (string) $cas,
+                'chemical_name'      => ($preferred[$cas] ?? '') !== '' ? $preferred[$cas] : (string) ($names[0] ?? ''),
+                'raw_material_count' => count($codes),
+                'raw_material_codes' => implode(', ', $codes),
+                'in_formula'         => (int) $byCas[$cas]['in_formula'],
+            ];
+        }
+        usort($out, static fn (array $a, array $b): int =>
+            [$b['in_formula'], $b['raw_material_count'], $a['cas_number']] <=> [$a['in_formula'], $a['raw_material_count'], $b['cas_number']]);
+        return $out;
+    }
+
+    /**
+     * TSCA Review, second list (2026-10-21): raw materials whose components
+     * cannot be checked by CAS, so no CAS override can clear them — a whole
+     * trade-secret raw material, a trade-secret constituent without a CAS, a
+     * constituent without a CAS or with a value that is not a CAS number,
+     * or no constituents at all — in a current formula or with a sheet of
+     * their own (any version), without a raw-material override. Others can
+     * be set on the raw material's edit page. Empty before migration 066.
+     *
+     * @return list<array{id:int, internal_code:string, name:string, reasons:string[], in_formula:int}>
+     */
+    public static function noCasReviewCandidates(): array
+    {
+        if (!self::hasRawMaterialOverrideColumns()) {
+            return [];
+        }
+        $db   = Database::getInstance();
+        $rows = $db->fetchAll(
+            "SELECT rm.id, rm.internal_code, rm.supplier_product_name, rm.hazardous_no_cas, rm.tsca_status,
+                    COUNT(rmc.id) AS n_constituents,
+                    COALESCE(SUM(rmc.id IS NOT NULL AND " . self::sqlBlankCas('rmc.cas_number') . " AND COALESCE(rmc.is_trade_secret, 0) = 0), 0) AS n_blank_cas,
+                    COALESCE(SUM(rmc.id IS NOT NULL AND " . self::sqlBlankCas('rmc.cas_number') . " AND rmc.is_trade_secret = 1
+                                 AND TRIM(COALESCE(rmc.trade_secret_h_codes, '')) = ''), 0) AS n_ts_no_cas,
+                    COALESCE(SUM(rmc.id IS NOT NULL AND " . self::sqlBlankCas('rmc.cas_number') . " AND rmc.is_trade_secret = 1
+                                 AND TRIM(COALESCE(rmc.trade_secret_h_codes, '')) <> ''), 0) AS n_ts_no_cas_h,
+                    (EXISTS (
+                        SELECT 1 FROM formula_lines fl
+                        JOIN formulas f ON f.id = fl.formula_id AND f.is_current = 1
+                        WHERE fl.raw_material_id = rm.id
+                    )) AS in_formula
+             FROM raw_materials rm
+             LEFT JOIN raw_material_constituents rmc ON rmc.raw_material_id = rm.id
+             WHERE rm.tsca_status = 'auto'
+               AND (EXISTS (
+                        SELECT 1 FROM formula_lines fl2
+                        JOIN formulas f2 ON f2.id = fl2.formula_id AND f2.is_current = 1
+                        WHERE fl2.raw_material_id = rm.id
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM sds_versions sv
+                        WHERE sv.raw_material_id = rm.id AND sv.alias_id IS NULL AND sv.finished_good_id IS NULL
+                          AND sv.is_deleted = 0
+                    ))
+             GROUP BY rm.id, rm.internal_code, rm.supplier_product_name, rm.hazardous_no_cas, rm.tsca_status
+             ORDER BY rm.internal_code"
+        );
+        // Constituent values that are not a CAS number ('Proprietary', 'N/A').
+        $invalid = [];
+        foreach ($db->fetchAll(
+            "SELECT DISTINCT raw_material_id, cas_number FROM raw_material_constituents WHERE NOT " . self::sqlBlankCas('cas_number')
+        ) as $c) {
+            $n = self::normaliseCas((string) $c['cas_number']);
+            if ($n !== '' && !preg_match(self::CAS_PATTERN, $n)) {
+                $invalid[(int) $c['raw_material_id']] = true;
+            }
+        }
+
+        $out = [];
+        foreach ($rows as $r) {
+            $reasons = (int) $r['hazardous_no_cas'] === 1
+                ? ['whole_trade_secret']
+                : array_values(array_diff(self::incompleteReasons($r), [self::REASON_NO_PERCENTAGE]));
+            if ((int) $r['hazardous_no_cas'] !== 1 && (int) $r['n_ts_no_cas_h'] > 0) {
+                $reasons[] = 'trade_secret_no_cas_with_hazards';
+            }
+            if ((int) $r['hazardous_no_cas'] !== 1 && isset($invalid[(int) $r['id']])) {
+                $reasons[] = 'invalid_cas';
+            }
+            if ($reasons === []) {
+                continue;
+            }
+            $out[] = [
+                'id'            => (int) $r['id'],
+                'internal_code' => (string) $r['internal_code'],
+                'name'          => (string) ($r['supplier_product_name'] ?? ''),
+                'reasons'       => $reasons,
+                'in_formula'    => (int) $r['in_formula'],
+            ];
+        }
+        return $out;
+    }
+
+    /** Operator label of a noCasReviewCandidates() reason. */
+    public static function noCasReasonLabel(string $reason): string
+    {
+        switch ($reason) {
+            case 'whole_trade_secret':               return 'whole raw material is a trade secret (no CAS)';
+            case 'trade_secret_no_cas_with_hazards': return 'trade-secret constituent with no CAS';
+            case 'invalid_cas':                      return 'constituent CAS is not a CAS number (e.g. "Proprietary")';
+            default:                                 return self::reasonLabel($reason);
+        }
+    }
+
+    /** Raw-material overrides currently in effect (migration 066). */
+    public static function rawMaterialOverridesInEffect(): array
+    {
+        if (!self::hasRawMaterialOverrideColumns()) {
+            return [];
+        }
+        return Database::getInstance()->fetchAll(
+            "SELECT rm.id, rm.internal_code, rm.supplier_product_name, rm.tsca_status, rm.tsca_note, rm.tsca_updated_at,
+                    u.display_name AS tsca_updated_by_name
+             FROM raw_materials rm
+             LEFT JOIN users u ON u.id = rm.tsca_updated_by
+             WHERE rm.tsca_status <> 'auto'
+             ORDER BY rm.internal_code"
+        );
+    }
+
+    /**
+     * Raw materials whose constituents carry this CAS in any spelling
+     * (zero padding, invisible characters): the ones a CAS override changes.
+     *
+     * @return int[]
+     */
+    public static function rawMaterialIdsForCas(string $cas): array
+    {
+        return self::rawMaterialIdsForCasMany([$cas]);
+    }
+
+    /**
+     * rawMaterialIdsForCas() for many CAS numbers in one pass over the
+     * constituents, compared in canonical form (any dash, space, invisible
+     * character or zero padding), the way Section 15 compares them.
+     *
+     * @param string[] $casList
+     * @return int[]
+     */
+    public static function rawMaterialIdsForCasMany(array $casList): array
+    {
+        $want = [];
+        foreach ($casList as $c) {
+            $n = self::normaliseCas((string) $c);
+            if ($n !== '' && preg_match(self::CAS_PATTERN, $n)) {
+                $want[$n] = true;
+            }
+        }
+        if ($want === []) {
+            return [];
+        }
+        $ids = [];
+        foreach (Database::getInstance()->fetchAll(
+            "SELECT DISTINCT raw_material_id, cas_number FROM raw_material_constituents WHERE NOT " . self::sqlBlankCas('cas_number')
+        ) as $r) {
+            if (isset($want[self::normaliseCas((string) $r['cas_number'])])) {
+                $ids[(int) $r['raw_material_id']] = true;
+            }
+        }
+        return array_keys($ids);
     }
 
     /** Overrides currently in effect (cas_master.tsca_status <> 'auto'). */

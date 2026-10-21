@@ -723,7 +723,7 @@ class SDSReadinessService
         $n = count($items);
         return 'Composition warning: ' . $n . ' raw material' . ($n === 1 ? ' has' : 's have') . ' incomplete constituent data — '
             . implode(', ', $items)
-            . '. Ingredients without a constituent row, CAS number or percentage are left out of the hazard classification (Section 2), the composition table (Section 3) and the regulatory list checks (Section 15), and Section 15 cannot state that all components are on the TSCA inventory. Enter every constituent with its CAS number and percentage (Raw Materials > Constituents). Publishing is not blocked.';
+            . '. Ingredients without a constituent row, CAS number or percentage are left out of the hazard classification (Section 2), the composition table (Section 3) and the regulatory list checks (Section 15), and, without a raw-material TSCA override, Section 15 cannot state that all components are on the TSCA inventory. Enter every constituent with its CAS number and percentage (Raw Materials > Constituents). Publishing is not blocked.';
     }
 
     /* ------------------------------------------------------------------

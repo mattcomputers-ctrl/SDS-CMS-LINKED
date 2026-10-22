@@ -46,6 +46,7 @@ check(Stot::needsOrgans(['has_se' => 1, 'stot_se_organs' => 'eyes', 'has_re' => 
 check(!Stot::needsOrgans(['has_se' => 0, 'has_re' => 0, 'stot_re_organs' => 'lungs']), 'organs entered but not classified: does not');
 check(!Stot::needsOrgans(['has_re' => 1, 'stot_re_organs' => 'not_an_organ,lungs']), 'unknown organ keys are ignored, a valid one counts');
 check(Stot::needsOrgans(['has_re' => 1, 'stot_re_organs' => 'not_an_organ']), '... only unknown keys: needs organs');
+check(!Stot::needsOrgans(['has_re' => 1, 'stot_re_organs' => null, 'stot_re_not_specified' => 1]), 'organs marked "not specified on the vendor SDS": reviewed, not counted');
 $c = ReviewCounts::fromLists([['cas_number' => 'a'], ['cas_number' => 'b']], [['cas_number' => 'c']], [
     ['has_se' => 1, 'stot_se_organs' => null], ['has_re' => 1, 'stot_re_organs' => 'lungs'], ['has_re' => 1, 'stot_re_organs' => null],
 ]);

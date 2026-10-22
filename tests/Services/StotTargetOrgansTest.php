@@ -72,7 +72,12 @@ check($cv['stot_se_organs'] === null && $cv['stot_se_route'] === null, 'route wi
 $cv = Stot::columnValues(['stot_re_organs' => ['lungs', 'liver'], 'stot_re_route' => 'inhalation']);
 check($cv['stot_re_organs'] === 'lungs,liver' && $cv['stot_re_route'] === 'inhalation', 'POST array -> CSV + route', $cv);
 check($cv['stot_se_organs'] === null && $cv['stot_se_route'] === null, 'other exposure type untouched (null)', $cv);
-check(array_keys($cv) === ['stot_se_organs', 'stot_se_route', 'stot_re_organs', 'stot_re_route'], 'four columns in fixed order');
+check(array_keys($cv) === ['stot_se_organs', 'stot_se_route', 'stot_se_not_specified', 'stot_re_organs', 'stot_re_route', 'stot_re_not_specified'], 'six columns in fixed order (067 "not specified" marks)');
+$nsv = Stot::columnValues(['stot_re_not_specified' => '1', 'stot_se_not_specified' => true]);
+check($nsv['stot_re_not_specified'] === 1 && $nsv['stot_se_not_specified'] === 1 && $nsv['stot_re_organs'] === null, '"not specified" from POST ("1") or JSON (true)', $nsv);
+$nsv = Stot::columnValues(['stot_re_organs' => ['lungs'], 'stot_re_not_specified' => 1]);
+check($nsv['stot_re_not_specified'] === 0 && $nsv['stot_re_organs'] === 'lungs', '... dropped once organs are ticked (organs win)', $nsv);
+check(Stot::columnValues(['stot_se_not_specified' => '0'])['stot_se_not_specified'] === 0 && Stot::columnValues(['stot_se_not_specified' => false])['stot_se_not_specified'] === 0, '... "0" / false are not a mark');
 check(Stot::columnValues(['stot_re_organs' => 'liver,lungs', 'stot_re_route' => 'inhalation']) === $cv, 'DB row and POST give the same values (change detection)');
 
 // ---------------------------------------------------------------------
@@ -96,7 +101,7 @@ check(($r['details']['H373']['organs'] ?? null) === ['lungs', 'kidneys'] && arra
 check(($r['details']['H373']['cas'] ?? null) === ['107-21-1', '50-00-0'], '(b) cas sorted', $r);
 // (c)
 $r = Stot::resolve(['H373'], ['107-21-1' => ['H373'], '1330-20-7' => ['H373']], [$re2('107-21-1'), $re2('1330-20-7')], $flags);
-check($r['details'] === [] && ($r['incomplete']['H373'] ?? null) === ['flagged' => ['107-21-1'], 'unflagged' => ['1330-20-7'], 'other_source' => false], '(c) unflagged second CAS -> incomplete, generic', $r);
+check($r['details'] === [] && ($r['incomplete']['H373'] ?? null) === ['flagged' => ['107-21-1'], 'unflagged' => ['1330-20-7'], 'not_specified' => [], 'other_source' => false], '(c) unflagged second CAS -> incomplete, generic', $r);
 // (d)
 $r = Stot::resolve(['H372'], ['14808-60-7' => ['H372']], [$re1('14808-60-7'), $re1('FG_OVERRIDE')], $flags);
 check($r['details'] === [] && ($r['incomplete']['H372']['other_source'] ?? null) === true && ($r['incomplete']['H372']['unflagged'] ?? null) === [], '(d) FG override also carries H372 -> incomplete (other source)', $r);
@@ -282,7 +287,7 @@ check($pBatch !== false && $pBatch < $pId && str_contains($app, "'AdminControlle
 $adm = (string) file_get_contents($basePath . '/src/Controllers/AdminController.php');
 check(substr_count($adm, '\SDS\Services\StotTargetOrgans::writeCasStot($db, ') === 2, 'single and batch saves share StotTargetOrgans::writeCasStot()');
 check(!str_contains($adm, 'target organs before setting a'), 'clearing organs while a route is set is no longer refused');
-check(str_contains($adm, "\$rmIds  = TSCAService::rawMaterialIdsForCas(\$cas);") && str_contains($adm, 'TSCAService::rawMaterialIdsForCasMany(array_keys($changed))'), 'STOT saves bump raw materials whatever way the CAS was typed');
+check(str_contains($adm, "\$rmIds  = TSCAService::rawMaterialIdsForCas(\$cas);") && str_contains($adm, 'TSCAService::rawMaterialIdsForCasMany(array_keys($content))'), 'STOT saves bump raw materials whatever way the CAS was typed');
 $det = (string) file_get_contents($basePath . '/src/Views/admin/determinations.php');
 $stotTab = substr($det, (int) strpos($det, '<!-- Tab: STOT Target Organs'));
 check(!str_contains($stotTab, '<select name="stot_') || !str_contains($stotTab, ' multiple'), 'no multi-select lists (Ctrl-click to untick)');
@@ -309,6 +314,43 @@ check($merged[1]['has_se'] === 1 && $merged[1]['has_re'] === 1 && $merged[1]['rm
 check(str_contains($adm, '$errors[] = "CAS {$canon} was sent twice; only its first row was saved.";'), 'batch save refuses a second row for the same CAS');
 $stotSrc = (string) file_get_contents($basePath . '/src/Services/StotTargetOrgans.php');
 check(str_contains($stotSrc, '            $rows = $db->fetchAll(') && str_contains($stotSrc, 'return self::mergeAdminRows($rows);'), 'adminRows() merges its rows per canonical CAS');
+
+echo "\n\"Not specified\" target organs (migration 067, 2026-10-22)\n";
+$nsRe = Stot::flagsFromRow(['stot_re_not_specified' => 1]);
+check($nsRe['re']['not_specified'] === true && $nsRe['re']['organs'] === [] && $nsRe['se']['not_specified'] === false, 'flagsFromRow carries the mark', $nsRe);
+$r = Stot::resolve(['H373'], ['1330-20-7' => ['H373']], [$re2('1330-20-7')], ['1330-20-7' => $nsRe]);
+check($r['details'] === [] && $r['incomplete'] === [], 'the only source marked not specified: the generic statement, no warning', $r);
+$r = Stot::resolve(['H373'], ['107-21-1' => ['H373'], '1330-20-7' => ['H373']], [$re2('107-21-1'), $re2('1330-20-7')], $flags + ['1330-20-7' => $nsRe]);
+check($r['details'] === [] && $r['incomplete'] === [], 'one source with organs, one not specified: the generic statement (organs not known for all), no warning', $r);
+$r = Stot::resolve(['H373'], ['107-21-1' => ['H373'], '1330-20-7' => ['H373'], '50-00-0' => ['H373']], [$re2('107-21-1'), $re2('1330-20-7'), $re2('50-00-0')],
+    ['107-21-1' => $flags['107-21-1'], '1330-20-7' => $nsRe]);
+check(($r['incomplete']['H373']['not_specified'] ?? null) === ['1330-20-7'] && ($r['incomplete']['H373']['unflagged'] ?? null) === ['50-00-0'],
+    '... with a third source not reviewed yet: the usual warning, naming the not-specified one too', $r);
+$w = Stot::warnings(['stot_incomplete' => $r['incomplete']]);
+check(isset($w[0]) && str_contains($w[0], 'CAS 1330-20-7 (organs not specified on the vendor SDS)') && str_contains($w[0], 'CAS 50-00-0 (no target organs entered)'), '... in the warning text', $w);
+check(!Stot::needsOrgans(['has_re' => 1, 'stot_re_organs' => null, 'stot_re_not_specified' => 1])
+    && Stot::needsOrgans(['has_se' => 1, 'has_re' => 1, 'stot_re_not_specified' => 1]), 'not specified counts as reviewed for that exposure type only (tab filter, badge, dashboard)');
+$merged = Stot::mergeAdminRows([
+    ['cas_number' => '1330-20-7', 'chemical_name' => 'Xylene', 'stot_se_organs' => null, 'stot_se_route' => null, 'stot_se_not_specified' => 0,
+     'stot_re_organs' => null, 'stot_re_route' => null, 'stot_re_not_specified' => 1, 'has_se' => 0, 'has_re' => 1, 'rm_count' => 3],
+]);
+check(($merged[0]['stot_re_not_specified'] ?? null) === 1 && !Stot::needsOrgans($merged[0]), 'the STOT tab row keeps the mark', $merged);
+$mig067 = (string) file_get_contents($basePath . '/migrations/067_stot_not_specified.sql');
+foreach (['stot_se_not_specified', 'stot_re_not_specified'] as $col) {
+    check(str_contains($mig067, "COLUMN_NAME = '{$col}'") && str_contains($mig067, "ADD COLUMN `{$col}` TINYINT(1) NOT NULL DEFAULT 0"), "067 guards and adds {$col}");
+}
+check(str_contains($mig067, "INSERT IGNORE INTO `schema_migrations` (`version`) VALUES ('067_stot_not_specified');"), '067 records its version');
+check(str_contains($stotSrc, "if (!self::hasNotSpecifiedColumns()) {") && str_contains($stotSrc, "(self::hasNotSpecifiedColumns() ? \" OR {\$alias}stot_se_not_specified = 1 OR {\$alias}stot_re_not_specified = 1\" : '')"),
+    'before 067 the marks are neither written nor read (organs and routes work as before)');
+check(str_contains($stotSrc, "AND (\" . self::sqlHasStot() . \")\"") && str_contains($stotSrc, "WHERE \" . self::sqlHasStot('cm2.') . \"")
+    && str_contains($stotSrc, "OR \" . self::sqlHasStot('cm.') . \""),
+    'the sheet and the STOT tab read the same rows: organs or a mark (one with only the mark is not dropped from the tab)');
+check(str_contains($adm, "\$values['stot_' . \$x . '_not_specified'] = !empty(\$row['stot_' . \$x . '_not_specified']) ? 1 : 0;"), 'the batch save carries the marks');
+check(str_contains($stotSrc, "'content' => \$printed(\$old) !== \$printed(\$new)") && str_contains($adm, "if (!\$saved['content']) {")
+    && str_contains($adm, "if (\$r['content']) {") && str_contains($adm, 'if ($content !== []) {') && str_contains($adm, 'if ($rmIds !== []) {'),
+    'a mark alone prints nothing new: saved and audited, but nothing bumped or queued (single and batch saves)');
+$detNs = (string) file_get_contents($basePath . '/src/Views/admin/determinations.php');
+check(str_contains($detNs, 'class="stot-ns"') && str_contains($detNs, 'stot_se_not_specified: !!st.seNs') && str_contains($detNs, "function syncNs(scope)"), 'the tab has a Not specified box per exposure type, saved with the organs');
 $det2 = (string) file_get_contents($basePath . '/src/Views/admin/determinations.php');
 check(str_contains($det2, 'window.sdsPage = window.sdsPage || {') && str_contains($det2, "window.sdsPage.pending.stot = function()") && str_contains($det2, "window.sdsPage.pending.tsca = function()")
     && substr_count($det2, "window.sdsPage.leaveOk('tsca')") === 2 && str_contains($det2, "window.sdsPage.leaveOk('stot')"),

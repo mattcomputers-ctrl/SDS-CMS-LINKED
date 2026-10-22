@@ -424,20 +424,26 @@
     $stotOrganList = $stotOrgans ?? [];
     $stotRouteList = $stotRoutes ?? [];
     // The summary the script also writes after an edit (keep the two in step).
-    $stotSummary = static function (array $organs, ?string $route, bool $classified) use ($stotOrganList, $stotRouteList): string {
+    $stotNsEnabled = \SDS\Services\StotTargetOrgans::hasNotSpecifiedColumns();   // migration 067
+    $stotSummary = static function (array $organs, ?string $route, bool $classified, bool $notSpecified = false) use ($stotOrganList, $stotRouteList): string {
+        if ($organs === [] && $notSpecified) {
+            return '<span class="text-muted">Not specified on the vendor SDS (generic statement)</span>';
+        }
         if ($organs === []) {
             return '<span class="text-muted">' . ($classified ? 'Generic statement (no organs)' : '—') . '</span>';
         }
         $h = e(implode(', ', array_map(static fn (string $k): string => (string) ($stotOrganList[$k] ?? $k), $organs)));
         return $route !== null ? $h . '<br><small class="text-muted">' . e((string) ($stotRouteList[$route] ?? $route)) . '</small>' : $h;
     };
-    $stotPanel = static function (string $x, string $title, array $organs, ?string $route, string $note) use ($stotOrganList, $stotRouteList): string {
+    $stotPanel = static function (string $x, string $title, array $organs, ?string $route, string $note) use ($stotOrganList, $stotRouteList, $stotNsEnabled): string {
         $h = '<fieldset class="stot-panel" data-x="' . e($x) . '" style="flex: 1; min-width: 320px; border: 1px solid #ccd5e0; border-radius: 4px; padding: 0.5rem 0.75rem;">'
            . '<legend style="font-size: 0.95rem; font-weight: bold; width: auto; padding: 0 0.25rem; margin: 0;">' . e($title) . '</legend>'
            . ($note !== '' ? '<div class="text-muted" style="margin-bottom: 0.25rem;"><small>' . e($note) . '</small></div>' : '')
+           . ($stotNsEnabled ? '<label style="margin: 0 0 0.25rem; display: block;"><input type="checkbox" name="stot_' . e($x) . '_not_specified" value="1" class="stot-ns" autocomplete="off"> '
+               . 'Not specified on the vendor SDS <small class="text-muted">(the generic statement prints)</small></label>' : '')
            . '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 2px 12px;">';
         foreach ($stotOrganList as $key => $label) {
-            $h .= '<label style="margin: 0; font-weight: normal;"><input type="checkbox" name="stot_' . e($x) . '_organs[]" value="' . e((string) $key) . '"'
+            $h .= '<label style="margin: 0; font-weight: normal;"><input type="checkbox" name="stot_' . e($x) . '_organs[]" value="' . e((string) $key) . '" class="stot-organ"'
                 . (in_array($key, $organs, true) ? ' checked' : '') . ' autocomplete="off"> ' . e((string) $label) . '</label>';
         }
         $h .= '</div><div style="margin-top: 0.4rem; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">'
@@ -452,7 +458,8 @@
         Target organs and route of exposure from the vendor SDS (Sections 2 and 11), for substances classified for specific target organ toxicity.
         <strong>Single exposure</strong> organs complete H370 / H371 and <strong>repeated exposure</strong> organs complete H372 / H373, e.g.
         "Causes damage to organs (lungs) through prolonged or repeated exposure by inhalation", in Section 2, the Section 4 / 11 symptoms and Section 11, in every language.
-        With no organs ticked the generic statement prints. When several substances drive the same statement, organs print only when every one of them has organs (their union prints), and the route only when they all state the same single route.
+        With no organs ticked the generic statement prints. When the vendor SDS names no organs, tick <strong>Not specified</strong>: the generic statement prints and the substance no longer counts as needing organs.
+        When several substances drive the same statement, organs print only when every one of them has organs (their union prints; one marked Not specified keeps the generic statement), and the route only when they all state the same single route.
         Set a route only when the vendor SDS limits the hazard to that route. Saving flags the affected raw materials for republish.
     </p>
     <?php if ($canEditStot): ?>
@@ -489,7 +496,10 @@
             $hasSe   = !empty($r['has_se']);
             $hasRe   = !empty($r['has_re']);
             $codes   = array_filter([$hasSe ? 'H370/H371' : '', $hasRe ? 'H372/H373' : '']);
-            $state   = ['cas' => (string) $r['cas_number'], 'se' => $se, 'seRoute' => $seRoute, 're' => $re, 'reRoute' => $reRoute, 'hasSe' => (int) $hasSe, 'hasRe' => (int) $hasRe];
+            $seNs    = $se === [] && !empty($r['stot_se_not_specified']);
+            $reNs    = $re === [] && !empty($r['stot_re_not_specified']);
+            $state   = ['cas' => (string) $r['cas_number'], 'se' => $se, 'seRoute' => $seRoute, 'seNs' => $seNs, 're' => $re, 'reRoute' => $reRoute, 'reNs' => $reNs,
+                        'hasSe' => (int) $hasSe, 'hasRe' => (int) $hasRe];
             $missing = \SDS\Services\StotTargetOrgans::needsOrgans($r);   // the dashboard counts the same
             ?>
             <tr data-stot="<?= e((string) json_encode($state)) ?>" data-stot-missing="<?= $missing ? 1 : 0 ?>">
@@ -497,8 +507,8 @@
                 <td><?= e($r['chemical_name'] ?? '') ?></td>
                 <td><?= $codes !== [] ? e(implode(', ', $codes)) : '<span class="text-muted">—</span>' ?></td>
                 <td><?= (int) ($r['rm_count'] ?? 0) > 0 ? (int) $r['rm_count'] : '<span class="text-muted">—</span>' ?></td>
-                <td class="stot-sum-se"><?= $stotSummary($se, $seRoute, $hasSe) ?></td>
-                <td class="stot-sum-re"><?= $stotSummary($re, $reRoute, $hasRe) ?></td>
+                <td class="stot-sum-se"><?= $stotSummary($se, $seRoute, $hasSe, $seNs) ?></td>
+                <td class="stot-sum-re"><?= $stotSummary($re, $reRoute, $hasRe, $reNs) ?></td>
                 <?php if ($canEditStot): ?>
                 <td><button type="button" class="btn btn-sm stot-edit">Edit</button>
                     <span class="badge badge-warning stot-changed" style="display: none;">changed</span></td>
@@ -514,7 +524,7 @@
         <?= csrf_field() ?>
         <input type="hidden" name="payload" id="stotBatchPayload" value="">
     </form>
-    <script type="application/json" id="stotMeta"><?= json_encode(['organs' => $stotOrganList, 'routes' => $stotRouteList], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
+    <script type="application/json" id="stotMeta"><?= json_encode(['organs' => $stotOrganList, 'routes' => $stotRouteList, 'notSpecified' => $stotNsEnabled], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
 
     <h4 style="margin-top: 1.5rem;">Another CAS</h4>
     <form method="POST" action="/determinations/stot" id="stot-form-new" autocomplete="off">
@@ -570,13 +580,22 @@
         // then; it keeps its value, so re-ticking an organ brings it back).
         function syncRoutes(scope) {
             scope.querySelectorAll('fieldset.stot-panel').forEach(function(fs) {
-                fs.querySelector('.stot-route').disabled = !fs.querySelector('input[type=checkbox]:checked');
+                fs.querySelector('.stot-route').disabled = !fs.querySelector('.stot-organ:checked');
             });
+        }
+        // "Not specified" (migration 067): the vendor SDS names no organs, so
+        // that exposure type's organs are unticked and locked while it is ticked.
+        function syncNs(scope) {
+            scope.querySelectorAll('fieldset.stot-panel').forEach(function(fs) {
+                var ns = fs.querySelector('.stot-ns'), on = !!(ns && ns.checked);
+                fs.querySelectorAll('.stot-organ').forEach(function(c) { if (on) c.checked = false; c.disabled = on; });
+            });
+            syncRoutes(scope);
         }
         function wireClear(scope, after) {
             scope.querySelectorAll('.stot-clear').forEach(function(b) {
                 b.addEventListener('click', function() {
-                    b.closest('fieldset').querySelectorAll('input[type=checkbox]').forEach(function(c) { c.checked = false; });
+                    b.closest('fieldset').querySelectorAll('.stot-organ').forEach(function(c) { c.checked = false; });
                     syncRoutes(scope);
                     if (after) after();
                 });
@@ -584,7 +603,7 @@
         }
         var newForm = document.getElementById('stot-form-new');
         if (newForm) {
-            newForm.addEventListener('change', function() { syncRoutes(newForm); });
+            newForm.addEventListener('change', function() { syncNs(newForm); });
             wireClear(newForm, null);
             newForm.addEventListener('submit', function(ev) { if (!window.sdsPage.leaveOk('stot-new')) ev.preventDefault(); });
         }
@@ -597,21 +616,23 @@
         function orig(tr) { return JSON.parse(tr.getAttribute('data-stot')); }
         function cur(tr) { return tr.stotState || orig(tr); }
         function same(a, b) {
-            return a.se.join() === b.se.join() && a.re.join() === b.re.join() && (a.seRoute || null) === (b.seRoute || null) && (a.reRoute || null) === (b.reRoute || null);
+            return a.se.join() === b.se.join() && a.re.join() === b.re.join() && (a.seRoute || null) === (b.seRoute || null) && (a.reRoute || null) === (b.reRoute || null)
+                && !!a.seNs === !!b.seNs && !!a.reNs === !!b.reNs;
         }
         function isDirty(tr) { return !!tr.stotState && !same(tr.stotState, orig(tr)); }
         function dirty() { return rows().filter(isDirty); }
         window.sdsPage.pending.stot = function() { var n = dirty().length; return n ? n + ' changed STOT substance(s)' : ''; };
         function esc(v) { var d = document.createElement('div'); d.textContent = v; return d.innerHTML; }
-        function summary(organs, route, classified) {
+        function summary(organs, route, classified, ns) {
+            if (!organs.length && ns) return '<span class="text-muted">Not specified on the vendor SDS (generic statement)</span>';
             if (!organs.length) return '<span class="text-muted">' + (classified ? 'Generic statement (no organs)' : '—') + '</span>';
             var h = esc(organs.map(function(k) { return meta.organs[k] || k; }).join(', '));
             return route ? h + '<br><small class="text-muted">' + esc(meta.routes[route] || route) + '</small>' : h;
         }
         function refresh(tr) {
             var st = cur(tr), o = orig(tr);
-            tr.querySelector('.stot-sum-se').innerHTML = summary(st.se, st.seRoute, !!o.hasSe);
-            tr.querySelector('.stot-sum-re').innerHTML = summary(st.re, st.reRoute, !!o.hasRe);
+            tr.querySelector('.stot-sum-se').innerHTML = summary(st.se, st.seRoute, !!o.hasSe, !!st.seNs);
+            tr.querySelector('.stot-sum-re').innerHTML = summary(st.re, st.reRoute, !!o.hasRe, !!st.reNs);
             tr.querySelector('.stot-changed').style.display = isDirty(tr) ? '' : 'none';
             var n = dirty().length;
             document.getElementById('stotDirtyCount').textContent = n;
@@ -621,9 +642,11 @@
             var h = '<fieldset class="stot-panel" data-x="' + x[0] + '" style="flex: 1; min-width: 320px; border: 1px solid #ccd5e0; border-radius: 4px; padding: 0.5rem 0.75rem;">'
                 + '<legend style="font-size: 0.95rem; font-weight: bold; width: auto; padding: 0 0.25rem; margin: 0;">' + x[1] + '</legend>'
                 + (o[x[2]] ? '' : '<div class="text-muted" style="margin-bottom: 0.25rem;"><small>' + x[3] + '</small></div>')
+                + (meta.notSpecified ? '<label style="margin: 0 0 0.25rem; display: block;"><input type="checkbox" class="stot-ns" autocomplete="off"' + (st[x[0] + 'Ns'] ? ' checked' : '')
+                    + '> Not specified on the vendor SDS <small class="text-muted">(the generic statement prints)</small></label>' : '')
                 + '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 2px 12px;">';
             Object.keys(meta.organs).forEach(function(k) {
-                h += '<label style="margin: 0; font-weight: normal;"><input type="checkbox" value="' + esc(k) + '"' + (st[x[0]].indexOf(k) >= 0 ? ' checked' : '')
+                h += '<label style="margin: 0; font-weight: normal;"><input type="checkbox" value="' + esc(k) + '" class="stot-organ"' + (st[x[0]].indexOf(k) >= 0 ? ' checked' : '')
                     + ' autocomplete="off"> ' + esc(meta.organs[k]) + '</label>';
             });
             h += '</div><div style="margin-top: 0.4rem; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">'
@@ -646,21 +669,22 @@
                 + '<button type="button" class="btn btn-sm stot-close">Close</button></div>';
             ed.appendChild(td);
             function read() {
-                syncRoutes(td);
-                var s2 = {se: [], re: [], seRoute: null, reRoute: null};
+                syncNs(td);
+                var s2 = {se: [], re: [], seRoute: null, reRoute: null, seNs: false, reNs: false};
                 td.querySelectorAll('fieldset.stot-panel').forEach(function(fs) {
-                    var x = fs.getAttribute('data-x');
-                    fs.querySelectorAll('input[type=checkbox]:checked').forEach(function(c) { s2[x].push(c.value); });
+                    var x = fs.getAttribute('data-x'), ns = fs.querySelector('.stot-ns');
+                    fs.querySelectorAll('.stot-organ:checked').forEach(function(c) { s2[x].push(c.value); });
                     s2[x] = Object.keys(meta.organs).filter(function(k) { return s2[x].indexOf(k) >= 0; });   // ORGANS order
                     var rs = fs.querySelector('.stot-route');
                     s2[x + 'Route'] = s2[x].length && rs.value ? rs.value : null;   // no organs: no route
+                    s2[x + 'Ns'] = !!(ns && ns.checked) && s2[x].length === 0;
                 });
                 tr.stotState = s2;
                 refresh(tr);
             }
             td.addEventListener('change', read);
             wireClear(td, read);
-            syncRoutes(td);
+            syncNs(td);
             td.querySelector('.stot-save-one').addEventListener('click', function() { save([tr], this); });
             td.querySelector('.stot-undo').addEventListener('click', function() {
                 tr.stotState = null;
@@ -686,7 +710,8 @@
             if (!window.sdsPage.leaveOk('stot')) return;
             document.getElementById('stotBatchPayload').value = JSON.stringify({rows: list.map(function(tr) {
                 var st = cur(tr);
-                return {cas_number: orig(tr).cas, stot_se_organs: st.se, stot_se_route: st.seRoute, stot_re_organs: st.re, stot_re_route: st.reRoute};
+                return {cas_number: orig(tr).cas, stot_se_organs: st.se, stot_se_route: st.seRoute, stot_se_not_specified: !!st.seNs,
+                        stot_re_organs: st.re, stot_re_route: st.reRoute, stot_re_not_specified: !!st.reNs};
             })});
             submitting = true;
             if (btn) btn.disabled = true;

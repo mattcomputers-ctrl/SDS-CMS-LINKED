@@ -4,7 +4,7 @@
  * STOT target organs — live-DB test (needs config/config.php and migration 062)
  *
  * Runs inside ONE transaction that is always rolled back, so it is safe on
- * the production database: its rows (CAS 7777760..7777763, raw material
+ * the production database: its rows (CAS 7777760..7777765, raw material
  * ZZSTOT1) disappear at the end, also on failure. Checks the 2026-10-21
  * STOT tab rework through StotTargetOrgans::writeCasStot(), the writer the
  * single-CAS save and the batch save share:
@@ -14,7 +14,9 @@
  *   - a CAS typed with a typographic dash is saved under the canonical CAS,
  *     and a cas_master row is created when there is none;
  *   - each change is audited, and the raw materials carrying the CAS are
- *     found in any spelling (so they are bumped and queued).
+ *     found in any spelling (so they are bumped and queued);
+ *   - "not specified" marks (migration 067): saved without a printed
+ *     change, read by the sheet, listed on the STOT tab (2026-10-22).
  *
  * Run:
  *   sudo -u www-data php tests/Services/StotTargetOrgansLiveTest.php
@@ -36,8 +38,8 @@ if (!is_file($basePath . '/config/config.php')) {
 new \SDS\Core\App();
 $db  = \SDS\Core\Database::getInstance();
 $pdo = $db->getPdo();
-if ((int) ($db->fetch("SELECT COUNT(*) AS n FROM cas_master WHERE cas_number IN ('7777760-77-1', '7777761-77-2', '7777762-77-3', '7777763-77-4')")['n'] ?? 0) > 0) {
-    echo "SKIP: test CAS 7777760..7777763 already exist\n";
+if ((int) ($db->fetch("SELECT COUNT(*) AS n FROM cas_master WHERE cas_number IN ('7777760-77-1', '7777761-77-2', '7777762-77-3', '7777763-77-4', '7777764-77-5', '7777765-77-6')")['n'] ?? 0) > 0) {
+    echo "SKIP: test CAS 7777760..7777765 already exist\n";
     exit(0);
 }
 
@@ -113,11 +115,43 @@ try {
     $admin = array_values(array_filter(Stot::adminRows($db), static fn (array $r): bool => in_array(\SDS\Services\TSCAService::normaliseCas((string) $r['cas_number']), ['7777763-77-4'], true)));
     check(count($admin) === 1 && $admin[0]['cas_number'] === '7777763-77-4' && $admin[0]['stot_re_organs'] === 'kidneys',
         'the STOT tab shows the substance once, under the canonical CAS, with the organs the sheet prints', $admin);
+
+    echo "\n\"Not specified\" (migration 067)\n";
+    if (!Stot::hasNotSpecifiedColumns()) {
+        echo "  SKIP migration 067 has not run yet\n";
+    } else {
+        $w = Stot::writeCasStot($db, '7777761-77-2', ['stot_se_organs' => ['central_nervous_system', 'eyes'], 'stot_se_route' => 'all', 'stot_re_not_specified' => '1']);   // the full state, as the tab sends it
+        $r = $db->fetch("SELECT stot_se_organs, stot_re_organs, stot_re_not_specified FROM cas_master WHERE cas_number = '7777761-77-2'");
+        check(($w['changed'] ?? null) === true && (int) ($r['stot_re_not_specified'] ?? 0) === 1 && ($r['stot_se_organs'] ?? '') === 'central_nervous_system,eyes',
+            'repeated exposure marked not specified (single-exposure organs kept)', [$w, $r]);
+        check(($w['content'] ?? null) === false, '... the mark alone changes nothing printed (no bump)', $w);
+        check((Stot::writeCasStot($db, '7777761-77-2', ['stot_se_organs' => ['central_nervous_system', 'eyes'], 'stot_se_route' => 'all', 'stot_re_not_specified' => 1])['changed'] ?? null) === false,
+            'saving the same again: unchanged');
+        $f = Stot::loadByCas($db, ['7777761-77-2']);
+        check(($f['7777761-77-2']['re']['not_specified'] ?? null) === true, 'the sheet reads the mark', $f);
+        $db->insert('cas_master', ['cas_number' => '7777764-77-5', 'preferred_name' => 'ZZ only not specified', 'stot_se_not_specified' => 1]);
+        check(isset(Stot::loadByCas($db, ['7777764-77-5'])['7777764-77-5']), '... also for a CAS with nothing but the mark');
+        $w = Stot::writeCasStot($db, '7777761-77-2', ['stot_se_organs' => ['central_nervous_system', 'eyes'], 'stot_se_route' => 'all', 'stot_re_organs' => ['liver']]);
+        $r = $db->fetch("SELECT stot_re_organs, stot_re_not_specified FROM cas_master WHERE cas_number = '7777761-77-2'");
+        check(($r['stot_re_organs'] ?? '') === 'liver' && (int) ($r['stot_re_not_specified'] ?? 1) === 0 && ($w['content'] ?? null) === true, 'ticking an organ later clears the mark (a printed change)', [$w, $r]);
+        check(in_array('7777764-77-5', array_column(Stot::adminRows($db), 'cas_number'), true),
+            'the STOT tab lists a CAS holding only the mark, so it can be seen and cleared');
+        // A constituent typed with EPA zero padding: the tab lists its hazard rows under that spelling, the mark is saved under the canonical CAS.
+        $rm5 = (int) $db->insert('raw_materials', ['internal_code' => 'ZZSTOT5']);
+        $db->insert('raw_material_constituents', ['raw_material_id' => $rm5, 'cas_number' => '0007777765-77-6', 'chemical_name' => 'ZZ padded', 'pct_exact' => 100]);
+        $w = Stot::writeCasStot($db, '0007777765-77-6', ['stot_re_not_specified' => true]);
+        $f = Stot::loadByCas($db, ['0007777765-77-6']);
+        check(($w['cas'] ?? '') === '7777765-77-6' && ($w['content'] ?? null) === false && ($f['7777765-77-6']['re']['not_specified'] ?? null) === true,
+            'a mark saved for a CAS typed with zero padding is read by its sheets', [$w, $f]);
+        $admin = array_values(array_filter(Stot::adminRows($db), static fn (array $r): bool => $r['cas_number'] === '7777765-77-6'));
+        check(count($admin) === 1 && (int) $admin[0]['stot_re_not_specified'] === 1,
+            '... and the STOT tab shows it once, with the mark', $admin);
+    }
 } finally {
     $pdo->rollBack();
 }
 
-check((int) ($db->fetch("SELECT COUNT(*) AS n FROM cas_master WHERE cas_number IN ('7777760-77-1', '7777761-77-2', '7777762-77-3', '7777763-77-4')")['n'] ?? 0) === 0, 'rolled back: no test rows left');
+check((int) ($db->fetch("SELECT COUNT(*) AS n FROM cas_master WHERE cas_number IN ('7777760-77-1', '7777761-77-2', '7777762-77-3', '7777763-77-4', '7777764-77-5', '7777765-77-6')")['n'] ?? 0) === 0, 'rolled back: no test rows left');
 
 echo "\n{$checks} checks, {$failures} failures\n";
 exit($failures === 0 ? 0 : 1);

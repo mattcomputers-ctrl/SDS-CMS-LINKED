@@ -24,6 +24,9 @@ use SDS\Core\Database;
  */
 final class StotTargetOrgans
 {
+    /** Columns of the "not specified" marks (migration 067), present or not (cached per process). */
+    private static ?bool $hasNotSpecifiedColumns = null;
+
     /** Stored organ keys, in print order => admin label (English admin UI only; printed text is stot.organ.<key>). */
     public const ORGANS = [
         'respiratory_tract'      => 'Respiratory tract',
@@ -88,17 +91,61 @@ final class StotTargetOrgans
      * (stot_se_organs[] arrays or CSV): organs CSV|null, route|null. A route
      * without organs is dropped.
      *
-     * @return array{stot_se_organs:?string,stot_se_route:?string,stot_re_organs:?string,stot_re_route:?string}
+     * "Not specified" (migration 067, 2026-10-22: the vendor SDS names no
+     * organs for that exposure type) holds only while no organs are entered.
+     *
+     * @return array{stot_se_organs:?string,stot_se_route:?string,stot_se_not_specified:int,stot_re_organs:?string,stot_re_route:?string,stot_re_not_specified:int}
      */
     public static function columnValues(array $row): array
     {
         $out = [];
         foreach (['se', 're'] as $x) {
             $organs = self::parseOrgans($row['stot_' . $x . '_organs'] ?? null);
-            $out['stot_' . $x . '_organs'] = $organs === [] ? null : implode(',', $organs);
-            $out['stot_' . $x . '_route']  = $organs === [] ? null : self::normaliseRoute($row['stot_' . $x . '_route'] ?? null);
+            $out['stot_' . $x . '_organs']        = $organs === [] ? null : implode(',', $organs);
+            $out['stot_' . $x . '_route']         = $organs === [] ? null : self::normaliseRoute($row['stot_' . $x . '_route'] ?? null);
+            $out['stot_' . $x . '_not_specified'] = $organs === [] && self::isMarked($row['stot_' . $x . '_not_specified'] ?? null) ? 1 : 0;
         }
         return $out;
+    }
+
+    /** A tick from POST ('1', 'on'), JSON (true) or the DB (1). */
+    private static function isMarked(mixed $v): bool
+    {
+        return $v === true || (is_scalar($v) && in_array(strtolower(trim((string) $v)), ['1', 'on', 'true', 'yes'], true));
+    }
+
+    /** Whether migration 067 (cas_master.stot_se_not_specified / stot_re_not_specified) has run. */
+    public static function hasNotSpecifiedColumns(): bool
+    {
+        if (self::$hasNotSpecifiedColumns === null) {
+            try {
+                $row = Database::getInstance()->fetch(
+                    "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.COLUMNS
+                     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cas_master' AND COLUMN_NAME = 'stot_re_not_specified'"
+                );
+                self::$hasNotSpecifiedColumns = (int) ($row['n'] ?? 0) > 0;
+            } catch (\Throwable $e) {
+                self::$hasNotSpecifiedColumns = false;
+            }
+        }
+        return self::$hasNotSpecifiedColumns;
+    }
+
+    /** cas_master columns STOT reads and writes (the "not specified" marks once 067 has run). */
+    private static function stotColumns(string $alias = ''): string
+    {
+        $cols = ['stot_se_organs', 'stot_se_route', 'stot_re_organs', 'stot_re_route'];
+        if (self::hasNotSpecifiedColumns()) {
+            array_push($cols, 'stot_se_not_specified', 'stot_re_not_specified');
+        }
+        return implode(', ', array_map(static fn (string $c): string => $alias . $c, $cols));
+    }
+
+    /** SQL condition: the cas_master row holds STOT data — organs, or a "not specified" mark once 067 has run. */
+    private static function sqlHasStot(string $alias = ''): string
+    {
+        return "COALESCE({$alias}stot_se_organs, '') <> '' OR COALESCE({$alias}stot_re_organs, '') <> ''"
+            . (self::hasNotSpecifiedColumns() ? " OR {$alias}stot_se_not_specified = 1 OR {$alias}stot_re_not_specified = 1" : '');
     }
 
     /**
@@ -106,10 +153,17 @@ final class StotTargetOrgans
      * cas_master (audited as 'cas_stot'); no bump, no flash. $values uses
      * the column names (stot_se_organs as a list or CSV, stot_se_route, ...).
      * Unticking every organ of an exposure type clears it and drops its
-     * route (columnValues()). Shared by the single-CAS save and the STOT
-     * tab's batch save (AdminController, 2026-10-21).
+     * route (columnValues()); stot_se_not_specified / stot_re_not_specified
+     * mark that the vendor SDS names none (migration 067). Shared by the
+     * single-CAS save and the STOT tab's batch save (AdminController).
+     * Every STOT save, since the columns came in (062), has stored under
+     * the canonical ASCII CAS (CAS_PATTERN), so the row found here (that
+     * one, or a stored spelling the collation treats as equal) is the one
+     * every sheet reads. 'content' is whether the organs or a route
+     * changed: a "not specified" mark alone prints the same generic
+     * statement, so the callers do not bump for it.
      *
-     * @return array{cas:string, changed:bool}|array{error:string}
+     * @return array{cas:string, changed:bool, content:bool}|array{error:string}
      */
     public static function writeCasStot(Database $db, string $casIn, array $values): array
     {
@@ -118,14 +172,16 @@ final class StotTargetOrgans
             return ['error' => 'A valid CAS number is required.'];
         }
         $new      = self::columnValues($values);
-        $existing = $db->fetch(
-            "SELECT stot_se_organs, stot_se_route, stot_re_organs, stot_re_route FROM cas_master WHERE cas_number = ?",
-            [$cas]
-        );
-        $old = self::columnValues($existing ?? []);
-        if ($old === $new) {
-            return ['cas' => $cas, 'changed' => false];
+        $existing = $db->fetch("SELECT " . self::stotColumns() . " FROM cas_master WHERE cas_number = ?", [$cas]);
+        $old      = self::columnValues($existing ?? []);
+        if (!self::hasNotSpecifiedColumns()) {
+            // Before migration 067 there is nowhere to keep "not specified".
+            unset($new['stot_se_not_specified'], $new['stot_re_not_specified'], $old['stot_se_not_specified'], $old['stot_re_not_specified']);
         }
+        if ($old === $new) {
+            return ['cas' => $cas, 'changed' => false, 'content' => false];
+        }
+        $printed = static fn (array $v): array => array_intersect_key($v, array_flip(['stot_se_organs', 'stot_se_route', 'stot_re_organs', 'stot_re_route']));
         if ($existing === null) {
             // Same as TSCAService::writeCasOverride(): create the registry row,
             // named from the most common constituent description.
@@ -139,28 +195,31 @@ final class StotTargetOrgans
         }
         $db->update('cas_master', $new, 'cas_number = ?', [$cas]);
         AuditService::log('cas_stot', $cas, 'update', ['before' => $old, 'after' => $new]);
-        return ['cas' => $cas, 'changed' => true];
+        return ['cas' => $cas, 'changed' => true, 'content' => $printed($old) !== $printed($new)];
     }
 
     /**
      * DB-free (2026-10-22): an adminRows() row still needs target organs — it
      * is classified for single or repeated exposure and has no organs for
-     * that exposure type. The STOT tab's "Only substances still without
-     * organs" filter and the dashboard count use it.
+     * that exposure type, nor a "not specified" mark (migration 067). The
+     * STOT tab's "Only substances still without organs" filter, its badge
+     * and the dashboard count use it.
      */
     public static function needsOrgans(array $row): bool
     {
-        return (!empty($row['has_se']) && self::parseOrgans($row['stot_se_organs'] ?? null) === [])
-            || (!empty($row['has_re']) && self::parseOrgans($row['stot_re_organs'] ?? null) === []);
+        $open = static fn (string $x): bool => !empty($row['has_' . $x])
+            && self::parseOrgans($row['stot_' . $x . '_organs'] ?? null) === []
+            && !self::isMarked($row['stot_' . $x . '_not_specified'] ?? null);   // "not specified" counts as reviewed
+        return $open('se') || $open('re');
     }
 
-    /** @return array{se: array{organs: string[], route: ?string}, re: array{organs: string[], route: ?string}} */
+    /** @return array{se: array{organs: string[], route: ?string, not_specified: bool}, re: array{organs: string[], route: ?string, not_specified: bool}} */
     public static function flagsFromRow(array $row): array
     {
         $v = self::columnValues($row);
         return [
-            'se' => ['organs' => self::parseOrgans($v['stot_se_organs']), 'route' => $v['stot_se_route']],
-            're' => ['organs' => self::parseOrgans($v['stot_re_organs']), 'route' => $v['stot_re_route']],
+            'se' => ['organs' => self::parseOrgans($v['stot_se_organs']), 'route' => $v['stot_se_route'], 'not_specified' => $v['stot_se_not_specified'] === 1],
+            're' => ['organs' => self::parseOrgans($v['stot_re_organs']), 'route' => $v['stot_re_route'], 'not_specified' => $v['stot_re_not_specified'] === 1],
         ];
     }
 
@@ -176,7 +235,7 @@ final class StotTargetOrgans
         return $out;
     }
 
-    /** @return array<string, array> CAS => flagsFromRow(); only CAS with organs; [] when none or 062 not applied. */
+    /** @return array<string, array> CAS => flagsFromRow(); only CAS with organs or a "not specified" mark; [] when none or 062 not applied. */
     public static function loadByCas(Database $db, array $casList): array
     {
         // Each CAS as typed and in canonical form (2026-10-21): the result is
@@ -199,10 +258,10 @@ final class StotTargetOrgans
         $ph = implode(',', array_fill(0, count($casList), '?'));
         try {
             $rows = $db->fetchAll(
-                "SELECT cas_number, stot_se_organs, stot_se_route, stot_re_organs, stot_re_route
+                "SELECT cas_number, " . self::stotColumns() . "
                    FROM cas_master
                   WHERE cas_number IN ({$ph})
-                    AND (COALESCE(stot_se_organs, '') <> '' OR COALESCE(stot_re_organs, '') <> '')",
+                    AND (" . self::sqlHasStot() . ")",
                 $casList
             );
         } catch (\Throwable $e) {
@@ -240,7 +299,7 @@ final class StotTargetOrgans
      * @param array                  $hazardClasses UNconsolidated class entries (finds FG_OVERRIDE / TRADE_SECRET sources)
      * @param array                  $flagsByCas    loadByCas() output (keyed by canonical CAS)
      * @return array{details: array<string, array{organs: string[], route: ?string, cas: string[]}>,
-     *               incomplete: array<string, array{flagged: string[], unflagged: string[], other_source: bool}>}
+     *               incomplete: array<string, array{flagged: string[], unflagged: string[], not_specified: string[], other_source: bool}>}
      */
     public static function resolve(array $hCodes, array $casHCodes, array $hazardClasses, array $flagsByCas): array
     {
@@ -270,21 +329,31 @@ final class StotTargetOrgans
                 continue; // override-only / trade-secret-only code: generic statement
             }
             sort($drivers, SORT_STRING);
-            $flagged = [];
-            $unflagged = [];
+            $flagged      = [];
+            $unflagged    = [];
+            $notSpecified = [];
             foreach ($drivers as $cas) {
-                if (($flagsByCas[TSCAService::normaliseCas((string) $cas)][$exp]['organs'] ?? []) !== []) {
+                $f = $flagsByCas[TSCAService::normaliseCas((string) $cas)][$exp] ?? [];
+                if (($f['organs'] ?? []) !== []) {
                     $flagged[] = $cas;
+                } elseif (!empty($f['not_specified'])) {
+                    $notSpecified[] = $cas;
                 } else {
                     $unflagged[] = $cas;
                 }
             }
             if ($flagged === []) {
-                continue; // nothing entered: today's generic statement, no warning
+                continue; // nothing entered, or organs not specified: the generic statement, no warning
             }
             $other = self::hasOtherSource($code, $hazardClasses);
             if ($unflagged !== [] || $other) {
-                $incomplete[$code] = ['flagged' => $flagged, 'unflagged' => $unflagged, 'other_source' => $other];
+                $incomplete[$code] = ['flagged' => $flagged, 'unflagged' => $unflagged, 'not_specified' => $notSpecified, 'other_source' => $other];
+                continue;
+            }
+            if ($notSpecified !== []) {
+                // Organs are not known for every source (2026-10-22): naming
+                // only the known ones would understate the hazard, so the
+                // generic statement prints; reviewed, so no warning.
                 continue;
             }
             $set    = [];
@@ -340,6 +409,9 @@ final class StotTargetOrgans
             if (!empty($inc['unflagged'])) {
                 $also[] = 'CAS ' . implode(', ', (array) $inc['unflagged']) . ' (no target organs entered)';
             }
+            if (!empty($inc['not_specified'])) {
+                $also[] = 'CAS ' . implode(', ', (array) $inc['not_specified']) . ' (organs not specified on the vendor SDS)';
+            }
             if (!empty($inc['other_source'])) {
                 $also[] = 'a finished-good hazard override or trade-secret declaration (no target organs can be entered there)';
             }
@@ -356,7 +428,8 @@ final class StotTargetOrgans
     /**
      * Rows of the /determinations "STOT Target Organs" tab: every CAS whose
      * current hazard data or active determination carries H370-H373 and that
-     * is used in a raw material, plus every CAS with organs entered.
+     * is used in a raw material, plus every CAS with organs entered or
+     * marked "not specified" (the rows loadByCas() reads).
      * [] when 062 is not applied.
      */
     public static function adminRows(Database $db): array
@@ -368,7 +441,7 @@ final class StotTargetOrgans
                                  (SELECT rmc.chemical_name FROM raw_material_constituents rmc
                                    WHERE rmc.cas_number = x.cas_number AND rmc.chemical_name <> ''
                                    GROUP BY rmc.chemical_name ORDER BY COUNT(*) DESC LIMIT 1)) AS chemical_name,
-                        cm.stot_se_organs, cm.stot_se_route, cm.stot_re_organs, cm.stot_re_route,
+                        " . self::stotColumns('cm.') . ",
                         MAX(x.has_se) AS has_se, MAX(x.has_re) AS has_re,
                         (SELECT COUNT(DISTINCT rmc2.raw_material_id) FROM raw_material_constituents rmc2
                           WHERE rmc2.cas_number = x.cas_number) AS rm_count
@@ -391,12 +464,12 @@ final class StotTargetOrgans
                          UNION ALL
                          SELECT cm2.cas_number, 0, 0
                            FROM cas_master cm2
-                          WHERE COALESCE(cm2.stot_se_organs, '') <> '' OR COALESCE(cm2.stot_re_organs, '') <> ''
+                          WHERE " . self::sqlHasStot('cm2.') . "
                         ) x
                    LEFT JOIN cas_master cm ON cm.cas_number = x.cas_number
                   WHERE EXISTS (SELECT 1 FROM raw_material_constituents r WHERE r.cas_number = x.cas_number)
-                     OR COALESCE(cm.stot_se_organs, '') <> '' OR COALESCE(cm.stot_re_organs, '') <> ''
-                  GROUP BY x.cas_number, cm.preferred_name, cm.stot_se_organs, cm.stot_se_route, cm.stot_re_organs, cm.stot_re_route
+                     OR " . self::sqlHasStot('cm.') . "
+                  GROUP BY x.cas_number, cm.preferred_name, " . self::stotColumns('cm.') . "
                   ORDER BY (COALESCE(cm.stot_se_organs, '') = '' AND COALESCE(cm.stot_re_organs, '') = '') DESC, x.cas_number"
             );
         } catch (\Throwable $e) {
@@ -409,7 +482,7 @@ final class StotTargetOrgans
      * DB-free (2026-10-21): adminRows() rows merged per canonical CAS
      * (TSCAService::normaliseCas()), so a substance typed two ways ('67–64–1'
      * and '67-64-1') is one row and the tab saves the CAS the writer stores.
-     * Organs and routes come from the row loadByCas() prints from
+     * Organs, routes and "not specified" marks come from the row loadByCas() prints from
      * (preferredRow()); the classification flags are OR-ed and the
      * raw-material counts added (each spelling counts its own constituents).
      * Substances without organs first, then by CAS.
@@ -425,8 +498,8 @@ final class StotTargetOrgans
                 continue;
             }
             if (!isset($out[$key])) {
-                $out[$key] = ['cas_number' => $key, 'chemical_name' => null, 'stot_se_organs' => null, 'stot_se_route' => null,
-                              'stot_re_organs' => null, 'stot_re_route' => null, 'has_se' => 0, 'has_re' => 0, 'rm_count' => 0];
+                $out[$key] = ['cas_number' => $key, 'chemical_name' => null, 'stot_se_organs' => null, 'stot_se_route' => null, 'stot_se_not_specified' => 0,
+                              'stot_re_organs' => null, 'stot_re_route' => null, 'stot_re_not_specified' => 0, 'has_se' => 0, 'has_re' => 0, 'rm_count' => 0];
             }
             $out[$key]['has_se']   = max((int) $out[$key]['has_se'], (int) ($r['has_se'] ?? 0));
             $out[$key]['has_re']   = max((int) $out[$key]['has_re'], (int) ($r['has_re'] ?? 0));
@@ -434,11 +507,14 @@ final class StotTargetOrgans
             if ((string) ($out[$key]['chemical_name'] ?? '') === '' && (string) ($r['chemical_name'] ?? '') !== '') {
                 $out[$key]['chemical_name'] = $r['chemical_name'];
             }
-            $hasOrgans = trim((string) ($r['stot_se_organs'] ?? '')) !== '' || trim((string) ($r['stot_re_organs'] ?? '')) !== '';
+            $hasOrgans = trim((string) ($r['stot_se_organs'] ?? '')) !== '' || trim((string) ($r['stot_re_organs'] ?? '')) !== ''
+                || self::isMarked($r['stot_se_not_specified'] ?? null) || self::isMarked($r['stot_re_not_specified'] ?? null);
             if ($hasOrgans && (!isset($stored[$key]) || self::preferredRow($spelling, $stored[$key], $key))) {
                 foreach (['stot_se_organs', 'stot_se_route', 'stot_re_organs', 'stot_re_route'] as $col) {
                     $out[$key][$col] = $r[$col] ?? null;
                 }
+                $out[$key]['stot_se_not_specified'] = self::isMarked($r['stot_se_not_specified'] ?? null) ? 1 : 0;
+                $out[$key]['stot_re_not_specified'] = self::isMarked($r['stot_re_not_specified'] ?? null) ? 1 : 0;
                 $stored[$key] = $spelling;
             }
         }

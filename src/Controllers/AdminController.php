@@ -3131,6 +3131,12 @@ class AdminController
             redirect('/determinations?tab=stot');
             return;
         }
+        if (!$saved['content']) {
+            // Only a "not specified" mark changed: the sheet prints the same generic statement.
+            $_SESSION['_flash']['success'] = "STOT target organs for CAS {$cas} saved. The printed text is unchanged, so nothing was flagged for re-publish.";
+            redirect('/determinations?tab=stot');
+            return;
+        }
 
         // Deliberate content change: Sections 2, 4 and 11 change for every
         // product whose H370-H373 come from this CAS (matched in any spelling).
@@ -3153,11 +3159,12 @@ class AdminController
     /**
      * POST /determinations/stot-batch (2026-10-21): save the target organs
      * of several substances edited on the STOT tab at once. 'payload' =
-     *   {"rows": [{"cas_number", "stot_se_organs": [...], "stot_se_route",
-     *              "stot_re_organs": [...], "stot_re_route"}, ...]}
+     *   {"rows": [{"cas_number", "stot_se_organs": [...], "stot_se_route", "stot_se_not_specified",
+     *              "stot_re_organs": [...], "stot_re_route", "stot_re_not_specified"}, ...]}
      * (one JSON field, so a long batch never meets max_input_vars). Rows
      * that fail validation are reported and skipped; the rest, and the bump
-     * of every raw material carrying a changed CAS, are written in one
+     * of every raw material carrying a CAS whose organs or route changed
+     * (not one where only a "not specified" mark did), are written in one
      * transaction; SDS Updates queueing follows (as saveTscaBatch()).
      */
     public function saveCasStotBatch(): void
@@ -3183,6 +3190,7 @@ class AdminController
         $str       = static fn ($v): string => is_scalar($v) ? (string) $v : '';
         $errors    = [];
         $changed   = [];   // canonical CAS => true
+        $content   = [];   // canonical CAS => true: organs or a route changed (a "not specified" mark alone prints nothing new)
         $seen      = [];   // canonical CAS => true: a second row for one CAS would overwrite the first
         $unchanged = 0;
         $db->beginTransaction();
@@ -3199,21 +3207,25 @@ class AdminController
                 foreach (['se', 're'] as $x) {
                     $values['stot_' . $x . '_organs'] = is_array($row['stot_' . $x . '_organs'] ?? null) ? $row['stot_' . $x . '_organs'] : [];
                     $values['stot_' . $x . '_route']  = $str($row['stot_' . $x . '_route'] ?? '');
+                    $values['stot_' . $x . '_not_specified'] = !empty($row['stot_' . $x . '_not_specified']) ? 1 : 0;   // migration 067
                 }
                 $r = \SDS\Services\StotTargetOrgans::writeCasStot($db, $str($row['cas_number'] ?? ''), $values);
                 if (isset($r['error'])) {
                     $errors[] = $r['error'] . ($str($row['cas_number'] ?? '') !== '' ? ' (' . $str($row['cas_number']) . ')' : '');
                 } elseif ($r['changed']) {
                     $changed[$r['cas']] = true;
+                    if ($r['content']) {
+                        $content[$r['cas']] = true;
+                    }
                 } else {
                     $unchanged++;
                 }
             }
-            // One bump for every changed CAS, committed with the organs.
+            // One bump for every CAS whose printed organs or route changed, committed with them.
             $rmIds  = [];
             $bumped = 0;
-            if ($changed !== []) {
-                $rmIds  = TSCAService::rawMaterialIdsForCasMany(array_keys($changed));
+            if ($content !== []) {
+                $rmIds  = TSCAService::rawMaterialIdsForCasMany(array_keys($content));
                 $bumped = \SDS\Services\RegulatoryListBumper::bumpRawMaterialIds($rmIds);
             }
             $db->commit();
@@ -3226,7 +3238,9 @@ class AdminController
         if ($n > 0) {
             $queued = 0;
             try {
-                $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByRawMaterialIds($rmIds, current_user_id(), 'STOT target organs updated (' . $n . ' CAS)');
+                if ($rmIds !== []) {
+                    $queued = \SDS\Services\RegulatoryListBumper::queueSdsUpdatesByRawMaterialIds($rmIds, current_user_id(), 'STOT target organs updated (' . count($content) . ' CAS)');
+                }
             } catch (\Throwable $e) {
                 $_SESSION['_flash']['error'] = 'The target organs were saved and their raw materials flagged for re-publish, but adding the products to SDS Updates failed ('
                     . $e->getMessage() . '). Run the scan on SDS Updates to queue them.';

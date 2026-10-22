@@ -97,6 +97,7 @@ class SdsArchiveController
 
         $added   = 0;
         $skipped = 0;
+        $names   = [];
 
         foreach ($oldVersions as $v) {
             $absPath = $basePath . '/' . $v['pdf_path'];
@@ -104,7 +105,12 @@ class SdsArchiveController
                 $skipped++;
                 continue;
             }
-            $zip->addFile($absPath, basename($v['pdf_path']));
+            $name = self::archiveEntryName((string) $v['pdf_path'], (int) $v['version'], (string) $v['language']);
+            if (isset($names[$name])) {
+                $name = pathinfo($name, PATHINFO_FILENAME) . '_' . (int) $v['id'] . '.pdf';   // never two entries with one name
+            }
+            $names[$name] = true;
+            $zip->addFile($absPath, $name);
             $added++;
         }
 
@@ -249,6 +255,33 @@ class SdsArchiveController
         }
 
         redirect('/admin/sds-archive');
+    }
+
+    /**
+     * DB-free (2026-10-22): the ZIP entry name of an archived PDF — its
+     * stored name, with the language named as new files are
+     * (sds_language_suffix(): _ESP etc., nothing for English):
+     *   "_v{n}_es[_2].pdf" (stored 2026-10-08 .. 10-22)  → "_v{n}_ESP[_2].pdf"
+     *   "_SDS_{lang}_{Ymd_His}[_{hex}][_2].pdf" (before)  → "_v{n}[_ESP].pdf"
+     */
+    public static function archiveEntryName(string $pdfPath, int $version, string $lang): string
+    {
+        $name = basename($pdfPath);
+        $lang = strtolower(trim($lang));
+        if (!preg_match('/^[a-z]+$/', $lang)) {
+            return $name;
+        }
+        if (preg_match('/^(.+)_SDS_' . $lang . '_\d{8}_\d{6}(?:_[0-9a-f]{8})?(?:_\d+)?\.pdf$/i', $name, $m)) {
+            return $m[1] . '_v' . $version . sds_language_suffix($lang) . '.pdf';
+        }
+        if (sds_language_suffix($lang) === '') {
+            return $name;
+        }
+        return (string) preg_replace(
+            '/(_v' . $version . ')_' . $lang . '((?:_\d+)?\.pdf)$/',
+            '${1}' . sds_language_suffix($lang) . '${2}',
+            $name
+        );
     }
 
     /**

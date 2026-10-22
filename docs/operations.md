@@ -422,13 +422,24 @@ sudo ls -l /proc/12345/fd/                # open file descriptors / sockets
 - Migration 051 backfills one item per historical (manufacturer, FG, alias)
   combo, tagged in `notes` ("Backfilled ... migration 051"). Review them on
   `/private-label` and retire one-offs BEFORE the next bulk publish.
-- On-disk PDF names carry the version: a published base/alias SDS is
-  `{code}_v{n}.pdf` in the default language (`sds.default_language`, en —
-  e.g. `UVNG009_v1.pdf`) and `{code}_v{n}_{lang}.pdf` for other languages
-  (`UVNG009_v1_es.pdf`); a private label render is
-  `{code}_PL_{Manufacturer}_v{n}[_{lang}].pdf`; only unversioned previews
-  keep the `{code}_SDS_{lang}_{Ymd_His}.pdf` timestamp form. An exact-name
-  clash gets `_2`, `_3`, … rather than overwriting. No random suffixes.
+- SDS PDF names carry the version, then the language: nothing for English,
+  `_ESP` Spanish, `_FRA` French, `_DEU` German (`sds_language_suffix()`,
+  2026-10-22). On disk a published base/alias SDS is `UVNG009_v1.pdf` /
+  `UVNG009_v1_ESP.pdf`; a private label render is
+  `{code}_PL_{Manufacturer}_v{n}[_ESP].pdf`; only unversioned previews keep
+  the `{code}_SDS_{lang}_{Ymd_His}.pdf` timestamp form. Files stored before
+  2026-10-22 keep `_es` on disk, but every download, ZIP entry and email
+  attachment is named from the version row, so users see the new names:
+  downloads `SDS_{code}_v{n}[_ESP].pdf` (SDS page and Lookup) and
+  `PL_SDS_{code}_{Manufacturer}_v{n}[_ESP].pdf`, previews
+  `SDS_{code}_{v{n}|draft}[_ESP].pdf`, export ZIP entries
+  `{code}-SDS{n}[_ESP].pdf`, shipped-SDS ZIP entries and auto-send
+  attachments `{item}_SDS[_ESP].pdf`, SDS Archive entries `{code}_v{n}[_ESP].pdf`
+  (older `_es` and timestamped `_SDS_{lang}_…` files renamed in the ZIP from
+  the version row). ZIP names keep `EN` for English
+  (`SDS_Export_EN_…`, `SDS_Export_ESP_…`) so an English-only ZIP is told
+  apart from an all-language one. An exact-name clash gets `_2`, `_3`, …
+  rather than overwriting. No random suffixes.
 - Before adding the planned unique index `uq_plsds_item_lang_ver`
   (item_id, language, version) on `private_label_sds`, run
   `sudo -u www-data php /var/www/sds-system/scripts/check-pl-duplicates.php`

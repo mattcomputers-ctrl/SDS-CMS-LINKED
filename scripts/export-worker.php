@@ -100,7 +100,8 @@ if ($total === 0) {
 $multiPart   = $total > MAX_FILES_PER_ZIP;
 $openNewZip  = function (int $partNum) use ($exportDir, $language, $timestamp, $multiPart): array {
     $suffix = $multiPart ? sprintf('_part_%02d', $partNum) : '';
-    $path   = $exportDir . '/SDS_Export_' . strtoupper($language) . $suffix . '_' . $timestamp . '.zip';
+    // The ZIP keeps EN for English (one ZIP per language); the PDFs inside carry no English tag.
+    $path   = $exportDir . '/SDS_Export_' . (sds_language_tag($language) ?: 'EN') . $suffix . '_' . $timestamp . '.zip';
     $zip    = new \ZipArchive();
     if ($zip->open($path, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
         throw new RuntimeException('Failed to create ZIP: ' . $path);
@@ -169,11 +170,7 @@ try {
             }
 
             $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $v['product_code']);
-            $zipName  = $safeCode . '-SDS' . $v['version'];
-            if (strtolower($v['language']) !== 'en') {
-                $zipName .= '_' . strtoupper($v['language']);
-            }
-            $zipName .= '.pdf';
+            $zipName  = $safeCode . '-SDS' . $v['version'] . sds_language_suffix((string) $v['language']) . '.pdf';   // _ESP etc., nothing for English
 
             if (isset($seen[$zipName])) {
                 continue;

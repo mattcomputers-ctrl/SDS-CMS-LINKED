@@ -49,22 +49,19 @@ final class SDSPreviewResponse
     }
 
     /**
-     * Inline filename: SDS_{code}_draft_{lang}.pdf for an unstamped preview,
-     * SDS_{code}_v{n}_{lang}.pdf once meta.sds_version is stamped — the same
-     * shape and character set as SDSController::download().
+     * Inline filename: SDS_{code}_draft[_{lang}].pdf for an unstamped preview,
+     * SDS_{code}_v{n}[_{lang}].pdf once meta.sds_version is stamped — the same
+     * shape and character set as SDSController::download(); the language as
+     * sds_language_suffix() gives it (nothing for English, _ESP etc.).
      */
     public static function filename(array $sdsData): string
     {
         $meta = is_array($sdsData['meta'] ?? null) ? $sdsData['meta'] : [];
         $code = (string) preg_replace('/[^A-Za-z0-9_\-]/', '_', (string) ($meta['product_code'] ?? '')); // Q9/#60: printed code, PL custom codes keep their hyphen
-        $lang = (string) preg_replace('/[^a-z]/', '', strtolower((string) ($meta['language'] ?? 'en')));
-        if ($lang === '') {
-            $lang = 'en';
-        }
         $version = (int) ($meta['sds_version'] ?? 0);
         $tail    = $version > 0 ? 'v' . $version : 'draft';
 
-        return 'SDS_' . ($code !== '' ? $code . '_' : '') . $tail . '_' . $lang . '.pdf';
+        return 'SDS_' . ($code !== '' ? $code . '_' : '') . $tail . sds_language_suffix((string) ($meta['language'] ?? 'en')) . '.pdf';
     }
 
     /**

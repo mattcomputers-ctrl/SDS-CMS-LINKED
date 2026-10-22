@@ -103,7 +103,7 @@ echo "d. private label custom code keeps its hyphen\n";
 $pl = SDSGenerator::createPrivateLabelVariant($sds, 'ABC-123', 'PL Ink', ['name' => 'Acme']);
 check($pl['meta']['product_code'] === 'ABC-123', 'meta.product_code = ABC-123', $pl['meta']['product_code']);
 check($pl['sections'][1]['product_identifier'] === 'ABC-123 — PL Ink', 'identifier = ABC-123 — PL Ink', $pl['sections'][1]['product_identifier']);
-check(SDSPreviewResponse::filename($pl) === 'SDS_ABC-123_draft_en.pdf', 'preview inline name keeps the hyphen', SDSPreviewResponse::filename($pl));
+check(SDSPreviewResponse::filename($pl) === 'SDS_ABC-123_draft.pdf', 'preview inline name keeps the hyphen', SDSPreviewResponse::filename($pl));
 
 // ---------------------------------------------------------------------
 echo "e. AliasPublisher::latestPerLanguage()\n";

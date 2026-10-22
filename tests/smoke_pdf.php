@@ -437,8 +437,8 @@ try {
         }
 
         // Versioned publish: meta.sds_version replaces the _SDS_{stamp} tail
-        // with _v{n}. The default language (sds.default_language, "en" here)
-        // gets no language suffix: {code}_v{n}.pdf; other languages keep it.
+        // with _v{n}. English gets no language suffix: {code}_v{n}.pdf;
+        // other languages get _ESP / _FRA / _DEU after the version.
         $vData = \SDS\Services\SDSGenerator::stampPublishedVersion($sdsData, 3, '2026-10-08');
         if (($vData['meta']['effective_date'] ?? '') === '2026-10-08'
             && ($vData['sections'][16]['version'] ?? '') === '3'
@@ -507,15 +507,15 @@ try {
             $failed = true;
         }
 
-        // A non-default language keeps its suffix: {code}_v{n}_{lang}.pdf.
+        // Another language is named after the version: {code}_v{n}_ESP.pdf (2026-10-22).
         $vEs = $vData;
         $vEs['meta']['language'] = 'es';
         $vEsPath = $pdfService->generate($vEs, $outputDir);
         $created[] = $vEsPath;
-        if (basename($vEsPath) === 'TEST-001_v3_es.pdf' && file_exists($vEsPath)) {
-            echo "[13] Non-default language keeps suffix: PASS (" . basename($vEsPath) . ")\n";
+        if (basename($vEsPath) === 'TEST-001_v3_ESP.pdf' && file_exists($vEsPath)) {
+            echo "[13] Spanish named _ESP after the version: PASS (" . basename($vEsPath) . ")\n";
         } else {
-            echo "[13] FAIL: non-default language filename: " . basename($vEsPath) . "\n";
+            echo "[13] FAIL: Spanish filename (want TEST-001_v3_ESP.pdf): " . basename($vEsPath) . "\n";
             $failed = true;
         }
 

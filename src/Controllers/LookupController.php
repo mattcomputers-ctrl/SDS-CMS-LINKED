@@ -88,11 +88,14 @@ class LookupController
                    ?? $version['fg_product_code']
                    ?? $version['rm_internal_code']
                    ?? 'SDS';
-        $displayCode = strip_pack_extension($sourceCode);
+        // Same name as SDSController::download(): the language after the
+        // version (_ESP etc., nothing for English), unsafe characters replaced.
+        $displayCode = (string) preg_replace('/[^A-Za-z0-9_\-]/', '_', strip_pack_extension((string) $sourceCode));
+        $filename    = 'SDS_' . $displayCode . '_v' . $version['version'] . sds_language_suffix((string) $version['language']) . '.pdf';
 
         $disposition = !empty($_COOKIE['sds_pdf_download']) ? 'attachment' : 'inline';
         header('Content-Type: application/pdf');
-        header('Content-Disposition: ' . $disposition . '; filename="SDS_' . $displayCode . '_v' . $version['version'] . '.pdf"');
+        header('Content-Disposition: ' . $disposition . '; filename="' . $filename . '"');
         header('Content-Length: ' . filesize($pdfPath));
         readfile($pdfPath);
         exit;

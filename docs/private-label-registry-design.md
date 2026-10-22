@@ -391,7 +391,7 @@ ROUTES (src/Core/App.php, replace block 313-318; literal segments registered BEF
   POST /private-label/items/{id}/retire                     @retireItem      (toggles is_active; audit 'retire'/'restore')
   POST /private-label/items/{id}/delete                     @deleteItem      (only when no history; else flash "Retire instead")
   GET  /private-label/items/{id}/history                    @itemHistory
-  GET  /private-label/{id}/download                         @download        (kept; + audit_log row like LookupController.php:76-82; filename PL_SDS_{pl.product_code ?? alias base ?? fg code}_{Mfg}_v{n}_{lang}.pdf)
+  GET  /private-label/{id}/download                         @download        (kept; + audit_log row like LookupController.php:76-82; filename PL_SDS_{pl.product_code ?? alias base ?? fg code}_{Mfg}_v{n}[_ESP].pdf — language tag since 2026-10-22, none for English)
   GET  /private-label/{id}/preview                          @preview         (kept; now renders snapshot_json)
   Removed: POST /private-label/generate. Unchanged elsewhere: POST /sds-updates/republish-private-label (relabelled), manufacturers CRUD.
 
@@ -582,7 +582,7 @@ The design critic raised gaps that were resolved as follows before implementatio
 - **R6** The hooks in `SDSController::publish` and `SDSUpdateController::republish` wrap the publisher in their own try/catch and only ever add a warning flash.
 - **R7** The bulk-publish summary adds `active auto-republish items × languages` to "Total PDFs to Generate".
 - **R8** Default preview language is the first configured language, never a hard-coded "en".
-- **R9** `custom_code` is stored and printed verbatim; the download filename is `PL_SDS_{code}_{manufacturer}_v{n}_{lang}.pdf` built from the frozen code.
+- **R9** `custom_code` is stored and printed verbatim; the download filename is `PL_SDS_{code}_{manufacturer}_v{n}[_ESP].pdf` built from the frozen code (language tag since 2026-10-22: _ESP / _FRA / _DEU, none for English).
 - **R10** `republishItems` skips (with a message) finished goods that are inactive, have no published base SDS, fail `computeBase`, or fail the missing-hazard-data gate.
 - **R11** All item CRUD/publish/retire/delete/republish-stale actions require edit access to `private_label`; "Republish Private Labels Only" on SDS Update Required keeps `sds_updates` edit access.
 - **R12** The bulk worker sets its display code after the private-label branch so errors name the private-label code.

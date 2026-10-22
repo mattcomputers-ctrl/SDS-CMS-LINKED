@@ -912,7 +912,7 @@ class PrivateLabelController
         $filename = 'PL_SDS_' . self::slug(self::frozenCode($version))
                   . '_' . self::slug((string) $version['manufacturer_name'])
                   . '_v' . (int) $version['version']
-                  . '_' . $version['language'] . '.pdf';
+                  . sds_language_suffix((string) $version['language']) . '.pdf';   // _ESP etc., nothing for English
 
         $disposition = !empty($_COOKIE['sds_pdf_download']) ? 'attachment' : 'inline';
         header('Content-Type: application/pdf');

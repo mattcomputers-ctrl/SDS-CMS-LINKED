@@ -281,6 +281,34 @@ function strip_pack_extension(string $code): string
     return $pos !== false ? substr($code, 0, $pos) : $code;
 }
 
+/**
+ * Language tag of an SDS file name (owner, 2026-10-22): none for English,
+ * ESP / FRA / DEU for Spanish / French / German, else the code upper-cased.
+ * e.g. "es" → "ESP", "EN" → ""
+ */
+function sds_language_tag(string $lang): string
+{
+    $lang = (string) preg_replace('/[^a-z]/', '', strtolower($lang));
+    return match ($lang) {
+        '', 'en' => '',
+        'es'     => 'ESP',
+        'fr'     => 'FRA',
+        'de'     => 'DEU',
+        default  => strtoupper($lang),
+    };
+}
+
+/**
+ * The language part of an SDS PDF name, placed after the version:
+ * UVNG009_v3.pdf (English), UVNG009_v3_ESP.pdf (Spanish).
+ * e.g. "es" → "_ESP", "en" → ""
+ */
+function sds_language_suffix(string $lang): string
+{
+    $tag = sds_language_tag($lang);
+    return $tag === '' ? '' : '_' . $tag;
+}
+
 /* ------------------------------------------------------------------
  *  Auth convenience functions (permission-group based)
  * ----------------------------------------------------------------*/

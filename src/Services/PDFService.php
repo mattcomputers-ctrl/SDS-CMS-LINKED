@@ -115,7 +115,7 @@ class PDFService
         // On-disk name. The stem is the product / alias / private-label code exactly as printed,
         // plus the optional meta.filename_tag that distinguishes documents
         // sharing a code (private label variants carry "PL_<manufacturer>").
-        // Three forms:
+        // Three forms ([_{lang}]: nothing for English, else _ESP / _FRA / _DEU):
         //   versioned publish   {code}_v{n}[_{lang}].pdf               (meta.sds_version > 0)
         //   private label       {code}_PL_{Manufacturer}_v{n}[_{lang}].pdf (tag + sds_version)
         //   preview / ad hoc    {code}[_{tag}]_SDS_{lang}_{Ymd_His}.pdf  (no sds_version)
@@ -165,20 +165,16 @@ class PDFService
 
     /**
      * Base name (no extension) of a published document: "{stem}_v{n}" for
-     * the default language (sds.default_language, normally "en") and
-     * "{stem}_v{n}_{lang}" for every other language, so UVNG009_v1.pdf is
-     * the English sheet and UVNG009_v1_es.pdf the Spanish one. $stem is the
+     * English and "{stem}_v{n}_{TAG}" for every other language
+     * (sds_language_suffix(): ESP, FRA, DEU), so UVNG009_v1.pdf is the
+     * English sheet and UVNG009_v1_ESP.pdf the Spanish one. Files stored
+     * before 2026-10-22 keep their lower-case "_es" names; downloads, ZIPs
+     * and emails name them from the version row. $stem is the
      * already-sanitised code (plus any filename tag).
      */
     public static function versionedBaseName(string $stem, int $version, string $lang): string
     {
-        $default = strtolower(trim((string) App::config('sds.default_language', 'en')));
-        $lang    = strtolower(trim($lang));
-        $base    = $stem . '_v' . $version;
-        if ($lang !== '' && $lang !== $default) {
-            $base .= '_' . sanitize_filename($lang);
-        }
-        return $base;
+        return $stem . '_v' . $version . sds_language_suffix($lang);
     }
 
     /**

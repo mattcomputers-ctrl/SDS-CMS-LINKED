@@ -101,13 +101,7 @@ class ExportController
                 }
 
                 $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $v['product_code']);
-                $zipName  = $safeCode . '-SDS' . $v['version'];
-
-                if (strtolower($v['language']) !== 'en') {
-                    $zipName .= '_' . strtoupper($v['language']);
-                }
-
-                $zipName .= '.pdf';
+                $zipName  = $safeCode . '-SDS' . $v['version'] . sds_language_suffix((string) $v['language']) . '.pdf';   // _ESP etc., nothing for English
 
                 if (isset($seen[$zipName])) {
                     continue;

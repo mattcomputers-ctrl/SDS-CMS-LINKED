@@ -1055,7 +1055,7 @@ class ReportController
                 }
                 $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $itemCode);
                 foreach ($rows as $lang => $row) {
-                    $zipName = $safeCode . '_SDS' . ($lang !== 'en' ? '_' . strtoupper($lang) : '') . '.pdf';
+                    $zipName = $safeCode . '_SDS' . sds_language_suffix((string) $lang) . '.pdf';   // _ESP etc., nothing for English
                     if (isset($seen[$zipName])) {
                         continue;
                     }
@@ -1100,7 +1100,7 @@ class ReportController
                     $addedLangs[$lang] = true;
 
                     $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '_', $itemCode);
-                    $zipName  = $safeCode . '_SDS' . ($lang !== 'en' ? '_' . strtoupper($lang) : '') . '.pdf';
+                    $zipName  = $safeCode . '_SDS' . sds_language_suffix($lang) . '.pdf';
                     if (isset($seen[$zipName])) continue;
                     $seen[$zipName] = true;
 
@@ -1152,7 +1152,8 @@ class ReportController
         }
 
         $safeCustomer = preg_replace('/[^a-zA-Z0-9]/', '_', $customerValue);
-        $langSuffix = $exportLang !== 'all' ? '_' . strtoupper($exportLang) : '';
+        // EN stays on an English-only ZIP so it is told apart from an all-language one; the PDFs inside carry no English tag.
+        $langSuffix = $exportLang !== 'all' ? '_' . (sds_language_tag($exportLang) ?: 'EN') : '';
         $exportName = 'SDS_Export_' . $safeCustomer . $langSuffix . '_' . date('Ymd') . '.zip';
 
         header('Content-Type: application/zip');

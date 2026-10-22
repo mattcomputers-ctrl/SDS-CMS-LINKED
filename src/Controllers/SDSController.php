@@ -880,7 +880,7 @@ class SDSController
         if ($safeCode !== '') {
             $filename .= $safeCode . '_';
         }
-        $filename .= 'v' . $version['version'] . '_' . $version['language'] . '.pdf';
+        $filename .= 'v' . $version['version'] . sds_language_suffix((string) $version['language']) . '.pdf';   // _ESP etc., nothing for English
 
         $disposition = !empty($_COOKIE['sds_pdf_download']) ? 'attachment' : 'inline';
         header('Content-Type: application/pdf');

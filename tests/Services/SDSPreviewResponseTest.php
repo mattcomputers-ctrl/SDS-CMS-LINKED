@@ -6,7 +6,8 @@
  * Verifies the preview-mode switch (pdf=1 wins over html=1; "" and "0" are
  * absent), the pdf/html URL rewriting that keeps every other query parameter
  * (lang, alias_id, the ad-hoc private-label form fields) and the inline
- * filename shape SDS_{code}_{draft|vN}_{lang}.pdf. send() streams headers and
+ * filename shape SDS_{code}_{draft|vN}[_{lang}].pdf (nothing for English, _ESP
+ * etc. otherwise). send() streams headers and
  * exits, so it is not unit-tested here.
  *
  * Run:
@@ -89,19 +90,20 @@ $assert(
 
 // --- filename() ---------------------------------------------------------------
 $assert(
-    R::filename(['meta' => ['product_code' => 'ABC-123', 'language' => 'en']]) === 'SDS_ABC-123_draft_en.pdf',
-    'filename: printed code verbatim (PL custom code keeps its hyphen; alias callers pass the base code), draft, en'
+    R::filename(['meta' => ['product_code' => 'ABC-123', 'language' => 'en']]) === 'SDS_ABC-123_draft.pdf',
+    'filename: printed code verbatim (PL custom code keeps its hyphen; alias callers pass the base code), draft, no language for English'
 );
 $assert(
-    R::filename(['meta' => ['product_code' => 'BK1080', 'language' => 'es', 'sds_version' => 3]]) === 'SDS_BK1080_v3_es.pdf',
-    'filename: stamped version -> _v3_'
+    R::filename(['meta' => ['product_code' => 'BK1080', 'language' => 'es', 'sds_version' => 3]]) === 'SDS_BK1080_v3_ESP.pdf',
+    'filename: stamped version -> _v3, Spanish -> _ESP after it'
 );
 $assert(
-    R::filename(['meta' => ['product_code' => 'A/B C', 'language' => 'EN']]) === 'SDS_A_B_C_draft_en.pdf',
-    'filename: unsafe characters replaced, language lower-cased'
+    R::filename(['meta' => ['product_code' => 'A/B C', 'language' => 'EN']]) === 'SDS_A_B_C_draft.pdf',
+    'filename: unsafe characters replaced, English in any case carries no language'
 );
-$assert(R::filename(['meta' => []]) === 'SDS_draft_en.pdf', 'filename: empty meta -> SDS_draft_en.pdf');
-$assert(R::filename([]) === 'SDS_draft_en.pdf', 'filename: missing meta -> SDS_draft_en.pdf');
+$assert(R::filename(['meta' => ['product_code' => 'BK1080', 'language' => 'de']]) === 'SDS_BK1080_draft_DEU.pdf', 'filename: German draft -> _DEU');
+$assert(R::filename(['meta' => []]) === 'SDS_draft.pdf', 'filename: empty meta -> SDS_draft.pdf');
+$assert(R::filename([]) === 'SDS_draft.pdf', 'filename: missing meta -> SDS_draft.pdf');
 
 echo PHP_EOL . ($failures === 0 ? 'ALL PASSED' : "{$failures} FAILED") . PHP_EOL;
 exit($failures > 0 ? 1 : 0);

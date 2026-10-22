@@ -538,8 +538,7 @@ class SDSAutoSendService
                     continue;
                 }
 
-                $langSuffix = ($lang !== 'en') ? '_' . strtoupper($lang) : '';
-                $attachName = $safeCode . '_SDS' . $langSuffix . '.pdf';
+                $attachName = $safeCode . '_SDS' . sds_language_suffix((string) $lang) . '.pdf';   // _ESP etc., nothing for English
 
                 // Deduplicate attachments (same item in multiple shipment lines)
                 if (isset($seenAttachNames[$attachName])) {

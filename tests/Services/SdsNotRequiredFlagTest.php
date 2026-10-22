@@ -406,7 +406,7 @@ check(str_contains($stale, "\$needsSds = \\SDS\\Models\\RawMaterial::sqlNeedsSds
     && str_contains($stale, 'WHERE {$needsSds}'), 'Stale RM SDS: both branches drop flagged items (branch a in the JOIN)');
 $tsca = fn_body($src('src/Services/TSCAService.php'), 'public static function reviewCandidates(');
 check(str_contains($tsca, 'AND ({$needsSds} OR EXISTS (') && str_contains($tsca, 'f2.is_current = 1'), 'TSCA Review: flagged items dropped unless a current formula uses them');
-$det = fn_body($src('src/Controllers/AdminController.php'), 'public function determinations()');
+$det = fn_body($src('src/Services/ReviewCounts.php'), 'public static function needsDeterminationRows(');   // moved from AdminController::determinations() (2026-10-22)
 check(str_contains($det, "\$rmNeedsSds = \\SDS\\Models\\RawMaterial::sqlNeedsSds('rm');") && str_contains($det, 'AND ({$rmNeedsSds} OR EXISTS (') && str_contains($det, 'f2.is_current = 1'), 'CAS Determinations: flagged items dropped unless a current formula uses them');
 
 echo "\nCMS import (formulas unchanged, flagged ingredients reported)\n";

@@ -1,11 +1,26 @@
 <?php include dirname(__DIR__) . '/layouts/main.php'; ?>
 
+<?php if (!empty($reviewCounts['unavailable'])): ?>
+<p class="stats-asof text-muted">The CAS Determinations counts could not be loaded just now (details in the error log). <a href="/?refresh=1">Try again</a></p>
+<?php elseif (!empty($reviewCounts)): // CAS Determinations access only (DashboardController) ?>
 <div class="dashboard-stats">
-    <div class="stat-tile">
-        <span class="stat-number"><?= number_format($publishedCount ?? 0) ?></span>
-        <span class="stat-label">Published SDSs</span>
-    </div>
+    <?php foreach ([
+        ['needs', '/determinations',          'CAS determinations pending',  'Constituent CAS numbers without a determination'],
+        ['tsca',  '/determinations?tab=tsca', 'TSCA review items',           'On sheets Bulk SDS Publish is cleared to publish'],
+        ['stot',  '/determinations?tab=stot', 'STOT target organs needed',   'Substances classified H370-H373 without organs'],
+    ] as [$key, $href, $label, $detail]): ?>
+        <?php $n = (int) ($reviewCounts[$key] ?? 0); ?>
+        <a class="stat-tile<?= $n === 0 ? ' stat-clear' : '' ?>" href="<?= e($href) ?>">
+            <span class="stat-number"><?= number_format($n) ?></span>
+            <span class="stat-label"><?= e($label) ?></span>
+            <span class="stat-detail"><?= e($detail) ?></span>
+        </a>
+    <?php endforeach; ?>
 </div>
+<p class="stats-asof text-muted">
+    Counts as of <?= e(\SDS\Services\PublishClock::display($reviewCounts['at'], 'g:i a')) ?> · <a href="/?refresh=1">Refresh</a>
+</p>
+<?php endif; ?>
 
 <div class="quick-find-grid">
     <div class="card quick-find-card">
@@ -52,6 +67,9 @@
 
 <style>
     .dashboard-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+        gap: 1rem;
         max-width: 56rem;
         margin: 2rem auto 0;
     }
@@ -62,8 +80,22 @@
         background: var(--card-bg, #fff);
         border: 1px solid var(--border-color, #dee2e6);
         border-radius: 0.5rem;
-        padding: 1.5rem 2rem;
+        padding: 1.25rem 1.5rem;
         text-align: center;
+        color: inherit;
+        text-decoration: none;
+    }
+    .stat-tile:hover {
+        border-color: var(--primary, #0d6efd);
+    }
+    .stat-clear .stat-number {
+        color: #28a745;
+    }
+    .stats-asof {
+        max-width: 56rem;
+        margin: 0.5rem auto 0;
+        text-align: right;
+        font-size: 0.85rem;
     }
     .stat-number {
         font-size: 2.5rem;

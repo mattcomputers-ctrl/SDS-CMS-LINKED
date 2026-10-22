@@ -142,6 +142,18 @@ final class StotTargetOrgans
         return ['cas' => $cas, 'changed' => true];
     }
 
+    /**
+     * DB-free (2026-10-22): an adminRows() row still needs target organs — it
+     * is classified for single or repeated exposure and has no organs for
+     * that exposure type. The STOT tab's "Only substances still without
+     * organs" filter and the dashboard count use it.
+     */
+    public static function needsOrgans(array $row): bool
+    {
+        return (!empty($row['has_se']) && self::parseOrgans($row['stot_se_organs'] ?? null) === [])
+            || (!empty($row['has_re']) && self::parseOrgans($row['stot_re_organs'] ?? null) === []);
+    }
+
     /** @return array{se: array{organs: string[], route: ?string}, re: array{organs: string[], route: ?string}} */
     public static function flagsFromRow(array $row): array
     {

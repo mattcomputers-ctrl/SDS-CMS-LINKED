@@ -37,9 +37,9 @@
     <?php // A12(b) / T4a ?>
     <button class="tab-btn" data-tab="stot" style="padding: 0.5rem 1.2rem; border: 2px solid #003366; border-bottom: none; background: #e9ecef; color: #003366; cursor: pointer; border-radius: 4px 4px 0 0; font-weight: bold; margin-left: 2px;">
         STOT Target Organs
-        <?php $stotOpen = count(array_filter($stotRows ?? [], static fn(array $r): bool => trim((string) ($r['stot_se_organs'] ?? '')) === '' && trim((string) ($r['stot_re_organs'] ?? '')) === '' && (int) ($r['rm_count'] ?? 0) > 0)); ?>
+        <?php $stotOpen = count(array_filter($stotRows ?? [], [\SDS\Services\StotTargetOrgans::class, 'needsOrgans'])); // the dashboard counts the same ?>
         <?php if ($stotOpen > 0): ?>
-            <span style="background: #6c757d; color: #fff; border-radius: 10px; padding: 1px 7px; font-size: 0.8rem; margin-left: 4px;" title="Substances in use with STOT data and no target organs entered"><?= $stotOpen ?></span>
+            <span style="background: #6c757d; color: #fff; border-radius: 10px; padding: 1px 7px; font-size: 0.8rem; margin-left: 4px;" title="Substances classified H370-H373 still without organs for that exposure"><?= $stotOpen ?></span>
         <?php endif; ?>
     </button>
 </div>
@@ -490,7 +490,7 @@
             $hasRe   = !empty($r['has_re']);
             $codes   = array_filter([$hasSe ? 'H370/H371' : '', $hasRe ? 'H372/H373' : '']);
             $state   = ['cas' => (string) $r['cas_number'], 'se' => $se, 'seRoute' => $seRoute, 're' => $re, 'reRoute' => $reRoute, 'hasSe' => (int) $hasSe, 'hasRe' => (int) $hasRe];
-            $missing = ($hasSe && $se === []) || ($hasRe && $re === []);
+            $missing = \SDS\Services\StotTargetOrgans::needsOrgans($r);   // the dashboard counts the same
             ?>
             <tr data-stot="<?= e((string) json_encode($state)) ?>" data-stot-missing="<?= $missing ? 1 : 0 ?>">
                 <td><strong><?= e($r['cas_number']) ?></strong></td>

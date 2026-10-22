@@ -2523,49 +2523,9 @@ class AdminController
              ORDER BY cpd.created_at DESC"
         );
 
-        // All distinct CAS numbers from raw material constituents that do
-        // not yet have an active determination, excluding trade-secret
-        // entries. CAS numbers with federal data are included
-        // so users can review and complete the determination; a flag
-        // indicates whether federal data is available. Raw materials marked
-        // "No SDS required" (migration 064) are left out unless a current
-        // formula uses them (their data still feeds that finished good).
-        $rmNeedsSds = \SDS\Models\RawMaterial::sqlNeedsSds('rm');
-        $needsDetermination = $db->fetchAll(
-            "SELECT rmc.cas_number,
-                    rmc.chemical_name,
-                    COUNT(DISTINCT rm.id) AS raw_material_count,
-                    GROUP_CONCAT(DISTINCT rm.internal_code ORDER BY rm.internal_code SEPARATOR ', ') AS raw_material_codes,
-                    MAX(CASE WHEN EXISTS (
-                        SELECT 1 FROM formula_lines fl
-                        JOIN formulas f ON f.id = fl.formula_id AND f.is_current = 1
-                        WHERE fl.raw_material_id = rm.id
-                    ) THEN 1 ELSE 0 END) AS in_formula,
-                    MAX(CASE WHEN EXISTS (
-                        SELECT 1 FROM hazard_classifications hc
-                        JOIN hazard_source_records hsr ON hsr.id = hc.hazard_source_record_id
-                        WHERE hc.cas_number = rmc.cas_number AND hsr.is_current = 1
-                    ) OR EXISTS (
-                        SELECT 1 FROM exposure_limits el
-                        JOIN hazard_source_records hsr ON hsr.id = el.hazard_source_record_id
-                        WHERE el.cas_number = rmc.cas_number AND hsr.is_current = 1
-                    ) THEN 1 ELSE 0 END) AS has_federal_data
-             FROM raw_material_constituents rmc
-             JOIN raw_materials rm ON rm.id = rmc.raw_material_id
-             WHERE rmc.cas_number != ''
-               AND rmc.is_trade_secret = 0
-               AND NOT EXISTS (
-                   SELECT 1 FROM competent_person_determinations cpd
-                   WHERE cpd.cas_number = rmc.cas_number AND cpd.is_active = 1
-               )
-               AND ({$rmNeedsSds} OR EXISTS (
-                   SELECT 1 FROM formula_lines fl2
-                   JOIN formulas f2 ON f2.id = fl2.formula_id AND f2.is_current = 1
-                   WHERE fl2.raw_material_id = rm.id
-               ))
-             GROUP BY rmc.cas_number, rmc.chemical_name
-             ORDER BY in_formula DESC, has_federal_data ASC, raw_material_count DESC, rmc.chemical_name ASC"
-        );
+        // All distinct CAS numbers from raw material constituents without an
+        // active determination (ReviewCounts: the dashboard counts the same).
+        $needsDetermination = \SDS\Services\ReviewCounts::needsDeterminationRows($db);
 
         // Canonical CAS descriptions registry. Prop 65 listed substances
         // take their description from the Prop 65 page instead.
@@ -2601,6 +2561,10 @@ class AdminController
         // A12(b) / T4a: STOT Target Organs tab — CAS whose hazard data or active
         // determination carries H370-H373, plus every CAS with organs entered.
         $stotRows = \SDS\Services\StotTargetOrgans::adminRows($db);
+
+        // The dashboard shows these counts (2026-10-22): store the ones just
+        // computed, so it need not run the bulk publish planner itself.
+        \SDS\Services\ReviewCounts::store(\SDS\Services\ReviewCounts::fromLists($needsDetermination, $tscaReview, $stotRows));
 
         view('admin/determinations', [
             'pageTitle'          => 'CAS Number Determinations',

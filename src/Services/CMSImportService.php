@@ -1058,7 +1058,8 @@ class CMSImportService
      * ----------------------------------------------------------------*/
 
     /**
-     * Get raw materials imported from CMS that have no constituents saved.
+     * Get raw materials imported from CMS that have no constituents saved
+     * (with the supplier and the supplier's code for the item).
      *
      * Each row is augmented with:
      *   fg_direct_count — # of current formulas that reference the RM directly
@@ -1089,7 +1090,7 @@ class CMSImportService
         // actions do not count as "saved by a user". This runs on the cron
         // path (import()), so the flag conditions are the guarded helpers.
         $rows = $this->db->fetchAll(
-            "SELECT rm.id, rm.internal_code, rm.supplier_product_name, rm.created_at,
+            "SELECT rm.id, rm.internal_code, rm.supplier, rm.supplier_product_name, rm.supplier_product_code, rm.created_at,
                     cil.cms_item_code,
                     (" . RawMaterial::sqlNoSdsRequired('rm') . ") AS sds_not_required
              FROM raw_materials rm
@@ -1286,8 +1287,8 @@ class CMSImportService
      * wouldn't unblock anything on its own.
      *
      * Returns rows with:
-     *   id, internal_code, supplier, supplier_product_name, cms_item_code,
-     *   created_at, unblock_count, example_fgs (up to 5), all_fgs.
+     *   id, internal_code, supplier, supplier_product_name, supplier_product_code,
+     *   cms_item_code, created_at, unblock_count, example_fgs (up to 5), all_fgs.
      * Sorted by unblock_count DESC, then internal_code ASC.
      */
     public function getSingleBlockerImpact(): array
@@ -1409,7 +1410,7 @@ class CMSImportService
         // sds_not_required (migration 064) is display-only here: a marked
         // item in a formula still blocks until someone reviews its data.
         $rmsMeta = $this->db->fetchAll(
-            "SELECT rm.id, rm.internal_code, rm.supplier, rm.supplier_product_name, rm.created_at,
+            "SELECT rm.id, rm.internal_code, rm.supplier, rm.supplier_product_name, rm.supplier_product_code, rm.created_at,
                     cil.cms_item_code,
                     (" . RawMaterial::sqlNoSdsRequired('rm') . ") AS sds_not_required
              FROM raw_materials rm
@@ -1975,7 +1976,7 @@ class CMSImportService
         // inventory chase list. Marking an item is not a data review, so
         // the flag's own audit actions do not count as user_reviewed.
         $rms = $this->db->fetchAll(
-            "SELECT rm.id, rm.internal_code, rm.supplier, rm.supplier_product_name, rm.hazardous_no_cas,
+            "SELECT rm.id, rm.internal_code, rm.supplier, rm.supplier_product_name, rm.supplier_product_code, rm.hazardous_no_cas,
                     (SELECT COUNT(*) FROM raw_material_constituents rmc WHERE rmc.raw_material_id = rm.id) AS constituent_count,
                     (SELECT COUNT(*) FROM raw_material_sds rs WHERE rs.raw_material_id = rm.id) AS sds_count,
                     EXISTS(SELECT 1 FROM audit_log a
@@ -2018,6 +2019,7 @@ class CMSImportService
                 'internal_code'         => $code,
                 'supplier'              => $rm['supplier'],
                 'supplier_product_name' => $rm['supplier_product_name'],
+                'supplier_product_code' => $rm['supplier_product_code'],
                 'qty_on_hand'           => (float) $onHandMap[$code]['qty_on_hand'],
                 'unit'                  => $onHandMap[$code]['Unit'] ?? '',
                 'missing_data'          => $missingData,

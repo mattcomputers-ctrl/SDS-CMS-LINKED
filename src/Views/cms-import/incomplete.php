@@ -16,6 +16,20 @@ $noSdsButton  = static function (array $rm, string $returnTo): string {
          . '</form>';
 };
 $flaggedInFormulas = $flaggedInFormulas ?? [];
+
+// Every tab (2026-10-26): the supplier, sortable (header click: A-Z, Z-A,
+// then the tab's own order again), and the supplier's own code for the item
+// (CMS "Their Code", raw_materials.supplier_product_code).
+$supplierTh = '<th aria-sort="none"><button type="button" class="sort-supplier" title="Sort by supplier: A to Z, then Z to A, then back to the order above"'
+            . ' style="background: none; border: 0; padding: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; line-height: inherit; cursor: pointer;">'
+            . 'Supplier <span class="sort-ind" aria-hidden="true">&#8645;</span></button></th>'
+            . '<th title="The supplier\'s own code for this item (CMS Their Code)">Supplier Code</th>';
+$supplierTds = static function (array $rm): string {
+    $name = (string) ($rm['supplier'] ?? '');
+    $code = (string) ($rm['supplier_product_code'] ?? '');
+    return '<td data-sort-value="' . e($name) . '">' . ($name !== '' ? e($name) : '<span class="text-muted">—</span>') . '</td>'
+         . '<td>' . ($code !== '' ? e($code) : '<span class="text-muted">—</span>') . '</td>';
+};
 ?>
 
 <!-- Tab Navigation -->
@@ -81,13 +95,14 @@ $flaggedInFormulas = $flaggedInFormulas ?? [];
             All imported raw materials have their details saved. Nothing to do here.
         </div>
     <?php else: ?>
-        <p class="text-muted"><?= count($incomplete) ?> raw material(s) imported from CMS still need constituents and SDS details. Sorted by the number of finished goods that depend on them — highest impact first.
+        <p class="text-muted"><?= count($incomplete) ?> raw material(s) imported from CMS still need constituents and SDS details. Sorted by the number of finished goods that depend on them — highest impact first (click Supplier to sort by supplier).
             Items marked No SDS required are left off unless a current formula uses them.</p>
 
         <table class="table">
             <thead>
                 <tr>
                     <th>Internal Code</th>
+                    <?= $supplierTh ?>
                     <th>Product Name</th>
                     <th title="Finished goods whose formula tree transitively contains this raw material">FGs Using</th>
                     <th title="Finished goods that reference this raw material directly">Direct</th>
@@ -103,6 +118,7 @@ $flaggedInFormulas = $flaggedInFormulas ?? [];
                         <?php if (!empty($rm['sds_not_required'])): ?>
                             <span class="badge badge-muted" title="Marked No SDS required, but a current formula uses it: its data still feeds that finished good's SDS">No SDS required</span>
                         <?php endif; ?></td>
+                    <?= $supplierTds($rm) ?>
                     <td><?= e($rm['supplier_product_name'] ?? '—') ?></td>
                     <td><strong><?= (int) ($rm['fg_total_count'] ?? 0) ?></strong></td>
                     <td><span class="text-muted"><?= (int) ($rm['fg_direct_count'] ?? 0) ?></span></td>
@@ -129,13 +145,13 @@ $flaggedInFormulas = $flaggedInFormulas ?? [];
             No raw material is a single-shot blocker right now. Every finished good with an unreviewed RM has at least two unreviewed RMs in its formula tree, so no one-RM review would fully unblock an FG on its own.
         </div>
     <?php else: ?>
-        <p class="text-muted">Raw materials where reviewing <em>just this one</em> would qualify at least one finished good for bulk SDS publish. Sorted by leverage — the top row unblocks the most SDSs per unit of review effort.</p>
+        <p class="text-muted">Raw materials where reviewing <em>just this one</em> would qualify at least one finished good for bulk SDS publish. Sorted by leverage — the top row unblocks the most SDSs per unit of review effort (click Supplier to sort by supplier).</p>
 
         <table class="table">
             <thead>
                 <tr>
                     <th>Internal Code</th>
-                    <th>Supplier</th>
+                    <?= $supplierTh ?>
                     <th>Product Name</th>
                     <th title="Finished goods that would become eligible for bulk publish if this single RM is reviewed">FGs Unblocked</th>
                     <th>Example FG codes</th>
@@ -155,7 +171,7 @@ $flaggedInFormulas = $flaggedInFormulas ?? [];
                         <?php if (!empty($rm['sds_not_required'])): ?>
                             <span class="badge badge-muted" title="Marked No SDS required, but a current formula uses it, so its data still has to be reviewed for that finished good">No SDS required</span>
                         <?php endif; ?></td>
-                    <td><?= e($rm['supplier'] ?? '') ?: '<span class="text-muted">—</span>' ?></td>
+                    <?= $supplierTds($rm) ?>
                     <td><?= e($rm['supplier_product_name'] ?? '') ?: '<span class="text-muted">—</span>' ?></td>
                     <td><strong><?= (int) $rm['unblock_count'] ?></strong></td>
                     <td>
@@ -187,14 +203,14 @@ $flaggedInFormulas = $flaggedInFormulas ?? [];
             <code>hazardous_no_cas</code> mode (vendor refused all CAS disclosure) or specific
             constituents are flagged trade-secret. These are the vendors to chase: getting full
             disclosure unblocks SDS publishing under the federal hazard-data threshold rule.
-            Sorted by FG impact, then trade-secret percentage.
+            Sorted by FG impact, then trade-secret percentage (click Supplier to sort by supplier).
         </p>
 
         <table class="table table-sm">
             <thead>
                 <tr>
                     <th>Internal Code</th>
-                    <th>Supplier</th>
+                    <?= $supplierTh ?>
                     <th>Supplier Product</th>
                     <th title="Type of trade-secret content in this RM">Type</th>
                     <th title="Sum of trade-secret percentage in this RM (whole-RM = 100%)">TS %</th>
@@ -219,12 +235,9 @@ $flaggedInFormulas = $flaggedInFormulas ?? [];
                         <?php if (!empty($rm['sds_not_required'])): ?>
                             <span class="badge badge-muted" title="Marked No SDS required, but a current formula uses it: its data still feeds that finished good's SDS">No SDS required</span>
                         <?php endif; ?></td>
-                    <td><?= e($rm['supplier'] ?? '') ?: '<span class="text-muted">—</span>' ?></td>
+                    <?= $supplierTds($rm) ?>
                     <td>
                         <?= e($rm['supplier_product_name'] ?? '') ?: '<span class="text-muted">—</span>' ?>
-                        <?php if (!empty($rm['supplier_product_code'])): ?>
-                            <br><small class="text-muted"><?= e($rm['supplier_product_code']) ?></small>
-                        <?php endif; ?>
                     </td>
                     <td><?= $typeLabel ?></td>
                     <td><strong><?= number_format((float) $rm['ts_pct'], 2) ?>%</strong></td>
@@ -253,7 +266,7 @@ $flaggedInFormulas = $flaggedInFormulas ?? [];
         <p class="text-muted">
             Raw materials with stock on hand in CMS that are missing constituent data
             and/or a vendor SDS upload (required to appear in the RM SDS Book).
-            Sorted by quantity on hand — the biggest piles first.
+            Sorted by quantity on hand — the biggest piles first (click Supplier to sort by supplier).
             Items marked No SDS required (not chemicals) are not listed.
         </p>
 
@@ -261,7 +274,7 @@ $flaggedInFormulas = $flaggedInFormulas ?? [];
             <thead>
                 <tr>
                     <th>Internal Code</th>
-                    <th>Supplier</th>
+                    <?= $supplierTh ?>
                     <th>Product Name</th>
                     <th>On Hand</th>
                     <th>Missing</th>
@@ -272,7 +285,7 @@ $flaggedInFormulas = $flaggedInFormulas ?? [];
             <?php foreach ($inventoryGaps as $rm): ?>
                 <tr>
                     <td><strong><?= e($rm['internal_code']) ?></strong></td>
-                    <td><?= e($rm['supplier'] ?? '') ?: '<span class="text-muted">—</span>' ?></td>
+                    <?= $supplierTds($rm) ?>
                     <td><?= e($rm['supplier_product_name'] ?? '') ?: '<span class="text-muted">—</span>' ?></td>
                     <td><strong><?= number_format($rm['qty_on_hand'], 1) ?></strong> <?= e($rm['unit']) ?></td>
                     <td>
@@ -319,6 +332,39 @@ document.querySelectorAll('.tab-btn').forEach(function (btn) {
             p.style.display = 'none';
         });
         document.getElementById('tab-' + btn.dataset.tab).style.display = 'block';
+    });
+});
+// Supplier sort, per tab: A-Z, Z-A, then the tab's own order again. Rows
+// with the same supplier keep that order; rows without one go last.
+document.querySelectorAll('.sort-supplier').forEach(function (btn) {
+    var th    = btn.closest('th');
+    var tbody = th.closest('table').tBodies[0];
+    var col   = Array.prototype.indexOf.call(th.parentNode.children, th);
+    var dir   = '';
+    Array.prototype.forEach.call(tbody.rows, function (tr, i) { tr.dataset.order = i; });
+    var key = function (tr) {
+        var td = tr.cells[col];
+        return td ? (td.getAttribute('data-sort-value') || '').trim() : '';
+    };
+    btn.addEventListener('click', function () {
+        dir = dir === '' ? 'asc' : (dir === 'asc' ? 'desc' : '');
+        th.setAttribute('aria-sort', dir === 'asc' ? 'ascending' : (dir === 'desc' ? 'descending' : 'none'));
+        btn.querySelector('.sort-ind').innerHTML = dir === 'asc' ? '&#9650;' : (dir === 'desc' ? '&#9660;' : '&#8645;');
+        var rows = Array.prototype.slice.call(tbody.rows);
+        rows.sort(function (a, b) {
+            if (dir !== '') {
+                var x = key(a), y = key(b);
+                if ((x === '') !== (y === '')) {
+                    return x === '' ? 1 : -1;
+                }
+                var c = x.localeCompare(y, undefined, {numeric: true, sensitivity: 'base'});
+                if (c !== 0) {
+                    return dir === 'asc' ? c : -c;
+                }
+            }
+            return a.dataset.order - b.dataset.order;
+        });
+        rows.forEach(function (tr) { tbody.appendChild(tr); });
     });
 });
 // Open the tab named in the URL hash (e.g. #inventory after a "Not a chemical" click).

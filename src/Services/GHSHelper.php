@@ -178,6 +178,56 @@ class GHSHelper
         return $auto;
     }
 
+    /** @var array<string, ?string>|null H-code => hCodeSignalFloor(), built once */
+    private static ?array $hCodeFloors = null;
+
+    /**
+     * The lowest signal word GHS gives an H-code (2026-10-28): the lowest
+     * over the GHSHazardData entries that carry it, so a code shared by a
+     * Danger and a Warning category (H228) needs only Warning and one an
+     * entry gives without a word (H362) needs none. A sub-code reads as its
+     * base (H350i, H360FD). H200 needs Danger; H230, H231 and codes GHS
+     * data does not know (EUH066, typos) need none.
+     */
+    public static function hCodeSignalFloor(string $code): ?string
+    {
+        if (self::$hCodeFloors === null) {
+            $rank   = ['Danger' => 2, 'Warning' => 1];
+            $floors = [];
+            foreach (GHSHazardData::HAZARD_CLASSIFICATIONS as $entry) {
+                $word = $entry['signal_word'] ?? null;
+                foreach ($entry['h_codes'] ?? [] as $c) {
+                    $c = strtoupper(trim((string) $c));
+                    if (!array_key_exists($c, $floors) || ($rank[$word ?? ''] ?? 0) < ($rank[$floors[$c] ?? ''] ?? 0)) {
+                        $floors[$c] = $word;
+                    }
+                }
+            }
+            self::$hCodeFloors = $floors + ['H200' => 'Danger', 'H230' => null, 'H231' => null];
+        }
+        $code = strtoupper(trim($code));
+        if (array_key_exists($code, self::$hCodeFloors)) {
+            return self::$hCodeFloors[$code];
+        }
+        return self::$hCodeFloors[(string) preg_replace('/^(H\d{3}).+$/', '$1', $code)] ?? null;
+    }
+
+    /** The word a set of printed H-codes needs: the highest hCodeSignalFloor() over them ('H300+H310' read part by part). */
+    public static function hCodesSignalFloor(iterable $codes): ?string
+    {
+        $rank = ['Danger' => 2, 'Warning' => 1];
+        $need = null;
+        foreach ($codes as $code) {
+            foreach (explode('+', (string) $code) as $part) {
+                $floor = trim($part) === '' ? null : self::hCodeSignalFloor($part);
+                if ($floor !== null && ($rank[$floor] ?? 0) > ($rank[$need ?? ''] ?? 0)) {
+                    $need = $floor;
+                }
+            }
+        }
+        return $need;
+    }
+
     /** 'Danger' or 'Warning' as given, anything else ''. */
     public static function validSignalWord(mixed $word): string
     {
@@ -187,23 +237,13 @@ class GHSHelper
 
     /**
      * The manual signal-word override of a saved determination, '' for Auto
-     * (2026-10-28), for the form's Signal Word Override list. Saved since
-     * then as signal_word_override. Older determinations kept only the
-     * signal word in effect: it counts as an override only where it differs
-     * from the one their selected hazards give, so one saved on Auto
-     * reopens on Auto instead of turning into an override.
+     * (2026-10-28), for the form's Signal Word Override list and the hazard
+     * engine. Saved since then as signal_word_override. Older determinations
+     * never recorded the choice, and none was a manual override (owner,
+     * 2026-10-28), so they are Auto: their word follows their hazards.
      */
     public static function signalWordOverride(array $det): string
     {
-        if (array_key_exists('signal_word_override', $det)) {
-            return self::validSignalWord($det['signal_word_override']);
-        }
-        $saved    = self::validSignalWord($det['signal_word'] ?? '');
-        $selected = $det['selected_hazards'] ?? [];
-        if (is_string($selected)) {
-            $selected = json_decode($selected, true);
-        }
-        $auto = self::autoSignalWord(is_array($selected) ? $selected : []) ?? '';
-        return $saved !== $auto ? $saved : '';
+        return self::validSignalWord($det['signal_word_override'] ?? '');
     }
 }

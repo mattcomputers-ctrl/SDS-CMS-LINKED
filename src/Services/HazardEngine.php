@@ -122,11 +122,22 @@ class HazardEngine
      *   hazards are not classified by ingredient cut-off). See
      *   applyFlammableLiquidsFromFlashPoint().
      *
+     * v1.9-cpd-auto-signal-word (2026-10-28): a CAS determination (or a
+     *   raw material's trade-secret hazards) on Auto with selected hazard
+     *   classes contributes the signal word of its triggered classes,
+     *   worked out on every classify, not the word stored when it was
+     *   saved. A stored word could be stale (saved before its hazards
+     *   changed) or come from a class that does not trigger at the
+     *   component's concentration. A manual override
+     *   (signal_word_override) still applies; legacy free-text classes
+     *   keep their stored word; a selected key no longer in GHSHazardData
+     *   keeps the stored word as a floor.
+     *
      * Must fit sds_generation_trace.engine_version (VARCHAR(30), migration
      * 036): a longer value fails the trace INSERT under strict SQL mode
      * after the sds_versions row is already written.
      */
-    public const ENGINE_VERSION = 'v1.8-flash-point-flammability';
+    public const ENGINE_VERSION = 'v1.9-cpd-auto-signal-word';
 
     /**
      * GHS summation thresholds per canonical class + category.
@@ -473,6 +484,7 @@ class HazardEngine
 
     /** Signal word hierarchy. */
     private const SIGNAL_HIERARCHY = ['Danger' => 2, 'Warning' => 1];
+
 
     /** Pictogram hierarchy (higher overrides lower in same hazard group). */
     private const PICTOGRAM_PRIORITY = [
@@ -3088,10 +3100,14 @@ class HazardEngine
         // declared category (an H300-derived JSON selects Oral Cat 1 AND Cat 2).
         $ateCandidates = [];
         $flSkipped    = false; // Q3: a Flammable Liquids entry was ignored
+        $unknownKey   = false; // v1.9: a selected hazard key GHSHazardData no longer has
 
         if (!empty($selectedHazards)) {
             foreach ($selectedHazards as $key) {
-                if (!isset($ghsData[$key])) continue;
+                if (!isset($ghsData[$key])) {
+                    $unknownKey = true;
+                    continue;
+                }
                 $entry         = $ghsData[$key];
 
                 $canonical     = HazardClassAliases::normalize($entry['class']);
@@ -3269,9 +3285,20 @@ class HazardEngine
             $flP    = array_intersect_key($pStmts, array_flip(self::flammableLiquidPCodes()));
             $pStmts = array_diff_key($pStmts, $flP)
                     + $this->filterCpdCodesByTriggeredClasses($flP, $triggeredCanonicals, 'p_codes', $cas, $source);
-            if ($flSkipped) {
+            // v1.9: on Auto (no signal_word_override) the signal word of a
+            // determination with selected hazard classes follows the classes
+            // that trigger, so a stored word never sticks when the hazards
+            // change. A manual override is kept, except over an ignored
+            // Flammable Liquids entry (Q3, below). Legacy free-text classes
+            // (no selected_hazards) keep their stored word: a free-text class
+            // cannot always be worked out (H350i, a shared H-code). The form
+            // ticks their hazards where the class names match, and asks for
+            // the rest before saving.
+            $autoSignal = !empty($selectedHazards) && GHSHelper::signalWordOverride($det) === '';
+            if ($flSkipped || $autoSignal) {
                 // The declared signal word may come from the ignored Flam. Liq.
-                // entry (e.g. Danger for Cat 2): re-derive it from the triggered
+                // entry (e.g. Danger for Cat 2), from a class that did not
+                // trigger, or be stale: re-derive it from the triggered
                 // classes and never fall back to the declared word when every
                 // triggered class could be re-derived (e.g. Lactation-only →
                 // no signal word). A free-text class (no category) is derived
@@ -3315,7 +3342,28 @@ class HazardEngine
                         $sw = $cand;
                     }
                 }
-                $signalWord = $underivable ? ($sw ?? $signalWord) : $sw;
+                $derived = $underivable ? ($sw ?? $signalWord) : $sw;
+                if (!$flSkipped && $unknownKey && $signalWord !== null
+                    && (self::SIGNAL_HIERARCHY[$signalWord] ?? 0) > (self::SIGNAL_HIERARCHY[$derived ?? ''] ?? 0)) {
+                    // A selected key GHSHazardData no longer has: its word
+                    // cannot be worked out, so the stored word is the floor.
+                    $derived = $signalWord;
+                }
+                // v1.9: the word also covers every H-code that still prints
+                // (one ticked by hand, one left from a more severe category of
+                // a class that triggers, a combined code): each needs at least
+                // the lowest word GHS gives it (GHSHelper::hCodeSignalFloor():
+                // H350 Danger, H228 Warning, H362 / H231 / EUH066 none).
+                $floor = GHSHelper::hCodesSignalFloor(array_keys($hStmts));
+                if ($floor !== null && (self::SIGNAL_HIERARCHY[$floor] ?? 0) > (self::SIGNAL_HIERARCHY[$derived ?? ''] ?? 0)) {
+                    $derived = $floor;
+                }
+                if ($derived !== $signalWord) {
+                    $this->traceStep('cpd_signal_word_derived', "CPD {$cas} signal word from its triggered classes: " . ($derived ?? 'none') . ' (stored: ' . ($signalWord ?? 'none') . ')', [
+                        'cas' => $cas, 'stored' => $signalWord, 'derived' => $derived, 'source' => $source,
+                    ]);
+                }
+                $signalWord = $derived;
             }
         }
 

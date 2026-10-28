@@ -240,7 +240,7 @@ check(($ingP->getValue($engine)['67-63-0'] ?? null) === 20.0, 'free-text entry r
 
 // ---------------------------------------------------------------------
 echo "5. Engine version\n";
-check(str_contains(HE::ENGINE_VERSION, 'flash-point-flammability'), 'ENGINE_VERSION carries flash-point-flammability', HE::ENGINE_VERSION);
+check(preg_match('/^v(\d+\.\d+)/', HE::ENGINE_VERSION, $vm) === 1 && version_compare($vm[1], '1.8', '>='), 'ENGINE_VERSION is v1.8 (flash-point flammability) or later', HE::ENGINE_VERSION);
 check(strlen(HE::ENGINE_VERSION) <= 30, 'ENGINE_VERSION fits sds_generation_trace.engine_version VARCHAR(30)', strlen(HE::ENGINE_VERSION));
 
 echo "\n{$checks} checks, {$failures} failures\n";

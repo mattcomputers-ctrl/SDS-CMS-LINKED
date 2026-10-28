@@ -1044,9 +1044,9 @@ try {
     assertContains('osha-lactation: H362 at 0.15%', hCodes($result), 'H362');
 
     // ──────────────────────────────────────────────────────────────────
-    echo "\n[43] engine version stamp is v1.8-flash-point-flammability (Q3; <= 30 chars for sds_generation_trace).\n";
-    assertEquals('ENGINE_VERSION is v1.8-flash-point-flammability',
-        'v1.8-flash-point-flammability', \SDS\Services\HazardEngine::ENGINE_VERSION);
+    echo "\n[43] engine version stamp is v1.9-cpd-auto-signal-word (<= 30 chars for sds_generation_trace).\n";
+    assertEquals('ENGINE_VERSION is v1.9-cpd-auto-signal-word',
+        'v1.9-cpd-auto-signal-word',\SDS\Services\HazardEngine::ENGINE_VERSION);
 
 } catch (\Throwable $e) {
     echo "\n!!! EXCEPTION DURING TEST SUITE !!!\n";

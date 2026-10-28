@@ -8,16 +8,97 @@ $ghsData = \SDS\Services\GHSHazardData::forJavaScript();
 $allH = \SDS\Services\GHSStatements::allHStatements();
 $allP = \SDS\Services\GHSStatements::allPStatements();
 
-// Parse existing selections
+// Parse existing selections (old input: lists as posted)
+$oldList = static fn (string $k): array => is_array($old[$k] ?? null) ? $old[$k] : explode(',', (string) ($old[$k] ?? ''));
 $selectedHazards = json_decode($det['selected_hazards'] ?? ($old['selected_hazards_json'] ?? '[]'), true) ?: [];
 $selectedHCodes  = !empty($det['h_statements'])
     ? array_map('trim', explode(',', $det['h_statements']))
-    : array_map('trim', explode(',', $old['h_codes_manual'] ?? ''));
+    : array_map('trim', $oldList('h_codes_manual'));
 $selectedPCodes  = !empty($det['p_statements'])
     ? array_map('trim', explode(',', $det['p_statements']))
-    : array_map('trim', explode(',', $old['p_codes_manual'] ?? ''));
+    : array_map('trim', $oldList('p_codes_manual'));
 $selectedHCodes = array_filter($selectedHCodes);
-$selectedPCodes = array_filter($selectedPCodes);
+// #39: an older P281 ticks (and saves as) P280
+$selectedPCodes = array_values(array_unique(array_map(static fn ($c) => \SDS\Services\GHSStatements::normalisePCode((string) $c), array_filter($selectedPCodes))));
+$ghsAll = \SDS\Services\GHSHazardData::all();
+
+// A determination saved with free-text classes only (no ticked hazards):
+// saving it on this form would clear those classes, and the CAS would print
+// no hazards. Tick the hazards whose "Class Category" matches exactly; the
+// rest are named so they can be ticked before saving (2026-10-28).
+$freeTextUnmatched = [];
+$freeTextMatched   = 0;
+if ($selectedHazards === [] && trim((string) ($det['hazard_classes'] ?? '')) !== '') {
+    foreach (array_filter(array_map('trim', explode(',', (string) $det['hazard_classes']))) as $cls) {
+        $match = null;
+        foreach ($ghsAll as $key => $g) {
+            if (strcasecmp($g['class'] . ' ' . $g['category'], $cls) === 0 || strcasecmp((string) $key, $cls) === 0
+                || strcasecmp(str_replace(' - ', ' ', (string) $key), $cls) === 0) {
+                $match = $key;
+                break;
+            }
+        }
+        if ($match !== null) {
+            $selectedHazards[] = $match;
+            $freeTextMatched++;
+        } else {
+            $freeTextUnmatched[] = $cls;
+        }
+    }
+    $selectedHazards = array_values(array_unique($selectedHazards));
+}
+
+// Codes the selected hazards give are added on save anyway, so only the
+// others are ticked as manual (2026-10-28): deselecting a hazard later then
+// drops its codes instead of leaving them ticked by hand. A hand-ticked code
+// that GHS gives only to a class already selected (another category) is
+// probably left from an earlier category, so the list below names it.
+// Flammable Liquids and aquatic codes are left out: they never print from a
+// determination (the product flash point / the aquatic summation decides).
+$autoH = [];
+$autoP = [];
+$selectedClasses = [];
+foreach ($selectedHazards as $key) {
+    if (!is_string($key) || !isset($ghsAll[$key])) {
+        continue;
+    }
+    $selectedClasses[$ghsAll[$key]['class']] = true;
+    foreach ($ghsAll[$key]['h_codes'] as $c) {
+        $autoH[$c] = true;
+    }
+    foreach ($ghsAll[$key]['p_codes'] as $c) {
+        $autoP[\SDS\Services\GHSStatements::normalisePCode((string) $c)] = true;
+    }
+}
+if (!empty($det['h_statements'])) {
+    $selectedHCodes = array_values(array_filter($selectedHCodes, static fn ($c) => !isset($autoH[$c])));
+}
+if (!empty($det['p_statements'])) {
+    $selectedPCodes = array_values(array_filter($selectedPCodes, static fn ($c) => !isset($autoP[$c])));
+}
+$leftoverH = [];
+foreach ($selectedHCodes as $c) {
+    $classes = [];
+    foreach ($ghsAll as $g) {
+        if (in_array($c, $g['h_codes'], true)) {
+            $classes[$g['class']] = true;
+        }
+    }
+    $neverPrints = [\SDS\Services\GHSHazardClass::FLAMMABLE_LIQUIDS, \SDS\Services\GHSHazardClass::AQUATIC_ACUTE, \SDS\Services\GHSHazardClass::AQUATIC_CHRONIC];
+    $silent = $classes !== [] && array_filter(array_keys($classes), static fn ($cl) =>
+        !in_array(\SDS\Services\HazardClassAliases::normalize((string) $cl), $neverPrints, true)) === [];
+    if ($classes !== [] && !$silent && array_diff_key($classes, $selectedClasses) === []) {
+        $leftoverH[$c] = implode(', ', array_keys($classes));
+    }
+}
+
+// Signal word: the manual choice only (2026-10-28), so one saved on Auto
+// reopens on Auto and keeps following the selections.
+$signalOverride = $det !== []
+    ? \SDS\Services\GHSHelper::signalWordOverride($det)
+    : \SDS\Services\GHSHelper::validSignalWord($old['signal_word'] ?? '');
+$signalAuto    = \SDS\Services\GHSHelper::autoSignalWord($selectedHazards) ?? '';
+$leftoverNeeds = \SDS\Services\GHSHelper::hCodesSignalFloor(array_keys($leftoverH)) ?? '';
 
 // Parse existing exposure limits
 $exposureLimits = json_decode($det['exposure_limits'] ?? ($old['exposure_limits_json'] ?? '[]'), true) ?: [];
@@ -189,7 +270,22 @@ $exposureLimits = json_decode($det['exposure_limits'] ?? ($old['exposure_limits_
         </div>
 
         <!-- ═══════════════ MANUAL H-CODE SELECTION ═══════════════ -->
-        <details class="code-selection-details" style="margin-top: 1rem; border: 1px solid #dee2e6; border-radius: 4px;">
+        <?php if ($freeTextUnmatched !== []): ?>
+            <div class="alert alert-warning" id="free-text-classes" style="margin-top: 1rem;">
+                <strong>This determination was saved with hazard classes typed as text:</strong> <?= e(implode(', ', $freeTextUnmatched)) ?>.
+                <?php if ($freeTextMatched === 0): ?>Tick the matching hazards above before saving; otherwise saving clears them and this CAS prints no hazards.<?php else: ?>The other classes matched and are ticked above. Tick the hazards for these too before saving; otherwise saving clears them and their H-codes and signal word no longer print.<?php endif; ?>
+            </div>
+        <?php endif; ?>
+        <?php if ($leftoverH !== []): ?>
+            <div class="alert alert-warning" id="leftover-h-codes" style="margin-top: 1rem;">
+                <strong>Check these hand-ticked H-codes:</strong>
+                <?php $parts = []; foreach ($leftoverH as $c => $cls) { $parts[] = e($c) . ' (' . e($cls) . ')'; } echo implode(', ', $parts); ?>.
+                GHS gives them only to a class you have selected, in another category, so they are probably left from an earlier category.
+                <?php if ($signalOverride === ''): ?>They still print, and the signal word covers them.<?php elseif ($leftoverNeeds !== '' && $leftoverNeeds !== $signalOverride && $leftoverNeeds === 'Danger'): ?>They still print, but the signal word override (<?= e($signalOverride) ?>) is below the <?= e($leftoverNeeds) ?> they need.<?php else: ?>They still print.<?php endif; ?>
+                Untick any that no longer apply under Additional H-Codes.
+            </div>
+        <?php endif; ?>
+        <details class="code-selection-details" style="margin-top: 1rem; border: 1px solid #dee2e6; border-radius: 4px;"<?= $leftoverH !== [] ? ' open' : '' ?>>
             <summary style="cursor: pointer; padding: 0.6rem 0.9rem; font-size: 1.2rem; font-weight: bold; background: #f8f9fa; list-style: revert;">
                 Additional H-Codes <small class="text-muted" style="font-weight:400; font-size:0.8rem;">(optional — beyond auto-populated; click to expand)</small>
             </summary>
@@ -344,14 +440,6 @@ $exposureLimits = json_decode($det['exposure_limits'] ?? ($old['exposure_limits_
         <h2 class="mt-2">Additional Details</h2>
         <div class="form-grid-2col">
             <div class="form-group">
-                <?php
-                // The manual choice only (2026-10-28): a determination saved on
-                // Auto reopens on Auto, so the word keeps following the selections.
-                $signalOverride = $det !== []
-                    ? \SDS\Services\GHSHelper::signalWordOverride($det)
-                    : \SDS\Services\GHSHelper::validSignalWord($old['signal_word'] ?? '');
-                $signalAuto = \SDS\Services\GHSHelper::autoSignalWord($selectedHazards) ?? '';
-                ?>
                 <label>Signal Word Override</label>
                 <select name="signal_word">
                     <option value="">— Auto (from selections) —</option>

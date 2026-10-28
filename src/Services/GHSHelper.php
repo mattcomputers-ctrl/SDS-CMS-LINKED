@@ -23,13 +23,17 @@ class GHSHelper
      *                      - selected_hazards_json: JSON array of GHS hazard-class keys
      *                      - h_codes_manual:        array of manually-entered H codes
      *                      - p_codes_manual:        array of manually-entered P codes
-     *                      - signal_word:           manual override ('Danger'|'Warning'|'')
+     *                      - signal_word:           manual override ('Danger'|'Warning'|'' = Auto)
      *                      - exposure_limits_json:  JSON array of exposure limit objects
      *                      - basis:                 freeform basis/rationale text
      * @return array {
      *     selected_hazards: JSON string of hazard keys,
      *     hazard_classes:   comma-separated "Class Cat" strings,
-     *     signal_word:      'Danger'|'Warning'|'',
+     *     signal_word:      'Danger'|'Warning'|'' (the override, else the one the selections give),
+     *     signal_word_override: 'Danger'|'Warning'|'' (the manual choice; '' = Auto) —
+     *                       only when $input has signal_word (the CAS determination
+     *                       form); the raw-material form offers no choice and its
+     *                       JSON stays as before,
      *     h_statements:     comma-separated H codes,
      *     p_statements:     comma-separated P codes,
      *     pictograms:       comma-separated GHS pictogram codes,
@@ -52,9 +56,7 @@ class GHSHelper
         $autoHCodes     = [];
         $autoPCodes     = [];
         $autoPictograms = [];
-        $autoSignalWord = null;
         $hazardClasses  = [];
-        $signalHierarchy = ['Danger' => 2, 'Warning' => 1];
 
         foreach ($selectedHazards as $key) {
             if (!isset($ghsData[$key])) {
@@ -71,13 +73,6 @@ class GHSHelper
             }
             foreach ($entry['pictograms'] as $pic) {
                 $autoPictograms[$pic] = true;
-            }
-            if ($entry['signal_word'] !== null) {
-                $newPri = $signalHierarchy[$entry['signal_word']] ?? 0;
-                $curPri = $autoSignalWord ? ($signalHierarchy[$autoSignalWord] ?? 0) : 0;
-                if ($newPri > $curPri) {
-                    $autoSignalWord = $entry['signal_word'];
-                }
             }
         }
 
@@ -110,11 +105,11 @@ class GHSHelper
         }
         sort($pictogramKeys);
 
-        // Signal word: manual override takes precedence
-        $signalWord = trim((string) ($input['signal_word'] ?? ''));
-        if ($signalWord === '') {
-            $signalWord = $autoSignalWord ?? '';
-        }
+        // Signal word: a manual override takes precedence. The choice is kept
+        // apart (signal_word_override) so a determination saved on Auto
+        // reopens on Auto and keeps following its selections (2026-10-28).
+        $signalOverride = self::validSignalWord($input['signal_word'] ?? '');
+        $signalWord     = $signalOverride !== '' ? $signalOverride : (self::autoSignalWord($selectedHazards) ?? '');
 
         $exposureLimits = json_decode($input['exposure_limits_json'] ?? '[]', true) ?: [];
 
@@ -133,6 +128,7 @@ class GHSHelper
             'selected_hazards' => json_encode($selectedHazards),
             'hazard_classes'   => implode(', ', array_unique($hazardClasses)),
             'signal_word'      => $signalWord,
+        ] + (array_key_exists('signal_word', $input) ? ['signal_word_override' => $signalOverride] : []) + [
             'h_statements'     => implode(', ', $allHCodes),
             'p_statements'     => implode(', ', $allPCodes),
             'pictograms'       => implode(', ', $pictogramKeys),
@@ -145,5 +141,69 @@ class GHSHelper
             $result[$field] = ($raw === '' || $raw === null) ? null : (float) $raw;
         }
         return $result;
+    }
+
+    /**
+     * The determination JSON to store when a CAS determination is edited
+     * (2026-10-28). An older one, saved before signal_word_override, keeps
+     * its stored text when the only difference is that key recording the
+     * choice it already implied: a save that changes nothing must not
+     * change the row, or bulk publish would count its products stale.
+     */
+    public static function determinationJsonForUpdate(array $new, ?string $stored): string
+    {
+        $old = json_decode((string) $stored, true);
+        if (is_array($old) && !array_key_exists('signal_word_override', $old) && array_key_exists('signal_word_override', $new)) {
+            $without = $new;
+            unset($without['signal_word_override']);
+            if (json_encode($without) === $stored && $new['signal_word_override'] === self::signalWordOverride($old)) {
+                return (string) $stored;
+            }
+        }
+        return (string) json_encode($new);
+    }
+
+    /** The signal word the selected hazard keys give: the highest of them (Danger over Warning), null when none has one. */
+    public static function autoSignalWord(array $selectedHazards): ?string
+    {
+        $ghsData   = GHSHazardData::all();
+        $hierarchy = ['Danger' => 2, 'Warning' => 1];
+        $auto      = null;
+        foreach ($selectedHazards as $key) {
+            $word = is_string($key) ? ($ghsData[$key]['signal_word'] ?? null) : null;
+            if ($word !== null && ($hierarchy[$word] ?? 0) > ($auto !== null ? ($hierarchy[$auto] ?? 0) : 0)) {
+                $auto = $word;
+            }
+        }
+        return $auto;
+    }
+
+    /** 'Danger' or 'Warning' as given, anything else ''. */
+    public static function validSignalWord(mixed $word): string
+    {
+        $word = is_scalar($word) ? trim((string) $word) : '';
+        return in_array($word, ['Danger', 'Warning'], true) ? $word : '';
+    }
+
+    /**
+     * The manual signal-word override of a saved determination, '' for Auto
+     * (2026-10-28), for the form's Signal Word Override list. Saved since
+     * then as signal_word_override. Older determinations kept only the
+     * signal word in effect: it counts as an override only where it differs
+     * from the one their selected hazards give, so one saved on Auto
+     * reopens on Auto instead of turning into an override.
+     */
+    public static function signalWordOverride(array $det): string
+    {
+        if (array_key_exists('signal_word_override', $det)) {
+            return self::validSignalWord($det['signal_word_override']);
+        }
+        $saved    = self::validSignalWord($det['signal_word'] ?? '');
+        $selected = $det['selected_hazards'] ?? [];
+        if (is_string($selected)) {
+            $selected = json_decode($selected, true);
+        }
+        $auto = self::autoSignalWord(is_array($selected) ? $selected : []) ?? '';
+        return $saved !== $auto ? $saved : '';
     }
 }

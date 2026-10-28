@@ -3657,10 +3657,11 @@ class AdminController
         $db = Database::getInstance();
 
         $determination = $this->buildDeterminationJson();
+        $stored        = $db->fetch("SELECT determination_json FROM competent_person_determinations WHERE id = ?", [(int) $id]);
 
         $db->update('competent_person_determinations', [
             'rationale_text'     => trim($_POST['rationale_text'] ?? ''),
-            'determination_json' => json_encode($determination),
+            'determination_json' => \SDS\Services\GHSHelper::determinationJsonForUpdate($determination, $stored['determination_json'] ?? null),
             'is_active'          => isset($_POST['is_active']) ? 1 : 0,
             'approved_by'        => !empty($_POST['mark_approved']) ? current_user_id() : null,
         ], 'id = ?', [(int) $id]);

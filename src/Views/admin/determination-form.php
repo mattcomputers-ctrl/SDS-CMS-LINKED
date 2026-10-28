@@ -344,13 +344,24 @@ $exposureLimits = json_decode($det['exposure_limits'] ?? ($old['exposure_limits_
         <h2 class="mt-2">Additional Details</h2>
         <div class="form-grid-2col">
             <div class="form-group">
+                <?php
+                // The manual choice only (2026-10-28): a determination saved on
+                // Auto reopens on Auto, so the word keeps following the selections.
+                $signalOverride = $det !== []
+                    ? \SDS\Services\GHSHelper::signalWordOverride($det)
+                    : \SDS\Services\GHSHelper::validSignalWord($old['signal_word'] ?? '');
+                $signalAuto = \SDS\Services\GHSHelper::autoSignalWord($selectedHazards) ?? '';
+                ?>
                 <label>Signal Word Override</label>
                 <select name="signal_word">
                     <option value="">— Auto (from selections) —</option>
-                    <option value="Danger" <?= ($det['signal_word'] ?? '') === 'Danger' ? 'selected' : '' ?>>Danger</option>
-                    <option value="Warning" <?= ($det['signal_word'] ?? '') === 'Warning' ? 'selected' : '' ?>>Warning</option>
+                    <option value="Danger" <?= $signalOverride === 'Danger' ? 'selected' : '' ?>>Danger</option>
+                    <option value="Warning" <?= $signalOverride === 'Warning' ? 'selected' : '' ?>>Warning</option>
                 </select>
                 <small class="text-muted">Leave as "Auto" unless you need to override the auto-determined signal word.</small>
+                <?php if ($signalOverride !== '' && $signalOverride !== $signalAuto): ?>
+                    <small class="text-muted" style="display: block;">Saved as an override. The selected hazards give <?= $signalAuto !== '' ? '<strong>' . e($signalAuto) . '</strong>' : 'no signal word' ?>; choose Auto to use that.</small>
+                <?php endif; ?>
             </div>
             <div class="form-group">
                 <label>Basis of Determination</label>

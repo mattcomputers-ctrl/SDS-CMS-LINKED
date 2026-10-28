@@ -133,11 +133,26 @@ class HazardEngine
      *   keep their stored word; a selected key no longer in GHSHazardData
      *   keeps the stored word as a floor.
      *
+     * v1.10-q3-cross-cutting-pcodes (2026-10-28): the Q3 P-code filter
+     *   drops the cross-cutting Flammable Liquids P-codes (P280, P501,
+     *   P303+P361+P353, which health classes carry too) only when the
+     *   determination has a Flammable Liquids entry that is ignored (a
+     *   Flammable Liquids class, or an H224-H227 stored without one).
+     *   Without one they are the determination's own: a P280 ticked by
+     *   hand next to Acute Toxicity Oral 3 prints again. Flammability-only
+     *   P-codes (P210, P233, P240-P243, P370+P378, P403+P235) are filtered
+     *   as before. A legacy free-text class HazardClassAliases does not
+     *   map ("Flam. Liq. 2") is ignored like Flammable Liquids, as the
+     *   mixture step already treated it: its P-codes are filtered and,
+     *   when no other class triggers, nothing (not even the stored word)
+     *   is contributed. With other classes the row keeps its stored
+     *   signal word, as before.
+     *
      * Must fit sds_generation_trace.engine_version (VARCHAR(30), migration
      * 036): a longer value fails the trace INSERT under strict SQL mode
      * after the sds_versions row is already written.
      */
-    public const ENGINE_VERSION = 'v1.9-cpd-auto-signal-word';
+    public const ENGINE_VERSION = 'v1.10-q3-cross-cutting-pcodes';
 
     /**
      * GHS summation thresholds per canonical class + category.
@@ -2893,13 +2908,8 @@ class HazardEngine
         foreach ($strayH as $code) {
             unset($allHStmts[$code]);
         }
-        $allHClasses = array_values(array_filter($allHClasses, static function (array $hc): bool {
-            if (($hc['canonical'] ?? null) === GHSHazardClass::FLAMMABLE_LIQUIDS) {
-                return false;
-            }
-            // Unmapped vendor class names such as "Flam. Liq. 2" (canonical null).
-            return !(($hc['canonical'] ?? null) === null && preg_match('/flam(mable)?\.?\s*liq/i', (string) ($hc['class'] ?? '')));
-        }));
+        $allHClasses = array_values(array_filter($allHClasses, static fn (array $hc): bool
+            => !self::isFlammableLiquidsClass($hc['canonical'] ?? null, (string) ($hc['class'] ?? ''))));
         $droppedGhs02 = false;
         if (isset($allPictograms['GHS02'])
             && array_intersect(array_map('strval', array_keys($allHStmts)), self::otherFlameHCodes()) === []) {
@@ -2956,6 +2966,17 @@ class HazardEngine
         }
     }
 
+    /**
+     * Q3: a Flammable Liquids hazard class, including unmapped vendor names
+     * such as "Flam. Liq. 2" or "Flammable Liquids - Category 2" (canonical
+     * null), which HazardClassAliases does not normalise.
+     */
+    private static function isFlammableLiquidsClass(?string $canonical, string $class): bool
+    {
+        return $canonical === GHSHazardClass::FLAMMABLE_LIQUIDS
+            || ($canonical === null && preg_match('/flam(mable)?\.?\s*liq/i', $class) === 1);
+    }
+
     /** Q3: union of the Flammable Liquids P-codes in GHSHazardData. */
     private static function flammableLiquidPCodes(): array
     {
@@ -2970,6 +2991,29 @@ class HazardEngine
                 }
             }
             $codes = array_keys($set);
+        }
+        return $codes;
+    }
+
+    /**
+     * Q3: the Flammable Liquids P-codes that no health or environmental
+     * GHSHazardData entry carries (P210, P233, P240-P243, P370+P378,
+     * P403+P235). P280, P501 and P303+P361+P353 are cross-cutting.
+     */
+    private static function flammabilityOnlyPCodes(): array
+    {
+        static $codes = null;
+        if ($codes === null) {
+            $shared = [];
+            foreach (GHSHazardData::HAZARD_CLASSIFICATIONS as $entry) {
+                $canonical = HazardClassAliases::normalize((string) ($entry['class'] ?? ''));
+                if ($canonical !== null && GHSHazardClass::group($canonical) !== 'physical') {
+                    foreach ($entry['p_codes'] ?? [] as $p) {
+                        $shared[(string) $p] = true;
+                    }
+                }
+            }
+            $codes = array_values(array_filter(self::flammableLiquidPCodes(), static fn (string $p): bool => !isset($shared[$p])));
         }
         return $codes;
     }
@@ -3076,6 +3120,9 @@ class HazardEngine
         foreach ($pRaw as $code) {
             $pStmts[$code] = ['code' => $code, 'text' => GHSStatements::pText($code)];
         }
+        // #39: a legacy P281 is P280 here already (classify() maps it at the
+        // end), so the Q3 filter below treats it as after a form resave.
+        $pStmts = GHSStatements::replaceWithdrawnPCodes($pStmts);
 
         // Parse pictograms
         $pictograms = array_filter(array_map('trim', explode(',', $det['pictograms'] ?? '')));
@@ -3100,6 +3147,7 @@ class HazardEngine
         // declared category (an H300-derived JSON selects Oral Cat 1 AND Cat 2).
         $ateCandidates = [];
         $flSkipped    = false; // Q3: a Flammable Liquids entry was ignored
+        $flUnmapped   = false; // v1.10: a free-text one HazardClassAliases does not map ("Flam. Liq. 2") was ignored
         $unknownKey   = false; // v1.9: a selected hazard key GHSHazardData no longer has
 
         if (!empty($selectedHazards)) {
@@ -3198,9 +3246,16 @@ class HazardEngine
             $classRaw = array_filter(array_map('trim', explode(',', $det['hazard_classes'] ?? '')));
             foreach ($classRaw as $classStr) {
                 $canonical = HazardClassAliases::normalize($classStr);
-                if ($canonical === GHSHazardClass::FLAMMABLE_LIQUIDS) {   // Q3, as above
+                if (self::isFlammableLiquidsClass($canonical, $classStr)) {   // Q3, as above
                     $this->recordFlammableIngredient($cas, $name, $conc, '', $source);
-                    $flSkipped = true;
+                    // An unmapped spelling used to count as a class of its own,
+                    // so the row kept its stored word: it still does (the
+                    // signal-word re-derivation below stays for mapped ones).
+                    if ($canonical === GHSHazardClass::FLAMMABLE_LIQUIDS) {
+                        $flSkipped = true;
+                    } else {
+                        $flUnmapped = true;
+                    }
                     continue;
                 }
                 $cutoff    = $this->getCutoff($canonical ?? '', null);
@@ -3278,13 +3333,22 @@ class HazardEngine
             }
             $hStmts     = $this->filterCpdCodesByTriggeredClasses($hStmts,     $triggeredCanonicals, 'h_codes',    $cas, $source);
             $pictograms = $this->filterCpdCodesByTriggeredClasses($pictograms, $triggeredCanonicals, 'pictograms', $cas, $source);
-            // Q3: flammability-only P-codes of an ignored Flammable Liquids
-            // entry (P210, P233, P240-P243, P403+P235 ...) must not ride along on
-            // another triggered class. Only the Flammable Liquids P-code set is
-            // filtered; every other P-code stays cross-cutting as before.
-            $flP    = array_intersect_key($pStmts, array_flip(self::flammableLiquidPCodes()));
-            $pStmts = array_diff_key($pStmts, $flP)
-                    + $this->filterCpdCodesByTriggeredClasses($flP, $triggeredCanonicals, 'p_codes', $cas, $source);
+            // Q3: flammability P-codes must not ride along on another
+            // triggered class; the product flash point decides flammability.
+            // The flammability-only ones (P210, P233, P240-P243, P370+P378,
+            // P403+P235) are filtered on every determination; the
+            // cross-cutting ones (P280, P501, P303+P361+P353) only when a
+            // Flammable Liquids entry was ignored, as they may have come from
+            // it: a Flammable Liquids class, or an H224-H227 stored without one
+            // (left after the class was deselected, or a federal prefill row
+            // whose class matched no key; the mixture step strips it).
+            // Otherwise they are the determination's own (a P280 ticked by
+            // hand next to Acute Toxicity Oral 3). Only the Flammable Liquids
+            // P-code set is filtered; every other P-code stays cross-cutting.
+            $flEntry = $flSkipped || $flUnmapped || array_intersect(array_map('strtoupper', $hRaw), self::FLAMMABLE_LIQUID_H_CODES) !== [];
+            $flP     = array_intersect_key($pStmts, array_flip($flEntry ? self::flammableLiquidPCodes() : self::flammabilityOnlyPCodes()));
+            $pStmts  = array_diff_key($pStmts, $flP)
+                     + $this->filterCpdCodesByTriggeredClasses($flP, $triggeredCanonicals, 'p_codes', $cas, $source);
             // v1.9: on Auto (no signal_word_override) the signal word of a
             // determination with selected hazard classes follows the classes
             // that trigger, so a stored word never sticks when the hazards

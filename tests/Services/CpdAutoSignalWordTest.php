@@ -114,7 +114,8 @@ check($sw($det([$irr], 'Danger', ['signal_word_override' => 'Danger'])) === 'Dan
 echo "\nd. The form and the save agree\n";
 check(\SDS\Services\GHSHelper::signalWordOverride(['signal_word' => 'Warning', 'selected_hazards' => json_encode([$corr])]) === '',
     'a determination saved before 2026-10-28 opens on Auto (none was a manual override)');
-check(HazardEngine::ENGINE_VERSION === 'v1.9-cpd-auto-signal-word' && strlen(HazardEngine::ENGINE_VERSION) <= 30, 'engine version v1.9-cpd-auto-signal-word');
+check(preg_match('/^v(\d+\.\d+)/', HazardEngine::ENGINE_VERSION, $vm) === 1 && version_compare($vm[1], '1.9', '>=') && strlen(HazardEngine::ENGINE_VERSION) <= 30,
+    'engine version v1.9 (auto signal word) or later', HazardEngine::ENGINE_VERSION);
 
 echo "\n{$checks} checks, {$failures} failures\n";
 exit($failures === 0 ? 0 : 1);

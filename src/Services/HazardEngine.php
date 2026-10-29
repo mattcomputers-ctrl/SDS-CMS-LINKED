@@ -148,11 +148,27 @@ class HazardEngine
      *   is contributed. With other classes the row keeps its stored
      *   signal word, as before.
      *
+     * v1.11-free-text-signal-floor (2026-10-28): the re-derived signal
+     *   word of a legacy free-text determination with an ignored Flammable
+     *   Liquids class (Q3) no longer drops a stored word that a class still
+     *   needs. A class its H-codes cannot work out now keeps the stored word
+     *   up to the word its name surely needs at its own cut-off
+     *   (readFreeTextClass(): "Acute Tox. 3", "Carc. 1B" Danger; "Eye Irrit.
+     *   2" Warning; "Carcinogenicity" Warning, as it may be Category 2), an
+     *   unaliased name below the 1 % default included ("Carc. 1B" at 0.5 %).
+     *   A route-less "Acute Toxicity" keeps it for a declared H-code of any
+     *   route (H331 next to H302: Danger), as the filter drops the dermal and
+     *   inhalation codes. Before, the stored word was dropped as soon as one
+     *   class could be worked out (Warning next to "Acute Tox. 3"). The word
+     *   only ever rises, never above the stored word: every other result is
+     *   as in v1.10, including a stored word that prints only because no
+     *   class can be worked out, and unmapped spellings ("Flam. Liq. 2").
+     *
      * Must fit sds_generation_trace.engine_version (VARCHAR(30), migration
      * 036): a longer value fails the trace INSERT under strict SQL mode
      * after the sds_versions row is already written.
      */
-    public const ENGINE_VERSION = 'v1.10-q3-cross-cutting-pcodes';
+    public const ENGINE_VERSION = 'v1.11-free-text-signal-floor';
 
     /**
      * GHS summation thresholds per canonical class + category.
@@ -1432,6 +1448,22 @@ class HazardEngine
         // the category is missing or unrecognised — matches pre-Phase-1 min()
         // fallback behaviour.
         return (float) min($categories);
+    }
+
+    /**
+     * v1.11: the cut-off of a category read from a free-text class name. One
+     * the table lacks is looked up without its letter ('Cat 1B' as 'Cat 1'),
+     * else the class's highest cut-off applies ("Acute Tox. 5": 1 %), not
+     * getCutoff()'s lowest. No category: getCutoff() as for the class.
+     */
+    private function freeTextCutoff(string $canonical, string $category): float
+    {
+        $table = self::HEALTH_CUTOFFS[$canonical] ?? null;
+        if ($category === '' || $table === null || isset($table[$category])) {
+            return $this->getCutoff($canonical, $category !== '' ? $category : null);
+        }
+        $number = (string) preg_replace('/[A-D]$/', '', $category);
+        return (float) ($table[$number] ?? max($table));
     }
 
     /**
@@ -3018,6 +3050,140 @@ class HazardEngine
         return $codes;
     }
 
+    /** v1.11: a route-less "Acute Toxicity" / "Acute Tox." (aliased to oral) stands for any route. */
+    private const ACUTE_ROUTE_CANONICALS = [
+        GHSHazardClass::ACUTE_TOXICITY_ORAL,
+        GHSHazardClass::ACUTE_TOXICITY_DERMAL,
+        GHSHazardClass::ACUTE_TOXICITY_INHALATION,
+    ];
+
+    /**
+     * v1.11: a free-text class name ending in its category: "Acute Tox. 3",
+     * "Eye Irritation - Category 2A", "Carcinogenicity (Category 2)",
+     * "Acute Tox. 4 Inhalation". Groups: class, number, letter.
+     */
+    private const FREE_TEXT_CATEGORY = '/^(.+?)[\s,:\-–—(]*(?:\bcat(?:egory)?\.?\s*)?(\d+)([A-D]?)\)?(?:\s*\([^)]*\))?(?:\s+(?:oral|dermal|inhalation))?(?:\s*\*+)?$/iu';
+
+    /** v1.11: "Acute Toxicity" / "Acute Tox." naming no route, with or without a category. */
+    private static function isRoutelessAcute(string $class): bool
+    {
+        if (preg_match('/oral|derm|inhal/i', $class) === 1) {
+            return false;
+        }
+        $name = preg_match(self::FREE_TEXT_CATEGORY, trim($class), $m) === 1 ? $m[1] : $class;
+        return preg_match('/^acute\s+tox(?:icity|\.)?$/i', trim($name)) === 1;
+    }
+
+    /** v1.11: the H-codes of the three acute-toxicity routes in GHSHazardData. */
+    private static function acuteHCodes(): array
+    {
+        static $codes = null;
+        if ($codes === null) {
+            $codes = [];
+            foreach (GHSHazardData::HAZARD_CLASSIFICATIONS as $entry) {
+                if (in_array(HazardClassAliases::normalize((string) ($entry['class'] ?? '')), self::ACUTE_ROUTE_CANONICALS, true)) {
+                    foreach ($entry['h_codes'] ?? [] as $c) {
+                        $codes[strtoupper((string) $c)] = true;
+                    }
+                }
+            }
+        }
+        return $codes;
+    }
+
+    /**
+     * v1.11: what a legacy free-text class name says, for the signal word of
+     * a determination whose H-codes cannot work the class out: its canonical
+     * class, its category ('Cat 3', '' when the name gives none; for its
+     * cut-off) and 'floor', the least severe word of the categories the name
+     * allows, so the word the class surely needs. A category in the name
+     * decides ("Acute Tox. 3", "Carc. 1B", "Skin Corr. 1B" Danger; "Eye
+     * Irrit. 2", "STOT SE 3" Warning; "Aquatic Chronic 2" none), as does a
+     * GHSHazardData key or "class category" text ("Explosives - Division
+     * 1.4" Warning). Otherwise the categories the name covers do: "Serious
+     * Eye Damage" and "Skin Corrosion" Danger; "Eye Irritation", "Skin
+     * Sensitization" and "Carcinogenicity" (it may be Category 2) Warning.
+     * Null when no class can be read from the name ("Toxic", a category split
+     * off by the comma, a long name the alias table lacks, a category
+     * GHSHazardData does not have, a bracket with a code or a "not": "Serious
+     * Eye Damage (H319)") or it is Flammable Liquids (Q3).
+     *
+     * @return array{canonical: string, category: string, floor: ?string}|null
+     */
+    private static function readFreeTextClass(string $class, ?string $canonical): ?array
+    {
+        $text = trim($class);
+        $low  = mb_strtolower((string) preg_replace('/\s+/', ' ', $text));
+        $read = null;
+        foreach (GHSHazardData::HAZARD_CLASSIFICATIONS as $key => $entry) {
+            $cls = mb_strtolower((string) ($entry['class'] ?? ''));
+            $cat = mb_strtolower((string) ($entry['category'] ?? ''));
+            if ($low === mb_strtolower((string) $key) || $low === "{$cls} {$cat}" || $low === "{$cls} - {$cat}") {
+                $read = [
+                    'canonical' => (string) HazardClassAliases::normalize((string) ($entry['class'] ?? '')),
+                    'category'  => HazardClassAliases::normalizeCategory((string) ($entry['category'] ?? '')),
+                    'floor'     => $entry['signal_word'] ?? null,
+                ];
+                break;
+            }
+        }
+        // "Lactation", "Lact.", "Reproductive Toxicity (Lactation)", "Effects on or via lactation"
+        if ($read === null && preg_match('/^(?:(?:reproductive toxicity|repr\.?)[\s\-–—:,(]*)?(?:effects on or via\s+)?lact(?:ation|\.)\)?$/iu', $text) === 1) {
+            $read = ['canonical' => GHSHazardClass::REPRODUCTIVE_TOXICITY, 'category' => 'Lactation', 'floor' => null];
+        }
+        if ($read !== null) {
+            return $read['canonical'] === GHSHazardClass::FLAMMABLE_LIQUIDS ? null : $read;
+        }
+        $base   = $text;
+        $num    = '';
+        $letter = '';
+        if (preg_match(self::FREE_TEXT_CATEGORY, $text, $m) === 1) {
+            $named = HazardClassAliases::normalize(trim($m[1]));
+            if ($named !== null && ($canonical === null || $named === $canonical)) {
+                [$base, $num, $letter, $canonical] = [trim($m[1]), $m[2], strtoupper($m[3]), $named];
+            }
+        }
+        // A qualifier in brackets ("Press. Gas (Liq.)"): every category of the
+        // class decides. One holding a code, a number or a "not" ("Serious Eye
+        // Damage (H319)", "(not classified)") is not read.
+        if ($canonical === null && preg_match('/^(.+?)\s*\(([^)]*)\)$/u', $text, $pm) === 1
+            && preg_match('/\d|\bnot?\b|\bnon\b/i', $pm[2]) !== 1) {
+            $base      = '';
+            $canonical = HazardClassAliases::normalize($pm[1]);
+        }
+        if ($canonical === null || $canonical === GHSHazardClass::FLAMMABLE_LIQUIDS) {
+            return null;
+        }
+        $routes = $canonical === GHSHazardClass::ACUTE_TOXICITY_ORAL && self::isRoutelessAcute($text)
+            ? self::ACUTE_ROUTE_CANONICALS : [$canonical];
+        $name = rtrim(str_replace('.', '', mb_strtolower((string) preg_replace('/\s+/', ' ', $base))));
+        $all = $byNum = $byName = [];
+        foreach (GHSHazardData::HAZARD_CLASSIFICATIONS as $key => $entry) {
+            if (!in_array(HazardClassAliases::normalize((string) ($entry['class'] ?? '')), $routes, true)) {
+                continue;
+            }
+            $all[] = $entry;
+            if ($num !== '' && preg_match('/^Cat (\d+)/', HazardClassAliases::normalizeCategory((string) ($entry['category'] ?? '')), $cm) === 1 && $cm[1] === $num) {
+                $byNum[] = $entry;
+            }
+            // The key names the category's own class: 'Eye Irritation - Category 2A'.
+            if ($name !== '' && str_starts_with(mb_strtolower(explode(' - ', (string) $key)[0]), $name)) {
+                $byName[] = $entry;
+            }
+        }
+        if ($all === [] || ($num !== '' && $byNum === [])) {
+            return null;
+        }
+        $floor = 'Danger';
+        foreach ($num !== '' ? $byNum : ($byName ?: $all) as $entry) {
+            $sw = $entry['signal_word'] ?? null;
+            if ((self::SIGNAL_HIERARCHY[$sw ?? ''] ?? 0) < (self::SIGNAL_HIERARCHY[$floor ?? ''] ?? 0)) {
+                $floor = $sw;
+            }
+        }
+        return ['canonical' => $canonical, 'category' => $num !== '' ? "Cat {$num}{$letter}" : '', 'floor' => $floor];
+    }
+
     /** Q3: H-codes of every non-Flammable-Liquids GHSHazardData entry that carries GHS02. */
     private static function otherFlameHCodes(): array
     {
@@ -3149,6 +3315,7 @@ class HazardEngine
         $flSkipped    = false; // Q3: a Flammable Liquids entry was ignored
         $flUnmapped   = false; // v1.10: a free-text one HazardClassAliases does not map ("Flam. Liq. 2") was ignored
         $unknownKey   = false; // v1.9: a selected hazard key GHSHazardData no longer has
+        $ftBelowDefault = [];  // v1.11: unaliased free-text classes below the 1 % default cut-off
 
         if (!empty($selectedHazards)) {
             foreach ($selectedHazards as $key) {
@@ -3270,6 +3437,9 @@ class HazardEngine
                 );
 
                 if ($conc < $cutoff) {
+                    if ($canonical === null) {
+                        $ftBelowDefault[] = $classStr; // v1.11: its own class's cut-off may be lower ("Carc. 1B")
+                    }
                     $this->traceStep('cpd_below_cutoff', "CPD {$cas} {$classStr} below cutoff (free-text, no category)", [
                         'cas' => $cas, 'class' => $classStr,
                         'canonical' => $canonical,
@@ -3376,6 +3546,18 @@ class HazardEngine
                         $keptH[strtoupper(trim($part))] = true;
                     }
                 }
+                // v1.11: the most severe word a free-text class still needs
+                // although the codes above cannot work it out (readFreeTextClass()),
+                // when it applies at its own class's cut-off.
+                $needs = null;
+                $need  = function (string $class, ?string $canonical) use (&$needs, $conc): void {
+                    $read = self::readFreeTextClass($class, $canonical);
+                    if ($read !== null
+                        && $conc >= $this->freeTextCutoff($read['canonical'], $read['category'])
+                        && (self::SIGNAL_HIERARCHY[$read['floor'] ?? ''] ?? 0) > (self::SIGNAL_HIERARCHY[$needs ?? ''] ?? 0)) {
+                        $needs = $read['floor'];
+                    }
+                };
                 foreach ($hazardClasses as $hcT) {
                     $canT = (string) ($hcT['canonical'] ?? '');
                     $catT = (string) ($hcT['category_canonical'] ?? '');
@@ -3399,6 +3581,23 @@ class HazardEngine
                         }
                         if (!$found) {
                             $underivable = true;
+                            $need((string) ($hcT['class'] ?? ''), $canT === '' ? null : $canT);
+                        }
+                        // v1.11: a route-less "Acute Toxicity" is aliased to oral, so
+                        // the filter dropped its dermal / inhalation codes (H311, H331).
+                        if ($canT === GHSHazardClass::ACUTE_TOXICITY_ORAL && self::isRoutelessAcute((string) ($hcT['class'] ?? ''))) {
+                            $declAcute = [];
+                            foreach ($hRaw as $kc) {
+                                foreach (explode('+', (string) $kc) as $part) {
+                                    if (isset(self::acuteHCodes()[strtoupper(trim($part))])) {
+                                        $declAcute[] = strtoupper(trim($part));
+                                    }
+                                }
+                            }
+                            $acute = GHSHelper::hCodesSignalFloor($declAcute);
+                            if ((self::SIGNAL_HIERARCHY[$acute ?? ''] ?? 0) > (self::SIGNAL_HIERARCHY[$needs ?? ''] ?? 0)) {
+                                $needs = $acute;
+                            }
                         }
                     }
                     if ($cand !== null
@@ -3406,7 +3605,22 @@ class HazardEngine
                         $sw = $cand;
                     }
                 }
+                // v1.11: an unaliased name held to the 1 % default cut-off
+                // ("Carc. 1B" at 0.5 %) still counts above its own class's.
+                foreach ($ftBelowDefault as $classStr) {
+                    $need($classStr, null);
+                }
                 $derived = $underivable ? ($sw ?? $signalWord) : $sw;
+                // v1.11: such a class keeps the declared word up to the word it
+                // needs ("Acute Tox. 3" next to "Eye Irritation": Danger, where
+                // the word of the worked-out class alone gave Warning). Only ever
+                // raises, never above the declared word.
+                if ($needs !== null && $signalWord !== null) {
+                    $kept = (self::SIGNAL_HIERARCHY[$signalWord] ?? 0) > (self::SIGNAL_HIERARCHY[$needs] ?? 0) ? $needs : $signalWord;
+                    if ((self::SIGNAL_HIERARCHY[$kept] ?? 0) > (self::SIGNAL_HIERARCHY[$derived ?? ''] ?? 0)) {
+                        $derived = $kept;
+                    }
+                }
                 if (!$flSkipped && $unknownKey && $signalWord !== null
                     && (self::SIGNAL_HIERARCHY[$signalWord] ?? 0) > (self::SIGNAL_HIERARCHY[$derived ?? ''] ?? 0)) {
                     // A selected key GHSHazardData no longer has: its word

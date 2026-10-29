@@ -156,7 +156,8 @@ $fl->setAccessible(true);
 $cross = array_values(array_diff($fl->invoke(null), $set));
 sort($cross);
 check($cross === ['P280', 'P303+P361+P353', 'P501'], 'cross-cutting: P280, P303+P361+P353, P501', $cross);
-check(HazardEngine::ENGINE_VERSION === 'v1.10-q3-cross-cutting-pcodes' && strlen(HazardEngine::ENGINE_VERSION) <= 30, 'engine version v1.10-q3-cross-cutting-pcodes', HazardEngine::ENGINE_VERSION);
+check(preg_match('/^v(\d+\.\d+)/', HazardEngine::ENGINE_VERSION, $vm) === 1 && version_compare($vm[1], '1.10', '>=') && strlen(HazardEngine::ENGINE_VERSION) <= 30,
+    'engine version v1.10 (cross-cutting P-codes) or later', HazardEngine::ENGINE_VERSION);
 
 echo "\n{$checks} checks, {$failures} failures\n";
 exit($failures === 0 ? 0 : 1);

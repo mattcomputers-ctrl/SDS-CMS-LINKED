@@ -70,6 +70,11 @@ class SdsArchiveController
         $this->requireAdmin();
         CSRF::validateRequest();
 
+        // Tens of thousands of PDFs: don't let max_execution_time or a
+        // closed tab stop the ZIP half-written.
+        set_time_limit(0);
+        ignore_user_abort(true);
+
         $db       = Database::getInstance();
         $basePath = App::basePath();
 
@@ -173,6 +178,11 @@ class SdsArchiveController
         $this->requireAdmin();
         CSRF::validateRequest();
 
+        // Same as generate(): a purge stopped part-way leaves rows pointing
+        // at deleted files.
+        set_time_limit(0);
+        ignore_user_abort(true);
+
         $db       = Database::getInstance();
         $basePath = App::basePath();
 
@@ -213,11 +223,13 @@ class SdsArchiveController
             $deleted++;
         }
 
-        if (!empty($ids)) {
-            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        // Chunked: native prepares cap a statement at 65,535 placeholders,
+        // and the files are already gone by now.
+        foreach (array_chunk($ids, 1000) as $chunk) {
+            $placeholders = implode(',', array_fill(0, count($chunk), '?'));
             $db->query(
                 "UPDATE sds_versions SET pdf_path = NULL WHERE id IN ({$placeholders})",
-                $ids
+                $chunk
             );
         }
 
@@ -289,33 +301,70 @@ class SdsArchiveController
      * version for their product+alias+language group and have a PDF on record.
      *
      * "Current" = highest version number per (finished_good_id, raw_material_id,
-     * alias_id, language) among published, non-deleted rows.
+     * alias_id, language) among published, non-deleted rows. PARTITION BY
+     * groups NULLs together, the same as <=>. One window pass instead of a
+     * correlated EXISTS per row: sds_versions grows by a full catalog on
+     * every Publish All.
      *
-     * Only returns rows from `public/generated-pdfs/` — never touches
-     * supplier SDS uploads.
+     * Only returns PDFs inside the generated-PDF directory — never touches
+     * supplier SDS uploads. pdf_path is stored relative to the base path as
+     * the publisher saw it, so with the installer's config
+     * (`__DIR__ . '/../public/generated-pdfs'`) it reads
+     * `config/../public/generated-pdfs/...`, not `public/generated-pdfs/...`.
      */
     private function getOldVersions(Database $db): array
     {
-        return $db->fetchAll(
-            "SELECT sv.id, sv.pdf_path, sv.version, sv.finished_good_id,
-                    sv.alias_id, sv.language
-             FROM sds_versions sv
-             WHERE sv.status = 'published'
-               AND sv.is_deleted = 0
-               AND sv.pdf_path IS NOT NULL
-               AND sv.pdf_path != ''
-               AND sv.pdf_path LIKE 'public/generated-pdfs/%'
-               AND EXISTS (
-                   SELECT 1 FROM sds_versions sv2
-                   WHERE sv2.finished_good_id <=> sv.finished_good_id
-                     AND sv2.raw_material_id  <=> sv.raw_material_id
-                     AND sv2.alias_id         <=> sv.alias_id
-                     AND sv2.language          = sv.language
-                     AND sv2.status            = 'published'
-                     AND sv2.is_deleted        = 0
-                     AND sv2.version           > sv.version
-               )"
+        $rows = $db->fetchAll(
+            "SELECT v.id, v.pdf_path, v.version, v.finished_good_id,
+                    v.alias_id, v.language
+             FROM (
+                 SELECT sv.id, sv.pdf_path, sv.version, sv.finished_good_id,
+                        sv.alias_id, sv.language,
+                        MAX(sv.version) OVER (
+                            PARTITION BY sv.finished_good_id, sv.raw_material_id,
+                                         sv.alias_id, sv.language
+                        ) AS latest_version
+                 FROM sds_versions sv
+                 WHERE sv.status = 'published'
+                   AND sv.is_deleted = 0
+             ) v
+             WHERE v.version < v.latest_version
+               AND v.pdf_path IS NOT NULL
+               AND v.pdf_path LIKE '%generated-pdfs/%'"
         );
+
+        $basePath     = App::basePath();
+        $generatedDir = (string) App::config('paths.generated_pdfs', $basePath . '/public/generated-pdfs');
+
+        return array_values(array_filter(
+            $rows,
+            static fn(array $r): bool => self::isInDirectory($basePath . '/' . $r['pdf_path'], $generatedDir)
+        ));
+    }
+
+    /**
+     * True when $path lies inside $dir once `.` / `..` segments are
+     * resolved. Lexical only, so it also works for files already gone.
+     */
+    private static function isInDirectory(string $path, string $dir): bool
+    {
+        return str_starts_with(self::normalisePath($path), rtrim(self::normalisePath($dir), '/') . '/');
+    }
+
+    private static function normalisePath(string $path): string
+    {
+        $parts = [];
+        foreach (explode('/', str_replace('\\', '/', $path)) as $seg) {
+            if ($seg === '' || $seg === '.') {
+                continue;
+            }
+            if ($seg === '..') {
+                array_pop($parts);
+                continue;
+            }
+            $parts[] = $seg;
+        }
+        return '/' . implode('/', $parts);
     }
 
     /**

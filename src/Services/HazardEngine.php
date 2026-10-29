@@ -164,11 +164,27 @@ class HazardEngine
      *   as in v1.10, including a stored word that prints only because no
      *   class can be worked out, and unmapped spellings ("Flam. Liq. 2").
      *
+     * v1.12-free-text-class-codes (2026-10-29): a legacy free-text class
+     *   name HazardClassAliases does not map is read for its class and
+     *   category (readFreeTextClass(): "Acute Tox. 3", "Carc. 1B", "STOT SE
+     *   3", "Skin Irrit. 2", "Aquatic Chronic 2", "Carcinogenicity (Category
+     *   2)"). It applies at that category's cut-off (0.1 % for Carc. 1B,
+     *   20 % for STOT SE 3), not the 1 % default, and keeps its class's
+     *   H-codes and pictograms, which the code filter dropped. Below its
+     *   cut-off it feeds the summation as a ticked category does. A
+     *   route-less "Acute Toxicity" / "Acute Tox." keeps the codes of every
+     *   route (H311, H331), one naming its route only that route's. The
+     *   entry keeps its name and no canonical class, so its Section 2 line
+     *   and the v1.11 signal word are as before (counting under 1 %, it adds
+     *   only the word its name needs); a code it now keeps sets its floor
+     *   (v1.9), on a row that keeps its stored word too. Flammable Liquids
+     *   spellings stay ignored (Q3).
+     *
      * Must fit sds_generation_trace.engine_version (VARCHAR(30), migration
      * 036): a longer value fails the trace INSERT under strict SQL mode
      * after the sds_versions row is already written.
      */
-    public const ENGINE_VERSION = 'v1.11-free-text-signal-floor';
+    public const ENGINE_VERSION = 'v1.12-free-text-class-codes';
 
     /**
      * GHS summation thresholds per canonical class + category.
@@ -2697,19 +2713,7 @@ class HazardEngine
         string $cas,
         string $source
     ): array {
-        static $codeToCanonicalsCache = [];
-        if (!isset($codeToCanonicalsCache[$codeType])) {
-            $map = [];
-            foreach (GHSHazardData::HAZARD_CLASSIFICATIONS as $entry) {
-                $canonical = HazardClassAliases::normalize((string) ($entry['class'] ?? ''));
-                if ($canonical === null) continue;
-                foreach (($entry[$codeType] ?? []) as $code) {
-                    $map[(string) $code][$canonical] = true;
-                }
-            }
-            $codeToCanonicalsCache[$codeType] = $map;
-        }
-        $mapForType = $codeToCanonicalsCache[$codeType];
+        $mapForType = self::cpdCodeCanonicals($codeType);
 
         $filtered = [];
         foreach ($items as $key => $value) {
@@ -2753,6 +2757,29 @@ class HazardEngine
             }
         }
         return $filtered;
+    }
+
+    /**
+     * Code => set of canonical classes GHSHazardData gives it, per code type
+     * ('h_codes' | 'pictograms' | 'p_codes'); built once per type.
+     *
+     * @return array<string, array<string, true>>
+     */
+    private static function cpdCodeCanonicals(string $codeType): array
+    {
+        static $codeToCanonicalsCache = [];
+        if (!isset($codeToCanonicalsCache[$codeType])) {
+            $map = [];
+            foreach (GHSHazardData::HAZARD_CLASSIFICATIONS as $entry) {
+                $canonical = HazardClassAliases::normalize((string) ($entry['class'] ?? ''));
+                if ($canonical === null) continue;
+                foreach (($entry[$codeType] ?? []) as $code) {
+                    $map[(string) $code][$canonical] = true;
+                }
+            }
+            $codeToCanonicalsCache[$codeType] = $map;
+        }
+        return $codeToCanonicalsCache[$codeType];
     }
 
     /**
@@ -3074,6 +3101,47 @@ class HazardEngine
         return preg_match('/^acute\s+tox(?:icity|\.)?$/i', trim($name)) === 1;
     }
 
+    /**
+     * v1.12: the routes whose codes a free-text "Acute Toxicity" / "Acute
+     * Tox." name keeps: the routes it names ("Acute Tox. 4 Inhalation",
+     * "Acute Toxicity Cat 4 (Inhalation)", which the alias table maps to
+     * oral), every route when it names none (isRoutelessAcute()). Null for
+     * any other name ("Dermal toxicity", a translation): its class decides.
+     */
+    private static function freeTextAcuteRoutes(string $class): ?array
+    {
+        if (preg_match('/^\s*acute\s+tox(?:icity|\.)?(?![a-z])/i', $class) !== 1) {
+            return null;
+        }
+        $routes = [];
+        foreach (['oral' => GHSHazardClass::ACUTE_TOXICITY_ORAL, 'derm' => GHSHazardClass::ACUTE_TOXICITY_DERMAL,
+                  'inhal' => GHSHazardClass::ACUTE_TOXICITY_INHALATION] as $word => $route) {
+            if (preg_match('/' . $word . '/i', $class) === 1) {
+                $routes[] = $route;
+            }
+        }
+        return $routes ?: self::ACUTE_ROUTE_CANONICALS;
+    }
+
+    /**
+     * v1.12: the SUMMATION_RULES category of a category read from a free-text
+     * name, as a ticked category would feed it: 'Cat 1B' of Skin Corr. as
+     * 'Cat 1' (the rules have no sub-category), the CLP 'Cat 2' of Eye Irrit.
+     * as 'Cat 2A'. '' when the class has no such rule (Eye Irrit. 2B).
+     */
+    private static function freeTextSummationCategory(string $canonical, string $category): string
+    {
+        $rules = self::SUMMATION_RULES[$canonical] ?? [];
+        if ($category === '' || isset($rules[$category])) {
+            return isset($rules[$category]) ? $category : '';
+        }
+        $number = (string) preg_replace('/[A-D]$/', '', $category);
+        if ($number !== $category) {
+            return isset($rules[$number]) ? $number : '';
+        }
+        return isset($rules[$category . 'A']) ? $category . 'A' : '';
+    }
+
     /** v1.11: the H-codes of the three acute-toxicity routes in GHSHazardData. */
     private static function acuteHCodes(): array
     {
@@ -3093,7 +3161,9 @@ class HazardEngine
 
     /**
      * v1.11: what a legacy free-text class name says, for the signal word of
-     * a determination whose H-codes cannot work the class out: its canonical
+     * a determination whose H-codes cannot work the class out (v1.12: and,
+     * for a name the alias table does not map, the class and cut-off it is
+     * classified with in parseDeterminationStructure()): its canonical
      * class, its category ('Cat 3', '' when the name gives none; for its
      * cut-off) and 'floor', the least severe word of the categories the name
      * allows, so the word the class surely needs. A category in the name
@@ -3315,7 +3385,7 @@ class HazardEngine
         $flSkipped    = false; // Q3: a Flammable Liquids entry was ignored
         $flUnmapped   = false; // v1.10: a free-text one HazardClassAliases does not map ("Flam. Liq. 2") was ignored
         $unknownKey   = false; // v1.9: a selected hazard key GHSHazardData no longer has
-        $ftBelowDefault = [];  // v1.11: unaliased free-text classes below the 1 % default cut-off
+        $ftCanonicals = [];    // v1.12: classes whose codes triggered free-text names keep (a read class, acute routes)
 
         if (!empty($selectedHazards)) {
             foreach ($selectedHazards as $key) {
@@ -3425,27 +3495,55 @@ class HazardEngine
                     }
                     continue;
                 }
-                $cutoff    = $this->getCutoff($canonical ?? '', null);
+                // v1.12: a name the alias table does not map is read for its
+                // class and category ("Acute Tox. 3", "Carc. 1B", "STOT SE 3",
+                // "Carcinogenicity (Category 2)"; Flammable Liquids never). It
+                // applies at that category's cut-off and keeps its class's codes
+                // below; its entry keeps the name and no canonical class.
+                $read   = $canonical === null ? self::readFreeTextClass($classStr, null) : null;
+                $cutoff = $read !== null
+                    ? $this->freeTextCutoff($read['canonical'], $read['category'])
+                    : $this->getCutoff($canonical ?? '', null);
 
                 // Free-text entries have no category, so they don't land in
                 // SUMMATION_RULES (which is keyed by specific categories).
                 // Still record the attempt — addToSummationBuffer silently
                 // drops uncategorised entries so the buffer stays coherent.
-                $this->addToSummationBuffer(
-                    $canonical, '', $cas, $name, $conc,
-                    $source, $conc >= $cutoff
-                );
+                // v1.12: a category read from the name feeds it below its
+                // cut-off, as a ticked one does (one that triggers is
+                // classified already: its entry has no category to dedupe on).
+                if ($read !== null) {
+                    if ($conc < $cutoff) {
+                        $this->addToSummationBuffer(
+                            $read['canonical'], self::freeTextSummationCategory($read['canonical'], $read['category']),
+                            $cas, $name, $conc, $source, false
+                        );
+                    }
+                } else {
+                    $this->addToSummationBuffer(
+                        $canonical, '', $cas, $name, $conc,
+                        $source, $conc >= $cutoff
+                    );
+                }
 
                 if ($conc < $cutoff) {
-                    if ($canonical === null) {
-                        $ftBelowDefault[] = $classStr; // v1.11: its own class's cut-off may be lower ("Carc. 1B")
-                    }
                     $this->traceStep('cpd_below_cutoff', "CPD {$cas} {$classStr} below cutoff (free-text, no category)", [
                         'cas' => $cas, 'class' => $classStr,
                         'canonical' => $canonical,
+                        'read' => $read,
                         'concentration' => $conc, 'cutoff' => $cutoff, 'source' => $source,
                     ]);
                     continue;
+                }
+
+                // v1.12: the codes it keeps. A route-less acute name keeps
+                // every route's, one naming a route that route's.
+                $own = $read['canonical'] ?? $canonical;
+                if ($own !== null) {
+                    $routes = in_array($own, self::ACUTE_ROUTE_CANONICALS, true) ? self::freeTextAcuteRoutes($classStr) : null;
+                    foreach ($routes ?? ($read !== null ? [$own] : []) as $keep) {
+                        $ftCanonicals[$keep] = true;
+                    }
                 }
 
                 $anyTriggered = true;
@@ -3495,12 +3593,13 @@ class HazardEngine
             // P-codes are left alone: many (P210, P280, P304+P340, …) are
             // cross-cutting across multiple hazard classes and a strict
             // filter would drop legitimate P-code contributions.
-            $triggeredCanonicals = [];
+            $entryCanonicals = [];
             foreach ($hazardClasses as $hc) {
                 if (!empty($hc['canonical'])) {
-                    $triggeredCanonicals[$hc['canonical']] = true;
+                    $entryCanonicals[$hc['canonical']] = true;
                 }
             }
+            $triggeredCanonicals = $entryCanonicals + $ftCanonicals;
             $hStmts     = $this->filterCpdCodesByTriggeredClasses($hStmts,     $triggeredCanonicals, 'h_codes',    $cas, $source);
             $pictograms = $this->filterCpdCodesByTriggeredClasses($pictograms, $triggeredCanonicals, 'pictograms', $cas, $source);
             // Q3: flammability P-codes must not ride along on another
@@ -3580,7 +3679,12 @@ class HazardEngine
                             }
                         }
                         if (!$found) {
-                            $underivable = true;
+                            // v1.12: a name read below the 1 % default cut-off
+                            // (it counts from its own) gives only the word its
+                            // name needs, as in v1.11, not the stored word.
+                            if ($canT !== '' || $conc >= $this->getCutoff('', null)) {
+                                $underivable = true;
+                            }
                             $need((string) ($hcT['class'] ?? ''), $canT === '' ? null : $canT);
                         }
                         // v1.11: a route-less "Acute Toxicity" is aliased to oral, so
@@ -3604,11 +3708,6 @@ class HazardEngine
                         && (self::SIGNAL_HIERARCHY[$cand] ?? 0) > (self::SIGNAL_HIERARCHY[$sw ?? ''] ?? 0)) {
                         $sw = $cand;
                     }
-                }
-                // v1.11: an unaliased name held to the 1 % default cut-off
-                // ("Carc. 1B" at 0.5 %) still counts above its own class's.
-                foreach ($ftBelowDefault as $classStr) {
-                    $need($classStr, null);
                 }
                 $derived = $underivable ? ($sw ?? $signalWord) : $sw;
                 // v1.11: such a class keeps the declared word up to the word it
@@ -3642,6 +3741,25 @@ class HazardEngine
                     ]);
                 }
                 $signalWord = $derived;
+            } elseif ($ftCanonicals !== []) {
+                // v1.12: a legacy free-text row keeps its stored word, which
+                // never covered the codes it keeps only now (H301 of "Acute
+                // Tox. 3", H331 of a route-less "Acute Toxicity"): those set
+                // their floor, as above. Only ever raises.
+                $newCodes = [];
+                foreach (array_keys($hStmts) as $kc) {
+                    $classes = self::cpdCodeCanonicals('h_codes')[(string) $kc] ?? null;
+                    if ($classes !== null && array_intersect_key($classes, $entryCanonicals) === []) {
+                        $newCodes[] = (string) $kc;
+                    }
+                }
+                $floor = GHSHelper::hCodesSignalFloor($newCodes);
+                if ((self::SIGNAL_HIERARCHY[$floor ?? ''] ?? 0) > (self::SIGNAL_HIERARCHY[$signalWord ?? ''] ?? 0)) {
+                    $this->traceStep('cpd_signal_word_derived', "CPD {$cas} signal word raised for its free-text class codes: {$floor} (stored: " . ($signalWord ?? 'none') . ')', [
+                        'cas' => $cas, 'stored' => $signalWord, 'derived' => $floor, 'codes' => $newCodes, 'source' => $source,
+                    ]);
+                    $signalWord = $floor;
+                }
             }
         }
 

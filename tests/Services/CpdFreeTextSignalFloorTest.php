@@ -15,6 +15,10 @@
  * to the word its declared codes of any route need. The word only ever rises,
  * never above the stored word; everything else is as in v1.10.
  *
+ * v1.12 (2026-10-29) keeps such a class's own H-codes (H301 of "Acute Tox.
+ * 3"), so a code that now prints sets its floor and can lift the word above
+ * the stored one (checks marked "since v1.12"); CpdFreeTextClassCodesTest.
+ *
  * Run: php tests/Services/CpdFreeTextSignalFloorTest.php
  */
 
@@ -113,17 +117,21 @@ check($sw('Flammable Liquids, Muta. 1B, Skin Sensitization', 'H225, H340, H317',
 check($sw('Flammable Liquids, Reproductive Toxicity, Lact., Serious Eye Damage', 'H225, H362, H318', 'Danger', 0.5) === null, '"Lact." under the default, Serious Eye Damage under its cut-off, at 0.5 %: none, as before');
 
 echo "\nc. The stored word is the ceiling, and nothing is lowered\n";
-check($sw('Flammable Liquids, Eye Irritation, Acute Tox. 3', 'H225, H301, H319', 'Warning') === 'Warning', 'stored Warning next to "Acute Tox. 3": Warning, as before');
-check($sw('Flammable Liquids, Acute Tox.', 'H225, H302, H311', 'Warning') === 'Warning', 'stored Warning, route-less acute with H311: Warning, as before');
+check($sw('Flammable Liquids, Eye Irritation, Acute Tox. 3', 'H225, H301, H319', 'Warning') === 'Danger', 'stored Warning next to "Acute Tox. 3": Danger since v1.12, as its H301 now prints (v1.9 code floor)');
+check($sw('Flammable Liquids, Eye Irritation, Acute Tox. 3', 'H225, H319', 'Warning') === 'Warning', '... without H301: Warning, as before');
+check($sw('Flammable Liquids, Acute Tox.', 'H225, H302, H311', 'Warning') === 'Danger', 'stored Warning, route-less acute with H311: Danger since v1.12, as H311 now prints');
 check($sw('Flammable Liquids, Serious Eye Damage, Acute Tox. 4', 'H225, H318', 'Warning') === 'Danger', 'a class worked out above the stored word (H318): Danger, as before');
 check($sw('Flammable Liquids, Acute Toxicity, Carcinogenic', 'H225, H312, H350') === 'Danger', 'route-less acute with only H312 next to an unreadable class: the stored Danger stands, as before');
 check($sw('Flammable Liquids, Skin Sensitization', 'H225') === 'Danger', 'nothing worked out ("Skin Sensitization" without H317): the stored Danger stands, as before');
-check($sw('Flammable Liquids, Acute Tox. 3', 'H225, H301', '') === null, 'nothing stored: none, as before');
+check($sw('Flammable Liquids, Acute Tox. 3', 'H225, H301', '') === 'Danger', 'nothing stored: Danger since v1.12, as H301 now prints');
+check($sw('Flammable Liquids, Acute Tox. 3', 'H225', '') === null, '... without H301: none, as before');
 
 echo "\nd. Other rows are unchanged\n";
-check($sw('Eye Irritation, Acute Tox. 3', 'H301, H319', 'Warning') === 'Warning', 'no Flammable Liquids class: "Eye Irritation, Acute Tox. 3", stored Warning: Warning');
+check($sw('Eye Irritation, Acute Tox. 3', 'H319', 'Warning') === 'Warning', 'no Flammable Liquids class: "Eye Irritation, Acute Tox. 3" (H319), stored Warning: Warning');
+check($sw('Eye Irritation, Acute Tox. 3', 'H301, H319', 'Warning') === 'Danger', '... with H301, which prints since v1.12: Danger (CpdFreeTextClassCodesTest)');
 check($sw('Flam. Liq. 2, Eye Irritation', 'H225, H319') === 'Danger', 'unmapped spelling "Flam. Liq. 2" + Eye Irritation, stored Danger: kept, as in v1.10');
-check($sw('Flam. Liq. 2, Eye Irritation, Acute Tox. 3', 'H225, H301, H319', 'Warning') === 'Warning', '... stored Warning: Warning, as in v1.10');
+check($sw('Flam. Liq. 2, Eye Irritation, Acute Tox. 3', 'H225, H319', 'Warning') === 'Warning', '... stored Warning: Warning, as in v1.10');
+check($sw('Flam. Liq. 2, Eye Irritation, Acute Tox. 3', 'H225, H301, H319', 'Warning') === 'Danger', '... with H301, which prints since v1.12: Danger');
 
 echo "\ne. readFreeTextClass()\n";
 $read = new ReflectionMethod(HazardEngine::class, 'readFreeTextClass');
@@ -197,7 +205,7 @@ check(!$routeless->invoke(null, 'Acute Toxicity (Oral)') && !$routeless->invoke(
     '... not with a route, in brackets or after the category');
 
 echo "\nf. Version\n";
-check(HazardEngine::ENGINE_VERSION === 'v1.11-free-text-signal-floor' && strlen(HazardEngine::ENGINE_VERSION) <= 30, 'engine version v1.11-free-text-signal-floor', HazardEngine::ENGINE_VERSION);
+check(HazardEngine::ENGINE_VERSION === 'v1.12-free-text-class-codes' && strlen(HazardEngine::ENGINE_VERSION) <= 30, 'engine version v1.12-free-text-class-codes', HazardEngine::ENGINE_VERSION);
 
 echo "\n{$checks} checks, {$failures} failures\n";
 exit($failures === 0 ? 0 : 1);

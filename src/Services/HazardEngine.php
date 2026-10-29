@@ -180,11 +180,19 @@ class HazardEngine
      *   (v1.9), on a row that keeps its stored word too. Flammable Liquids
      *   spellings stay ignored (Q3).
      *
+     * v1.13-free-text-cat-cutoffs (2026-10-29): a legacy free-text name the
+     *   alias table maps with its category in it ("STOT SE Category 3", "Eye
+     *   Irritation Cat 2A", "Skin Sensitization Cat 1") applies at that
+     *   category's cut-off (20 %, 10 %, 1 %) like a v1.12 short name, not at
+     *   its class's lowest (1 %, 1 %, 0.1 %), and below it feeds the
+     *   summation. A name without a category ("Eye Irritation") keeps its
+     *   class's lowest. Its entry, codes and signal word rules are unchanged.
+     *
      * Must fit sds_generation_trace.engine_version (VARCHAR(30), migration
      * 036): a longer value fails the trace INSERT under strict SQL mode
      * after the sds_versions row is already written.
      */
-    public const ENGINE_VERSION = 'v1.12-free-text-class-codes';
+    public const ENGINE_VERSION = 'v1.13-free-text-cat-cutoffs';
 
     /**
      * GHS summation thresholds per canonical class + category.
@@ -3500,7 +3508,14 @@ class HazardEngine
                 // "Carcinogenicity (Category 2)"; Flammable Liquids never). It
                 // applies at that category's cut-off and keeps its class's codes
                 // below; its entry keeps the name and no canonical class.
-                $read   = $canonical === null ? self::readFreeTextClass($classStr, null) : null;
+                // v1.13: a name it maps with its category in it ("STOT SE
+                // Category 3", "Eye Irritation Cat 2A") is held to that
+                // category's cut-off too, not its class's lowest; one without
+                // a category ("Eye Irritation") keeps the class's lowest.
+                $read = self::readFreeTextClass($classStr, $canonical);
+                if ($read !== null && $canonical !== null && ($read['category'] === '' || $read['canonical'] !== $canonical)) {
+                    $read = null;
+                }
                 $cutoff = $read !== null
                     ? $this->freeTextCutoff($read['canonical'], $read['category'])
                     : $this->getCutoff($canonical ?? '', null);
@@ -3541,7 +3556,7 @@ class HazardEngine
                 $own = $read['canonical'] ?? $canonical;
                 if ($own !== null) {
                     $routes = in_array($own, self::ACUTE_ROUTE_CANONICALS, true) ? self::freeTextAcuteRoutes($classStr) : null;
-                    foreach ($routes ?? ($read !== null ? [$own] : []) as $keep) {
+                    foreach ($routes ?? ($read !== null && $canonical === null ? [$own] : []) as $keep) {
                         $ftCanonicals[$keep] = true;
                     }
                 }

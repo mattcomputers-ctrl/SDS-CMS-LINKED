@@ -115,8 +115,8 @@ check($run('Asp. Tox. 1', 'H304', '', 'Danger', 9.99)['classes'] === [] && $h('A
 check($run('Acute Tox. 4', 'H302', '', 'Warning', 0.5)['classes'] === [] && $h('Acute Tox. 4', 'H302', 1.0) === ['H302'], '"Acute Tox. 4": from 1 %');
 check($h('Acute Tox. 2', 'H300', 0.1) === ['H300'], '"Acute Tox. 2": from 0.1 %');
 check($h('Carcinogenicity (Category 2)', 'H351', 0.5) === ['H351'], '"Carcinogenicity (Category 2)" at 0.5 %: H351 (0.1 %)');
-$r = $run('STOT SE Category 3', 'H335', 'GHS07', 'Warning', 15.0);
-check($r['h'] === ['H335'] && $cutoffOf($r, 'STOT SE Category 3') === 1.0, 'a name the alias table maps ("STOT SE Category 3") keeps the class\'s lowest cut-off at 15 %, as before', $r);
+$r = $run('STOT SE', 'H335', 'GHS07', 'Warning', 15.0);
+check($r['h'] === ['H335'] && $cutoffOf($r, 'STOT SE') === 1.0, 'a name the alias table maps, without a category ("STOT SE"), keeps the class\'s lowest cut-off at 15 %, as before (one with a category: CpdFreeTextMappedCutoffTest, v1.13)', $r);
 
 echo "\nc. Acute toxicity routes\n";
 check($h('Acute Tox. 3', 'H301, H311, H331') === ['H301', 'H311', 'H331'], '"Acute Tox. 3" (no route): every route\'s codes');
@@ -167,8 +167,8 @@ $run('Eye Irrit. 2B', 'H320', '', 'Warning', 5.0);
 check($sumBuf->getValue($engine) === [], '"Eye Irrit. 2B" (no summation rule, as a ticked 2B): nothing');
 $run('STOT SE 3', 'H335', '', 'Warning', 25.0);
 check($sumBuf->getValue($engine) === [], '"STOT SE 3" at 25 % (classified directly): not fed');
-$run('STOT SE Category 3', 'H335', '', 'Warning', 0.5);
-check($sumBuf->getValue($engine) === [], 'a name the alias table maps: not fed, as before');
+$run('STOT SE', 'H335', '', 'Warning', 0.5);
+check($sumBuf->getValue($engine) === [], 'a name the alias table maps, without a category: not fed, as before');
 // Two components at 12 % each classify the mixture.
 $mix = new HazardEngine();
 foreach (['50-00-0', '64-17-5'] as $mixCas) {
@@ -211,7 +211,8 @@ foreach ([
 }
 
 echo "\nh. Version\n";
-check(HazardEngine::ENGINE_VERSION === 'v1.12-free-text-class-codes' && strlen(HazardEngine::ENGINE_VERSION) <= 30, 'engine version v1.12-free-text-class-codes', HazardEngine::ENGINE_VERSION);
+check(preg_match('/^v(\d+\.\d+)/', HazardEngine::ENGINE_VERSION, $vm) === 1 && version_compare($vm[1], '1.12', '>=') && strlen(HazardEngine::ENGINE_VERSION) <= 30,
+    'engine version v1.12 (free-text class codes) or later', HazardEngine::ENGINE_VERSION);
 
 echo "\n{$checks} checks, {$failures} failures\n";
 exit($failures === 0 ? 0 : 1);

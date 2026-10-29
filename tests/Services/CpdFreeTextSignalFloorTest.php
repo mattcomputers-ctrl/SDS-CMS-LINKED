@@ -205,7 +205,7 @@ check(!$routeless->invoke(null, 'Acute Toxicity (Oral)') && !$routeless->invoke(
     '... not with a route, in brackets or after the category');
 
 echo "\nf. Version\n";
-check(HazardEngine::ENGINE_VERSION === 'v1.12-free-text-class-codes' && strlen(HazardEngine::ENGINE_VERSION) <= 30, 'engine version v1.12-free-text-class-codes', HazardEngine::ENGINE_VERSION);
+check(HazardEngine::ENGINE_VERSION === 'v1.13-free-text-cat-cutoffs' && strlen(HazardEngine::ENGINE_VERSION) <= 30, 'engine version v1.13-free-text-cat-cutoffs', HazardEngine::ENGINE_VERSION);
 
 echo "\n{$checks} checks, {$failures} failures\n";
 exit($failures === 0 ? 0 : 1);

@@ -1044,9 +1044,9 @@ try {
     assertContains('osha-lactation: H362 at 0.15%', hCodes($result), 'H362');
 
     // ──────────────────────────────────────────────────────────────────
-    echo "\n[43] engine version stamp is v1.12-free-text-class-codes (<= 30 chars for sds_generation_trace).\n";
-    assertEquals('ENGINE_VERSION is v1.12-free-text-class-codes',
-        'v1.12-free-text-class-codes',\SDS\Services\HazardEngine::ENGINE_VERSION);
+    echo "\n[43] engine version stamp is v1.13-free-text-cat-cutoffs (<= 30 chars for sds_generation_trace).\n";
+    assertEquals('ENGINE_VERSION is v1.13-free-text-cat-cutoffs',
+        'v1.13-free-text-cat-cutoffs',\SDS\Services\HazardEngine::ENGINE_VERSION);
 
 } catch (\Throwable $e) {
     echo "\n!!! EXCEPTION DURING TEST SUITE !!!\n";
